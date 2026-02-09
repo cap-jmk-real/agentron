@@ -603,6 +603,71 @@ main {
   min-height: 0;
 }
 
+/* Remove button on canvas nodes: must override React Flow node cursor and receive clicks */
+.canvas-node-remove-btn {
+  margin-left: auto;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer !important;
+  display: grid;
+  place-items: center;
+  transition: color 150ms ease, background 150ms ease;
+}
+
+.canvas-node-remove-btn:hover {
+  color: var(--text);
+  background: var(--surface-muted);
+}
+
+/* React Flow: nodes draggable, show grab cursor; exclude remove button via .nodrag */
+.react-flow__node {
+  cursor: grab;
+}
+
+.react-flow__node:active {
+  cursor: grabbing;
+}
+
+/* When over interactive node content (nopan), show the right cursor so pan doesn’t “win” and first click works */
+.react-flow__node input.nopan,
+.react-flow__node select.nopan,
+.react-flow__node textarea.nopan {
+  cursor: text;
+}
+
+.react-flow__node .nopan.button,
+.react-flow__node button.nopan,
+.react-flow__node .canvas-node-remove-btn,
+.react-flow__node a.nopan,
+.react-flow__node [role="button"].nopan {
+  cursor: pointer;
+}
+
+/* Decision node: tools from canvas */
+.decision-tools-empty {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.decision-tools-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.decision-tool-check {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
 /* Step items */
 .step-item {
   display: flex;
@@ -1262,6 +1327,520 @@ main {
   border-radius: 6px;
 }
 
+/* ========== Chat section (ChatGPT-style, /chat page only) ========== */
+.content > .chat-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  background: var(--surface);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.chat-section {
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+}
+
+.chat-section-sidebar {
+  width: 260px;
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-muted);
+  border-right: 1px solid var(--border);
+}
+
+.chat-section-sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-section-sidebar-close {
+  padding: 0.35rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chat-section-sidebar-close:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.chat-section-sidebar-title {
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+
+.chat-section-new-chat {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 1rem;
+  padding: 0.6rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.chat-section-new-chat:hover {
+  background: var(--surface-muted);
+  border-color: var(--primary);
+}
+
+.chat-section-conversations {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0;
+}
+
+.chat-section-conv-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.75rem;
+  margin: 0 0.5rem;
+  border-radius: 8px;
+}
+
+.chat-section-conv-item:hover .chat-section-conv-delete {
+  opacity: 1;
+}
+
+.chat-section-conv-btn {
+  flex: 1;
+  text-align: left;
+  padding: 0.5rem 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.8125rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.chat-section-conv-btn:hover {
+  background: var(--sidebar-hover);
+}
+
+.chat-section-conv-btn.active {
+  background: var(--sidebar-active);
+  color: var(--text);
+}
+
+.chat-section-conv-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-section-conv-delete {
+  padding: 0.25rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.chat-section-conv-delete:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.chat-section-sidebar-footer {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.chat-section-sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  border-radius: 6px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chat-section-sidebar-link:hover {
+  background: var(--sidebar-hover);
+  color: var(--text);
+}
+
+.chat-section-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.chat-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.chat-section-menu-btn {
+  padding: 0.4rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chat-section-menu-btn:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.chat-section-brand {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--text);
+}
+
+.chat-section-model-select {
+  margin-left: auto;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8125rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.chat-section-model-select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.chat-section-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-section-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.chat-section-welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+}
+
+.chat-section-welcome-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.chat-section-welcome-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 0.35rem 0;
+  color: var(--text);
+}
+
+.chat-section-welcome-sub {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.chat-section-message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 48rem;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.chat-section-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.chat-section-msg-user {
+  align-self: flex-end;
+  max-width: 85%;
+}
+
+.chat-section-msg-user .chat-msg-content {
+  background: var(--primary);
+  color: #fff;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+}
+
+.chat-section-msg-user .chat-inline-code {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.chat-section-msg-assistant {
+  align-self: flex-start;
+  max-width: 85%;
+}
+
+.chat-section-msg-assistant .chat-msg-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+}
+
+.chat-section-rephrased,
+.chat-section-plan {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-muted);
+  border-radius: 8px;
+}
+
+.chat-section-rephrased-label,
+.chat-section-plan-label {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.chat-section-todos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.8125rem;
+}
+
+.chat-section-todos li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.chat-section-todos li.done {
+  color: var(--text-muted);
+}
+
+.chat-section-todos li.active {
+  font-weight: 500;
+  color: var(--primary);
+}
+
+.chat-section-error {
+  padding: 0.75rem 1rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  font-size: 0.875rem;
+}
+
+.chat-section-error a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  color: var(--primary);
+}
+
+.chat-section-typing,
+.chat-section-typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.chat-section-typing-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.chat-section-typing-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: chat-section-dot 1.4s ease-in-out infinite both;
+}
+
+.chat-section-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.chat-section-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes chat-section-dot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.chat-section-msg-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.chat-section-msg-actions button {
+  padding: 0.3rem 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chat-section-msg-actions button:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.chat-section-input-wrap {
+  padding: 1rem 1.25rem 1.25rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.chat-section-input-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.chat-section-input-inner:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.12);
+}
+
+.chat-section-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.9375rem;
+}
+
+.chat-section-input::placeholder {
+  color: var(--text-muted);
+}
+
+.chat-section-input:focus {
+  outline: none;
+}
+
+.chat-section-send {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.chat-section-send:hover:not(:disabled) {
+  background: var(--primary-strong);
+}
+
+.chat-section-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chat-section-feedback-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chat-section-feedback-btn:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
 /* Chat settings: centered modal (from chat section) */
 .chat-page-settings-modal {
   position: fixed;
@@ -1618,6 +2197,10 @@ main {
   height: 8px;
   border-radius: 50%;
   background: var(--primary);
+}
+
+.chat-header-minimize {
+  margin-left: auto;
 }
 
 .chat-provider-select {

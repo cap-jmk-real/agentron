@@ -31,10 +31,15 @@ type AgentEdgeDef = { id: string; source: string; target: string };
 
 type LlmConfig = { id: string; provider: string; model: string };
 
+/** Tool as represented by a tool node on the canvas (for Decision node to reference). */
+type CanvasToolRef = { nodeId: string; toolId: string; name: string };
+
 type FlowNodeData = {
   nodeType: "llm" | "tool" | "context_read" | "context_write" | "prompt" | "input" | "output" | "decision";
   config: Record<string, unknown>;
   tools: ToolDef[];
+  /** Tools that exist as tool nodes on the canvas; used by Decision node. */
+  canvasTools?: CanvasToolRef[];
   llmConfigs?: LlmConfig[];
   onConfigChange: (nodeId: string, config: Record<string, unknown>) => void;
   onRemove: (nodeId: string) => void;
@@ -175,7 +180,7 @@ function ToolNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
                       <div key={key}>
                         <label style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{key}</label>
                         <input
-                          className="input"
+                          className="nodrag nopan input"
                           value={typeof val === "string" ? val : JSON.stringify(val)}
                           onChange={(e) => updateOverride({ config: { ...(override.config ?? {}), [key]: e.target.value } })}
                           placeholder={key}
@@ -188,7 +193,7 @@ function ToolNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
               )}
               {configKeys.length === 0 && (
                 <textarea
-                  className="input textarea"
+                  className="nodrag nopan input textarea"
                   value={JSON.stringify(override.config ?? {}, null, 2)}
                   onChange={(e) => {
                     try {
@@ -297,7 +302,7 @@ function DecisionNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
   const temperature = typeof data.config?.temperature === "number" ? data.config.temperature : undefined;
   const toolIds = (Array.isArray(data.config?.toolIds) ? data.config.toolIds : []) as string[];
   const llmConfigs = data.llmConfigs ?? [];
-  const tools = data.tools ?? [];
+  const canvasTools = data.canvasTools ?? [];
   return (
     <CanvasNodeCard
       icon={<GitBranch size={14} style={{ color: "var(--primary)" }} />}
@@ -335,25 +340,29 @@ function DecisionNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
         placeholder="Default"
         style={{ width: "100%", fontSize: "0.8rem", marginBottom: "0.35rem" }}
       />
-      <label style={{ fontSize: "0.7rem", color: "var(--text-muted)", display: "block", marginBottom: "0.25rem" }}>Tools</label>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem", marginBottom: "0.35rem" }}>
-        {tools.map((t) => {
-          const checked = toolIds.includes(t.id);
-          return (
-            <label key={t.id} className="nodrag nopan" style={{ display: "flex", alignItems: "center", gap: "0.25rem", fontSize: "0.75rem", cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => {
-                  const next = checked ? toolIds.filter((x) => x !== t.id) : [...toolIds, t.id];
-                  data.onConfigChange?.(id, { ...data.config, toolIds: next });
-                }}
-              />
-              {t.name}
-            </label>
-          );
-        })}
-      </div>
+      <label style={{ fontSize: "0.7rem", color: "var(--text-muted)", display: "block", marginBottom: "0.25rem" }}>Tools (from canvas)</label>
+      {canvasTools.length === 0 ? (
+        <p className="decision-tools-empty nodrag nopan">Add tool nodes to the canvas to use them in this decision.</p>
+      ) : (
+        <div className="decision-tools-list nodrag nopan">
+          {canvasTools.map((ct) => {
+            const checked = toolIds.includes(ct.toolId);
+            return (
+              <label key={ct.nodeId} className="decision-tool-check">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => {
+                    const next = checked ? toolIds.filter((x) => x !== ct.toolId) : [...toolIds, ct.toolId];
+                    data.onConfigChange?.(id, { ...data.config, toolIds: next });
+                  }}
+                />
+                {ct.name}
+              </label>
+            );
+          })}
+        </div>
+      )}
       <textarea
         className="nodrag nopan textarea"
         value={systemPrompt}
@@ -401,10 +410,24 @@ const nodeTypes = {
   output: OutputNode,
 };
 
+/** Build list of tools that exist as tool nodes on the canvas (for Decision node). */
+function getCanvasTools(nodes: AgentNodeDef[], tools: ToolDef[]): CanvasToolRef[] {
+  const refs: CanvasToolRef[] = [];
+  for (const node of nodes) {
+    if (node.type !== "tool") continue;
+    const toolId = String((node.parameters as { toolId?: string })?.toolId ?? "").trim();
+    if (!toolId) continue;
+    const tool = tools.find((t) => t.id === toolId);
+    refs.push({ nodeId: node.id, toolId, name: tool?.name ?? toolId });
+  }
+  return refs;
+}
+
 function toFlowNode(
   n: AgentNodeDef,
   i: number,
   tools: ToolDef[],
+  allNodes: AgentNodeDef[],
   onConfigChange: (nodeId: string, config: Record<string, unknown>) => void,
   onRemove: (nodeId: string) => void,
   onSaveToolToLibrary?: FlowNodeData["onSaveToolToLibrary"],
@@ -414,6 +437,7 @@ function toFlowNode(
   const config = n.parameters ?? {};
   const validTypes = ["llm", "decision", "tool", "context_read", "context_write", "input", "output"] as const;
   const type = (validTypes.includes(n.type as typeof validTypes[number]) ? n.type : "llm") as FlowNodeData["nodeType"];
+  const canvasTools = getCanvasTools(allNodes, tools);
   return {
     id: n.id,
     type,
@@ -422,6 +446,7 @@ function toFlowNode(
       nodeType: type,
       config,
       tools,
+      canvasTools,
       llmConfigs,
       onConfigChange,
       onRemove,
@@ -506,7 +531,7 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
   );
 
   const initialNodes = useMemo(
-    () => nodes.map((n, i) => toFlowNode(n, i, tools, onConfigChange, onRemove, onSaveToolToLibrary, llmConfigs)),
+    () => nodes.map((n, i) => toFlowNode(n, i, tools, nodes, onConfigChange, onRemove, onSaveToolToLibrary, llmConfigs)),
     [nodes, tools, llmConfigs, onConfigChange, onRemove, onSaveToolToLibrary]
   );
   const initialEdges = useMemo(() => toFlowEdges(edges), [edges]);
@@ -515,7 +540,7 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
   const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState(initialEdges);
 
   useEffect(() => {
-    setFlowNodes(nodes.map((n, i) => toFlowNode(n, i, tools, onConfigChange, onRemove, onSaveToolToLibrary, llmConfigs)));
+    setFlowNodes(nodes.map((n, i) => toFlowNode(n, i, tools, nodes, onConfigChange, onRemove, onSaveToolToLibrary, llmConfigs)));
     setFlowEdges(toFlowEdges(edges));
   }, [nodes.length, edges.length, JSON.stringify(nodes.map((n) => [n.id, n.type, n.parameters])), JSON.stringify(edges), llmConfigs, onSaveToolToLibrary]);
 
@@ -866,6 +891,8 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
           nodesDraggable
           nodesConnectable
           elementsSelectable
+          noDragClassName="nodrag"
+          noPanClassName="nopan"
           fitView
           fitViewOptions={{ padding: 0.2 }}
           defaultEdgeOptions={edgeOptions}

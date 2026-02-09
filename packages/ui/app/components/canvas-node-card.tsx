@@ -46,15 +46,6 @@ const labelStyle: React.CSSProperties = {
   textTransform: "uppercase",
 };
 
-const removeButtonStyle: React.CSSProperties = {
-  marginLeft: "auto",
-  padding: 2,
-  border: "none",
-  background: "transparent",
-  color: "var(--text-muted)",
-  cursor: "pointer",
-  borderRadius: 4,
-};
 
 /**
  * Shared card shell for canvas nodes (agent graph and workflow canvases).
@@ -84,22 +75,31 @@ export function CanvasNodeCard({
       {handleTop && (
         <Handle type="target" position={Position.Top} style={{ top: 0, width: 10, height: 10 }} />
       )}
-      <div style={headerStyle}>
-        {icon}
-        <span style={labelStyle}>{label}</span>
-        {onRemove && (
-          <button
-            type="button"
-            className="nodrag nopan"
-            onClick={onRemove}
-            style={removeButtonStyle}
-            title="Remove"
-          >
-            <Trash2 size={12} />
-          </button>
-        )}
+      {/* Wrapper with nopan so the whole node body does not trigger canvas pan; cursor over controls is set by .nopan in CSS */}
+      <div className="nopan" style={{ cursor: "default" }}>
+        <div style={headerStyle}>
+          {icon}
+          <span style={labelStyle}>{label}</span>
+          {onRemove && (
+            <button
+              type="button"
+              className="canvas-node-remove-btn nodrag nopan"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onRemove();
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              title="Remove"
+              aria-label="Remove node"
+            >
+              <Trash2 size={12} />
+            </button>
+          )}
+        </div>
+        {children}
       </div>
-      {children}
       {handleBottom && (
         <Handle type="source" position={Position.Bottom} style={{ bottom: 0, width: 10, height: 10 }} />
       )}

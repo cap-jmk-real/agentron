@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import ChatModal from "../components/chat-modal";
+import ChatSection from "../components/chat-section";
 import ChatSettingsPanel from "../components/chat-settings-panel";
 
 export default function ChatPage() {
@@ -13,12 +13,7 @@ export default function ChatPage() {
 
   return (
     <>
-      <ChatModal
-        open={true}
-        onClose={() => {}}
-        embedded
-        onOpenSettings={() => setShowSettings(true)}
-      />
+      <ChatSection onOpenSettings={() => setShowSettings(true)} />
       {showSettings && (
         <div className="chat-page-settings-modal">
           <div

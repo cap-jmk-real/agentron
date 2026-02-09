@@ -270,6 +270,18 @@ export const ragCollections = sqliteTable("rag_collections", {
   agentId: text("agent_id"),
   encodingConfigId: text("encoding_config_id").notNull(),
   documentStoreId: text("document_store_id").notNull(),
+  vectorStoreId: text("vector_store_id"),
+  createdAt: integer("created_at").notNull()
+});
+
+// --- RAG: bundled vectors (when no external vector store) ---
+export const ragVectors = sqliteTable("rag_vectors", {
+  id: text("id").primaryKey(),
+  collectionId: text("collection_id").notNull(),
+  documentId: text("document_id").notNull(),
+  chunkIndex: integer("chunk_index").notNull(),
+  text: text("text").notNull(),
+  embedding: text("embedding").notNull(),
   createdAt: integer("created_at").notNull()
 });
 

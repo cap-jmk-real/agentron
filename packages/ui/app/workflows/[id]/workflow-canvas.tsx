@@ -292,6 +292,8 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
           nodesDraggable
           nodesConnectable
           elementsSelectable
+          noDragClassName="nodrag"
+          noPanClassName="nopan"
           fitView
           fitViewOptions={{ padding: 0.2 }}
           defaultEdgeOptions={edgeOptions}

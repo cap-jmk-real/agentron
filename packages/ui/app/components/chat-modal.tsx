@@ -519,7 +519,7 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
               ))}
           </select>
           {!embedded && (
-            <button className="chat-header-btn" onClick={onClose} title="Minimize">
+            <button className="chat-header-btn chat-header-minimize" onClick={onClose} title="Minimize">
               <Minus size={14} />
             </button>
           )}
