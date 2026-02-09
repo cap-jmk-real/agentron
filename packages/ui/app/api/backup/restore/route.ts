@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     }
     const blob = file as Blob;
     const buffer = Buffer.from(await blob.arrayBuffer());
-    tempPath = path.join(os.tmpdir(), `agentos-restore-${Date.now()}.sqlite`);
+    tempPath = path.join(os.tmpdir(), `agentron-restore-${Date.now()}.sqlite`);
     fs.writeFileSync(tempPath, buffer);
     await runRestore(tempPath);
     return json({ ok: true, message: "Restore complete. Refresh the app to see restored data." });

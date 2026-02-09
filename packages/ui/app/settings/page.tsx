@@ -104,7 +104,7 @@ export default function SettingsPage() {
               const blob = await res.blob();
               const disposition = res.headers.get("Content-Disposition");
               const match = disposition?.match(/filename="?([^";]+)"?/);
-              const name = match?.[1] ?? `agentos-${type}-${new Date().toISOString().slice(0, 10)}.json`;
+              const name = match?.[1] ?? `agentron-${type}-${new Date().toISOString().slice(0, 10)}.json`;
               const a = document.createElement("a");
               a.href = URL.createObjectURL(blob);
               a.download = name;
@@ -196,7 +196,7 @@ export default function SettingsPage() {
                 const blob = await res.blob();
                 const disposition = res.headers.get("Content-Disposition");
                 const match = disposition?.match(/filename="?([^";]+)"?/);
-                const name = match?.[1] ?? `agentos-backup-${new Date().toISOString().slice(0, 10)}.sqlite`;
+                const name = match?.[1] ?? `agentron-backup-${new Date().toISOString().slice(0, 10)}.sqlite`;
                 const a = document.createElement("a");
                 a.href = URL.createObjectURL(blob);
                 a.download = name;

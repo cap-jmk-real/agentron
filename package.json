@@ -1,5 +1,5 @@
 {
-  "name": "agentos-studio",
+  "name": "agentron-studio",
   "private": true,
   "version": "0.1.0",
   "workspaces": [
@@ -11,7 +11,7 @@
     "build:ui": "npm --workspace packages/ui run build",
     "lint:ui": "npm --workspace packages/ui run lint",
     "typecheck": "npm --workspaces --if-present run typecheck",
-    "test": "npm run build --workspace packages/core && npm --workspace packages/ui run test",
+    "test": "npm --workspace packages/ui run test",
     "test:ui": "npm --workspace packages/ui run test",
     "install:ui": "npm install --workspace packages/ui --omit=optional",
     "install:desktop": "npm install --workspace apps/desktop --include=dev",

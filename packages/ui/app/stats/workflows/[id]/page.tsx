@@ -24,23 +24,26 @@ export default function WorkflowStatsPage() {
 
   if (!data) return <div style={{ padding: "2rem", color: "var(--text-muted)" }}>Loading...</div>;
 
-  const maxAgent = Math.max(...data.agents.map((a) => a.promptTokens + a.completionTokens), 1);
+  const agents = Array.isArray(data.agents) ? data.agents : [];
+  const maxAgent = Math.max(...agents.map((a) => a.promptTokens + a.completionTokens), 1);
+  const workflow = data.workflow ?? { id: "", name: "Workflow" };
+  const summary = data.summary ?? { totalRuns: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 };
 
   return (
     <div style={{ maxWidth: 800 }}>
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.25rem" }}>
         <Link href="/stats" style={{ fontSize: "0.82rem", color: "var(--text-muted)", textDecoration: "none" }}>&larr; Statistics</Link>
         <span style={{ color: "var(--text-muted)" }}>/</span>
-        <h1 style={{ margin: 0, fontSize: "1.2rem" }}>{data.workflow.name}</h1>
+        <h1 style={{ margin: 0, fontSize: "1.2rem" }}>{workflow.name}</h1>
       </div>
 
       {/* Summary */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "0.6rem", marginBottom: "1.5rem" }}>
         {[
-          { label: "Total Calls", value: fmt(data.summary.totalRuns) },
-          { label: "Input Tokens", value: fmt(data.summary.promptTokens) },
-          { label: "Output Tokens", value: fmt(data.summary.completionTokens) },
-          { label: "Est. Cost", value: fmtCost(data.summary.estimatedCost) },
+          { label: "Total Calls", value: fmt(summary.totalRuns) },
+          { label: "Input Tokens", value: fmt(summary.promptTokens) },
+          { label: "Output Tokens", value: fmt(summary.completionTokens) },
+          { label: "Est. Cost", value: fmtCost(summary.estimatedCost) },
         ].map((c) => (
           <div key={c.label} className="card" style={{ padding: "0.75rem 0.85rem" }}>
             <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 500, marginBottom: "0.2rem" }}>{c.label}</div>
@@ -51,11 +54,11 @@ export default function WorkflowStatsPage() {
 
       {/* Per-agent breakdown */}
       <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.6rem" }}>Agent Breakdown</h2>
-      {data.agents.length === 0 ? (
+      {agents.length === 0 ? (
         <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>No agent usage recorded in this workflow.</p>
       ) : (
         <div style={{ display: "grid", gap: "0.4rem" }}>
-          {data.agents.map((a) => (
+          {agents.map((a) => (
             <Link key={a.id} href={`/stats/agents/${a.id}`} style={{ textDecoration: "none", color: "inherit" }}>
               <div className="card" style={{ padding: "0.65rem 0.85rem", cursor: "pointer" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.3rem" }}>

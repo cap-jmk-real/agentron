@@ -10,7 +10,10 @@ import {
   contexts,
   tokenUsage,
   tasks,
+  conversations,
   chatMessages,
+  chatAssistantSettings,
+  assistantMemory,
   files,
   sandboxes,
   customFunctions,
@@ -24,6 +27,9 @@ import type {
   LLMConfig,
   ToolDefinition,
   ChatMessage,
+  Conversation,
+  ChatAssistantSettings,
+  AssistantMemoryEntry,
   Feedback,
   FileEntry,
   Sandbox,
@@ -43,7 +49,25 @@ const adapter = createSqliteAdapter(dbPath);
 adapter.initialize?.();
 
 export const db = adapter.db;
-export { agents, workflows, llmConfigs, tools, executions, tokenUsage, tasks };
+export {
+  agents,
+  workflows,
+  llmConfigs,
+  tools,
+  executions,
+  tokenUsage,
+  tasks,
+  conversations,
+  chatMessages,
+  chatAssistantSettings,
+  assistantMemory,
+  files,
+  sandboxes,
+  customFunctions,
+  feedback,
+  modelPricing,
+  remoteServers,
+};
 
 const parseJson = <T>(value?: string | null, fallback?: T): T | undefined => {
   if (!value) {
@@ -218,6 +242,255 @@ export const fromTaskRow = (row: typeof tasks.$inferSelect): TaskRow => ({
   resolvedAt: row.resolvedAt ?? null,
   resolvedBy: row.resolvedBy ?? null
 });
+
+export const toConversationRow = (c: Conversation) => ({
+  id: c.id,
+  title: c.title ?? null,
+  rating: c.rating ?? null,
+  note: c.note ?? null,
+  summary: c.summary ?? null,
+  createdAt: c.createdAt
+});
+
+export const fromConversationRow = (row: typeof conversations.$inferSelect): Conversation => ({
+  id: row.id,
+  title: row.title ?? null,
+  rating: row.rating ?? null,
+  note: row.note ?? null,
+  summary: row.summary ?? null,
+  createdAt: row.createdAt
+});
+
+export const toChatMessageRow = (m: ChatMessage) => ({
+  id: m.id,
+  conversationId: m.conversationId ?? null,
+  role: m.role,
+  content: m.content,
+  toolCalls: m.toolCalls ? JSON.stringify(m.toolCalls) : null,
+  createdAt: m.createdAt
+});
+
+export const fromChatMessageRow = (row: typeof chatMessages.$inferSelect): ChatMessage => ({
+  id: row.id,
+  role: row.role as ChatMessage["role"],
+  content: row.content,
+  toolCalls: parseJson(row.toolCalls),
+  createdAt: row.createdAt,
+  conversationId: row.conversationId ?? undefined
+});
+
+export const toChatAssistantSettingsRow = (s: ChatAssistantSettings) => ({
+  id: s.id,
+  customSystemPrompt: s.customSystemPrompt ?? null,
+  contextAgentIds: s.contextAgentIds ? JSON.stringify(s.contextAgentIds) : null,
+  contextWorkflowIds: s.contextWorkflowIds ? JSON.stringify(s.contextWorkflowIds) : null,
+  contextToolIds: s.contextToolIds ? JSON.stringify(s.contextToolIds) : null,
+  recentSummariesCount: s.recentSummariesCount ?? null,
+  temperature: s.temperature != null ? String(s.temperature) : null,
+  updatedAt: s.updatedAt
+});
+
+export const fromChatAssistantSettingsRow = (row: typeof chatAssistantSettings.$inferSelect): ChatAssistantSettings => ({
+  id: row.id,
+  customSystemPrompt: row.customSystemPrompt ?? null,
+  contextAgentIds: parseJson<string[]>(row.contextAgentIds),
+  contextWorkflowIds: parseJson<string[]>(row.contextWorkflowIds),
+  contextToolIds: parseJson<string[]>(row.contextToolIds),
+  recentSummariesCount: row.recentSummariesCount ?? null,
+  temperature: row.temperature != null ? Number(row.temperature) : null,
+  updatedAt: row.updatedAt
+});
+
+export const toAssistantMemoryRow = (e: AssistantMemoryEntry) => ({
+  id: e.id,
+  key: e.key ?? null,
+  content: e.content,
+  createdAt: e.createdAt
+});
+
+export const fromAssistantMemoryRow = (row: typeof assistantMemory.$inferSelect): AssistantMemoryEntry => ({
+  id: row.id,
+  key: row.key ?? null,
+  content: row.content,
+  createdAt: row.createdAt
+});
+
+export const fromLlmConfigRowWithSecret = (
+  row: typeof llmConfigs.$inferSelect
+): (LLMConfig & { id: string }) => fromLlmConfigRow(row);
+
+export const toSandboxRow = (s: Sandbox) => ({
+  id: s.id,
+  name: s.name,
+  image: s.image,
+  status: s.status,
+  containerId: s.containerId ?? null,
+  config: JSON.stringify(s.config ?? {}),
+  createdAt: s.createdAt
+});
+
+export const fromSandboxRow = (row: typeof sandboxes.$inferSelect): Sandbox => ({
+  id: row.id,
+  name: row.name,
+  image: row.image,
+  status: row.status as Sandbox["status"],
+  containerId: row.containerId ?? undefined,
+  config: parseJson(row.config, {}) ?? {},
+  createdAt: row.createdAt
+});
+
+export const toFileRow = (f: FileEntry) => ({
+  id: f.id,
+  name: f.name,
+  mimeType: f.mimeType,
+  size: f.size,
+  path: f.path,
+  createdAt: f.createdAt
+});
+
+export const fromFileRow = (row: typeof files.$inferSelect): FileEntry => ({
+  id: row.id,
+  name: row.name,
+  mimeType: row.mimeType,
+  size: row.size,
+  path: row.path,
+  createdAt: row.createdAt
+});
+
+export const toFeedbackRow = (f: Feedback) => ({
+  id: f.id,
+  targetType: f.targetType,
+  targetId: f.targetId,
+  executionId: f.executionId ?? null,
+  input: JSON.stringify(f.input),
+  output: JSON.stringify(f.output),
+  label: f.label,
+  notes: f.notes ?? null,
+  createdAt: f.createdAt
+});
+
+export const fromFeedbackRow = (row: typeof feedback.$inferSelect): Feedback => ({
+  id: row.id,
+  targetType: row.targetType as Feedback["targetType"],
+  targetId: row.targetId,
+  executionId: row.executionId ?? undefined,
+  input: parseJson(row.input),
+  output: parseJson(row.output),
+  label: row.label as Feedback["label"],
+  notes: row.notes ?? undefined,
+  createdAt: row.createdAt
+});
+
+export type ModelPricingRow = {
+  id: string;
+  modelPattern: string;
+  inputCostPerM: string;
+  outputCostPerM: string;
+  updatedAt: number;
+};
+
+export const toModelPricingRow = (p: ModelPricingRow) => ({
+  id: p.id,
+  modelPattern: p.modelPattern,
+  inputCostPerM: p.inputCostPerM,
+  outputCostPerM: p.outputCostPerM,
+  updatedAt: p.updatedAt
+});
+
+export const fromModelPricingRow = (row: typeof modelPricing.$inferSelect): ModelPricingRow => ({
+  id: row.id,
+  modelPattern: row.modelPattern,
+  inputCostPerM: row.inputCostPerM,
+  outputCostPerM: row.outputCostPerM,
+  updatedAt: row.updatedAt
+});
+
+export const toTokenUsageRow = (u: {
+  id: string;
+  executionId?: string | null;
+  agentId?: string | null;
+  workflowId?: string | null;
+  provider: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  estimatedCost?: string | null;
+}) => ({
+  id: u.id,
+  executionId: u.executionId ?? null,
+  agentId: u.agentId ?? null,
+  workflowId: u.workflowId ?? null,
+  provider: u.provider,
+  model: u.model,
+  promptTokens: u.promptTokens,
+  completionTokens: u.completionTokens,
+  estimatedCost: u.estimatedCost ?? null,
+  createdAt: Date.now()
+});
+
+export type RemoteServer = {
+  id: string;
+  label: string;
+  host: string;
+  port: number;
+  user: string;
+  authType: string;
+  keyPath?: string | null;
+  modelBaseUrl?: string | null;
+  createdAt?: number;
+};
+
+export const toRemoteServerRow = (s: RemoteServer) => ({
+  id: s.id,
+  label: s.label,
+  host: s.host,
+  port: s.port,
+  user: s.user,
+  authType: s.authType,
+  keyPath: s.keyPath ?? null,
+  modelBaseUrl: s.modelBaseUrl ?? null,
+  createdAt: s.createdAt ?? Date.now()
+});
+
+export const fromRemoteServerRow = (row: typeof remoteServers.$inferSelect): RemoteServer => ({
+  id: row.id,
+  label: row.label,
+  host: row.host,
+  port: row.port,
+  user: row.user,
+  authType: row.authType,
+  keyPath: row.keyPath ?? undefined,
+  modelBaseUrl: row.modelBaseUrl ?? undefined,
+  createdAt: row.createdAt
+});
+
+export const toCustomFunctionRow = (f: CustomFunction) => ({
+  id: f.id,
+  name: f.name,
+  description: f.description ?? null,
+  language: f.language,
+  source: f.source,
+  sandboxId: f.sandboxId ?? null,
+  createdAt: f.createdAt
+});
+
+export const fromCustomFunctionRow = (row: typeof customFunctions.$inferSelect): CustomFunction => ({
+  id: row.id,
+  name: row.name,
+  description: row.description ?? undefined,
+  language: row.language,
+  source: row.source,
+  sandboxId: row.sandboxId ?? undefined,
+  createdAt: row.createdAt
+});
+
+const FILES_DIR = path.join(process.cwd(), ".data", "files");
+export function ensureFilesDir(): string {
+  if (!fs.existsSync(FILES_DIR)) {
+    fs.mkdirSync(FILES_DIR, { recursive: true });
+  }
+  return FILES_DIR;
+}
 
 const STANDARD_TOOLS: { id: string; name: string }[] = [
   { id: "std-fetch-url", name: "Fetch URL" },

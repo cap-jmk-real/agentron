@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from "electron";
 import path from "node:path";
+import { initializeLocalRuntime } from "./runtime";
 
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
@@ -18,7 +19,6 @@ let runtimeClose: (() => void) | null = null;
 
 app.whenReady().then(() => {
   try {
-    const { initializeLocalRuntime } = require("./runtime");
     const adapter = initializeLocalRuntime();
     runtimeClose = () => adapter.close();
   } catch (err) {

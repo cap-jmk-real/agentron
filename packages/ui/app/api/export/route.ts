@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
   const out: Record<string, unknown> = {
     version: DEFINITION_VERSION,
     exportedAt,
-    schema: "agentos-studio-definitions",
+    schema: "agentron-studio-definitions",
   };
 
   if (type === "tools" || type === "all") {
@@ -51,8 +51,8 @@ export async function GET(request: NextRequest) {
 
   const filename =
     type === "all"
-      ? `agentos-definitions-${exportedAt.slice(0, 10)}.json`
-      : `agentos-${type}-${exportedAt.slice(0, 10)}.json`;
+      ? `agentron-definitions-${exportedAt.slice(0, 10)}.json`
+      : `agentron-${type}-${exportedAt.slice(0, 10)}.json`;
 
   return new Response(JSON.stringify(out, null, 2), {
     status: 200,

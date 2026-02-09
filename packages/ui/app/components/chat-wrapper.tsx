@@ -1,16 +1,20 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import ChatModal from "./chat-modal";
 import { Sparkles, ChevronDown } from "lucide-react";
 
-const OPEN_CHAT_EVENT = "agentos-open-chat";
+const OPEN_CHAT_EVENT = "agentron-open-chat";
 
 export default function ChatWrapper() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [attachedContext, setAttachedContext] = useState<string | null>(null);
   /** When user opens chat with run output, we create a new conversation and pass its id so the first message uses it. */
   const [newConversationId, setNewConversationId] = useState<string | null>(null);
+
+  const isChatPage = pathname === "/chat";
 
   useEffect(() => {
     const handler = async (e: Event) => {
@@ -41,13 +45,15 @@ export default function ChatWrapper() {
 
   return (
     <>
-      <button
-        className={`chat-fab ${open ? "chat-fab-active" : ""}`}
-        onClick={() => setOpen((o) => !o)}
-        title={open ? "Minimize" : "Open assistant"}
-      >
-        {open ? <ChevronDown size={18} /> : <Sparkles size={17} />}
-      </button>
+      {!isChatPage && (
+        <button
+          className={`chat-fab ${open ? "chat-fab-active" : ""}`}
+          onClick={() => setOpen((o) => !o)}
+          title={open ? "Minimize" : "Open assistant"}
+        >
+          {open ? <ChevronDown size={18} /> : <Sparkles size={17} />}
+        </button>
+      )}
       <ChatModal
         open={open}
         onClose={() => setOpen(false)}

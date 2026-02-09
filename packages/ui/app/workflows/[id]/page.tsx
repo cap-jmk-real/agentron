@@ -144,13 +144,14 @@ export default function WorkflowDetailPage() {
   }, [parsedNodes, agents]);
 
   const addAgentNodeAt = useCallback(
-    (position: { x: number; y: number }, agentId?: string, nodeType?: "agent" | "input" | "output") => {
+    (position: { x: number; y: number }, agentId?: string) => {
       const id = `node-${Date.now()}`;
-      const type = nodeType ?? "agent";
-      const newNode =
-        type === "agent"
-          ? { id, type, position: [position.x, position.y] as [number, number], parameters: { agentId: agentId ?? agents[0]?.id ?? "" } }
-          : { id, type, position: [position.x, position.y] as [number, number], parameters: { transform: { expression: "" } } };
+      const newNode = {
+        id,
+        type: "agent",
+        position: [position.x, position.y] as [number, number],
+        parameters: { agentId: agentId ?? agents[0]?.id ?? "" },
+      };
       const parsed = [...parsedNodes, newNode];
       setNodes(JSON.stringify(parsed, null, 2));
     },
@@ -473,14 +474,16 @@ export default function WorkflowDetailPage() {
           </p>
         </div>
       </div>
-      <div className="card form form-wide" style={{ marginBottom: "1.5rem" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-          <GitBranch size={18} style={{ color: "var(--text-muted)" }} />
-          <label style={{ fontWeight: 600 }}>Canvas</label>
+      <div className="card form form-wide canvas-card" style={{ marginBottom: "1.5rem", padding: 0 }}>
+        <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+            <GitBranch size={18} style={{ color: "var(--text-muted)" }} />
+            <label style={{ fontWeight: 600 }}>Canvas</label>
+          </div>
+          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: 0 }}>
+            Drag agent nodes onto the canvas and connect them. Use tools on each agent to handle input and output. Pan and zoom with the controls. Set <strong>Max rounds</strong> above for circular workflows.
+          </p>
         </div>
-        <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: "0 0 0.75rem 0" }}>
-          Drag agent nodes onto the canvas, connect them by dragging from one node&apos;s bottom handle to another&apos;s top. Pan and zoom with the controls. Set <strong>Max rounds</strong> above for circular workflows.
-        </p>
         <WorkflowCanvas
           wfNodes={parsedNodes}
           wfEdges={parsedEdges}

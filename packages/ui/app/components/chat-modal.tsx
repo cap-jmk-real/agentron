@@ -3,11 +3,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Send, ThumbsUp, ThumbsDown, Loader, Minus, Copy, Check, Circle, Square, MessageSquarePlus, List, Star, Trash2, ExternalLink } from "lucide-react";
+import { Send, ThumbsUp, ThumbsDown, Loader, Minus, Copy, Check, Circle, Square, MessageSquarePlus, List, Star, Trash2, ExternalLink, GitBranch, Settings2 } from "lucide-react";
 import { ChatMessageContent, ChatToolResults } from "./chat-message-content";
 import ChatFeedbackModal from "./chat-feedback-modal";
-
-const CHAT_PROVIDER_STORAGE_KEY = "chat.providerId"; // stores provider config id; UI shows models
 
 /** Build a short UI context string for the assistant from the current path. */
 function getUiContext(pathname: string | null): string {
@@ -69,11 +67,13 @@ type Props = {
   /** When opening with run output, wrapper creates a new conversation and passes its id. */
   initialConversationId?: string | null;
   clearInitialConversationId?: () => void;
-  /** When provided, error messages in chat show a generic message and a "View stack trace" link that calls this with the current conversation id so the traces view can open that conversation. */
+  /** When provided, error messages in chat show a generic message and a "View stack trace" link that opens /chat/traces in a new tab. */
   onOpenStackTraces?: (conversationId?: string) => void;
+  /** When embedded (e.g. on /chat page), called when user clicks Settings in the sidebar. */
+  onOpenSettings?: () => void;
 };
 
-export default function ChatModal({ open, onClose, embedded, attachedContext, clearAttachedContext, initialConversationId, clearInitialConversationId, onOpenStackTraces }: Props) {
+export default function ChatModal({ open, onClose, embedded, attachedContext, clearAttachedContext, initialConversationId, clearInitialConversationId, onOpenStackTraces, onOpenSettings }: Props) {
   const pathname = usePathname();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -86,10 +86,7 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
   const [savingNote, setSavingNote] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [providers, setProviders] = useState<LlmProvider[]>([]);
-  const [providerId, setProviderId] = useState<string>(() => {
-    if (typeof window === "undefined") return "";
-    return window.localStorage.getItem(CHAT_PROVIDER_STORAGE_KEY) ?? "";
-  });
+  const [providerId, setProviderId] = useState<string>("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -104,10 +101,6 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
     }
   }, [open, initialConversationId, clearInitialConversationId]);
 
-  // When embedded, always show sidebar (classical chat layout)
-  useEffect(() => {
-    if (embedded) setShowConversationList(true);
-  }, [embedded]);
 
   const startNewChat = useCallback(() => {
     fetch("/api/chat/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) })
@@ -216,22 +209,15 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
   }, [conversationId, noteDraft]);
 
   useEffect(() => {
+    if (embedded) setShowConversationList(true);
+  }, [embedded]);
+
+  useEffect(() => {
     if (open) {
       fetch("/api/llm/providers")
         .then((r) => r.json())
         .then((data) => {
-          const list = Array.isArray(data) ? data : [];
-          setProviders(list);
-          if (list.length === 1 && typeof window !== "undefined") {
-            const only = list[0] as LlmProvider;
-            setProviderId((prev) => {
-              if (!prev) {
-                window.localStorage.setItem(CHAT_PROVIDER_STORAGE_KEY, only.id);
-                return only.id;
-              }
-              return prev;
-            });
-          }
+          setProviders(Array.isArray(data) ? data : []);
         })
         .catch(() => setProviders([]));
     }
@@ -242,6 +228,15 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
     }
   }, [messages, open]);
+
+  useEffect(() => {
+    if (!showConversationList) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowConversationList(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showConversationList]);
 
   const handleBackdropClick = useCallback(
     (e: React.MouseEvent) => {
@@ -421,68 +416,86 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
     });
   };
 
-  return (
+  const conversationsContent = (
     <>
-      {/* Backdrop -- clicking it closes the modal (only when not embedded) */}
-      {open && !embedded && (
-        <div
-          className="chat-backdrop"
-          ref={backdropRef}
-          onClick={handleBackdropClick}
-        />
-      )}
-
-      <div className={`chat-panel ${open ? "chat-panel-open" : ""} ${embedded ? "chat-panel-embedded" : ""}`}>
-        {/* Conversation list sidebar - collapsible when embedded */}
-        {showConversationList && (
-          <div className={`chat-conversations-sidebar ${embedded ? "chat-conversations-sidebar-embedded" : ""}`}>
-            <div className="chat-conversations-header">
-              <span>Conversations</span>
-              <button type="button" className="chat-header-btn" onClick={() => setShowConversationList(false)} title={embedded ? "Close sidebar" : "Close list"}>
-                <Minus size={14} />
-              </button>
-            </div>
-            <button type="button" className="chat-new-chat-btn" onClick={startNewChat}>
-              <MessageSquarePlus size={16} />
-              <span>New chat</span>
+      <div className="chat-conversations-header">
+        <span>Conversations</span>
+        <button type="button" className="chat-header-btn" onClick={() => setShowConversationList(false)} title="Close">
+          <Minus size={14} />
+        </button>
+      </div>
+      <button type="button" className="chat-new-chat-btn" onClick={startNewChat}>
+        <MessageSquarePlus size={16} />
+        <span>New chat</span>
+      </button>
+      <ul className={`chat-conversations-list ${!embedded ? "chat-conversations-modal-list" : ""}`}>
+        {conversationList.map((c) => (
+          <li key={c.id} className="chat-conversation-li">
+            <button
+              type="button"
+              className={`chat-conversation-item ${c.id === conversationId ? "active" : ""}`}
+              onClick={() => {
+                setConversationId(c.id);
+                if (!embedded) setShowConversationList(false);
+              }}
+            >
+              <span className="chat-conversation-item-title">
+                {(c.title && c.title.trim()) ? c.title.trim() : "New chat"}
+              </span>
             </button>
-            <ul className="chat-conversations-list">
-              {conversationList.map((c) => (
-                <li key={c.id} className="chat-conversation-li">
-                  <button
-                    type="button"
-                    className={`chat-conversation-item ${c.id === conversationId ? "active" : ""}`}
-                    onClick={() => {
-                      setConversationId(c.id);
-                      if (!embedded) setShowConversationList(false);
-                    }}
-                  >
-                    <span className="chat-conversation-item-title">
-                      {(c.title && c.title.trim()) ? c.title.trim() : "New chat"}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="chat-conversation-delete"
-                    onClick={(e) => deleteConversation(c.id, e)}
-                    title="Delete chat"
-                    aria-label="Delete chat"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+            <button
+              type="button"
+              className="chat-conversation-delete"
+              onClick={(e) => deleteConversation(c.id, e)}
+              title="Delete chat"
+              aria-label="Delete chat"
+            >
+              <Trash2 size={12} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="chat-sidebar-actions">
+        <a
+          href={conversationId ? `/chat/traces?conversationId=${encodeURIComponent(conversationId)}` : "/chat/traces"}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="chat-sidebar-action-link"
+        >
+          <GitBranch size={14} />
+          Stack traces
+        </a>
+        {embedded && onOpenSettings && (
+          <button type="button" className="chat-sidebar-action-btn" onClick={onOpenSettings} title="Assistant settings">
+            <Settings2 size={14} />
+            Settings
+          </button>
         )}
-        {/* Main area: header + messages + input (wrapped for embedded row layout) */}
-        <div className="chat-main">
+      </div>
+    </>
+  );
+
+  const conversationsModal = !embedded && showConversationList && (
+    <div className="chat-conversations-modal" role="dialog" aria-label="Chat history">
+      <div
+        className="chat-conversations-modal-backdrop"
+        role="presentation"
+        onClick={() => setShowConversationList(false)}
+      />
+      <div className="chat-conversations-modal-dialog">
+        {conversationsContent}
+      </div>
+    </div>
+  );
+
+  const chatMain = (
+    <div className={`chat-main ${embedded ? "chat-main-embedded" : ""}`}>
         <div className="chat-header">
           <button
             type="button"
             className="chat-header-btn"
             onClick={() => setShowConversationList((s) => !s)}
-            title={showConversationList ? "Close sidebar" : "Open conversations"}
+            title={showConversationList ? "Close history" : "Chat history"}
           >
             <List size={14} />
           </button>
@@ -493,17 +506,10 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
           <select
             className="chat-provider-select"
             value={providerId}
-            onChange={(e) => {
-              const id = e.target.value;
-              setProviderId(id);
-              if (typeof window !== "undefined") {
-                if (id) window.localStorage.setItem(CHAT_PROVIDER_STORAGE_KEY, id);
-                else window.localStorage.removeItem(CHAT_PROVIDER_STORAGE_KEY);
-              }
-            }}
-            title={providers.length > 1 ? "Select a provider (required when multiple are configured)" : "LLM provider for this chat"}
+            onChange={(e) => setProviderId(e.target.value)}
+            title="Select an LLM provider (required)"
           >
-            <option value="">{providers.length > 1 ? "Select a provider…" : "Default"}</option>
+            <option value="">Select a provider…</option>
             {[...providers]
               .sort((a, b) => a.model.localeCompare(b.model, undefined, { sensitivity: "base" }) || a.provider.localeCompare(b.provider))
               .map((p) => (
@@ -520,7 +526,7 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
         </div>
 
         {attachedContext && (
-          <div className="chat-attached-banner" style={{ padding: "0.5rem 0.75rem", background: "var(--surface-muted)", borderBottom: "1px solid var(--border)", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+          <div className="chat-attached-banner">
             Run output attached — ask anything and the assistant will use it to help.
           </div>
         )}
@@ -542,9 +548,9 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
             return (
             <div key={msg.id} className={`chat-msg chat-msg-${msg.role}`}>
               {msg.role === "assistant" && msg.rephrasedPrompt != null && msg.rephrasedPrompt.trim() !== "" && (
-                <div className="chat-rephrased-prompt" style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", background: "var(--surface-muted)", borderRadius: 6, borderLeft: "3px solid var(--border)", fontSize: "0.85rem" }}>
-                  <span style={{ fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: "0.25rem" }}>Rephrased prompt</span>
-                  <p style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{msg.rephrasedPrompt}</p>
+                <div className="chat-rephrased-prompt">
+                  <span className="chat-rephrased-label">Rephrased prompt</span>
+                  <p className="chat-rephrased-text">{msg.rephrasedPrompt}</p>
                 </div>
               )}
               {msg.role === "assistant" && isLastMessage && loading && (() => {
@@ -560,8 +566,8 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
                   status = "Thinking…";
                 }
                 return (
-                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.25rem" }}>
-                    <Loader size={12} className="spin" style={{ flexShrink: 0, color: "var(--text-muted)" }} />
+                  <span className="chat-typing-status">
+                    <Loader size={12} className="spin chat-typing-icon" />
                     {status}
                   </span>
                 );
@@ -595,16 +601,15 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
               )}
               {msg.role === "assistant" && msg.content.startsWith("Error: ") ? (
                 <div className="chat-msg-error-placeholder">
-                  <p style={{ margin: 0, color: "var(--text-muted)" }}>An error occurred.</p>
-                  {onOpenStackTraces ? (
-                    <button type="button" className="chat-view-traces-btn" onClick={() => onOpenStackTraces(conversationId ?? undefined)}>
-                      View stack trace for details
-                    </button>
-                  ) : (
-                    <Link href={conversationId ? `/chat?tab=traces&conversationId=${encodeURIComponent(conversationId)}` : "/chat?tab=traces"} className="chat-view-traces-link">
-                      View stack trace for details <ExternalLink size={12} />
-                    </Link>
-                  )}
+                  <p>An error occurred.</p>
+                  <a
+                    href={conversationId ? `/chat/traces?conversationId=${encodeURIComponent(conversationId)}` : "/chat/traces"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="chat-view-traces-link"
+                  >
+                    View stack trace for details <ExternalLink size={12} />
+                  </a>
                 </div>
               ) : (
                 <ChatMessageContent content={msg.content} />
@@ -655,45 +660,56 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
               <Square size={14} fill="currentColor" />
             </button>
           ) : (
-            <button className="chat-send-btn" onClick={send} disabled={!input.trim()}>
+            <button
+              className="chat-send-btn"
+              onClick={send}
+              disabled={!input.trim() || !providerId}
+              title={!providerId ? "Select an LLM provider first" : undefined}
+            >
               <Send size={14} />
             </button>
           )}
         </div>
-        {/* Feedback trigger */}
-        <div
-          className="chat-feedback-trigger"
-          style={{
-            padding: "0.4rem 0.75rem",
-            borderTop: "1px solid var(--border)",
-            background: "var(--surface-muted)",
-            flexShrink: 0,
-          }}
-        >
+        {/* Feedback trigger — always at end of conversation */}
+        <div className="chat-feedback-trigger-row">
           <button
             type="button"
+            className="chat-feedback-trigger"
             onClick={() => setShowFeedbackModal(true)}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.35rem",
-              padding: "0.25rem 0.5rem",
-              fontSize: "0.8rem",
-              color: "var(--text-muted)",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              borderRadius: 6,
-            }}
           >
             <Star size={14} />
             Feedback
           </button>
         </div>
+    </div>
+  );
+
+  return (
+    <>
+      {open && !embedded && (
+        <div
+          className="chat-backdrop"
+          ref={backdropRef}
+          onClick={handleBackdropClick}
+        />
+      )}
+      {conversationsModal}
+      {embedded ? (
+        <div className="chat-panel chat-panel-open chat-panel-embedded">
+          {showConversationList && (
+            <div className="chat-conversations-sidebar chat-conversations-sidebar-embedded">
+              {conversationsContent}
+            </div>
+          )}
+          {chatMain}
         </div>
-      </div>
+      ) : (
+        <div className={`chat-panel ${open ? "chat-panel-open" : ""}`}>
+          {chatMain}
+        </div>
+      )}
       {showFeedbackModal && (
-        <div style={{ position: "absolute", inset: 0, zIndex: 14 }}>
+        <div className="chat-feedback-modal-portal">
           <ChatFeedbackModal
             open={showFeedbackModal}
             onClose={() => setShowFeedbackModal(false)}

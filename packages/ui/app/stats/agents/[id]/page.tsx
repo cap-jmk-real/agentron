@@ -21,7 +21,9 @@ export default function AgentStatsPage() {
 
   if (!data) return <div style={{ padding: "2rem", color: "var(--text-muted)" }}>Loading...</div>;
 
-  const maxDay = Math.max(...data.timeSeries.map((d) => d.promptTokens + d.completionTokens), 1);
+  const timeSeries = Array.isArray(data.timeSeries) ? data.timeSeries : [];
+  const runs = Array.isArray(data.runs) ? data.runs : [];
+  const maxDay = Math.max(...timeSeries.map((d) => d.promptTokens + d.completionTokens), 1);
 
   return (
     <div style={{ maxWidth: 800 }}>
@@ -47,12 +49,12 @@ export default function AgentStatsPage() {
       </div>
 
       {/* Daily chart */}
-      {data.timeSeries.length > 0 && (
+      {timeSeries.length > 0 && (
         <div style={{ marginBottom: "1.5rem" }}>
           <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.6rem" }}>Daily Usage</h2>
           <div className="card" style={{ padding: "0.75rem 0.85rem" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-              {data.timeSeries.slice(-14).map((d) => (
+              {timeSeries.slice(-14).map((d) => (
                 <div key={d.date} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                   <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", width: 70, flexShrink: 0 }}>{d.date.slice(5)}</span>
                   <div style={{ flex: 1, display: "flex", height: 10, borderRadius: 3, overflow: "hidden", background: "var(--border)" }}>
@@ -79,11 +81,11 @@ export default function AgentStatsPage() {
 
       {/* Recent runs */}
       <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.6rem" }}>Recent Calls</h2>
-      {data.runs.length === 0 ? (
+      {runs.length === 0 ? (
         <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>No calls recorded.</p>
       ) : (
         <div style={{ display: "grid", gap: "0.3rem" }}>
-          {data.runs.map((r) => (
+          {runs.map((r) => (
             <div key={r.id} className="card" style={{ padding: "0.5rem 0.75rem", fontSize: "0.8rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", gap: "0.75rem" }}>

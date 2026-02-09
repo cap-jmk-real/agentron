@@ -3,7 +3,7 @@ export const SYSTEM_STATS_INTERVAL_MIN_MS = 10;
 export const SYSTEM_STATS_INTERVAL_MAX_MS = 2000;
 export const SYSTEM_STATS_INTERVAL_DEFAULT_MS = 400;
 
-const STORAGE_KEY = "agentos-studio/system-stats-interval-ms";
+const STORAGE_KEY = "agentron-studio/system-stats-interval-ms";
 export const SYSTEM_STATS_INTERVAL_CHANGED_EVENT = "system-stats-interval-changed";
 
 function clamp(ms: number): number {

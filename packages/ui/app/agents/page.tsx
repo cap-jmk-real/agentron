@@ -101,7 +101,7 @@ export default function AgentsPage() {
             if (!res.ok) return;
             const blob = await res.blob();
             const disposition = res.headers.get("Content-Disposition");
-            const name = disposition?.match(/filename="?([^";]+)"?/)?.[1] ?? `agentos-agents-${new Date().toISOString().slice(0, 10)}.json`;
+            const name = disposition?.match(/filename="?([^";]+)"?/)?.[1] ?? `agentron-agents-${new Date().toISOString().slice(0, 10)}.json`;
             const a = document.createElement("a");
             a.href = URL.createObjectURL(blob);
             a.download = name;
@@ -145,20 +145,22 @@ export default function AgentsPage() {
           </button>
         </form>
       </div>
-      <ul className="list" style={{ marginTop: "1rem" }}>
+      <ul className="list" style={{ marginTop: "1.5rem" }}>
         {agents.map((agent) => (
           <li key={agent.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <Link href={agent.id ? `/agents/${encodeURIComponent(agent.id)}` : "/agents"} className="agent-list-link" style={{ flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-                <Bot size={16} />
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{agent.name}</div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                    {agent.kind} / {agent.type} / {agent.protocol}
-                  </div>
+            <Link
+              href={agent.id ? `/agents/${encodeURIComponent(agent.id)}` : "/agents"}
+              className="list-item"
+              style={{ flex: 1, display: "flex", alignItems: "center", gap: "0.6rem", textDecoration: "none", color: "inherit" }}
+            >
+              <Bot size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{agent.name}</div>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                  {agent.kind} / {agent.type} / {agent.protocol}
                 </div>
               </div>
-              <ChevronRight size={14} style={{ color: "var(--text-muted)" }} />
+              <ChevronRight size={14} style={{ color: "var(--text-muted)", marginLeft: "auto" }} />
             </Link>
             <button
               type="button"

@@ -7,8 +7,8 @@ export const runtime = "nodejs";
 
 const podman = new PodmanManager();
 
-const RUNNER_NODE_NAME = "agentos-runner-node";
-const RUNNER_PYTHON_NAME = "agentos-runner-python";
+const RUNNER_NODE_NAME = "agentron-runner-node";
+const RUNNER_PYTHON_NAME = "agentron-runner-python";
 const RUNNER_NODE_IMAGE = "node:22-slim";
 const RUNNER_PYTHON_IMAGE = "python:3.12-slim";
 

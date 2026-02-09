@@ -162,7 +162,7 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="sidebar-scroll">
+    <aside className="sidebar sidebar-scroll">
       <div className="brand">
         <div className="brand-mark">A</div>
         <div>
@@ -215,7 +215,9 @@ export default function Sidebar() {
         })}
       </nav>
       <div className="sidebar-footer">
-        <ResourceUsage />
+        <div className="sidebar-resource-monitor">
+          <ResourceUsage />
+        </div>
         <div className="status-pill" style={{ marginTop: "0.5rem" }}>
           <span className="status-dot" />
           Local Runtime

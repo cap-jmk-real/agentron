@@ -195,12 +195,12 @@ export default function AgentDetailPage() {
     }
   };
 
-  if (loading) return <p style={{ color: "var(--text-muted)" }}>Loading...</p>;
+  if (loading) return <p className="loading-muted">Loading...</p>;
   if (!agentId || !agent) {
     return (
-      <div className="card" style={{ padding: "2rem", maxWidth: 400 }}>
+      <div className="card card-narrow">
         <p style={{ margin: 0, fontWeight: 600 }}>Agent not found</p>
-        <p style={{ margin: "0.5rem 0 1rem", fontSize: "0.88rem", color: "var(--text-muted)" }}>
+        <p className="card-narrow-desc">
           The agent may have been deleted or the link is invalid.
         </p>
         <Link href="/agents" className="button">
@@ -217,9 +217,9 @@ export default function AgentDetailPage() {
           <ArrowLeft size={14} /> Agents
         </Link>
         <div className="agent-header-row">
-          <h1 style={{ margin: 0, fontSize: "1.35rem" }}>{name || "Untitled Agent"}</h1>
-          <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-            {saved && <span style={{ fontSize: "0.78rem", color: "#22c55e", fontWeight: 500 }}>Saved</span>}
+          <h1 className="page-title">{name || "Untitled Agent"}</h1>
+          <div className="title-row">
+            {saved && <span className="saved-badge">Saved</span>}
             <button className="button" onClick={save} disabled={saving}>
               <Save size={13} /> {saving ? "Saving..." : "Save"}
             </button>
@@ -326,15 +326,15 @@ export default function AgentDetailPage() {
           />
         )}
         {activeTab === "visual" && (
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)" }}>
-              <h3 style={{ margin: 0, fontSize: "1rem" }}>Agent graph</h3>
-              <p style={{ margin: "0.25rem 0 0", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+          <>
+          <div className="card canvas-card" style={{ padding: 0 }}>
+            <div className="canvas-card-header">
+              <h3 className="canvas-card-header-title">Agent graph</h3>
+              <p className="canvas-card-header-desc">
                 Add LLM, tool, and context nodes. Connect them to define execution flow. Customize tools per-node without changing the library.
               </p>
             </div>
-            <div style={{ height: 420 }}>
-              <AgentCanvas
+            <AgentCanvas
                 nodes={(() => {
                   try {
                     const n = JSON.parse(graphNodesStr);
@@ -387,48 +387,48 @@ export default function AgentDetailPage() {
                   return created.id;
                 }}
               />
-            </div>
-            <div className="card form form-wide" style={{ marginTop: "1rem" }}>
-              <button
-                type="button"
-                onClick={() => setShowGraphJson(!showGraphJson)}
-                style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: showGraphJson ? "0.75rem" : 0, background: "none", border: "none", cursor: "pointer", fontSize: "0.9rem", color: "var(--text-muted)" }}
-              >
-                {showGraphJson ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                Advanced: edit graph as JSON
-              </button>
-              {showGraphJson && (
-                <>
-                  <div className="field">
-                    <label>Nodes (JSON)</label>
-                    <textarea
-                      className="textarea"
-                      rows={8}
-                      value={graphNodesStr}
-                      onChange={(e) => setGraphNodesStr(e.target.value)}
-                      placeholder='[{"id":"n1","type":"llm","position":[100,50],"parameters":{"systemPrompt":"..."}}]'
-                    />
-                  </div>
-                  <div className="field">
-                    <label>Edges (JSON)</label>
-                    <textarea
-                      className="textarea"
-                      rows={4}
-                      value={graphEdgesStr}
-                      onChange={(e) => setGraphEdgesStr(e.target.value)}
-                      placeholder='[{"id":"e1","source":"n1","target":"n2"}]'
-                    />
-                  </div>
-                </>
-              )}
-            </div>
           </div>
+          <div className="card form form-wide" style={{ marginTop: "1.5rem" }}>
+            <button
+              type="button"
+              className={`advanced-toggle ${showGraphJson ? "expanded" : ""}`}
+              onClick={() => setShowGraphJson(!showGraphJson)}
+            >
+              {showGraphJson ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              Advanced: edit graph as JSON
+            </button>
+            {showGraphJson && (
+              <>
+                <div className="field">
+                  <label>Nodes (JSON)</label>
+                  <textarea
+                    className="textarea"
+                    rows={8}
+                    value={graphNodesStr}
+                    onChange={(e) => setGraphNodesStr(e.target.value)}
+                    placeholder='[{"id":"n1","type":"llm","position":[100,50],"parameters":{"systemPrompt":"..."}}]'
+                  />
+                </div>
+                <div className="field">
+                  <label>Edges (JSON)</label>
+                  <textarea
+                    className="textarea"
+                    rows={4}
+                    value={graphEdgesStr}
+                    onChange={(e) => setGraphEdgesStr(e.target.value)}
+                    placeholder='[{"id":"e1","source":"n1","target":"n2"}]'
+                  />
+                </div>
+              </>
+            )}
+          </div>
+          </>
         )}
         {activeTab === "code" && <CodeEditor agentId={agentId} definition={definition} onDefinitionChange={setDefinition} />}
         {activeTab === "permissions" && (
           <div className="card">
             <h3 style={{ margin: "0 0 0.25rem" }}>Scopes &amp; Permissions</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.82rem", margin: 0 }}>
+            <p className="text-muted" style={{ fontSize: "0.82rem", margin: 0 }}>
               Coming soon — scope-based access control for tools, context keys, and external endpoints.
             </p>
           </div>

@@ -21,7 +21,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useState } from "react";
-import { Brain, Wrench, BookOpen, Save, ArrowRightLeft, Settings2, Library, LogIn, LogOut, GitBranch } from "lucide-react";
+import { Brain, Wrench, BookOpen, Save, ArrowRightLeft, Settings2, Library, LogIn, LogOut, GitBranch, Search } from "lucide-react";
 import { CanvasNodeCard } from "../../components/canvas-node-card";
 
 type ToolDef = { id: string; name: string; protocol: string; config?: Record<string, unknown>; inputSchema?: unknown };
@@ -64,7 +64,7 @@ function LLMNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
           onChange={(e) => data.onConfigChange?.(id, { ...data.config, llmConfigId: e.target.value || undefined })}
           style={{ width: "100%", fontSize: "0.8rem", marginBottom: "0.35rem" }}
         >
-          <option value="">Default LLM</option>
+          <option value="">Select LLM</option>
           {llmConfigs.map((c) => (
             <option key={c.id} value={c.id}>{c.provider} / {c.model}</option>
           ))}
@@ -569,6 +569,11 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
       try {
         const { type, toolId } = JSON.parse(raw) as { type: FlowNodeData["nodeType"]; toolId?: string };
         const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+        if (type === "tool" && !toolId) {
+          setToolSearchPosition(position);
+          setToolSearchOpen(true);
+          return;
+        }
         addNode(type, position, toolId);
       } catch {
         // ignore
@@ -591,7 +596,11 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
   };
 
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [toolSearchOpen, setToolSearchOpen] = useState(false);
+  const [toolSearchQuery, setToolSearchQuery] = useState("");
+  const [toolSearchPosition, setToolSearchPosition] = useState<{ x: number; y: number } | undefined>(undefined);
   const addMenuRef = useRef<HTMLDivElement>(null);
+  const toolSearchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -600,6 +609,25 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
     document.addEventListener("click", close);
     return () => document.removeEventListener("click", close);
   }, []);
+
+  useEffect(() => {
+    if (toolSearchOpen) {
+      setToolSearchQuery("");
+      queueMicrotask(() => toolSearchInputRef.current?.focus());
+    }
+  }, [toolSearchOpen]);
+
+  const openToolSearch = (position?: { x: number; y: number }) => {
+    setToolSearchPosition(position);
+    setToolSearchOpen(true);
+    setAddMenuOpen(false);
+  };
+
+  const filteredTools = useMemo(() => {
+    const q = toolSearchQuery.trim().toLowerCase();
+    if (!q) return tools;
+    return tools.filter((t) => t.name.toLowerCase().includes(q) || (t.protocol?.toLowerCase().includes(q)));
+  }, [tools, toolSearchQuery]);
 
   const sidebarItemStyles: React.CSSProperties = {
     display: "flex",
@@ -705,6 +733,14 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
                 </div>
               ))}
               <span style={{ fontSize: "0.65rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", padding: "0.25rem 0.35rem 0.15rem", marginTop: 4 }}>Tools</span>
+              <div
+                draggable
+                onDragStart={(ev) => ev.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ type: "tool" as const }))}
+                onClick={() => openToolSearch()}
+                style={{ ...sidebarItemStyles, cursor: "pointer", border: "1px dashed var(--border)", background: "var(--surface-muted)", justifyContent: "center" }}
+              >
+                <Search size={14} /> Search tools…
+              </div>
               {tools.length === 0 ? (
                 <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", padding: "0.25rem 0.35rem" }}>No tools</span>
               ) : (
@@ -725,6 +761,98 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
           )}
         </div>
       </div>
+      {toolSearchOpen && (
+        <div
+          className="nodrag nopan"
+          role="dialog"
+          aria-label="Select tool"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10001,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(15, 23, 42, 0.5)",
+            padding: "1.5rem",
+          }}
+          onClick={(e) => e.target === e.currentTarget && setToolSearchOpen(false)}
+        >
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              boxShadow: "var(--shadow)",
+              width: "100%",
+              maxWidth: 420,
+              maxHeight: "80vh",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--border)" }}>
+              <h3 style={{ margin: "0 0 0.75rem", fontSize: "1rem", fontWeight: 600 }}>Select tool</h3>
+              <input
+                ref={toolSearchInputRef}
+                type="search"
+                className="input"
+                placeholder="Search by name or protocol…"
+                value={toolSearchQuery}
+                onChange={(e) => setToolSearchQuery(e.target.value)}
+                style={{ width: "100%", fontSize: "0.9rem" }}
+              />
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "0.5rem", minHeight: 200 }}>
+              {filteredTools.length === 0 ? (
+                <p style={{ margin: "1rem 0", fontSize: "0.88rem", color: "var(--text-muted)" }}>
+                  {tools.length === 0 ? "No tools in library." : "No tools match your search."}
+                </p>
+              ) : (
+                filteredTools.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className="nodrag nopan"
+                    onClick={() => {
+                      addNode("tool", toolSearchPosition, t.id);
+                      setToolSearchOpen(false);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      width: "100%",
+                      padding: "0.6rem 0.75rem",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      background: "var(--surface-muted)",
+                      color: "var(--text)",
+                      fontSize: "0.9rem",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      marginBottom: "0.35rem",
+                    }}
+                  >
+                    <Wrench size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</span>
+                    {t.protocol && (
+                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{t.protocol}</span>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+            <div style={{ padding: "0.75rem 1.25rem", borderTop: "1px solid var(--border)" }}>
+              <button type="button" className="button" style={{ fontSize: "0.85rem" }} onClick={() => setToolSearchOpen(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ flex: 1, minWidth: 0, height: "100%" }}>
         <ReactFlow
           nodes={flowNodes}

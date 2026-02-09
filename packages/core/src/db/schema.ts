@@ -72,11 +72,39 @@ export const contexts = sqliteTable("contexts", {
 
 // --- New tables ---
 
+export const conversations = sqliteTable("conversations", {
+  id: text("id").primaryKey(),
+  title: text("title"),
+  rating: integer("rating"),
+  note: text("note"),
+  summary: text("summary"),
+  createdAt: integer("created_at").notNull()
+});
+
 export const chatMessages = sqliteTable("chat_messages", {
   id: text("id").primaryKey(),
+  conversationId: text("conversation_id"),
   role: text("role").notNull(),
   content: text("content").notNull(),
   toolCalls: text("tool_calls"),
+  createdAt: integer("created_at").notNull()
+});
+
+export const chatAssistantSettings = sqliteTable("chat_assistant_settings", {
+  id: text("id").primaryKey(),
+  customSystemPrompt: text("custom_system_prompt"),
+  contextAgentIds: text("context_agent_ids"),
+  contextWorkflowIds: text("context_workflow_ids"),
+  contextToolIds: text("context_tool_ids"),
+  recentSummariesCount: integer("recent_summaries_count"),
+  temperature: text("temperature"),
+  updatedAt: integer("updated_at").notNull()
+});
+
+export const assistantMemory = sqliteTable("assistant_memory", {
+  id: text("id").primaryKey(),
+  key: text("key"),
+  content: text("content").notNull(),
   createdAt: integer("created_at").notNull()
 });
 
@@ -222,6 +250,15 @@ export const ragDocumentStores = sqliteTable("rag_document_stores", {
   region: text("region"),
   endpoint: text("endpoint"),
   credentialsRef: text("credentials_ref"),
+  createdAt: integer("created_at").notNull()
+});
+
+// --- RAG: vector store (where vectors are stored per collection) ---
+export const ragVectorStores = sqliteTable("rag_vector_stores", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  config: text("config"),
   createdAt: integer("created_at").notNull()
 });
 

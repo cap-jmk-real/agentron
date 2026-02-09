@@ -9,7 +9,7 @@ import {
   type SandboxSiteBinding,
 } from "../../../_lib/db";
 import { eq } from "drizzle-orm";
-import { PodmanManager } from "@agentos-studio/runtime";
+import { PodmanManager } from "@agentron-studio/runtime";
 
 export const runtime = "nodejs";
 

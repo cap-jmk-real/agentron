@@ -7,7 +7,7 @@ export default function Topbar() {
   const [theme, setTheme] = useState("light");
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("agentos-theme") ?? "light";
+    const stored = window.localStorage.getItem("agentron-theme") ?? "light";
     setTheme(stored);
     document.documentElement.setAttribute("data-theme", stored);
   }, []);
@@ -16,7 +16,7 @@ export default function Topbar() {
     const next = theme === "light" ? "dark" : "light";
     setTheme(next);
     document.documentElement.setAttribute("data-theme", next);
-    window.localStorage.setItem("agentos-theme", next);
+    window.localStorage.setItem("agentron-theme", next);
   };
 
   return (

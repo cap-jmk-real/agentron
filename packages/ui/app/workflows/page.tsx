@@ -112,7 +112,7 @@ export default function WorkflowsPage() {
             if (!res.ok) return;
             const blob = await res.blob();
             const disposition = res.headers.get("Content-Disposition");
-            const name = disposition?.match(/filename="?([^";]+)"?/)?.[1] ?? `agentos-workflows-${new Date().toISOString().slice(0, 10)}.json`;
+            const name = disposition?.match(/filename="?([^";]+)"?/)?.[1] ?? `agentron-workflows-${new Date().toISOString().slice(0, 10)}.json`;
             const a = document.createElement("a");
             a.href = URL.createObjectURL(blob);
             a.download = name;

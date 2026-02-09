@@ -1,4 +1,24 @@
+## UI Style Guide
 
+When working on the UI (especially `packages/ui/app/` and `packages/ui/app/globals.css`), follow this guide for consistency and maintainability.
+
+### Styling: separate from components, prefer global CSS
+
+- **Prefer global CSS over inline styles.** Put styles in `globals.css` (or a dedicated CSS module) and use class names on elements. Avoid `style={{ ... }}` except for truly dynamic values (e.g. a computed width or visibility that depends on props/state).
+- **Separate styling from component logic.** When using React (or any UI framework), keep layout and visual styling in CSS files; keep components focused on structure, behavior, and class names. This improves maintainability, reuse, and theming.
+- **Use semantic class names.** Prefer `.chat-input-bar`, `.canvas-container`, `.card-header` over generic or inline styles so that global CSS remains the single place to change appearance.
+- **Inline styles only when necessary.** Reserve inline styles for values that must be computed at render time (e.g. `width: ${percent}%`, `display: loading ? 'none' : 'block'`). Everything else should be in CSS.
+
+### Design tokens
+
+Use CSS variables only: `--bg`, `--surface`, `--surface-muted`, `--text`, `--text-muted`, `--primary`, `--primary-strong`, `--border`, `--shadow`, and sidebar tokens. Do not introduce new hex/rgba for backgrounds, text, or primary actions.
+
+### Layout and chat
+
+- Header (topbar) must align with the top of the sidebar; content area should not overlap it (use appropriate z-index and flex order).
+- Chat and other sections should use the same radius scale (6–10px) and surface tokens. Safe API data in UI: guard with `Array.isArray(data.x) ? data.x : []` before `.map()`.
+
+---
 
 ## Testing Strategy & Coverage Expectations
 

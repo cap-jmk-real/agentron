@@ -20,7 +20,7 @@ import {
   type EdgeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { User, LogIn, LogOut } from "lucide-react";
+import { User } from "lucide-react";
 import { CanvasNodeCard } from "../../components/canvas-node-card";
 
 type Agent = { id: string; name: string };
@@ -29,18 +29,16 @@ type WfNode = { id: string; type: string; position: [number, number]; parameters
 type WfEdge = { id: string; source: string; target: string };
 
 type FlowNodeData = {
-  nodeType: "agent" | "input" | "output";
+  nodeType: "agent";
   agentId?: string;
   agentName?: string;
   agents: Agent[];
   parameters?: Record<string, unknown>;
   onAgentChange?: (nodeId: string, agentId: string) => void;
-  onConfigChange?: (nodeId: string, params: Record<string, unknown>) => void;
   onRemove: (nodeId: string) => void;
 };
 
 const DRAG_TYPE_AGENT = "application/agent-node";
-const DRAG_TYPE_IO = "application/workflow-io-node";
 
 function AgentNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
   const agents = data.agents ?? [];
@@ -69,65 +67,12 @@ function AgentNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
   );
 }
 
-function InputNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
-  const params = data.parameters ?? {};
-  const transform = (params.transform as { expression?: string }) ?? {};
-  const expression = String(transform.expression ?? "").trim();
-  return (
-    <CanvasNodeCard
-      icon={<LogIn size={14} style={{ color: "var(--primary)" }} />}
-      label="Input"
-      selected={selected}
-      onRemove={() => data.onRemove?.(id)}
-      handleTop={false}
-      minWidth={160}
-      maxWidth={260}
-    >
-      <textarea
-        className="nodrag nopan textarea"
-        value={expression}
-        onChange={(e) => data.onConfigChange?.(id, { ...params, transform: { expression: e.target.value } })}
-        placeholder='{{ $input }} or custom transform'
-        rows={2}
-        style={{ fontSize: "0.75rem", resize: "vertical", width: "100%", minHeight: 40 }}
-      />
-    </CanvasNodeCard>
-  );
-}
-
-function OutputNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
-  const params = data.parameters ?? {};
-  const transform = (params.transform as { expression?: string }) ?? {};
-  const expression = String(transform.expression ?? "").trim();
-  return (
-    <CanvasNodeCard
-      icon={<LogOut size={14} style={{ color: "var(--primary)" }} />}
-      label="Output"
-      selected={selected}
-      onRemove={() => data.onRemove?.(id)}
-      handleBottom={false}
-      minWidth={160}
-      maxWidth={260}
-    >
-      <textarea
-        className="nodrag nopan textarea"
-        value={expression}
-        onChange={(e) => data.onConfigChange?.(id, { ...params, transform: { expression: e.target.value } })}
-        placeholder='{{ $input }} or custom transform'
-        rows={2}
-        style={{ fontSize: "0.75rem", resize: "vertical", width: "100%", minHeight: 40 }}
-      />
-    </CanvasNodeCard>
-  );
-}
-
-const nodeTypes = { agent: AgentNode, input: InputNode, output: OutputNode };
+const nodeTypes = { agent: AgentNode };
 
 function toFlowNodes(
   wfNodes: WfNode[],
   agents: Agent[],
   onAgentChange: (nodeId: string, agentId: string) => void,
-  onConfigChange: (nodeId: string, params: Record<string, unknown>) => void,
   onRemove: (nodeId: string) => void
 ): Node<FlowNodeData>[] {
   return wfNodes.map((n, i) => {
@@ -135,19 +80,17 @@ function toFlowNodes(
     const params = n.parameters ?? {};
     const agentId = (params.agentId as string) ?? "";
     const agent = agents.find((a) => a.id === agentId);
-    const nodeType = (["agent", "input", "output"].includes(n.type) ? n.type : "agent") as FlowNodeData["nodeType"];
     return {
       id: n.id,
-      type: nodeType,
+      type: "agent",
       position: pos,
       data: {
-        nodeType,
+        nodeType: "agent",
         agentId,
         agentName: agent?.name ?? "Agent",
         agents,
         parameters: params,
         onAgentChange,
-        onConfigChange,
         onRemove,
       },
     };
@@ -162,11 +105,9 @@ function toFlowEdges(wfEdges: WfEdge[]): Edge[] {
 function fromFlowNodes(nodes: Node<FlowNodeData>[]): WfNode[] {
   return nodes.map((n) => ({
     id: n.id,
-    type: n.data?.nodeType ?? "agent",
+    type: "agent",
     position: [n.position?.x ?? 0, n.position?.y ?? 0],
-    parameters: n.data?.nodeType === "agent"
-      ? { ...(n.data?.parameters ?? {}), agentId: n.data?.agentId }
-      : n.data?.parameters ?? {},
+    parameters: { ...(n.data?.parameters ?? {}), agentId: n.data?.agentId },
   }));
 }
 
@@ -184,7 +125,7 @@ type Props = {
   agents: Agent[];
   onNodesEdgesChange: (nodes: WfNode[], edges: WfEdge[]) => void;
   onAddNode: () => void;
-  onAddNodeAt?: (position: { x: number; y: number }, agentId?: string, nodeType?: "agent" | "input" | "output") => void;
+  onAddNodeAt?: (position: { x: number; y: number }, agentId?: string) => void;
 };
 
 function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onAddNode, onAddNodeAt }: Props) {
@@ -194,16 +135,6 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
     (nodeId: string, agentId: string) => {
       const next = wfNodes.map((n) =>
         n.id === nodeId ? { ...n, parameters: { ...(n.parameters ?? {}), agentId } } : n
-      );
-      onNodesEdgesChange(next, wfEdges);
-    },
-    [wfNodes, wfEdges, onNodesEdgesChange]
-  );
-
-  const onConfigChange = useCallback(
-    (nodeId: string, params: Record<string, unknown>) => {
-      const next = wfNodes.map((n) =>
-        n.id === nodeId ? { ...n, parameters: params } : n
       );
       onNodesEdgesChange(next, wfEdges);
     },
@@ -220,8 +151,8 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
   );
 
   const initialNodes = useMemo(
-    () => toFlowNodes(wfNodes, agents, onAgentChange, onConfigChange, onRemove),
-    [wfNodes, agents, onAgentChange, onConfigChange, onRemove]
+    () => toFlowNodes(wfNodes, agents, onAgentChange, onRemove),
+    [wfNodes, agents, onAgentChange, onRemove]
   );
   const initialEdges = useMemo(() => toFlowEdges(wfEdges), [wfEdges]);
 
@@ -229,7 +160,7 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
   useEffect(() => {
-    setNodes(toFlowNodes(wfNodes, agents, onAgentChange, onConfigChange, onRemove));
+    setNodes(toFlowNodes(wfNodes, agents, onAgentChange, onRemove));
     setEdges(toFlowEdges(wfEdges));
   }, [wfNodes.length, wfEdges.length, JSON.stringify(wfNodes.map((n) => [n.id, n.type, n.parameters ?? n.config, n.position])), JSON.stringify(wfEdges.map((e) => [e.id, e.source ?? e.from, e.target ?? e.to]))]);
 
@@ -276,12 +207,12 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
   const onDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
-      const raw = e.dataTransfer.getData(DRAG_TYPE_AGENT) || e.dataTransfer.getData(DRAG_TYPE_IO);
+      const raw = e.dataTransfer.getData(DRAG_TYPE_AGENT);
       if (!raw || !onAddNodeAt) return;
       try {
-        const parsed = JSON.parse(raw) as { agentId?: string; type?: "agent" | "input" | "output" };
+        const parsed = JSON.parse(raw) as { agentId?: string };
         const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-        onAddNodeAt(position, parsed.agentId, parsed.type ?? "agent");
+        onAddNodeAt(position, parsed.agentId);
       } catch {
         // ignore
       }
@@ -344,29 +275,9 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
         <button type="button" className="button" onClick={onAddNode} style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
           + Add agent
         </button>
-        <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", marginTop: "0.5rem" }}>I/O</span>
-        {(["input", "output"] as const).map((t) => (
-          <div
-            key={t}
-            draggable
-            onDragStart={(ev) => ev.dataTransfer.setData(DRAG_TYPE_IO, JSON.stringify({ type: t }))}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.35rem",
-              padding: "0.4rem 0.5rem",
-              borderRadius: 6,
-              background: "var(--background)",
-              border: "1px solid var(--border)",
-              cursor: "grab",
-              fontSize: "0.85rem",
-            }}
-          >
-            {t === "input" && <LogIn size={14} />}
-            {t === "output" && <LogOut size={14} />}
-            {t}
-          </div>
-        ))}
+        <p style={{ margin: "0.5rem 0 0", fontSize: "0.72rem", color: "var(--text-muted)" }}>
+          Use tools on each agent to handle input and output.
+        </p>
       </div>
       <div style={{ flex: 1, minWidth: 0, height: "100%" }}>
         <ReactFlow

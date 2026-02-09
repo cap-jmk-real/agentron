@@ -627,11 +627,9 @@ export async function POST(request: Request) {
     if (!llmConfig) {
       return json({ error: "Selected provider not found or was removed." }, { status: 400 });
     }
-  } else if (configsWithSecret.length === 1) {
-    llmConfig = configsWithSecret[0];
   } else {
     return json(
-      { error: "Please select an LLM provider from the dropdown. Multiple providers are configured and the chat will only use the one you choose." },
+      { error: "Please select an LLM provider from the dropdown." },
       { status: 400 }
     );
   }

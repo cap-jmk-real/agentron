@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build": "tsc -p tsconfig.json",
+    "build": "esbuild src/main.ts --bundle --platform=node --external:electron --external:better-sqlite3 --outfile=dist/main.js && esbuild src/preload.ts --bundle --platform=node --outfile=dist/preload.js",
     "dist": "electron-builder",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
   },
@@ -13,6 +13,7 @@
     "@agentron-studio/core": "file:../../packages/core"
   },
   "devDependencies": {
+    "esbuild": "0.24.0",
     "electron": "40.2.1",
     "electron-builder": "26.7.0",
     "@electron/rebuild": "latest"

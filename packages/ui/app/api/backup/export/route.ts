@@ -7,11 +7,11 @@ export const runtime = "nodejs";
 
 /** Export a consistent backup of the database. Use for local or cloud backup (e.g. save file to Drive/Dropbox). */
 export async function GET() {
-  const tempPath = path.join(os.tmpdir(), `agentos-backup-${Date.now()}.sqlite`);
+  const tempPath = path.join(os.tmpdir(), `agentron-backup-${Date.now()}.sqlite`);
   try {
     await runBackup(tempPath);
     const buffer = fs.readFileSync(tempPath);
-    const filename = `agentos-backup-${new Date().toISOString().slice(0, 10)}.sqlite`;
+    const filename = `agentron-backup-${new Date().toISOString().slice(0, 10)}.sqlite`;
     return new Response(buffer, {
       status: 200,
       headers: {

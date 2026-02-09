@@ -38,36 +38,13 @@ export default function ChatFeedbackModal({
         className="chat-feedback-backdrop"
         role="presentation"
         onClick={onClose}
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: "rgba(0,0,0,0.35)",
-          zIndex: 15,
-          animation: "chat-feedback-fadeIn 0.2s ease",
-        }}
       />
       <div
         className="chat-feedback-drawer"
         role="dialog"
         aria-label="Conversation feedback"
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          maxHeight: "70vh",
-          background: "var(--surface)",
-          borderTopLeftRadius: 12,
-          borderTopRightRadius: 12,
-          boxShadow: "0 -4px 20px rgba(0,0,0,0.15)",
-          zIndex: 16,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          animation: "chat-feedback-slideUp 0.25s ease",
-        }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+        <div className="chat-feedback-drawer-header">
           <h3 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 600 }}>Feedback</h3>
           <button
             type="button"
@@ -79,7 +56,7 @@ export default function ChatFeedbackModal({
             <X size={18} />
           </button>
         </div>
-        <div style={{ padding: "1rem", overflowY: "auto", flex: 1 }}>
+        <div className="chat-feedback-drawer-body">
           {!hasConversation ? (
             <p style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>Start or select a conversation to rate it and add a note.</p>
           ) : (

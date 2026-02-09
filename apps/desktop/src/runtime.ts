@@ -1,10 +1,9 @@
 import path from "node:path";
 import { app } from "electron";
+import { createSqliteAdapter } from "@agentron-studio/core";
 
 export const initializeLocalRuntime = () => {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { createSqliteAdapter } = require("@agentron-studio/core");
     const dbPath = path.join(app.getPath("userData"), "agentron.sqlite");
     const adapter = createSqliteAdapter(dbPath);
     adapter.initialize?.();
