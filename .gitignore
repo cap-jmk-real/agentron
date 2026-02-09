@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Next.js
+.vercel/
+.next/cache/
+
+# Docusaurus (apps/docs)
+.docusaurus/
+
+# Electron / desktop
+*.exe
+*.dmg
+*.AppImage
+
+# Environment and secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+
+# Local database (optional: remove if you want to track schema-only)
+*.sqlite
+*.sqlite3
+*.db
+
+# Logs and debug
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing and coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# OS and IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Turbo / monorepo
+.turbo/
+
+# Misc
+*.local
+.cache/

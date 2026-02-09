@@ -1,0 +1,46 @@
+{
+  "name": "@agentron-studio/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.json",
+    "dist": "electron-builder",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
+  },
+  "dependencies": {
+    "@agentron-studio/core": "file:../../packages/core"
+  },
+  "devDependencies": {
+    "electron": "40.2.1",
+    "electron-builder": "26.7.0",
+    "@electron/rebuild": "latest"
+  },
+  "build": {
+    "appId": "com.agentron.studio",
+    "productName": "Agentron Studio",
+    "files": [
+      "dist/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    }
+  }
+}

@@ -1,0 +1,323 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { Download, Upload, Database, RotateCcw, FileJson } from "lucide-react";
+import ConfirmModal from "../components/confirm-modal";
+import {
+  getSystemStatsIntervalMs,
+  setSystemStatsIntervalMs,
+  SYSTEM_STATS_INTERVAL_MIN_MS,
+  SYSTEM_STATS_INTERVAL_MAX_MS,
+  SYSTEM_STATS_INTERVAL_DEFAULT_MS,
+  SYSTEM_STATS_INTERVAL_STEP_MS,
+  formatSystemStatsInterval,
+  SYSTEM_STATS_INTERVAL_CHANGED_EVENT,
+} from "../lib/system-stats-interval";
+
+export default function SettingsPage() {
+  const [intervalMs, setIntervalMs] = useState(SYSTEM_STATS_INTERVAL_DEFAULT_MS);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreSuccess, setRestoreSuccess] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const defImportInputRef = useRef<HTMLInputElement>(null);
+  const [defImportOverwrite, setDefImportOverwrite] = useState(false);
+  const [defImportResult, setDefImportResult] = useState<Record<string, unknown> | null>(null);
+  const [defImportError, setDefImportError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setIntervalMs(getSystemStatsIntervalMs());
+    const handler = () => setIntervalMs(getSystemStatsIntervalMs());
+    window.addEventListener(SYSTEM_STATS_INTERVAL_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(SYSTEM_STATS_INTERVAL_CHANGED_EVENT, handler);
+  }, []);
+
+  return (
+    <div style={{ maxWidth: 680 }}>
+      <h1 style={{ margin: "0 0 0.25rem" }}>Settings</h1>
+      <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 1.5rem" }}>
+        General configuration for AgentOS Studio.
+      </p>
+
+      <div className="card" style={{ padding: "1rem" }}>
+        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>System stats refresh</div>
+        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
+          How often CPU, RAM, disk and GPU are polled (sidebar and Statistics → Resources). 0.01 s – 2 s.
+        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+          <input
+            type="range"
+            min={SYSTEM_STATS_INTERVAL_MIN_MS}
+            max={SYSTEM_STATS_INTERVAL_MAX_MS}
+            step={SYSTEM_STATS_INTERVAL_STEP_MS}
+            value={intervalMs}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setIntervalMs(v);
+              setSystemStatsIntervalMs(v);
+            }}
+            style={{ flex: "1 1 200px", minWidth: 120, accentColor: "var(--primary)" }}
+          />
+          <span style={{ fontSize: "0.85rem", fontWeight: 600, minWidth: 52 }}>{formatSystemStatsInterval(intervalMs)}</span>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
+        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>About</div>
+        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
+          AgentOS Studio is a local-first platform for building, managing, and running AI agents.
+          Configure your LLM providers, create agents with custom prompts, chain them into workflows,
+          and use sandboxes for isolated code execution.
+        </p>
+      </div>
+
+      <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
+        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          <FileJson size={16} /> Export / Import definitions
+        </div>
+        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 1rem", lineHeight: 1.5 }}>
+          Export tools, agents, and workflows as JSON. Use the same file to import into another Studio (or this one). Standard tools (e.g. Fetch URL) are omitted from export and never overwritten on import.
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
+          <select
+            id="export-type"
+            className="select"
+            style={{ width: "auto", minWidth: 140 }}
+            defaultValue="all"
+          >
+            <option value="all">Export all</option>
+            <option value="tools">Tools only</option>
+            <option value="agents">Agents only</option>
+            <option value="workflows">Workflows only</option>
+          </select>
+          <button
+            type="button"
+            className="button button-ghost button-small"
+            onClick={async () => {
+              const sel = document.getElementById("export-type") as HTMLSelectElement;
+              const type = sel?.value ?? "all";
+              const res = await fetch(`/api/export?type=${encodeURIComponent(type)}`);
+              if (!res.ok) return;
+              const blob = await res.blob();
+              const disposition = res.headers.get("Content-Disposition");
+              const match = disposition?.match(/filename="?([^";]+)"?/);
+              const name = match?.[1] ?? `agentos-${type}-${new Date().toISOString().slice(0, 10)}.json`;
+              const a = document.createElement("a");
+              a.href = URL.createObjectURL(blob);
+              a.download = name;
+              a.click();
+              URL.revokeObjectURL(a.href);
+            }}
+          >
+            <Download size={14} /> Download JSON
+          </button>
+        </div>
+        <div style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+            <input
+              ref={defImportInputRef}
+              type="file"
+              accept=".json,application/json"
+              style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setDefImportResult(null);
+                setDefImportError(null);
+                try {
+                  const text = await file.text();
+                  const parsed = JSON.parse(text) as Record<string, unknown>;
+                  const payload = { ...parsed, options: { skipExisting: !defImportOverwrite } };
+                  const res = await fetch("/api/import", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) {
+                    setDefImportError(data.error ?? res.statusText);
+                    return;
+                  }
+                  setDefImportResult(data.counts ?? data);
+                  if (defImportInputRef.current) defImportInputRef.current.value = "";
+                } catch (err) {
+                  setDefImportError(err instanceof Error ? err.message : "Import failed");
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="button button-ghost button-small"
+              onClick={() => defImportInputRef.current?.click()}
+            >
+              <Upload size={14} /> Import from JSON
+            </button>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.82rem", color: "var(--text-muted)", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={defImportOverwrite}
+                onChange={(e) => setDefImportOverwrite(e.target.checked)}
+              />
+              Overwrite existing (by id)
+            </label>
+          </div>
+          {defImportResult && (
+            <pre style={{ fontSize: "0.75rem", margin: "0.5rem 0 0", padding: "0.5rem", background: "var(--surface-muted)", borderRadius: 6, overflow: "auto" }}>
+              {JSON.stringify(defImportResult, null, 2)}
+            </pre>
+          )}
+          {defImportError && (
+            <p style={{ fontSize: "0.82rem", color: "#dc2626", margin: "0.5rem 0 0" }}>{defImportError}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
+        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          <Database size={16} /> Backup &amp; Restore
+        </div>
+        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 1rem", lineHeight: 1.5 }}>
+          Export a copy of your database for local or cloud backup (e.g. save the file to your drive or Dropbox).
+          Restore replaces all current data with the backup; refresh the app after restoring.
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-start" }}>
+          <button
+            type="button"
+            className="button"
+            disabled={backupLoading}
+            onClick={async () => {
+              setBackupLoading(true);
+              try {
+                const res = await fetch("/api/backup/export");
+                if (!res.ok) throw new Error(res.statusText);
+                const blob = await res.blob();
+                const disposition = res.headers.get("Content-Disposition");
+                const match = disposition?.match(/filename="?([^";]+)"?/);
+                const name = match?.[1] ?? `agentos-backup-${new Date().toISOString().slice(0, 10)}.sqlite`;
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = name;
+                a.click();
+                URL.revokeObjectURL(a.href);
+              } catch (e) {
+                console.error(e);
+              } finally {
+                setBackupLoading(false);
+              }
+            }}
+          >
+            <Download size={14} /> {backupLoading ? "Preparing…" : "Download backup"}
+          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".sqlite,.sqlite3,.db"
+              style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setRestoreError(null);
+                setRestoreSuccess(false);
+                setRestoreLoading(true);
+                try {
+                  const form = new FormData();
+                  form.append("file", file);
+                  const res = await fetch("/api/backup/restore", { method: "POST", body: form });
+                  const data = await res.json();
+                  if (!res.ok) {
+                    setRestoreError(data.error ?? res.statusText);
+                    return;
+                  }
+                  setRestoreSuccess(true);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                  setTimeout(() => setRestoreSuccess(false), 4000);
+                } catch (err) {
+                  setRestoreError(err instanceof Error ? err.message : "Restore failed");
+                } finally {
+                  setRestoreLoading(false);
+                }
+              }}
+            />
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="button button-ghost button-small"
+                disabled={restoreLoading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload size={14} /> {restoreLoading ? "Restoring…" : "Restore from file"}
+              </button>
+              {restoreSuccess && <span style={{ fontSize: "0.78rem", color: "#22c55e", fontWeight: 500 }}>Restored. Refresh the page.</span>}
+              {restoreError && <span style={{ fontSize: "0.78rem", color: "#dc2626" }}>{restoreError}</span>}
+            </div>
+          </div>
+        </div>
+        <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: "0.75rem 0 0", lineHeight: 1.4 }}>
+          Restore will replace all agents, workflows, LLM configs, and other data. Use a backup created by this app.
+        </p>
+        <div style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
+          <button
+            type="button"
+            className="button button-ghost"
+            onClick={() => setShowResetModal(true)}
+            style={{ color: "#dc2626", fontSize: "0.85rem" }}
+          >
+            <RotateCcw size={14} /> Reset database
+          </button>
+          <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: "0.35rem 0 0", lineHeight: 1.4 }}>
+            Drop all tables and re-create from the current schema. Clears all agents, workflows, LLM configs, and other data. Use if data is from an old schema or you want to start fresh.
+          </p>
+        </div>
+      </div>
+
+      <ConfirmModal
+        open={showResetModal}
+        title="Reset database"
+        message="Clear all data and re-create tables from the current schema? All agents, workflows, LLM configs, and other data will be permanently deleted."
+        warning="Refresh the app after reset."
+        confirmLabel="Reset database"
+        cancelLabel="Cancel"
+        danger
+        loading={resetLoading}
+        onConfirm={async () => {
+          setResetLoading(true);
+          try {
+            const res = await fetch("/api/backup/reset", { method: "POST" });
+            const data = await res.json();
+            if (res.ok) {
+              setShowResetModal(false);
+              window.location.href = "/";
+            } else {
+              console.error(data.error);
+            }
+          } finally {
+            setResetLoading(false);
+          }
+        }}
+        onCancel={() => !resetLoading && setShowResetModal(false)}
+      />
+
+      <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
+        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>Quick Links</div>
+        <div style={{ display: "grid", gap: "0.4rem" }}>
+          <a href="/settings/llm" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+            LLM Providers &rarr;
+          </a>
+          <a href="/agents" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+            Agents &rarr;
+          </a>
+          <a href="/workflows" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+            Workflows &rarr;
+          </a>
+          <a href="/tools" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+            Tools &rarr;
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}

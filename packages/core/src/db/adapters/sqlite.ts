@@ -1,0 +1,343 @@
+import path from "node:path";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { DatabaseAdapter } from "./types";
+
+export type SqliteAdapter = DatabaseAdapter<ReturnType<typeof drizzle>>;
+
+const SCHEMA_SQL = `
+        create table if not exists agents (
+          id text primary key,
+          name text not null,
+          description text,
+          kind text not null,
+          type text not null,
+          protocol text not null,
+          endpoint text,
+          agent_key text,
+          capabilities text not null,
+          scopes text not null,
+          llm_config text,
+          definition text,
+          created_at integer not null
+        );
+        create table if not exists workflows (
+          id text primary key,
+          name text not null,
+          description text,
+          nodes text not null,
+          edges text not null,
+          execution_mode text not null,
+          schedule text,
+          max_rounds integer,
+          created_at integer not null
+        );
+        create table if not exists tools (
+          id text primary key,
+          name text not null,
+          protocol text not null,
+          config text not null,
+          input_schema text,
+          output_schema text
+        );
+        create table if not exists prompts (
+          id text primary key,
+          name text not null,
+          description text,
+          arguments text,
+          template text not null
+        );
+        create table if not exists llm_configs (
+          id text primary key,
+          provider text not null,
+          model text not null,
+          api_key_ref text,
+          endpoint text,
+          extra text
+        );
+        create table if not exists executions (
+          id text primary key,
+          target_type text not null,
+          target_id text not null,
+          status text not null,
+          started_at integer not null,
+          finished_at integer,
+          output text
+        );
+        create table if not exists contexts (
+          id text primary key,
+          key text not null,
+          value text not null,
+          updated_at integer not null
+        );
+        create table if not exists conversations (
+          id text primary key,
+          title text,
+          rating integer,
+          note text,
+          summary text,
+          created_at integer not null
+        );
+        create table if not exists assistant_memory (
+          id text primary key,
+          key text,
+          content text not null,
+          created_at integer not null
+        );
+        create table if not exists chat_messages (
+          id text primary key,
+          conversation_id text,
+          role text not null,
+          content text not null,
+          tool_calls text,
+          created_at integer not null
+        );
+        create table if not exists files (
+          id text primary key,
+          name text not null,
+          mime_type text not null,
+          size integer not null,
+          path text not null,
+          created_at integer not null
+        );
+        create table if not exists sandboxes (
+          id text primary key,
+          name text not null,
+          image text not null,
+          status text not null,
+          container_id text,
+          config text not null,
+          created_at integer not null
+        );
+        create table if not exists custom_functions (
+          id text primary key,
+          name text not null,
+          description text,
+          language text not null,
+          source text not null,
+          sandbox_id text,
+          created_at integer not null
+        );
+        create table if not exists token_usage (
+          id text primary key,
+          execution_id text,
+          agent_id text,
+          workflow_id text,
+          provider text not null,
+          model text not null,
+          prompt_tokens integer not null,
+          completion_tokens integer not null,
+          estimated_cost text,
+          created_at integer not null
+        );
+        create table if not exists model_pricing (
+          id text primary key,
+          model_pattern text not null,
+          input_cost_per_m text not null,
+          output_cost_per_m text not null,
+          updated_at integer not null
+        );
+        create table if not exists feedback (
+          id text primary key,
+          target_type text not null,
+          target_id text not null,
+          execution_id text,
+          input text not null,
+          output text not null,
+          label text not null,
+          notes text,
+          created_at integer not null
+        );
+        create table if not exists remote_servers (
+          id text primary key,
+          label text not null,
+          host text not null,
+          port integer not null,
+          user text not null,
+          auth_type text not null,
+          key_path text,
+          model_base_url text,
+          created_at integer not null
+        );
+        create table if not exists sandbox_site_bindings (
+          id text primary key,
+          sandbox_id text not null,
+          host text not null,
+          container_port integer not null,
+          host_port integer not null,
+          created_at integer not null
+        );
+        create table if not exists tasks (
+          id text primary key,
+          workflow_id text not null,
+          execution_id text,
+          agent_id text not null,
+          step_id text not null,
+          step_name text not null,
+          label text,
+          status text not null,
+          input text,
+          output text,
+          created_at integer not null,
+          resolved_at integer,
+          resolved_by text
+        );
+        create table if not exists rag_encoding_configs (
+          id text primary key,
+          name text not null,
+          provider text not null,
+          model_or_endpoint text not null,
+          dimensions integer not null,
+          created_at integer not null
+        );
+        create table if not exists rag_document_stores (
+          id text primary key,
+          name text not null,
+          type text not null,
+          bucket text not null,
+          region text,
+          endpoint text,
+          credentials_ref text,
+          created_at integer not null
+        );
+        create table if not exists rag_vector_stores (
+          id text primary key,
+          name text not null,
+          type text not null,
+          config text,
+          created_at integer not null
+        );
+        create table if not exists rag_collections (
+          id text primary key,
+          name text not null,
+          scope text not null,
+          agent_id text,
+          encoding_config_id text not null,
+          document_store_id text not null,
+          vector_store_id text,
+          created_at integer not null
+        );
+        create table if not exists rag_documents (
+          id text primary key,
+          collection_id text not null,
+          external_id text,
+          store_path text not null,
+          mime_type text,
+          metadata text,
+          created_at integer not null
+        );
+        create table if not exists rag_connectors (
+          id text primary key,
+          type text not null,
+          collection_id text not null,
+          config text not null,
+          status text not null,
+          last_sync_at integer,
+          created_at integer not null
+        );
+        create table if not exists rag_vectors (
+          id text primary key,
+          collection_id text not null,
+          document_id text not null,
+          chunk_index integer not null,
+          text text not null,
+          embedding text not null,
+          created_at integer not null
+        );
+      `;
+
+export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
+  const sqlite = new Database(filePath);
+  const db = drizzle(sqlite);
+
+  return {
+    db,
+    close: () => sqlite.close(),
+    backupToPath: (targetPath: string) => sqlite.backup(targetPath).then(() => {}),
+    restoreFromPath: async (sourcePath: string) => {
+      const absolute = path.resolve(sourcePath);
+      const escaped = absolute.replace(/\\/g, "/").replace(/'/g, "''");
+      sqlite.exec(`ATTACH DATABASE '${escaped}' AS backup`);
+      try {
+        const rows = sqlite.prepare("SELECT name FROM backup.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[];
+        for (const { name } of rows) {
+          const quoted = `"${name.replace(/"/g, '""')}"`;
+          sqlite.exec(`DELETE FROM main.${quoted}`);
+          sqlite.exec(`INSERT INTO main.${quoted} SELECT * FROM backup.${quoted}`);
+        }
+      } finally {
+        sqlite.exec("DETACH DATABASE backup");
+      }
+    },
+    resetDatabase: () => {
+      const tables = [
+        "rag_vectors", "rag_connectors", "rag_documents", "rag_collections", "rag_vector_stores", "rag_document_stores", "rag_encoding_configs",
+        "tasks", "sandbox_site_bindings", "feedback", "remote_servers", "model_pricing", "token_usage",
+        "custom_functions", "sandboxes", "files", "chat_messages", "conversations", "assistant_memory", "chat_assistant_settings", "contexts",
+        "executions", "llm_configs", "prompts", "tools", "workflows", "agents"
+      ];
+      for (const table of tables) {
+        sqlite.exec(`DROP TABLE IF EXISTS ${table}`);
+      }
+      sqlite.exec(SCHEMA_SQL);
+    },
+    initialize: () => {
+      sqlite.exec(SCHEMA_SQL);
+      try {
+        sqlite.exec("ALTER TABLE workflows ADD COLUMN max_rounds integer");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE sandbox_site_bindings ADD COLUMN host_port integer");
+      } catch {
+        // Column already exists or table missing (created with new schema)
+      }
+      try {
+        sqlite.exec("ALTER TABLE agents ADD COLUMN rag_collection_id text");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("CREATE TABLE IF NOT EXISTS conversations (id text primary key, title text, rating integer, note text, summary text, created_at integer not null)");
+      } catch {
+        // Already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE conversations ADD COLUMN summary text");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("CREATE TABLE IF NOT EXISTS assistant_memory (id text primary key, key text, content text not null, created_at integer not null)");
+      } catch {
+        // Already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE chat_messages ADD COLUMN conversation_id text");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("CREATE TABLE IF NOT EXISTS chat_assistant_settings (id text primary key, custom_system_prompt text, context_agent_ids text, context_workflow_ids text, context_tool_ids text, recent_summaries_count integer, temperature real, updated_at integer not null)");
+      } catch {
+        // Already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE chat_assistant_settings ADD COLUMN recent_summaries_count integer");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE chat_assistant_settings ADD COLUMN temperature real");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE rag_collections ADD COLUMN vector_store_id text");
+      } catch {
+        // Column already exists
+      }
+    }
+  };
+};

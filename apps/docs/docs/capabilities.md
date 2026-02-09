@@ -1,0 +1,34 @@
+# Capabilities
+
+## Feature Matrix
+
+| Feature | Description | Primary Actions |
+|---------|-------------|-----------------|
+| **Agents** | Create, edit, delete node and code agents | create_agent, update_agent, delete_agent, get_agent |
+| **Workflows** | Orchestrate agents in graphs | create_workflow, update_workflow, add_workflow_edges, get_workflow |
+| **Tools** | Native, HTTP, MCP tools | create_tool, update_tool, list_tools, get_tool |
+| **Runs** | Execute workflows/agents, inspect results | list_runs, get_run |
+| **LLM Providers** | Configure OpenAI, Anthropic, Ollama, etc. | list_llm_providers (config via Settings) |
+| **Agentron** | Natural-language chat with tool execution | Built-in; uses all assistant tools |
+| **Sandboxes** | Podman containers for code execution | create_sandbox, execute_code |
+| **Custom Functions** | JavaScript/Python/TypeScript as tools | create_custom_function |
+| **Knowledge / RAG** | Document ingestion and retrieval | UI-based; agents can use RAG collections |
+| **Feedback** | Rate agent outputs for learning | UI-based; stored for prompt refinement |
+| **Files** | Upload context files | list_files |
+| **Remote Servers** | SSH tunnel to remote LLMs (e.g. Ollama) | test_remote_connection, save_remote_server |
+
+## What Users Can Do
+
+- **Design agents** — Node graphs with LLM and tool nodes, or code-based agents
+- **Build workflows** — Connect agents, set max rounds, run multi-agent conversations
+- **Add tools** — HTTP APIs, MCP servers, or custom code
+- **Run and debug** — Execute workflows, inspect run output and errors
+- **Chat with Agentron** — Ask in natural language; assistant creates/edits resources via tools
+- **Rate and improve** — Feedback on assistant responses; optional prompt refinement
+
+## Limits and Constraints
+
+- **Node agents** require `llmConfigId` when using an LLM node
+- **Standard tools** (std-*) can only update inputSchema/outputSchema
+- **Workflows** need `maxRounds` when using looping edges to avoid infinite runs
+- **Diagnose before fix** — Always use get_run, get_workflow, get_agent, get_tool before applying updates

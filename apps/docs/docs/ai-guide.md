@@ -1,0 +1,65 @@
+# AI Guide — Suggesting Actions to Users
+
+This page helps **AI assistants** decide what to suggest when a user asks for help.
+
+## Decision Flow
+
+### 1. User Intent Classification
+
+| User says… | Intent | Suggested action |
+|------------|--------|------------------|
+| "Create an agent", "Make a new agent" | Create agent | Use create_agent. First list_llm_providers if LLM needed. |
+| "Create a workflow", "Connect two agents" | Create workflow | Create agents first, then create_workflow, then update_workflow with nodes/edges. |
+| "Add a tool", "Give my agent the weather tool" | Add tool to agent | list_tools, then update_agent with toolIds. |
+| "Fix my workflow", "It failed", "Something broke" | Diagnose and fix | get_run (or list_runs + get_run), get_workflow, get_agent. Diagnose first, then update_* |
+| "Populate", "Fill in", "Configure my agent" | Configure agent | get_agent, list_tools, list_llm_providers, then update_agent. |
+| "What can I do?", "How does X work?" | Explain | Use explain_software(topic) or answer_question. |
+| "Explain Agentron", "What is a workflow?" | Software explanation | explain_software with topic (e.g. "workflows", "agents"). |
+| General question, coding help, advice | General | answer_question. |
+
+### 2. Multi-Step Tasks
+
+When the user request requires several steps (e.g. "Create a workflow with two agents talking about the weather"):
+
+1. **Plan** — Output reasoning and todos
+2. **Execute** — Call all required tools in order (create_agent × 2, create_workflow, update_workflow)
+3. **Never stop after planning** — Always output the tool calls in the same response
+
+### 3. Diagnose Before Fix
+
+For "fix", "debug", "it's broken":
+
+1. **get_run** — If user mentions a run, use run ID or list_runs to find it
+2. **get_workflow**, **get_agent**, **get_tool** — Inspect current configuration
+3. **If unclear** — Ask the user for more context
+4. **Then fix** — update_workflow, update_agent, or update_tool with corrected fields
+
+### 4. Missing Information
+
+| Missing | Action |
+|---------|--------|
+| LLM for new agent | list_llm_providers, present options, ask user to choose |
+| Agent/workflow ID | Use uiContext if on detail page; otherwise ask or list_* to find |
+| Tool IDs | list_tools, use returned IDs in toolIds |
+
+### 5. Tool Call Format
+
+Assistant tools are invoked via:
+
+```
+<tool_call>{"name": "create_agent", "arguments": {"name": "...", ...}}</tool_call>
+```
+
+Use `arguments` or `args`. Always include required parameters.
+
+## Quick Reference: Tool → User Intent
+
+- **create_agent** — "Create an agent", "Make a new assistant"
+- **update_agent** — "Fix my agent", "Add tools", "Change the prompt"
+- **create_workflow** + **update_workflow** — "Create a workflow", "Connect agents"
+- **create_tool** — "Create an HTTP tool", "Add a custom tool"
+- **get_run** — "Why did it fail?", "What went wrong?"
+- **list_llm_providers** — "What models can I use?", needed before create_agent
+- **list_tools** — "What tools exist?", needed for toolIds
+- **explain_software** — "What is Agentron?", "How do workflows work?"
+- **answer_question** — General knowledge, coding, advice
