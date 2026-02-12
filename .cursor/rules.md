@@ -158,6 +158,8 @@ Before presenting code, the agent asks:
 * Did I run the unit tests?
 * Did I run the build (and fix any errors)?
 * Before pushing: did I run the docs build locally (`npm run build:docs`) so the docs deploy does not break?
+* Before pushing: did I run the app (UI) build locally (`npm run build:ui`) so the release/PR build does not fail in CI?
+* Before pushing: did I run the Electron (desktop) app build locally (`npm run build:ui` then `npm run dist --workspace apps/desktop`) so the desktop release workflow does not fail in CI?
 
 ---
 
@@ -167,7 +169,11 @@ After modifying code, **always run the relevant build(s)** to catch and fix pote
 
 - **Default:** Run `npm run build:ui` when changing app/UI, packages/ui, packages/core, or packages/runtime code.
 - **Docs:** Run `npm run build:docs` when changing anything under `apps/docs/`.
-- **Before pushing:** Run `npm run build:docs` locally before pushing, so the docs build (and GitHub Pages deploy) does not fail in CI.
+- **Desktop (Electron):** When changing `apps/desktop` or anything the desktop app depends on, run `npm run build:ui` then `npm run dist --workspace apps/desktop` to verify the Electron build and installer packaging.
+- **Before pushing:** Run locally before pushing as relevant:
+  - `npm run build:docs` — so the docs build (and GitHub Pages deploy) does not fail in CI.
+  - `npm run build:ui` — so the UI build does not fail in CI.
+  - `npm run dist --workspace apps/desktop` (after `npm run build:ui`) — so the Electron/desktop release workflow does not fail in CI.
 - **Typecheck:** Run `npm run typecheck` when changing TypeScript; fix type errors before finishing.
 - If the build or typecheck fails, fix the errors and re-run until they pass. Do not leave broken builds.
 
