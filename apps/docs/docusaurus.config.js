@@ -3,12 +3,12 @@
 // For GitHub Pages: set BASE_URL and URL in CI (e.g. /repo-name/ and https://owner.github.io/repo-name/)
 const config = {
   title: 'Agentron',
-  tagline: 'Local-first platform for building and running AI agents',
+  tagline: 'Enterprise-ready local AI agent orchestration and workflow automation',
   favicon: undefined,
   url: process.env.URL || 'https://agentos.dev',
   baseUrl: process.env.BASE_URL || '/',
-  organizationName: 'agentos',
-  projectName: 'agentos-studio',
+  organizationName: 'agentron-studio',
+  projectName: 'agentron',
   onBrokenLinks: 'throw',
   markdown: {
     hooks: {
@@ -31,7 +31,11 @@ const config = {
     ],
   ],
   themeConfig: {
-    githubRepo: process.env.GITHUB_REPO || 'agentos/agentos-studio',
+    metadata: [
+      { name: 'description', content: 'Agentron: enterprise-ready local AI agent orchestration and workflow automation. Self-hosted, privacy-first multi-agent design and execution.' },
+      { name: 'keywords', content: 'AI agent orchestration, local AI, workflow automation, multi-agent, local-first, self-hosted AI, agent automation, LLM orchestration, privacy-first AI' },
+    ],
+    githubRepo: process.env.GITHUB_REPO || 'agentron-studio/agentron',
     navbar: {
       title: 'Agentron',
       logo: { alt: 'Agentron', src: 'img/logo.svg' },

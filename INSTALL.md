@@ -1,6 +1,6 @@
-# How to Install AgentOS Studio
+# How to Install Agentron
 
-This document describes how to install and run **AgentOS Studio** (the local-first Studio for designing and running AI agents). Use these instructions when asked "how do I install AgentOS Studio" or "how to set up AgentOS Studio".
+This document describes how to install and run **Agentron** (enterprise-ready local AI agent orchestration and automation). Use these instructions when asked "how do I install Agentron" or "how to set up Agentron".
 
 ---
 
@@ -18,14 +18,14 @@ This document describes how to install and run **AgentOS Studio** (the local-fir
 
 ```bash
 git clone <repository-url>
-cd agentos-studio
+cd agentron
 ```
 
-Replace `<repository-url>` with the actual Git URL of the AgentOS Studio repository (e.g. `https://github.com/your-org/agentos-studio.git`).
+Replace `<repository-url>` with the actual Git URL of the Agentron repository (e.g. `https://github.com/agentron-studio/agentron.git`).
 
 ### 2. Install dependencies
 
-From the project root (`agentos-studio/`):
+From the project root (`agentron/`):
 
 **Option A – UI only (recommended for most users; avoids Electron toolchain)**
 

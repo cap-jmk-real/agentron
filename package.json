@@ -1,5 +1,6 @@
 {
   "name": "agentron-studio",
+  "description": "Enterprise-ready local AI agent orchestration and workflow automation",
   "private": true,
   "version": "0.1.2",
   "workspaces": [

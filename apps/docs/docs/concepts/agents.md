@@ -2,7 +2,7 @@
 
 ## Definition
 
-An **agent** is an executable unit that processes input and produces output. AgentOS Studio supports two agent kinds:
+An **agent** is an executable unit that processes input and produces output. Agentron supports two agent kinds:
 
 | Kind | Description |
 |------|-------------|
