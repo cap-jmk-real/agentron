@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Send, ThumbsUp, ThumbsDown, Loader, Minus, Copy, Check, Circle, Square, MessageSquarePlus, List, Star, Trash2, ExternalLink, GitBranch, Settings2 } from "lucide-react";
 import { ChatMessageContent, ChatToolResults, getAssistantMessageDisplayContent, ReasoningContent } from "./chat-message-content";
 import ChatFeedbackModal from "./chat-feedback-modal";
+import LogoLoading from "./logo-loading";
 
 /** UUID v4; works in insecure context where crypto.randomUUID is not available */
 function randomId(): string {
@@ -709,7 +710,7 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
                 }
                 return (
                   <span className="chat-typing-status">
-                    <Loader size={12} className="chat-typing-icon" />
+                    <LogoLoading size={20} className="chat-typing-logo" />
                     {status}
                   </span>
                 );

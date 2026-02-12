@@ -157,6 +157,7 @@ Before presenting code, the agent asks:
 * Are boundaries validated by integration tests?
 * Did I run the unit tests?
 * Did I run the build (and fix any errors)?
+* Before pushing: did I run the docs build locally (`npm run build:docs`) so the docs deploy does not break?
 
 ---
 
@@ -166,6 +167,7 @@ After modifying code, **always run the relevant build(s)** to catch and fix pote
 
 - **Default:** Run `npm run build:ui` when changing app/UI, packages/ui, packages/core, or packages/runtime code.
 - **Docs:** Run `npm run build:docs` when changing anything under `apps/docs/`.
+- **Before pushing:** Run `npm run build:docs` locally before pushing, so the docs build (and GitHub Pages deploy) does not fail in CI.
 - **Typecheck:** Run `npm run typecheck` when changing TypeScript; fix type errors before finishing.
 - If the build or typecheck fails, fix the errors and re-run until they pass. Do not leave broken builds.
 

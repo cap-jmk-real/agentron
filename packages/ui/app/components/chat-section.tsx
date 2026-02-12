@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { ChatMessageContent, ChatToolResults, getAssistantMessageDisplayContent, ReasoningContent } from "./chat-message-content";
 import ChatFeedbackModal from "./chat-feedback-modal";
+import LogoLoading from "./logo-loading";
 
 /** UUID v4; works in insecure context where crypto.randomUUID is not available */
 function randomId(): string {
@@ -716,7 +717,7 @@ export default function ChatSection({ onOpenSettings }: Props) {
                     )}
                     {msg.role === "assistant" && isLast && loading && (
                       <span className="chat-section-typing">
-                        <Loader size={14} className="spin" />
+                        <LogoLoading size={20} className="chat-section-typing-logo" />
                         {msg.todos?.length
                           ? (msg.completedStepIndices?.length === msg.todos.length
                               ? "Completing…"

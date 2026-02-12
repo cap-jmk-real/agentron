@@ -2,29 +2,41 @@
   "name": "@agentron-studio/desktop",
   "version": "0.1.0",
   "private": true,
+  "description": "Local-first desktop app for designing and running AI agents.",
+  "author": "Julian M. Kleber <julian.m.kleber@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cap-jmk-real/agentron.git"
+  },
+  "homepage": "https://github.com/cap-jmk-real/agentron#readme",
   "main": "dist/main.js",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "esbuild src/main.ts --bundle --platform=node --external:electron --external:better-sqlite3 --outfile=dist/main.js && esbuild src/preload.ts --bundle --platform=node --outfile=dist/preload.js",
-    "dist": "electron-builder",
+    "prepare-icon": "node scripts/export-icon.cjs",
+    "dist": "npm run prepare-icon && electron-builder",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "@agentron-studio/core": "file:../../packages/core"
   },
   "devDependencies": {
-    "esbuild": "0.24.0",
+    "@electron/rebuild": "latest",
     "electron": "40.2.1",
     "electron-builder": "26.7.0",
-    "@electron/rebuild": "latest"
+    "esbuild": "0.24.0",
+    "sharp": "^0.33.5"
   },
   "build": {
     "appId": "com.agentron.studio",
     "productName": "Agentron Studio",
+    "publish": null,
     "files": [
       "dist/**",
       "package.json"
     ],
+    "icon": "assets/icon.png",
     "directories": {
       "output": "release"
     },
@@ -41,7 +53,8 @@
     "linux": {
       "target": [
         "AppImage"
-      ]
+      ],
+      "category": "Development"
     }
   }
 }

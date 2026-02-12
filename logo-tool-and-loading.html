@@ -85,45 +85,38 @@
 
     /* Seamless loop: no clear start/end. Cross through 0 at loop so motion never “stops”. Same 4-beat rhythm. */
     @keyframes a-to-t-to-a {
-      /* Flows from previous cycle: already moving through 0 into tilt */
-      0% { transform: rotateY(0deg) rotateZ(0deg); }
-      1.5% { transform: rotateY(0deg) rotateZ(8deg); }
-      3% { transform: rotateY(0deg) rotateZ(18deg); }
-      5% { transform: rotateY(0deg) rotateZ(28deg); }
-      7% { transform: rotateY(0deg) rotateZ(38deg); }
-      10% { transform: rotateY(0deg) rotateZ(45deg); }
-      12.5% { transform: rotateY(0deg) rotateZ(60deg); }
-      14% { transform: rotateY(0deg) rotateZ(65deg); }
-      16% { transform: rotateY(0deg) rotateZ(48deg); }
-      18% { transform: rotateY(0deg) rotateZ(45deg); }
-      /* Flip A→T: 18% → 25% */
-      19.5% { transform: rotateY(45deg) rotateZ(45deg); }
-      21.5% { transform: rotateY(90deg) rotateZ(45deg); }
-      23% { transform: rotateY(135deg) rotateZ(45deg); }
-      25% { transform: rotateY(180deg) rotateZ(45deg); }
-      /* T releases to 0, undershoot at 50%, back to 0 */
-      28% { transform: rotateY(180deg) rotateZ(34deg); }
-      34% { transform: rotateY(180deg) rotateZ(14deg); }
-      40% { transform: rotateY(180deg) rotateZ(0deg); }
-      44% { transform: rotateY(180deg) rotateZ(-12deg); }
-      48% { transform: rotateY(180deg) rotateZ(-22deg); }
-      50% { transform: rotateY(180deg) rotateZ(-24deg); }
-      52% { transform: rotateY(180deg) rotateZ(-18deg); }
-      56% { transform: rotateY(180deg) rotateZ(-8deg); }
-      60% { transform: rotateY(180deg) rotateZ(0deg); }
-      65% { transform: rotateY(180deg) rotateZ(0deg); }
-      68% { transform: rotateY(180deg) rotateZ(0deg); }
-      /* Flip T→A: 68% → 75%. Overshoot past 0 so we don’t “land and stop” — flow straight into return to 0. */
-      69.5% { transform: rotateY(135deg) rotateZ(0deg); }
-      71.5% { transform: rotateY(90deg) rotateZ(0deg); }
-      73% { transform: rotateY(45deg) rotateZ(0deg); }
-      75% { transform: rotateY(0deg) rotateZ(0deg); }
-      /* One short wave only (no second A tilt): small dip and return so we keep moving, no break */
-      77% { transform: rotateY(0deg) rotateZ(-2deg); }
-      82% { transform: rotateY(0deg) rotateZ(-3deg); }
-      88% { transform: rotateY(0deg) rotateZ(-0.5deg); }
-      94% { transform: rotateY(0deg) rotateZ(0deg); }
-      100% { transform: rotateY(0deg) rotateZ(0deg); }
+      /* Beat 1: T tilt 45→0 (20%). Beat 2: flip T→A, A at 0. Beat 3: A tilt 0→45 (20%). Beat 4: flip A→T. */
+      0% { transform: rotateY(180deg) rotateZ(45deg); }
+      5% { transform: rotateY(180deg) rotateZ(34deg); }
+      10% { transform: rotateY(180deg) rotateZ(22deg); }
+      15% { transform: rotateY(180deg) rotateZ(11deg); }
+      20% { transform: rotateY(180deg) rotateZ(0deg); }
+      22% { transform: rotateY(180deg) rotateZ(-8deg); }
+      25% { transform: rotateY(180deg) rotateZ(-24deg); }
+      27% { transform: rotateY(180deg) rotateZ(-12deg); }
+      29% { transform: rotateY(180deg) rotateZ(-4deg); }
+      31% { transform: rotateY(180deg) rotateZ(0deg); }
+      33% { transform: rotateY(144deg) rotateZ(0deg); }
+      35% { transform: rotateY(108deg) rotateZ(0deg); }
+      37% { transform: rotateY(72deg) rotateZ(0deg); }
+      39% { transform: rotateY(36deg) rotateZ(0deg); }
+      41% { transform: rotateY(0deg) rotateZ(0deg); }
+      50% { transform: rotateY(0deg) rotateZ(0deg); }
+      55% { transform: rotateY(0deg) rotateZ(11deg); }
+      60% { transform: rotateY(0deg) rotateZ(22deg); }
+      65% { transform: rotateY(0deg) rotateZ(34deg); }
+      70% { transform: rotateY(0deg) rotateZ(45deg); }
+      72% { transform: rotateY(0deg) rotateZ(55deg); }
+      75% { transform: rotateY(0deg) rotateZ(65deg); }
+      77% { transform: rotateY(0deg) rotateZ(58deg); }
+      79% { transform: rotateY(0deg) rotateZ(51deg); }
+      81% { transform: rotateY(0deg) rotateZ(45deg); }
+      83% { transform: rotateY(36deg) rotateZ(45deg); }
+      85% { transform: rotateY(72deg) rotateZ(45deg); }
+      87% { transform: rotateY(108deg) rotateZ(45deg); }
+      89% { transform: rotateY(144deg) rotateZ(45deg); }
+      91% { transform: rotateY(180deg) rotateZ(45deg); }
+      100% { transform: rotateY(180deg) rotateZ(45deg); }
     }
     .anim-a-t-a .stage .flip-inner {
       animation: a-to-t-to-a 4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
@@ -153,7 +146,7 @@
         <figure>
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
             <defs><linearGradient id="finalT" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient></defs>
-            <path d="M10 28 H54 V38 H38 V64 H26 V38 H10 Z" fill="url(#finalT)"/>
+            <path d="M10 30 H54 V38 H36 V54 H28 V38 H10 V30 Z" fill="url(#finalT)"/>
             <circle cx="32" cy="38" r="5.5" fill="#EEF2FF"/>
             <circle cx="32" cy="38" r="2.8" fill="#4f46e5"/>
           </svg>
@@ -178,7 +171,7 @@
             </svg>
             <svg class="flip-back" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
               <defs><linearGradient id="flipT" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient></defs>
-              <path d="M10 28 H54 V38 H38 V64 H26 V38 H10 Z" fill="url(#flipT)"/>
+              <path d="M10 30 H54 V38 H36 V54 H28 V38 H10 V30 Z" fill="url(#flipT)"/>
               <circle cx="32" cy="38" r="5.5" fill="#EEF2FF"/>
               <circle cx="32" cy="38" r="2.8" fill="#4f46e5"/>
             </svg>
@@ -203,7 +196,7 @@
           </svg>
           <svg class="flip-back" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" style="width:80px; height:80px; position:absolute; left:0; top:0; backface-visibility:hidden; transform: rotateY(180deg);">
             <defs><linearGradient id="prevT" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient></defs>
-            <path d="M10 28 H54 V38 H38 V64 H26 V38 H10 Z" fill="url(#prevT)"/>
+            <path d="M10 30 H54 V38 H36 V54 H28 V38 H10 V30 Z" fill="url(#prevT)"/>
             <circle cx="32" cy="38" r="5.5" fill="#EEF2FF"/>
             <circle cx="32" cy="38" r="2.8" fill="#4f46e5"/>
           </svg>

@@ -2725,6 +2725,9 @@ main {
 .chat-section-todo-icon .spin {
   animation: spin 0.8s linear infinite;
 }
+.chat-section-typing .chat-section-typing-logo {
+  flex-shrink: 0;
+}
 
 .chat-section-msg-actions button {
   padding: 0.3rem 0.5rem;
@@ -3437,9 +3440,12 @@ main {
   margin-bottom: 0.25rem;
 }
 
-.chat-typing-status .chat-typing-icon {
+.chat-typing-status .chat-typing-icon,
+.chat-typing-status .chat-typing-logo {
   flex-shrink: 0;
   color: var(--text-muted);
+}
+.chat-typing-status .chat-typing-icon {
   animation: spin 0.8s linear infinite;
 }
 
@@ -3742,4 +3748,65 @@ main {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* Agentron logo A→T→A loading animation */
+@keyframes a-to-t-to-a {
+  0% { transform: rotateY(180deg) rotateZ(45deg); }
+  5% { transform: rotateY(180deg) rotateZ(34deg); }
+  10% { transform: rotateY(180deg) rotateZ(22deg); }
+  15% { transform: rotateY(180deg) rotateZ(11deg); }
+  20% { transform: rotateY(180deg) rotateZ(0deg); }
+  22% { transform: rotateY(180deg) rotateZ(-8deg); }
+  25% { transform: rotateY(180deg) rotateZ(-24deg); }
+  27% { transform: rotateY(180deg) rotateZ(-12deg); }
+  29% { transform: rotateY(180deg) rotateZ(-4deg); }
+  31% { transform: rotateY(180deg) rotateZ(0deg); }
+  33% { transform: rotateY(144deg) rotateZ(0deg); }
+  35% { transform: rotateY(108deg) rotateZ(0deg); }
+  37% { transform: rotateY(72deg) rotateZ(0deg); }
+  39% { transform: rotateY(36deg) rotateZ(0deg); }
+  41% { transform: rotateY(0deg) rotateZ(0deg); }
+  50% { transform: rotateY(0deg) rotateZ(0deg); }
+  55% { transform: rotateY(0deg) rotateZ(11deg); }
+  60% { transform: rotateY(0deg) rotateZ(22deg); }
+  65% { transform: rotateY(0deg) rotateZ(34deg); }
+  70% { transform: rotateY(0deg) rotateZ(45deg); }
+  72% { transform: rotateY(0deg) rotateZ(55deg); }
+  75% { transform: rotateY(0deg) rotateZ(65deg); }
+  77% { transform: rotateY(0deg) rotateZ(58deg); }
+  79% { transform: rotateY(0deg) rotateZ(51deg); }
+  81% { transform: rotateY(0deg) rotateZ(45deg); }
+  83% { transform: rotateY(36deg) rotateZ(45deg); }
+  85% { transform: rotateY(72deg) rotateZ(45deg); }
+  87% { transform: rotateY(108deg) rotateZ(45deg); }
+  89% { transform: rotateY(144deg) rotateZ(45deg); }
+  91% { transform: rotateY(180deg) rotateZ(45deg); }
+  100% { transform: rotateY(180deg) rotateZ(45deg); }
+}
+
+.logo-loading-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 280px;
+}
+
+.logo-loading-stage .logo-loading-inner {
+  position: relative;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+  animation: a-to-t-to-a 4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.logo-loading-stage .logo-loading-inner svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.logo-loading-stage .logo-loading-inner .logo-loading-back {
+  transform: rotateY(180deg);
 }

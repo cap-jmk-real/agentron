@@ -30,7 +30,7 @@ Agentron is a **local-first platform** for designing, configuring, and running A
 - Create, edit **workflows** (connect agents, set max rounds)
 - Create, edit **tools** (native, HTTP, MCP)
 - Run workflows and agents
-- **Chat (Agentron)** — natural-language assistant that creates and edits agents, workflows, and tools via tool calls; use the **Chat** page for full-screen use, conversation history, ratings, and prompt/context settings (see [Agentron (Chat)](/docs/concepts/assistant))
+- **Chat (Agentron)** — natural-language assistant that creates and edits agents, workflows, and tools via tool calls; use the **Chat** page for full-screen use, conversation history, ratings, and prompt/context settings (see [Agentron (Chat)](/concepts/assistant))
 - **Sandboxes** — Podman containers for code execution
 - **Knowledge / RAG** — document ingestion and retrieval for agents
 - **Feedback** — rate agent outputs for learning

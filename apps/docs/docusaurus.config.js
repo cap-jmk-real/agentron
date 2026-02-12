@@ -10,7 +10,11 @@ const config = {
   organizationName: 'agentos',
   projectName: 'agentos-studio',
   onBrokenLinks: 'throw',
-  onBrokenMarkdownLinks: 'warn',
+  markdown: {
+    hooks: {
+      onBrokenMarkdownLinks: 'throw',
+    },
+  },
   i18n: { defaultLocale: 'en', locales: ['en'] },
   presets: [
     [
