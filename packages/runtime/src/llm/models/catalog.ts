@@ -60,16 +60,17 @@ export const MODEL_CATALOG: Record<string, CatalogModel[]> = {
     { id: "google/gemini-2.5-pro", name: "Gemini 2.5 Pro", provider: "openrouter", contextLength: 1000000, pricing: { input: 1.25, output: 10.00 } },
     { id: "google/gemini-2.0-flash", name: "Gemini 2.0 Flash", provider: "openrouter", contextLength: 1000000, pricing: { input: 0.30, output: 2.50 } },
   ],
+  // Local/Ollama: typical num_ctx 2k–32k by model; default 32k is a safe upper bound (user can lower in provider settings)
   local: [
-    { id: "llama3.1:8b", name: "Llama 3.1 8B", provider: "local", parameterSize: "8B" },
-    { id: "llama3.1:70b", name: "Llama 3.1 70B", provider: "local", parameterSize: "70B" },
-    { id: "qwen2.5:7b", name: "Qwen 2.5 7B", provider: "local", parameterSize: "7B" },
-    { id: "qwen2.5:32b", name: "Qwen 2.5 32B", provider: "local", parameterSize: "32B" },
-    { id: "deepseek-coder-v2:16b", name: "DeepSeek Coder V2 16B", provider: "local", parameterSize: "16B" },
-    { id: "mistral:7b", name: "Mistral 7B", provider: "local", parameterSize: "7B" },
-    { id: "codellama:7b", name: "CodeLlama 7B", provider: "local", parameterSize: "7B" },
-    { id: "phi3:14b", name: "Phi-3 14B", provider: "local", parameterSize: "14B" },
-    { id: "gemma2:9b", name: "Gemma 2 9B", provider: "local", parameterSize: "9B" },
+    { id: "llama3.1:8b", name: "Llama 3.1 8B", provider: "local", parameterSize: "8B", contextLength: 32768 },
+    { id: "llama3.1:70b", name: "Llama 3.1 70B", provider: "local", parameterSize: "70B", contextLength: 32768 },
+    { id: "qwen2.5:7b", name: "Qwen 2.5 7B", provider: "local", parameterSize: "7B", contextLength: 32768 },
+    { id: "qwen2.5:32b", name: "Qwen 2.5 32B", provider: "local", parameterSize: "32B", contextLength: 32768 },
+    { id: "deepseek-coder-v2:16b", name: "DeepSeek Coder V2 16B", provider: "local", parameterSize: "16B", contextLength: 32768 },
+    { id: "mistral:7b", name: "Mistral 7B", provider: "local", parameterSize: "7B", contextLength: 32768 },
+    { id: "codellama:7b", name: "CodeLlama 7B", provider: "local", parameterSize: "7B", contextLength: 16384 },
+    { id: "phi3:14b", name: "Phi-3 14B", provider: "local", parameterSize: "14B", contextLength: 4096 },
+    { id: "gemma2:9b", name: "Gemma 2 9B", provider: "local", parameterSize: "9B", contextLength: 8192 },
   ],
   gcp: [
     { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", provider: "gcp", contextLength: 1000000, pricing: { input: 1.25, output: 10.00 } },
@@ -86,4 +87,12 @@ export const MODEL_CATALOG: Record<string, CatalogModel[]> = {
 
 export function getModelsForProvider(provider: string): CatalogModel[] {
   return MODEL_CATALOG[provider] ?? [];
+}
+
+/** Default context length (tokens) for a provider/model from the catalog. Use when a provider has no explicit contextLength set. */
+export function getDefaultContextLengthForModel(provider: string, model: string): number | undefined {
+  const list = MODEL_CATALOG[provider];
+  if (!list) return undefined;
+  const entry = list.find((m) => m.id === model || model.startsWith(m.id.split(":")[0]));
+  return entry?.contextLength;
 }

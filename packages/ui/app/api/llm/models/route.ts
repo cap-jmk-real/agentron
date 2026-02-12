@@ -15,13 +15,18 @@ export async function GET(request: Request) {
       const res = await fetch("http://localhost:11434/api/tags", { signal: AbortSignal.timeout(3000) });
       if (res.ok) {
         const data = (await res.json()) as { models?: Array<{ name: string; size: number; details?: { parameter_size?: string } }> };
-        const installed = (data.models ?? []).map((m) => ({
-          id: m.name,
-          name: m.name,
-          provider: "local",
-          parameterSize: m.details?.parameter_size,
-          installed: true,
-        }));
+        const catalogById = new Map(models.map((m) => [m.id, m]));
+        const installed = (data.models ?? []).map((m) => {
+          const catalog = catalogById.get(m.name) ?? [...catalogById.values()].find((c) => m.name.startsWith(c.id.split(":")[0]));
+          return {
+            id: m.name,
+            name: m.name,
+            provider: "local",
+            parameterSize: m.details?.parameter_size ?? catalog?.parameterSize,
+            contextLength: catalog?.contextLength ?? 32768,
+            installed: true,
+          };
+        });
         // Merge: mark catalog entries as installed if found, add any not in catalog
         const catalogIds = new Set(models.map((m) => m.id));
         const merged = models.map((m) => ({
@@ -30,7 +35,7 @@ export async function GET(request: Request) {
         }));
         for (const inst of installed) {
           if (!catalogIds.has(inst.id)) {
-            merged.push(inst);
+            merged.push({ ...inst, contextLength: inst.contextLength ?? 32768 });
           }
         }
         return json(merged);

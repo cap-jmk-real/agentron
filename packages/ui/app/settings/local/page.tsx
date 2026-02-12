@@ -67,8 +67,9 @@ export default function LocalModelsPage() {
 
   // HF search
   const [hfQuery, setHfQuery] = useState("");
-  const [hfResults, setHfResults] = useState<Array<{ id: string; downloads: number; hasGguf: boolean }>>([]);
+  const [hfResults, setHfResults] = useState<Array<{ id: string; downloads: number; hasGguf: boolean; parameterSize?: string }>>([]);
   const [hfSearching, setHfSearching] = useState(false);
+  const [importingModelId, setImportingModelId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const [statusRes, sysRes, modelsRes, installInfoRes] = await Promise.all([
@@ -100,8 +101,14 @@ export default function LocalModelsPage() {
     setCheckingCompat(false);
   };
 
-  const doPull = async () => {
-    if (!pullModel.trim()) return;
+  const PULL_SIZES = ["1B", "3B", "7B", "8B", "13B", "14B", "32B", "70B", "405B"] as const;
+  const doPullWithModel = async (model: string, suggestedParameterSize?: string) => {
+    if (!model.trim()) return;
+    const paramSize = suggestedParameterSize && PULL_SIZES.includes(suggestedParameterSize as (typeof PULL_SIZES)[number]) ? suggestedParameterSize : pullSize;
+    setPullModel(model);
+    setPullSize(paramSize);
+    setCompat(null);
+    setImportingModelId(model);
     setPulling(true);
     setPullProgress("Starting...");
     setPullPct(0);
@@ -110,13 +117,14 @@ export default function LocalModelsPage() {
       const res = await fetch("/api/ollama/pull", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: pullModel, parameterSize: pullSize }),
+        body: JSON.stringify({ model: model.trim(), parameterSize: paramSize }),
       });
 
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({ error: "Unknown error" }));
         setPullProgress(`Error: ${data.error}`);
         setPulling(false);
+        setImportingModelId(null);
         return;
       }
 
@@ -155,11 +163,19 @@ export default function LocalModelsPage() {
       setPullProgress("Done!");
       setPullPct(100);
       await refresh();
+      // Ollama may take a moment to list the new model; refresh again
+      await new Promise((r) => setTimeout(r, 800));
+      await refresh();
+      await new Promise((r) => setTimeout(r, 1500));
+      await refresh();
     } catch {
       setPullProgress("Failed to connect to Ollama");
     }
     setPulling(false);
+    setImportingModelId(null);
   };
+
+  const doPull = () => doPullWithModel(pullModel);
 
   const deleteModel = async (name: string) => {
     await fetch(`/api/ollama/models/${encodeURIComponent(name)}`, { method: "DELETE" });
@@ -284,19 +300,23 @@ export default function LocalModelsPage() {
               </pre>
             )}
             {installDone && <p style={{ marginTop: "0.5rem", fontSize: "0.8rem", color: "#16a34a", fontWeight: 500 }}>Install finished. Ollama should be starting.</p>}
-            <details style={{ marginTop: "0.6rem", fontSize: "0.78rem", color: "var(--text-muted)" }}>
-              <summary style={{ cursor: "pointer" }}>Or install via command line</summary>
-              {system?.platform === "darwin" && <p style={{ margin: "0.35rem 0 0" }}><code>brew install ollama</code> then <code>ollama serve</code></p>}
-              {system?.platform === "linux" && <p style={{ margin: "0.35rem 0 0" }}><code>curl -fsSL https://ollama.com/install.sh | sh</code> then <code>ollama serve</code></p>}
-              {system?.platform === "win32" && <p style={{ margin: "0.35rem 0 0" }}>Download from <a href="https://ollama.com/download" target="_blank" rel="noreferrer" style={{ color: "var(--primary)" }}>ollama.com/download</a></p>}
-            </details>
           </div>
         )}
       </div>
 
       {/* Installed models */}
       <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.5rem" }}>Installed Models</h2>
-      {models.length === 0 ? (
+      {pulling && (
+        <div className="card" style={{ padding: "0.75rem 1rem", marginBottom: "0.5rem", border: "1px solid var(--primary)", background: "rgba(91,124,250,0.06)" }}>
+          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.4rem" }}>Downloading model</div>
+          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "0.5rem", wordBreak: "break-all" }}>{pullModel}</div>
+          <div style={{ width: "100%", height: 8, borderRadius: 4, background: "var(--border)", overflow: "hidden", marginBottom: "0.35rem" }}>
+            <div style={{ width: `${pullPct}%`, height: "100%", borderRadius: 4, background: "var(--primary)", transition: "width 300ms" }} />
+          </div>
+          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{pullProgress}</div>
+        </div>
+      )}
+      {models.length === 0 && !pulling ? (
         <div className="card" style={{ padding: "1.5rem", textAlign: "center", marginBottom: "1rem" }}>
           <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: 0 }}>No models installed</p>
         </div>
@@ -411,25 +431,27 @@ export default function LocalModelsPage() {
             </div>
             {hfResults.length > 0 && (
               <div style={{ display: "grid", gap: "0.25rem", maxHeight: 280, overflowY: "auto" }}>
-                {hfResults.map((m) => (
-                  <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.35rem 0.5rem", borderRadius: 6, border: "1px solid var(--border)", fontSize: "0.78rem" }}>
-                    <div>
-                      <span style={{ fontWeight: 500 }}>{m.id}</span>
-                      <span style={{ color: "var(--text-muted)", marginLeft: "0.5rem" }}>
-                        {m.downloads.toLocaleString()} downloads
-                        {m.hasGguf && <span style={{ marginLeft: "0.4rem", fontSize: "0.65rem", padding: "0.1rem 0.3rem", borderRadius: 3, background: "rgba(91,124,250,0.12)", color: "var(--primary)", fontWeight: 600 }}>GGUF</span>}
-                      </span>
-                    </div>
-                    {m.hasGguf && (
+                {hfResults.map((m) => {
+                  const modelId = m.id || "";
+                  return (
+                    <div key={modelId || `row-${m.downloads}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.35rem 0.5rem", borderRadius: 6, border: "1px solid var(--border)", fontSize: "0.78rem" }}>
+                      <div>
+                        <span style={{ fontWeight: 500 }}>{modelId}</span>
+                        <span style={{ color: "var(--text-muted)", marginLeft: "0.5rem" }}>
+                          {m.downloads.toLocaleString()} downloads
+                          {m.hasGguf && <span style={{ marginLeft: "0.4rem", fontSize: "0.65rem", padding: "0.1rem 0.3rem", borderRadius: 3, background: "rgba(91,124,250,0.12)", color: "var(--primary)", fontWeight: 600 }}>GGUF</span>}
+                        </span>
+                      </div>
                       <button
                         className="button button-small"
-                        onClick={() => { setPullModel(`hf.co/${m.id}`); }}
+                        onClick={() => doPullWithModel(`hf.co/${modelId}`, m.parameterSize)}
+                        disabled={pulling || !modelId}
                       >
-                        Import
+                        {importingModelId === `hf.co/${modelId}` ? "Importing…" : "Import"}
                       </button>
-                    )}
-                  </div>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

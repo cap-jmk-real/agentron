@@ -13,7 +13,7 @@ interface LlmProvider {
   model: string;
   endpoint?: string;
   apiKeyRef?: string;
-  extra?: { rateLimit?: RateLimitConfig };
+  extra?: { rateLimit?: RateLimitConfig; contextLength?: number };
 }
 
 /** OpenRouter key/limits response (https://openrouter.ai/docs/api/reference/limits) */
@@ -61,8 +61,9 @@ export default function LlmSettingsPage() {
   const [apiKey, setApiKey] = useState("");
   const [rateLimitRPM, setRateLimitRPM] = useState<string>("");
   const [rateLimitTPM, setRateLimitTPM] = useState<string>("");
+  const [contextLengthInput, setContextLengthInput] = useState<string>("");
   const [defaultLimits, setDefaultLimits] = useState<Record<string, RateLimitConfig>>({});
-  const [catalogModels, setCatalogModels] = useState<Array<{ id: string; name: string }>>([]);
+  const [catalogModels, setCatalogModels] = useState<Array<{ id: string; name: string; contextLength?: number }>>([]);
   const [openrouterKeyInfo, setOpenrouterKeyInfo] = useState<Record<string, { loading: boolean; error?: string; envVar?: string; hint?: string; data?: OpenRouterKeyData }>>({});
 
   const loadProviders = useCallback(async () => {
@@ -134,6 +135,13 @@ export default function LlmSettingsPage() {
     }
   }, [catalogModels, model]);
 
+  // When model selection changes in "Add" form, default context length from catalog (edit form keeps saved value)
+  const selectedCatalogModel = catalogModels.find((m) => m.id === model);
+  useEffect(() => {
+    if (editingId != null) return;
+    if (selectedCatalogModel?.contextLength != null) setContextLengthInput(String(selectedCatalogModel.contextLength));
+  }, [editingId, selectedCatalogModel?.id, selectedCatalogModel?.contextLength]);
+
   const onProviderChange = (val: string) => {
     setProvider(val);
     const preset = PROVIDER_PRESETS[val];
@@ -158,6 +166,8 @@ export default function LlmSettingsPage() {
       ...(Object.keys(rateLimit).length ? { rateLimit } : {}),
     };
     if (apiKey.trim()) payload.apiKey = apiKey.trim();
+    const ctx = contextLengthInput.trim() ? parseInt(contextLengthInput, 10) : undefined;
+    if (ctx != null && !Number.isNaN(ctx) && ctx > 0) payload.contextLength = ctx;
     return payload;
   };
 
@@ -174,6 +184,7 @@ export default function LlmSettingsPage() {
       setApiKey("");
       setRateLimitRPM("");
       setRateLimitTPM("");
+      setContextLengthInput("");
       await loadProviders();
     } finally {
       setSaving(false);
@@ -188,6 +199,7 @@ export default function LlmSettingsPage() {
     setApiKey(""); // Never show or send existing key; leave blank to keep current
     setRateLimitRPM(p.extra?.rateLimit?.requestsPerMinute != null ? String(p.extra.rateLimit.requestsPerMinute) : "");
     setRateLimitTPM(p.extra?.rateLimit?.tokensPerMinute != null ? String(p.extra.rateLimit.tokensPerMinute) : "");
+    setContextLengthInput(p.extra?.contextLength != null ? String(p.extra.contextLength) : "");
     loadCatalog(p.provider);
     const d = defaultLimits[p.provider];
     if (p.extra?.rateLimit?.requestsPerMinute == null && d?.requestsPerMinute != null) setRateLimitRPM(String(d.requestsPerMinute));
@@ -259,6 +271,7 @@ export default function LlmSettingsPage() {
             onClick={() => {
               setEditingId(null);
               setShowForm(true);
+              setContextLengthInput("");
               loadCatalog(provider);
               const d = defaultLimits[provider];
               setRateLimitRPM(d?.requestsPerMinute != null ? String(d.requestsPerMinute) : "");
@@ -306,6 +319,21 @@ export default function LlmSettingsPage() {
               ) : (
                 <input className="input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="e.g. model-id (no catalog for this provider)" />
               )}
+            </div>
+            <div className="field">
+              <label>Context length (tokens)</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                step={1000}
+                value={contextLengthInput}
+                onChange={(e) => setContextLengthInput(e.target.value)}
+                placeholder={selectedCatalogModel?.contextLength != null ? `Default for model: ${selectedCatalogModel.contextLength.toLocaleString()}` : "e.g. 128000 (optional)"}
+              />
+              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                Max context window for this model. Used to cap workflow memory and RAG. Leave blank to use model default when available.
+              </span>
             </div>
             {!PROVIDERS_WITHOUT_ENDPOINT.includes(provider) && (
               <div className="field">
@@ -426,6 +454,21 @@ export default function LlmSettingsPage() {
                       ) : (
                         <input className="input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="e.g. model-id (no catalog for this provider)" />
                       )}
+                    </div>
+                    <div className="field">
+                      <label>Context length (tokens)</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min={1}
+                        step={1000}
+                        value={contextLengthInput}
+                        onChange={(e) => setContextLengthInput(e.target.value)}
+                        placeholder={selectedCatalogModel?.contextLength != null ? `Default for model: ${selectedCatalogModel.contextLength.toLocaleString()}` : "e.g. 128000 (optional)"}
+                      />
+                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                        Max context window for this model. Used to cap workflow memory and RAG.
+                      </span>
                     </div>
                     {!PROVIDERS_WITHOUT_ENDPOINT.includes(provider) && (
                       <div className="field">

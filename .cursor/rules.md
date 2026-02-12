@@ -156,3 +156,7 @@ Before presenting code, the agent asks:
 * Are critical paths protected by unit tests?
 * Are boundaries validated by integration tests?
 * Did I run the unit tests? 
+
+## Promopt Generation 
+
+* 

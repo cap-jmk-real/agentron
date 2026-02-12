@@ -41,8 +41,11 @@ export default function WorkflowsPage() {
   const router = useRouter();
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [name, setName] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [workflowToDelete, setWorkflowToDelete] = useState<Workflow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [executingId, setExecutingId] = useState<string | null>(null);
 
   const load = async () => {
@@ -82,6 +85,34 @@ export default function WorkflowsPage() {
       }
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const selectedCount = selectedIds.size;
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    if (selectedIds.size === workflows.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(workflows.map((w) => w.id)));
+  };
+  const onConfirmBulkDelete = async () => {
+    if (selectedCount === 0) return;
+    setBulkDeleting(true);
+    try {
+      for (const id of selectedIds) {
+        await fetch(`/api/workflows/${id}`, { method: "DELETE" });
+      }
+      setSelectedIds(new Set());
+      setShowBulkDeleteConfirm(false);
+      await load();
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -147,9 +178,41 @@ export default function WorkflowsPage() {
           </button>
         </form>
       </div>
-      <ul className="list" style={{ marginTop: "1.5rem" }}>
+      {workflows.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "1.5rem", flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.875rem", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={workflows.length > 0 && selectedIds.size === workflows.length}
+              onChange={toggleSelectAll}
+              style={{ width: "1rem", height: "1rem", accentColor: "var(--primary)" }}
+            />
+            Select all
+          </label>
+          {selectedCount > 0 && (
+            <button
+              type="button"
+              className="button button-ghost button-small"
+              onClick={() => setShowBulkDeleteConfirm(true)}
+              disabled={bulkDeleting}
+              title={`Delete ${selectedCount} workflow(s)`}
+              style={{ color: "#dc2626" }}
+            >
+              <Trash2 size={14} /> Delete {selectedCount} selected
+            </button>
+          )}
+        </div>
+      )}
+      <ul className="list" style={{ marginTop: "0.5rem" }}>
         {workflows.map((workflow) => (
           <li key={workflow.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <input
+              type="checkbox"
+              checked={selectedIds.has(workflow.id)}
+              onChange={() => toggleSelect(workflow.id)}
+              onClick={(e) => e.stopPropagation()}
+              style={{ width: "1rem", height: "1rem", flexShrink: 0, accentColor: "var(--primary)" }}
+            />
             <Link
               href={workflow.id ? `/workflows/${encodeURIComponent(workflow.id)}` : "/workflows"}
               className="list-item"
@@ -195,6 +258,20 @@ export default function WorkflowsPage() {
           </li>
         ))}
       </ul>
+
+      {showBulkDeleteConfirm && selectedCount > 0 && (
+        <ConfirmModal
+          open={true}
+          title="Delete selected workflows"
+          message={`Delete ${selectedCount} workflow(s)? This cannot be undone.`}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          danger
+          loading={bulkDeleting}
+          onConfirm={onConfirmBulkDelete}
+          onCancel={() => setShowBulkDeleteConfirm(false)}
+        />
+      )}
 
       <ConfirmModal
         open={!!workflowToDelete}

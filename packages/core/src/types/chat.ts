@@ -7,11 +7,31 @@ export interface ChatToolCall {
   result?: unknown;
 }
 
+/** One LLM call: request summary and response for stack trace. */
+export interface LLMTraceCall {
+  /** e.g. "main" | "rephrase" | "nudge" | "follow_up" */
+  phase?: string;
+  /** Number of messages in the request. */
+  messageCount?: number;
+  /** Last user message (truncated) for context. */
+  lastUserContent?: string;
+  /** Full request messages (optional, can be large). */
+  requestMessages?: Array<{ role: string; content: string }>;
+  /** Model response content (full or truncated for storage). */
+  responseContent?: string;
+  /** First N chars of response for preview. */
+  responsePreview?: string;
+  /** Token usage if available. */
+  usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
   content: string;
   toolCalls?: ChatToolCall[];
+  /** LLM request/response trace for this message (assistant only). */
+  llmTrace?: LLMTraceCall[];
   createdAt: number;
   conversationId?: string;
 }
@@ -22,6 +42,8 @@ export interface Conversation {
   rating: number | null; // 1-5 or 0 for unset
   note: string | null;
   summary: string | null;
+  lastUsedProvider: string | null;
+  lastUsedModel: string | null;
   createdAt: number;
 }
 
@@ -35,6 +57,10 @@ export interface ChatAssistantSettings {
   recentSummariesCount: number | null;
   /** LLM temperature (0–2). Null = use default 0.7. Some models only support 1. */
   temperature: number | null;
+  /** When conversation history exceeds this many messages, older messages are summarized. Default 24. */
+  historyCompressAfter: number | null;
+  /** When compressing, keep this many most recent messages in full. Default 16. Must be less than historyCompressAfter. */
+  historyKeepRecent: number | null;
   updatedAt: number;
 }
 

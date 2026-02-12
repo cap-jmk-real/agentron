@@ -108,9 +108,38 @@ async function executeStudioTool(toolId: string, input: unknown, override?: Tool
   return { error: `Tool ${toolId} not supported in workflow execution` };
 }
 
+/** Error message when the run was cancelled by the user (so callers can set status to "cancelled" instead of "failed"). */
+export const RUN_CANCELLED_MESSAGE = "Run cancelled by user";
+
+const WORKFLOW_MEMORY_MAX_RECENT_TURNS = 12;
+const GET_WORKFLOW_CONTEXT_TOOL_ID = "get_workflow_context";
+
+function buildWorkflowMemoryBlock(opts: {
+  turnInstruction?: string | null;
+  summary: string;
+  recentTurns: Array<{ speaker: string; text: string }>;
+  partnerMessage: string;
+  maxRecentTurns?: number;
+}): string {
+  const { turnInstruction, summary, recentTurns, partnerMessage, maxRecentTurns = WORKFLOW_MEMORY_MAX_RECENT_TURNS } = opts;
+  const parts: string[] = [];
+  if (turnInstruction && String(turnInstruction).trim()) parts.push(String(turnInstruction).trim());
+  if (summary.trim()) parts.push("Summary:\n" + summary.trim() + "\n");
+  const turns = recentTurns.slice(-maxRecentTurns);
+  if (turns.length > 0) {
+    parts.push("Recent turns:\n" + turns.map((t) => `${t.speaker}: ${t.text}`).join("\n"));
+  }
+  parts.push("Partner just said:\n" + partnerMessage);
+  return parts.join("\n\n");
+}
+
 export type RunWorkflowOptions = {
   workflowId: string;
   runId: string;
+  /** Called after each agent step so the run can be updated with partial trail/output for live UI updates. */
+  onStepComplete?: (trail: ExecutionTraceStep[], lastOutput: unknown) => void | Promise<void>;
+  /** If provided, checked before each agent step; when it returns true, workflow throws so the run can be marked cancelled. */
+  isCancelled?: () => Promise<boolean>;
 };
 
 export type ExecutionTraceStep = {
@@ -175,12 +204,37 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
     return response;
   };
 
-  const edges = (workflow.edges ?? []) as { from: string; to: string }[];
+  // Normalize edges: canvas uses source/target, engine/handler use from/to
+  const edges = (workflow.edges ?? []).map((e: { source?: string; target?: string; from?: string; to?: string }) => ({
+    from: e.source ?? e.from ?? "",
+    to: e.target ?? e.to ?? "",
+  }));
+
+  async function buildToolInstructionsBlock(toolIds: string[]): Promise<string> {
+    if (toolIds.length === 0) return "";
+    const lines: string[] = [];
+    const maxLen = 600;
+    for (const id of toolIds) {
+      if (STD_IDS[id]) continue;
+      const rows = await db.select().from(toolsTable).where(eq(toolsTable.id, id));
+      if (rows.length === 0) continue;
+      const tool = fromToolRow(rows[0]);
+      const cfg = tool.config as { systemPrompt?: string; instructions?: string } | undefined;
+      const text = (cfg?.systemPrompt ?? cfg?.instructions ?? "").trim();
+      if (text) lines.push(`Tool ${tool.name}: ${text}`);
+    }
+    const block = lines.join("\n");
+    return block.length > maxLen ? block.slice(0, maxLen) + "…" : block;
+  }
+
   const agentHandler = async (
     nodeId: string,
     config: Record<string, unknown> | undefined,
     sharedContext: { get: (k: string) => unknown; set: (k: string, v: unknown) => void; snapshot?: () => Record<string, unknown> }
   ): Promise<unknown> => {
+    if (options.isCancelled && (await options.isCancelled())) {
+      throw new Error(RUN_CANCELLED_MESSAGE);
+    }
     const agentId = config?.agentId as string | undefined;
     if (!agentId) throw new Error(`Workflow node ${nodeId}: missing agentId in config`);
 
@@ -190,31 +244,71 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
 
     const incoming = edges.filter((e) => e.to === nodeId);
     const fromId = incoming[0]?.from;
-    let input: unknown = fromId ? sharedContext.get(`__output_${fromId}`) : undefined;
-    if (input === undefined && !fromId) {
+    let partnerOutput: unknown = fromId ? sharedContext.get(`__output_${fromId}`) : undefined;
+    if (partnerOutput === undefined && !fromId) {
       const prevNodeIndex = (workflow.nodes ?? []).findIndex((n) => n.id === nodeId) - 1;
       const prevNode = prevNodeIndex >= 0 ? (workflow.nodes ?? [])[prevNodeIndex] : undefined;
-      input = prevNode ? sharedContext.get(`__output_${prevNode.id}`) : undefined;
+      partnerOutput = prevNode ? sharedContext.get(`__output_${prevNode.id}`) : undefined;
     }
+    const partnerMessage =
+      partnerOutput !== undefined
+        ? (typeof partnerOutput === "string" ? partnerOutput : JSON.stringify(partnerOutput))
+        : "(First turn — start the conversation.)";
+
+    const recentTurns = (sharedContext.get("__recent_turns") as Array<{ speaker: string; text: string }> | undefined) ?? [];
+    const summary = (sharedContext.get("__summary") as string | undefined) ?? "";
+    const input = buildWorkflowMemoryBlock({
+      turnInstruction: workflow.turnInstruction,
+      summary,
+      recentTurns,
+      partnerMessage,
+    });
 
     currentAgentId = agentId;
 
     const round = sharedContext.get<number>("__round");
     const step: ExecutionTraceStep = { nodeId, agentId, agentName: agent.name, order: stepOrder++, ...(round !== undefined && { round }), input };
 
-    // Pass workflow's shared context (previous node outputs) to agent so it can access upstream data on top of its config
     const workflowContextSnapshot = typeof sharedContext.snapshot === "function" ? sharedContext.snapshot() : {};
     const shared = { ...workflowContextSnapshot } as Record<string, unknown>;
 
     const def = (agent as Agent & { definition?: { graph?: unknown; toolIds?: string[]; defaultLlmConfigId?: string } }).definition ?? {};
     const toolIds = (def.toolIds ?? []) as string[];
     const defaultLlmConfigId = def.defaultLlmConfigId as string | undefined;
-    const availableTools = await buildAvailableTools(toolIds);
+    let availableTools = await buildAvailableTools(toolIds);
+    availableTools = [
+      ...availableTools,
+      {
+        type: "function" as const,
+        function: {
+          name: GET_WORKFLOW_CONTEXT_TOOL_ID,
+          description: "Get current workflow context: summary, recent conversation turns, and round index. Call this when you need to see the full conversation so far.",
+          parameters: { type: "object" as const, properties: {}, required: [] as string[] },
+        },
+      },
+    ];
+
+    const toolInstructionsBlock = await buildToolInstructionsBlock(toolIds);
 
     const context = {
       sharedContext: shared,
       availableTools,
-      buildToolsForIds: async (ids: string[]) => buildAvailableTools(ids),
+      buildToolsForIds: async (ids: string[]) => {
+        const base = await buildAvailableTools(ids);
+        return [
+          ...base,
+          {
+            type: "function" as const,
+            function: {
+              name: GET_WORKFLOW_CONTEXT_TOOL_ID,
+              description: "Get current workflow context: summary, recent conversation turns, and round index.",
+              parameters: { type: "object" as const, properties: {}, required: [] as string[] },
+            },
+          },
+        ];
+      },
+      ragBlock: "",
+      toolInstructionsBlock: toolInstructionsBlock ? `Tool instructions:\n${toolInstructionsBlock}` : "",
       callLLM: async (input: unknown) => {
         const req = (input && typeof input === "object" && "messages" in (input as object))
           ? (input as { llmConfigId?: string; messages: unknown[]; tools?: unknown[] })
@@ -222,8 +316,25 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
         const res = await trackingCallLLM(req);
         return req.tools && Array.isArray(req.tools) && req.tools.length > 0 ? res : res.content;
       },
-      callTool: async (toolId: string, input: unknown, override?: ToolOverride) =>
-        executeStudioTool(toolId, input ?? {}, override),
+      callTool: async (toolId: string, input: unknown, override?: ToolOverride) => {
+        if (toolId === GET_WORKFLOW_CONTEXT_TOOL_ID) {
+          return {
+            summary: sharedContext.get("__summary"),
+            recentTurns: sharedContext.get("__recent_turns"),
+            round: sharedContext.get("__round"),
+          };
+        }
+        const toolContext = {
+          summary: sharedContext.get("__summary"),
+          recentTurns: sharedContext.get("__recent_turns"),
+          round: sharedContext.get("__round"),
+        };
+        const merged =
+          input !== null && typeof input === "object"
+            ? { ...(input as Record<string, unknown>), _workflowContext: toolContext }
+            : { _workflowContext: toolContext, message: input };
+        return executeStudioTool(toolId, merged, override);
+      },
     };
 
     try {
@@ -249,12 +360,19 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
           { ...context, prompts: {} as Record<string, PromptTemplate> }
         );
       }
+      const turns = (sharedContext.get("__recent_turns") as Array<{ speaker: string; text: string }> | undefined) ?? [];
+      turns.push({ speaker: agent.name, text: String(output ?? "") });
+      if (turns.length > WORKFLOW_MEMORY_MAX_RECENT_TURNS) turns.splice(0, turns.length - WORKFLOW_MEMORY_MAX_RECENT_TURNS);
+      sharedContext.set("__recent_turns", turns);
+
       step.output = output;
       trail.push(step);
+      await options.onStepComplete?.(trail, output);
       return output;
     } catch (err) {
       step.error = err instanceof Error ? err.message : String(err);
       trail.push(step);
+      await options.onStepComplete?.(trail, undefined);
       throw err;
     }
   };
@@ -265,7 +383,8 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
 
   await ensureStandardTools();
   const engine = new WorkflowEngine();
-  const result = await engine.execute(workflow, handlers);
+  const initialContext: Record<string, unknown> = { __recent_turns: [], __summary: "" };
+  const result = await engine.execute(workflow, handlers, initialContext);
 
   for (const entry of usageEntries) {
     const usage = entry.response.usage;

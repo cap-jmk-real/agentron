@@ -59,4 +59,8 @@ export type AgentExecutionContext = {
   buildToolsForIds?: (toolIds: string[]) => Promise<Array<{ type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } }>>;
   /** Cached tool definitions (legacy). Prefer buildToolsForIds for per-node tools. */
   availableTools?: Array<{ type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } }>;
+  /** Optional workflow/RAG block to prepend to user message (workflow runner sets this). */
+  ragBlock?: string;
+  /** Optional tool instructions block to prepend to user message (workflow runner sets this). */
+  toolInstructionsBlock?: string;
 };

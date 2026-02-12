@@ -48,6 +48,14 @@ type FlowNodeData = {
 
 const DRAG_TYPE = "application/agent-graph-node";
 
+/** Short unique id; works when crypto.randomUUID is unavailable (e.g. HTTP). */
+function randomNodeId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID().slice(0, 8);
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function LLMNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
   const systemPrompt = String(data.config?.systemPrompt ?? "");
   const llmConfigId = String(data.config?.llmConfigId ?? "");
@@ -56,7 +64,7 @@ function LLMNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
   return (
     <CanvasNodeCard
       icon={<Brain size={14} style={{ color: "var(--primary)" }} />}
-      label="LLM Call"
+      label="LLM"
       selected={selected}
       onRemove={() => data.onRemove?.(id)}
       minWidth={200}
@@ -141,7 +149,7 @@ function ToolNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
   return (
     <CanvasNodeCard
       icon={<Wrench size={14} style={{ color: "var(--text-muted)" }} />}
-      label="Tool"
+      label={baseTool?.name ?? "Tool"}
       selected={selected}
       onRemove={() => data.onRemove?.(id)}
       minWidth={180}
@@ -342,7 +350,7 @@ function DecisionNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
       />
       <label style={{ fontSize: "0.7rem", color: "var(--text-muted)", display: "block", marginBottom: "0.25rem" }}>Tools (from canvas)</label>
       {canvasTools.length === 0 ? (
-        <p className="decision-tools-empty nodrag nopan">Add tool nodes to the canvas to use them in this decision.</p>
+        <p className="decision-tools-empty nodrag nopan">Add tools to the canvas to use them in this decision.</p>
       ) : (
         <div className="decision-tools-list nodrag nopan">
           {canvasTools.map((ct) => {
@@ -510,7 +518,7 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
 
   const addNode = useCallback(
     (type: FlowNodeData["nodeType"], position?: { x: number; y: number }, toolId?: string) => {
-      const id = `n-${crypto.randomUUID().slice(0, 8)}`;
+      const id = `n-${randomNodeId()}`;
       const pos = position ?? { x: 100 + nodes.length * 30, y: 100 + nodes.length * 30 };
       const baseParams =
         type === "llm" ? { systemPrompt: "" }
@@ -620,20 +628,21 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
     ev.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ type, toolId }));
   };
 
-  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [addNodeModalOpen, setAddNodeModalOpen] = useState(false);
   const [toolSearchOpen, setToolSearchOpen] = useState(false);
   const [toolSearchQuery, setToolSearchQuery] = useState("");
   const [toolSearchPosition, setToolSearchPosition] = useState<{ x: number; y: number } | undefined>(undefined);
+  const [addModalQuery, setAddModalQuery] = useState("");
   const addMenuRef = useRef<HTMLDivElement>(null);
   const toolSearchInputRef = useRef<HTMLInputElement>(null);
+  const addModalInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const close = (e: MouseEvent) => {
-      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) setAddMenuOpen(false);
-    };
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, []);
+    if (addNodeModalOpen) {
+      setAddModalQuery("");
+      queueMicrotask(() => addModalInputRef.current?.focus());
+    }
+  }, [addNodeModalOpen]);
 
   useEffect(() => {
     if (toolSearchOpen) {
@@ -644,28 +653,40 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
 
   const openToolSearch = (position?: { x: number; y: number }) => {
     setToolSearchPosition(position);
+    setAddNodeModalOpen(false);
     setToolSearchOpen(true);
-    setAddMenuOpen(false);
   };
+
+  /** Unified list: LLM, Input, Output, Decision, Context read/write, and all library tools — so everything appears as "tools" for the agent. */
+  const addableItems = useMemo(() => {
+    const nodeItems: { kind: "node"; type: FlowNodeData["nodeType"]; label: string; icon: React.ReactNode }[] = [
+      { kind: "node", type: "llm", label: "LLM", icon: <Brain size={18} className="add-node-modal-item-icon" /> },
+      { kind: "node", type: "input", label: "Input", icon: <LogIn size={18} className="add-node-modal-item-icon" /> },
+      { kind: "node", type: "output", label: "Output", icon: <LogOut size={18} className="add-node-modal-item-icon" /> },
+      { kind: "node", type: "decision", label: "Decision", icon: <GitBranch size={18} className="add-node-modal-item-icon" /> },
+      { kind: "node", type: "context_read", label: "Context read", icon: <ArrowRightLeft size={18} className="add-node-modal-item-icon" /> },
+      { kind: "node", type: "context_write", label: "Context write", icon: <ArrowRightLeft size={18} className="add-node-modal-item-icon" /> },
+    ];
+    const toolItems = tools.map((t) => ({
+      kind: "tool" as const,
+      toolId: t.id,
+      label: t.name,
+      icon: <Wrench size={18} className="add-node-modal-item-icon" />,
+    }));
+    return [...nodeItems, ...toolItems];
+  }, [tools]);
+
+  const filteredAddableItems = useMemo(() => {
+    const q = addModalQuery.trim().toLowerCase();
+    if (!q) return addableItems;
+    return addableItems.filter((item) => item.label.toLowerCase().includes(q));
+  }, [addableItems, addModalQuery]);
 
   const filteredTools = useMemo(() => {
     const q = toolSearchQuery.trim().toLowerCase();
     if (!q) return tools;
     return tools.filter((t) => t.name.toLowerCase().includes(q) || (t.protocol?.toLowerCase().includes(q)));
   }, [tools, toolSearchQuery]);
-
-  const sidebarItemStyles: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: "0.4rem",
-    padding: "0.35rem 0.5rem",
-    borderRadius: 6,
-    background: "var(--background)",
-    border: "1px solid var(--border)",
-    cursor: "grab",
-    fontSize: "0.82rem",
-    width: "100%",
-  };
 
   return (
     <div className="canvas-wrap">
@@ -684,155 +705,100 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
         }}
       >
         <p style={{ margin: 0, fontSize: "0.72rem", color: "var(--text-muted)" }}>
-          Drag onto canvas or click to add.
+          Drag tools onto canvas or click to add.
         </p>
-        <div style={{ position: "relative" }}>
-          <button
-            type="button"
-            className="button"
-            onClick={() => setAddMenuOpen((o) => !o)}
-            style={{ fontSize: "0.82rem", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}
-          >
-            <Brain size={14} /> Add node
-          </button>
-          {addMenuOpen && (
-            <div
-              className="nodrag nopan"
-              style={{
-                position: "absolute",
-                top: "100%",
-                left: 0,
-                right: 0,
-                marginTop: 4,
-                padding: "0.35rem",
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
-                zIndex: 1000,
-                maxHeight: 280,
-                overflowY: "auto",
-                display: "flex",
-                flexDirection: "column",
-                gap: 2,
-              }}
-            >
-              {(["input", "output"] as const).map((t) => (
-                <div
-                  key={t}
-                  draggable
-                  onDragStart={dragStart(t)}
-                  onClick={() => { addNode(t); setAddMenuOpen(false); }}
-                  style={sidebarItemStyles}
-                >
-                  {t === "input" ? <LogIn size={14} /> : <LogOut size={14} />}
-                  {t}
-                </div>
-              ))}
-              <div
-                draggable
-                onDragStart={dragStart("llm")}
-                onClick={() => { addNode("llm"); setAddMenuOpen(false); }}
-                style={sidebarItemStyles}
-              >
-                <Brain size={14} /> LLM
-              </div>
-              <div
-                draggable
-                onDragStart={dragStart("decision")}
-                onClick={() => { addNode("decision"); setAddMenuOpen(false); }}
-                style={sidebarItemStyles}
-              >
-                <GitBranch size={14} /> Decision
-              </div>
-              {(["context_read", "context_write"] as const).map((t) => (
-                <div
-                  key={t}
-                  draggable
-                  onDragStart={dragStart(t)}
-                  onClick={() => { addNode(t); setAddMenuOpen(false); }}
-                  style={sidebarItemStyles}
-                >
-                  <ArrowRightLeft size={14} />
-                  {t.replace("_", " ")}
-                </div>
-              ))}
-              <span style={{ fontSize: "0.65rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", padding: "0.25rem 0.35rem 0.15rem", marginTop: 4 }}>Tools</span>
-              <div
-                draggable
-                onDragStart={(ev) => ev.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ type: "tool" as const }))}
-                onClick={() => openToolSearch()}
-                style={{ ...sidebarItemStyles, cursor: "pointer", border: "1px dashed var(--border)", background: "var(--surface-muted)", justifyContent: "center" }}
-              >
-                <Search size={14} /> Search tools…
-              </div>
-              {tools.length === 0 ? (
-                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", padding: "0.25rem 0.35rem" }}>No tools</span>
+        <button
+          type="button"
+          className="button"
+          onClick={() => setAddNodeModalOpen(true)}
+          style={{ fontSize: "0.82rem", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}
+        >
+          <Wrench size={14} /> Add tool
+        </button>
+      </div>
+      {addNodeModalOpen && (
+        <div
+          className="add-node-modal nodrag nopan"
+          role="dialog"
+          aria-label="Add tool"
+          aria-modal="true"
+          onClick={(e) => e.target === e.currentTarget && setAddNodeModalOpen(false)}
+        >
+          <div className="add-node-modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3 className="add-node-modal-title">Add tool</h3>
+            <div className="add-node-modal-search-wrap">
+              <Search size={18} className="add-node-modal-search-icon" aria-hidden />
+              <input
+                ref={addModalInputRef}
+                type="search"
+                className="add-node-modal-search-input"
+                placeholder="Search (LLM, Input, Weather, …)"
+                value={addModalQuery}
+                onChange={(e) => setAddModalQuery(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <div className="add-node-modal-list">
+              {filteredAddableItems.length === 0 ? (
+                <p className="add-node-modal-empty">No tools match your search.</p>
               ) : (
-                tools.map((t) => (
-                  <div
-                    key={t.id}
-                    draggable
-                    onDragStart={(ev) => ev.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ type: "tool" as const, toolId: t.id }))}
-                    onClick={() => { addNode("tool", undefined, t.id); setAddMenuOpen(false); }}
-                    style={sidebarItemStyles}
-                  >
-                    <Wrench size={14} />
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
-                  </div>
-                ))
+                filteredAddableItems.map((item) =>
+                  item.kind === "node" ? (
+                    <button
+                      key={item.type}
+                      type="button"
+                      className="add-node-modal-item nodrag nopan"
+                      onClick={() => { addNode(item.type); setAddNodeModalOpen(false); }}
+                    >
+                      {item.icon}
+                      <span>{item.label}</span>
+                    </button>
+                  ) : (
+                    <button
+                      key={item.toolId}
+                      type="button"
+                      className="add-node-modal-item nodrag nopan"
+                      onClick={() => { addNode("tool", undefined, item.toolId); setAddNodeModalOpen(false); }}
+                    >
+                      {item.icon}
+                      <span>{item.label}</span>
+                    </button>
+                  )
+                )
               )}
             </div>
-          )}
+            <div className="add-node-modal-footer">
+              <button type="button" className="button button-secondary" onClick={() => setAddNodeModalOpen(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
       {toolSearchOpen && (
         <div
-          className="nodrag nopan"
+          className="tool-picker-modal nodrag nopan"
           role="dialog"
           aria-label="Select tool"
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 10001,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "rgba(15, 23, 42, 0.5)",
-            padding: "1.5rem",
-          }}
+          aria-modal="true"
           onClick={(e) => e.target === e.currentTarget && setToolSearchOpen(false)}
         >
-          <div
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              boxShadow: "var(--shadow)",
-              width: "100%",
-              maxWidth: 420,
-              maxHeight: "80vh",
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--border)" }}>
-              <h3 style={{ margin: "0 0 0.75rem", fontSize: "1rem", fontWeight: 600 }}>Select tool</h3>
+          <div className="tool-picker-modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="tool-picker-search-wrap">
+              <Search size={18} className="tool-picker-search-icon" aria-hidden />
               <input
                 ref={toolSearchInputRef}
                 type="search"
-                className="input"
-                placeholder="Search by name or protocol…"
+                className="tool-picker-search-input"
+                placeholder="Search tools by name or protocol…"
                 value={toolSearchQuery}
                 onChange={(e) => setToolSearchQuery(e.target.value)}
-                style={{ width: "100%", fontSize: "0.9rem" }}
+                autoComplete="off"
               />
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: "0.5rem", minHeight: 200 }}>
+            <div className="tool-picker-list">
               {filteredTools.length === 0 ? (
-                <p style={{ margin: "1rem 0", fontSize: "0.88rem", color: "var(--text-muted)" }}>
+                <p className="tool-picker-empty">
                   {tools.length === 0 ? "No tools in library." : "No tools match your search."}
                 </p>
               ) : (
@@ -840,38 +806,21 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
                   <button
                     key={t.id}
                     type="button"
-                    className="nodrag nopan"
+                    className="tool-picker-item nodrag nopan"
                     onClick={() => {
                       addNode("tool", toolSearchPosition, t.id);
                       setToolSearchOpen(false);
                     }}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      width: "100%",
-                      padding: "0.6rem 0.75rem",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      background: "var(--surface-muted)",
-                      color: "var(--text)",
-                      fontSize: "0.9rem",
-                      cursor: "pointer",
-                      textAlign: "left",
-                      marginBottom: "0.35rem",
-                    }}
                   >
-                    <Wrench size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</span>
-                    {t.protocol && (
-                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{t.protocol}</span>
-                    )}
+                    <Wrench size={16} className="tool-picker-item-icon" aria-hidden />
+                    <span className="tool-picker-item-name">{t.name}</span>
+                    {t.protocol && <span className="tool-picker-item-protocol">{t.protocol}</span>}
                   </button>
                 ))
               )}
             </div>
-            <div style={{ padding: "0.75rem 1.25rem", borderTop: "1px solid var(--border)" }}>
-              <button type="button" className="button" style={{ fontSize: "0.85rem" }} onClick={() => setToolSearchOpen(false)}>
+            <div className="tool-picker-footer">
+              <button type="button" className="button button-secondary" onClick={() => setToolSearchOpen(false)}>
                 Cancel
               </button>
             </div>

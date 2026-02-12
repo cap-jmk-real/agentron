@@ -2,6 +2,19 @@ import type { AssistantToolDef } from "./types";
 
 export const CONVERSATION_TOOLS: AssistantToolDef[] = [
   {
+    name: "ask_user",
+    description:
+      "Ask the user for information or confirmation before proceeding. Use when you need: a choice (e.g. which cities, which LLM when multiple), confirmation of a plan, or any missing detail you cannot infer. Call this with a clear, specific question. In the SAME response do NOT output any create_*, update_*, or execute_workflow tool calls — only ask_user and your short message. Wait for the user's reply before creating or updating resources.",
+    parameters: {
+      type: "object",
+      properties: {
+        question: { type: "string", description: "Clear question to show the user (e.g. 'Which LLM should I use for these agents — 1. OpenAI gpt-4, 2. Ollama llama3?' or 'Confirm: create 3 agents and 2 workflows?')" },
+        reason: { type: "string", description: "Optional one-line reason (e.g. 'Need to pick LLM before creating agents')" },
+      },
+      required: ["question"],
+    },
+  },
+  {
     name: "retry_last_message",
     description: "Get the last user message in this conversation so you can respond to it again. Use when the user asks to retry, redo, or repeat the last message (e.g. 'retry the last message', 'try again', 'redo', 'run that again'). Call this tool, then respond to the returned lastUserMessage in your reply.",
     parameters: { type: "object", properties: {}, required: [] },

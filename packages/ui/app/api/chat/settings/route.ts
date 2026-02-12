@@ -15,6 +15,8 @@ export async function GET() {
       contextToolIds: null,
       recentSummariesCount: 3,
       temperature: 0.7,
+      historyCompressAfter: 24,
+      historyKeepRecent: 16,
       updatedAt: Date.now(),
     });
   }
@@ -48,6 +50,22 @@ export async function PATCH(request: Request) {
     const t = Number(payload.temperature);
     temperature = Number.isNaN(t) ? 0.7 : Math.min(2, Math.max(0, t));
   }
+  const DEFAULT_COMPRESS_AFTER = 24;
+  const DEFAULT_KEEP_RECENT = 16;
+  const MIN_COMPRESS = 10;
+  const MAX_COMPRESS = 200;
+  const MIN_KEEP = 5;
+  const MAX_KEEP = 100;
+  let historyCompressAfter: number | undefined;
+  if (payload.historyCompressAfter !== undefined) {
+    const n = Number(payload.historyCompressAfter);
+    historyCompressAfter = Number.isNaN(n) ? DEFAULT_COMPRESS_AFTER : Math.min(MAX_COMPRESS, Math.max(MIN_COMPRESS, Math.round(n)));
+  }
+  let historyKeepRecent: number | undefined;
+  if (payload.historyKeepRecent !== undefined) {
+    const n = Number(payload.historyKeepRecent);
+    historyKeepRecent = Number.isNaN(n) ? DEFAULT_KEEP_RECENT : Math.min(MAX_KEEP, Math.max(MIN_KEEP, Math.round(n)));
+  }
 
   const rows = await db.select().from(chatAssistantSettings).where(eq(chatAssistantSettings.id, DEFAULT_ID));
   const now = Date.now();
@@ -61,6 +79,8 @@ export async function PATCH(request: Request) {
       contextToolIds: contextToolIds ?? null,
       recentSummariesCount: recentSummariesCount ?? 3,
       temperature: temperature ?? 0.7,
+      historyCompressAfter: historyCompressAfter ?? DEFAULT_COMPRESS_AFTER,
+      historyKeepRecent: historyKeepRecent ?? DEFAULT_KEEP_RECENT,
       updatedAt: now,
     });
     await db.insert(chatAssistantSettings).values(row).run();
@@ -77,6 +97,8 @@ export async function PATCH(request: Request) {
   if (contextToolIds !== undefined) updates.contextToolIds = contextToolIds;
   if (recentSummariesCount !== undefined) updates.recentSummariesCount = recentSummariesCount;
   if (temperature !== undefined) updates.temperature = temperature;
+  if (historyCompressAfter !== undefined) updates.historyCompressAfter = historyCompressAfter;
+  if (historyKeepRecent !== undefined) updates.historyKeepRecent = historyKeepRecent;
 
   await db
     .update(chatAssistantSettings)

@@ -17,6 +17,9 @@ export async function POST(request: Request) {
     title,
     rating: null,
     note: null,
+    summary: null,
+    lastUsedProvider: null,
+    lastUsedModel: null,
     createdAt: Date.now(),
   })).run();
   return json({ id, title });

@@ -94,7 +94,12 @@ export class NodeAgentExecutor {
         case "llm": {
           const llmConfigId = (p.llmConfigId as string) ?? definition.defaultLlmConfigId;
           const systemPrompt = String(p.systemPrompt ?? "").trim();
-          const userContent = typeof lastOutput === "string" ? lastOutput : JSON.stringify(lastOutput ?? "");
+          let userContent = typeof lastOutput === "string" ? lastOutput : JSON.stringify(lastOutput ?? "");
+          const ragBlock = context.ragBlock ?? "";
+          const toolInstructionsBlock = context.toolInstructionsBlock ?? "";
+          if (ragBlock || toolInstructionsBlock) {
+            userContent = [ragBlock, toolInstructionsBlock].filter(Boolean).join("\n\n") + (userContent ? "\n\n" + userContent : "");
+          }
           const tools = (definition.toolIds ?? []).length > 0 ? context.availableTools : undefined;
           lastOutput = await runLLMWithDecisionLayer(context, {
             llmConfigId,
@@ -114,7 +119,12 @@ export class NodeAgentExecutor {
             ? await context.buildToolsForIds(nodeToolIds)
             : (nodeToolIds.length > 0 && context.availableTools ? context.availableTools : undefined);
           const systemPrompt = String(p.systemPrompt ?? "").trim();
-          const userContent = typeof lastOutput === "string" ? lastOutput : JSON.stringify(lastOutput ?? "");
+          let userContent = typeof lastOutput === "string" ? lastOutput : JSON.stringify(lastOutput ?? "");
+          const ragBlock = context.ragBlock ?? "";
+          const toolInstructionsBlock = context.toolInstructionsBlock ?? "";
+          if (ragBlock || toolInstructionsBlock) {
+            userContent = [ragBlock, toolInstructionsBlock].filter(Boolean).join("\n\n") + (userContent ? "\n\n" + userContent : "");
+          }
           lastOutput = await runLLMWithDecisionLayer(context, {
             llmConfigId,
             messages: [

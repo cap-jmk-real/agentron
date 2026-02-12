@@ -17,6 +17,7 @@ type Workflow = {
   executionMode: string;
   schedule?: string;
   maxRounds?: number | null;
+  turnInstruction?: string | null;
 };
 
 type Agent = { id: string; name: string };
@@ -100,6 +101,7 @@ export default function WorkflowDetailPage() {
   const [mode, setMode] = useState("one_time");
   const [schedule, setSchedule] = useState("");
   const [maxRounds, setMaxRounds] = useState<string>("");
+  const [turnInstruction, setTurnInstruction] = useState("");
   const [saving, setSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -200,6 +202,7 @@ export default function WorkflowDetailPage() {
         setCalendarDailyTime(cal.dailyTime);
         setCalendarWeeklyDays(cal.weeklyDays.length ? cal.weeklyDays : [1]);
         setMaxRounds(data.maxRounds != null ? String(data.maxRounds) : "");
+        setTurnInstruction(data.turnInstruction ?? "");
         setNodes(JSON.stringify(data.nodes ?? [], null, 2));
         setEdges(JSON.stringify(data.edges ?? [], null, 2));
       })
@@ -244,6 +247,7 @@ export default function WorkflowDetailPage() {
         executionMode: mode,
         schedule: scheduleToSave || undefined,
         maxRounds: maxRounds.trim() === "" ? undefined : Math.max(1, parseInt(maxRounds, 10) || 1),
+        turnInstruction: turnInstruction.trim() || undefined,
         nodes: parsedNodes,
         edges: parsedEdges,
       }),
@@ -471,6 +475,20 @@ export default function WorkflowDetailPage() {
           />
           <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", margin: "0.25rem 0 0 0" }}>
             When nodes are connected in a circle (e.g. Agent A → Agent B → Agent A), set this to avoid endless loops. Leave empty for linear workflows.
+          </p>
+        </div>
+        <div className="field">
+          <label>Turn instruction (for multi-agent conversations)</label>
+          <textarea
+            className="input"
+            value={turnInstruction}
+            onChange={(e) => setTurnInstruction(e.target.value)}
+            placeholder="e.g. Reply directly to what the partner just said; do not give a disconnected monologue."
+            rows={2}
+            style={{ resize: "vertical" }}
+          />
+          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", margin: "0.25rem 0 0 0" }}>
+            Optional. Shown at the start of each agent turn so they reply to each other instead of monologuing. Leave empty for no instruction.
           </p>
         </div>
       </div>

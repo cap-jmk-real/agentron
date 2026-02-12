@@ -10,11 +10,15 @@ export async function GET() {
 
 /** Build extra for storage: include apiKey when provided from the UI (never sent to client). */
 function buildExtraForStorage(payload: Record<string, unknown>): Record<string, unknown> | undefined {
-  const { apiKey, rateLimit, extra: rawExtra } = payload;
+  const { apiKey, rateLimit, contextLength, extra: rawExtra } = payload;
   const extraObj = (rawExtra && typeof rawExtra === "object" && !Array.isArray(rawExtra)) ? rawExtra as Record<string, unknown> : {};
   const { apiKey: _drop, ...safeExtra } = extraObj;
   const out: Record<string, unknown> = { ...safeExtra };
   if (rateLimit != null) out.rateLimit = rateLimit;
+  if (contextLength != null && contextLength !== "") {
+    const n = typeof contextLength === "number" ? contextLength : parseInt(String(contextLength), 10);
+    if (Number.isInteger(n) && n > 0) out.contextLength = n;
+  }
   const keyFromPayload = apiKey != null ? String(apiKey).trim() : "";
   if (keyFromPayload) out.apiKey = keyFromPayload;
   return Object.keys(out).length ? out : undefined;

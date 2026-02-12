@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Copy, CheckCircle, XCircle, Clock, Loader2, MessageCircle, GitBranch } from "lucide-react";
+import { ArrowLeft, Copy, CheckCircle, XCircle, Clock, Loader2, MessageCircle, GitBranch, Square } from "lucide-react";
 import { openChatWithContext } from "../../components/chat-wrapper";
 
 type ExecutionTraceStep = {
@@ -42,6 +42,32 @@ type Run = {
     [k: string]: unknown;
   } | null;
 };
+
+/** Copy text to clipboard; works in insecure contexts (HTTP) via execCommand fallback. */
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall through to fallback
+  }
+  try {
+    const el = document.createElement("textarea");
+    el.value = text;
+    el.setAttribute("readonly", "");
+    el.style.position = "fixed";
+    el.style.left = "-9999px";
+    document.body.appendChild(el);
+    el.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(el);
+    return ok;
+  } catch {
+    return false;
+  }
+}
 
 /** Build a paste-ready block for the user to copy into chat for debugging. */
 function buildCopyForChatBlock(run: Run): string {
@@ -107,63 +133,41 @@ function formatValue(v: unknown): string {
   }
 }
 
-function TrailStepCard({ step, index }: { step: ExecutionTraceStep; index: number }) {
+function TrailStepCard({ step }: { step: ExecutionTraceStep; index: number }) {
   const [expanded, setExpanded] = useState(true);
   const hasInput = step.input !== undefined && step.input !== null;
   const hasOutput = step.output !== undefined && step.output !== null;
   const hasError = !!step.error;
 
   return (
-    <div
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        overflow: "hidden",
-        background: "var(--surface-muted)",
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          width: "100%",
-          padding: "0.6rem 0.75rem",
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          textAlign: "left",
-          fontSize: "0.9rem",
-        }}
-      >
-        <span style={{ fontWeight: 600, color: "var(--text-muted)", minWidth: 20 }}>#{step.order + 1}</span>
+    <div className="run-trail-step">
+      <button type="button" className="run-trail-step-header" onClick={() => setExpanded(!expanded)}>
+        <span className="run-trail-step-num">#{step.order + 1}</span>
         {step.round !== undefined && (
-          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", background: "var(--surface)", padding: "0.1rem 0.35rem", borderRadius: 4 }}>Round {step.round + 1}</span>
+          <span className="run-trail-step-round">Round {step.round + 1}</span>
         )}
-        <span style={{ fontWeight: 600 }}>{step.agentName}</span>
-        <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>({step.nodeId})</span>
-        {hasError && <span style={{ color: "var(--resource-red)", fontSize: "0.8rem" }}>— Error</span>}
+        <span className="run-trail-step-name">{step.agentName}</span>
+        <span className="run-trail-step-node">({step.nodeId})</span>
+        {hasError && <span className="run-trail-step-error-badge">— Error</span>}
       </button>
       {expanded && (
-        <div style={{ padding: "0 0.75rem 0.75rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <div className="run-trail-step-body">
           {hasInput && (
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.2rem" }}>Input</div>
-              <pre style={{ margin: 0, padding: "0.5rem", background: "var(--surface)", borderRadius: 6, fontSize: "0.8rem", overflow: "auto", maxHeight: 200 }}>{formatValue(step.input)}</pre>
+              <div className="run-trail-step-field-label">Input</div>
+              <pre className="run-trail-step-pre">{formatValue(step.input)}</pre>
             </div>
           )}
           {hasOutput && (
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.2rem" }}>Output</div>
-              <pre style={{ margin: 0, padding: "0.5rem", background: "var(--surface)", borderRadius: 6, fontSize: "0.8rem", overflow: "auto", maxHeight: 200 }}>{formatValue(step.output)}</pre>
+              <div className="run-trail-step-field-label">Output</div>
+              <pre className="run-trail-step-pre">{formatValue(step.output)}</pre>
             </div>
           )}
           {hasError && (
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--resource-red)", marginBottom: "0.2rem" }}>Error</div>
-              <pre style={{ margin: 0, padding: "0.5rem", background: "var(--surface)", borderRadius: 6, fontSize: "0.8rem", overflow: "auto", color: "var(--resource-red)" }}>{step.error}</pre>
+              <div className="run-trail-step-field-label error">Error</div>
+              <pre className="run-trail-step-pre error">{step.error}</pre>
             </div>
           )}
         </div>
@@ -194,6 +198,13 @@ function StatusBadge({ status }: { status: string }) {
       </span>
     );
   }
+  if (status === "cancelled") {
+    return (
+      <span className="run-status run-status-cancelled">
+        <Square size={14} /> cancelled
+      </span>
+    );
+  }
   return (
     <span className="run-status run-status-queued">
       <Clock size={14} /> {status}
@@ -208,26 +219,31 @@ export default function RunDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [stopping, setStopping] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent?: boolean) => {
     if (!id) return;
-    setLoading(true);
-    setError(null);
+    if (!silent) setLoading(true);
+    if (!silent) setError(null);
     try {
       const res = await fetch(`/api/runs/${encodeURIComponent(id)}`, { cache: "no-store" });
       if (!res.ok) {
-        if (res.status === 404) setError("Run not found.");
-        else setError("Failed to load run.");
-        setRun(null);
+        if (!silent) {
+          if (res.status === 404) setError("Run not found.");
+          else setError("Failed to load run.");
+          setRun(null);
+        }
         return;
       }
       const data = await res.json();
       setRun(data);
     } catch {
-      setError("Failed to load run.");
-      setRun(null);
+      if (!silent) {
+        setError("Failed to load run.");
+        setRun(null);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [id]);
 
@@ -235,14 +251,41 @@ export default function RunDetailPage() {
     void load();
   }, [load]);
 
+  // Poll for updates while the run is in progress so the user sees new trail steps and output as they happen
+  useEffect(() => {
+    if (run?.status !== "running") return;
+    const interval = setInterval(() => void load(true), 1500);
+    return () => clearInterval(interval);
+  }, [run?.status, load]);
+
   const handleCopyForChat = useCallback(() => {
     if (!run) return;
     const text = buildCopyForChatBlock(run);
-    void navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+    void copyToClipboard(text).then((ok) => {
+      if (ok) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
     });
   }, [run]);
+
+  const handleStopRun = useCallback(async () => {
+    if (!id || !run || run.status !== "running") return;
+    setStopping(true);
+    try {
+      const res = await fetch(`/api/runs/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "cancelled", finishedAt: Date.now() }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRun(data);
+      }
+    } finally {
+      setStopping(false);
+    }
+  }, [id, run]);
 
   if (loading) {
     return (
@@ -281,8 +324,20 @@ export default function RunDetailPage() {
       <div className="run-detail-card">
         <div className="run-detail-section">
           <div className="run-detail-label">Status</div>
-          <div className="run-detail-value">
+          <div className="run-detail-value" style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
             <StatusBadge status={run.status} />
+            {run.status === "running" && (
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={handleStopRun}
+                disabled={stopping}
+                style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}
+              >
+                {stopping ? <Loader2 size={14} className="spin" /> : <Square size={14} />}
+                {stopping ? "Stopping…" : "Stop run"}
+              </button>
+            )}
           </div>
         </div>
         <div className="run-detail-section">

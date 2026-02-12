@@ -24,6 +24,8 @@ export const workflows = sqliteTable("workflows", {
   edges: text("edges").notNull(),
   executionMode: text("execution_mode").notNull(),
   schedule: text("schedule"),
+  maxRounds: integer("max_rounds"),
+  turnInstruction: text("turn_instruction"),
   createdAt: integer("created_at").notNull()
 });
 
@@ -78,6 +80,8 @@ export const conversations = sqliteTable("conversations", {
   rating: integer("rating"),
   note: text("note"),
   summary: text("summary"),
+  lastUsedProvider: text("last_used_provider"),
+  lastUsedModel: text("last_used_model"),
   createdAt: integer("created_at").notNull()
 });
 
@@ -87,6 +91,7 @@ export const chatMessages = sqliteTable("chat_messages", {
   role: text("role").notNull(),
   content: text("content").notNull(),
   toolCalls: text("tool_calls"),
+  llmTrace: text("llm_trace"),
   createdAt: integer("created_at").notNull()
 });
 
@@ -98,6 +103,8 @@ export const chatAssistantSettings = sqliteTable("chat_assistant_settings", {
   contextToolIds: text("context_tool_ids"),
   recentSummariesCount: integer("recent_summaries_count"),
   temperature: text("temperature"),
+  historyCompressAfter: integer("history_compress_after"),
+  historyKeepRecent: integer("history_keep_recent"),
   updatedAt: integer("updated_at").notNull()
 });
 

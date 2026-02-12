@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useMemo } from "react";
 import {
   Wrench,
   Plus,
@@ -18,6 +19,7 @@ import {
   FileText,
   Clock,
   Zap,
+  Search,
   type LucideIcon,
 } from "lucide-react";
 import ConfirmModal from "../components/confirm-modal";
@@ -66,6 +68,18 @@ export default function ToolsPage() {
   const [creating, setCreating] = useState(false);
   const [toolToDelete, setToolToDelete] = useState<ToolDef | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredTools = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return tools;
+    return tools.filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        t.id.toLowerCase().includes(q) ||
+        t.protocol.toLowerCase().includes(q)
+    );
+  }, [tools, searchQuery]);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/tools", { cache: "no-store" });
@@ -165,11 +179,25 @@ export default function ToolsPage() {
         </form>
       </div>
 
+      {!loading && tools.length > 0 && (
+        <div className="tools-page-search-wrap">
+          <Search size={18} className="tools-page-search-icon" aria-hidden />
+          <input
+            type="search"
+            className="tools-page-search-input"
+            placeholder="Search tools by name, id, or protocol…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+      )}
+
       {loading ? (
         <p style={{ color: "var(--text-muted)", marginTop: "1rem" }}>Loading tools...</p>
       ) : (
         <ul className="tools-grid" style={{ marginTop: "1.25rem" }}>
-          {tools.map((tool) => {
+          {filteredTools.map((tool) => {
             const { Icon, theme } = getToolIconAndTheme(tool);
             const themeClass = theme ? `tools-grid-card-${theme}` : "";
             const isStandard = tool.id.startsWith("std-");

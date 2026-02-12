@@ -10,6 +10,8 @@ type ChatSettings = {
   contextToolIds: string[] | null;
   recentSummariesCount: number | null;
   temperature: number | null;
+  historyCompressAfter: number | null;
+  historyKeepRecent: number | null;
 };
 
 type Resource = { id: string; name: string };
@@ -35,6 +37,8 @@ export default function ChatSettingsPanel({ open, onClose, onRefreshed }: Props)
   const [useAllContext, setUseAllContext] = useState(true);
   const [recentSummariesCount, setRecentSummariesCount] = useState(3);
   const [temperature, setTemperature] = useState(0.7);
+  const [historyCompressAfter, setHistoryCompressAfter] = useState(24);
+  const [historyKeepRecent, setHistoryKeepRecent] = useState(16);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,6 +59,8 @@ export default function ChatSettingsPanel({ open, onClose, onRefreshed }: Props)
       setRecentSummariesCount(typeof s.recentSummariesCount === "number" ? Math.min(10, Math.max(1, s.recentSummariesCount)) : 3);
       const t = typeof s.temperature === "number" ? Math.min(2, Math.max(0, s.temperature)) : 0.7;
       setTemperature(Number.isNaN(t) ? 0.7 : t);
+      setHistoryCompressAfter(typeof s.historyCompressAfter === "number" ? Math.min(200, Math.max(10, s.historyCompressAfter)) : 24);
+      setHistoryKeepRecent(typeof s.historyKeepRecent === "number" ? Math.min(100, Math.max(5, s.historyKeepRecent)) : 16);
 
       const agentsData = await agentsRes.json();
       const workflowsData = await workflowsRes.json();
@@ -220,6 +226,45 @@ export default function ChatSettingsPanel({ open, onClose, onRefreshed }: Props)
                 type="button"
                 className="chat-settings-btn chat-settings-btn-secondary"
                 onClick={() => save({ temperature })}
+                disabled={saving}
+              >
+                Save
+              </button>
+            </div>
+          </section>
+
+          <section className="chat-settings-section">
+            <h3>Conversation history compression</h3>
+            <p className="chat-settings-hint">
+              When a chat has more than this many messages, older ones are summarized so the assistant keeps context without exceeding limits. Keep recent: how many of the latest messages to leave in full. Compress after should be greater than keep recent. Defaults: 24 and 16.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                <span style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>Compress after</span>
+                <input
+                  type="number"
+                  min={10}
+                  max={200}
+                  value={historyCompressAfter}
+                  onChange={(e) => setHistoryCompressAfter(Math.min(200, Math.max(10, parseInt(e.target.value, 10) || 24)))}
+                  style={{ width: "4rem", padding: "0.35rem" }}
+                />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                <span style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>Keep recent</span>
+                <input
+                  type="number"
+                  min={5}
+                  max={100}
+                  value={historyKeepRecent}
+                  onChange={(e) => setHistoryKeepRecent(Math.min(100, Math.max(5, parseInt(e.target.value, 10) || 16)))}
+                  style={{ width: "4rem", padding: "0.35rem" }}
+                />
+              </label>
+              <button
+                type="button"
+                className="chat-settings-btn chat-settings-btn-secondary"
+                onClick={() => save({ historyCompressAfter, historyKeepRecent })}
                 disabled={saving}
               >
                 Save

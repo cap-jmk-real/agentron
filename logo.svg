@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+  <defs>
+    <linearGradient id="agentron-shine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+  </defs>
+  <!-- A shape: apex, left leg, crossbar cutout, right leg -->
+  <path
+    fill="url(#agentron-shine)"
+    d="M32 6 L14 54 L22 54 L28 38 L36 38 L42 54 L50 54 Z"
+  />
+  <!-- Circuit node on crossbar -->
+  <circle cx="32" cy="38" r="4" fill="white"/>
+  <circle cx="32" cy="38" r="2" fill="#4f46e5"/>
+</svg>

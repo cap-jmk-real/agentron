@@ -21,7 +21,8 @@ export class WorkflowEngine {
     const hasEdges = edges.length > 0;
 
     if (hasEdges && maxRounds != null) {
-      // Edge-based execution: follow edges in a cycle for at most maxRounds full rounds
+      // Edge-based execution: follow edges in a cycle for at most maxRounds full rounds.
+      // One round = one full cycle (each node in the loop runs once). E.g. 2-agent loop with maxRounds 3 = 6 steps (3 per agent).
       const nextMap = new Map<string, string>();
       for (const e of edges) {
         const edge = e as { source?: string; target?: string; from?: string; to?: string };

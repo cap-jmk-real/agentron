@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { ChevronRight, CheckCircle, XCircle, Clock, Loader2 } from "lucide-react";
+import { ChevronRight, CheckCircle, XCircle, Clock, Loader2, Square } from "lucide-react";
 
 type Run = {
   id: string;
@@ -34,6 +34,13 @@ function StatusBadge({ status }: { status: string }) {
     return (
       <span className="run-status run-status-running">
         <Loader2 size={14} className="spin" /> {status}
+      </span>
+    );
+  }
+  if (status === "cancelled") {
+    return (
+      <span className="run-status run-status-cancelled">
+        <Square size={14} /> cancelled
       </span>
     );
   }

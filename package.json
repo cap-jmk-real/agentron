@@ -7,7 +7,7 @@
     "apps/*"
   ],
   "scripts": {
-    "dev:ui": "npm --workspace packages/ui run dev",
+    "dev:ui": "npx next dev packages/ui",
     "build:ui": "npm --workspace packages/ui run build",
     "lint:ui": "npm --workspace packages/ui run lint",
     "typecheck": "npm --workspaces --if-present run typecheck",

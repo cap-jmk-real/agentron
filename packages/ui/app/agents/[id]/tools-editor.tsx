@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Check, Plus, Wrench, RefreshCw } from "lucide-react";
+import { useEffect, useState, useMemo } from "react";
+import { Check, Plus, Wrench, RefreshCw, Search } from "lucide-react";
 
 type ToolDef = {
   id: string;
@@ -34,6 +34,7 @@ export default function ToolsEditor({ agentId, definition, onDefinitionChange }:
   const [newName, setNewName] = useState("");
   const [newProtocol, setNewProtocol] = useState("native");
   const [creating, setCreating] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const connectedIds = new Set(definition.toolIds ?? []);
 
@@ -87,7 +88,32 @@ export default function ToolsEditor({ agentId, definition, onDefinitionChange }:
   };
 
   const connected = allTools.filter((t) => connectedIds.has(t.id));
-  const available = allTools.filter((t) => !connectedIds.has(t.id));
+  const availableAll = allTools.filter((t) => !connectedIds.has(t.id));
+  const searchLower = searchQuery.trim().toLowerCase();
+  const available = useMemo(
+    () =>
+      !searchLower
+        ? availableAll
+        : availableAll.filter(
+            (t) =>
+              t.name.toLowerCase().includes(searchLower) ||
+              t.id.toLowerCase().includes(searchLower) ||
+              (t.protocol && t.protocol.toLowerCase().includes(searchLower))
+          ),
+    [availableAll, searchLower]
+  );
+  const connectedFiltered = useMemo(
+    () =>
+      !searchLower
+        ? connected
+        : connected.filter(
+            (t) =>
+              t.name.toLowerCase().includes(searchLower) ||
+              t.id.toLowerCase().includes(searchLower) ||
+              (t.protocol && t.protocol.toLowerCase().includes(searchLower))
+          ),
+    [connected, searchLower]
+  );
 
   if (loading) {
     return (
@@ -160,13 +186,25 @@ export default function ToolsEditor({ agentId, definition, onDefinitionChange }:
         </div>
       )}
 
+      <div className="agent-tools-search-wrap">
+        <Search size={18} className="agent-tools-search-icon" aria-hidden />
+        <input
+          type="search"
+          className="agent-tools-search-input"
+          placeholder="Search tools by name, id, or protocol…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          autoComplete="off"
+        />
+      </div>
+
       {connected.length > 0 && (
         <>
           <div className="section-label" style={{ marginTop: "0.25rem" }}>
-            Connected ({connected.length})
+            Connected ({connectedFiltered.length}{searchQuery.trim() ? ` of ${connected.length}` : ""})
           </div>
           <div className="tool-grid" style={{ marginBottom: "1rem" }}>
-            {connected.map((tool) => (
+            {connectedFiltered.map((tool) => (
               <div
                 key={tool.id}
                 className="tool-card tool-connected"
@@ -189,7 +227,7 @@ export default function ToolsEditor({ agentId, definition, onDefinitionChange }:
       )}
 
       <div className="section-label">
-        Available Tools ({available.length})
+        Available Tools ({available.length}{searchQuery.trim() ? ` of ${availableAll.length}` : ""})
       </div>
       {available.length === 0 && connected.length === 0 ? (
         <div className="empty-state">
@@ -201,7 +239,7 @@ export default function ToolsEditor({ agentId, definition, onDefinitionChange }:
         </div>
       ) : available.length === 0 ? (
         <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: "0.25rem 0" }}>
-          All available tools are connected.
+          {searchQuery.trim() ? "No tools match your search." : "All available tools are connected."}
         </p>
       ) : (
         <div className="tool-grid">

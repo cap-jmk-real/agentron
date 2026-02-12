@@ -2,14 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Workflow, Code, MessageSquare, Wrench, Brain, ShieldCheck, Save, Trash2, BarChart3, BookOpen, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowLeft, Workflow, MessageSquare, Wrench, ShieldCheck, Save, Trash2, BarChart3, BookOpen, ChevronDown, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import ConfirmModal from "../../components/confirm-modal";
 import AgentCanvas from "./agent-canvas";
-import CodeEditor from "./code-editor";
 import PromptsEditor from "./prompts-editor";
 import ToolsEditor from "./tools-editor";
-import LlmSettings from "./llm-settings";
 import FeedbackPanel from "./feedback-panel";
 
 type AgentDefinition = {
@@ -46,11 +44,9 @@ type Collection = { id: string; name: string; scope: string };
 const tabs = [
   { id: "prompts", label: "Prompts", icon: MessageSquare },
   { id: "tools", label: "Tools", icon: Wrench },
-  { id: "llm", label: "LLM", icon: Brain },
+  { id: "visual", label: "Visual", icon: Workflow },
   { id: "knowledge", label: "Knowledge", icon: BookOpen },
   { id: "feedback", label: "Feedback", icon: BarChart3 },
-  { id: "visual", label: "Visual", icon: Workflow },
-  { id: "code", label: "Code", icon: Code },
   { id: "permissions", label: "Permissions", icon: ShieldCheck },
 ] as const;
 
@@ -136,6 +132,13 @@ export default function AgentDetailPage() {
       const parsedEdges = JSON.parse(graphEdgesStr);
       if (Array.isArray(parsedNodes) && Array.isArray(parsedEdges)) {
         defToSave = { ...definition, graph: { nodes: parsedNodes, edges: parsedEdges } };
+        const firstLlmNode = (parsedNodes as { parameters?: { llmConfigId?: string } }[]).find(
+          (n) => n.parameters?.llmConfigId
+        );
+        const firstLlmId = firstLlmNode?.parameters?.llmConfigId;
+        if (firstLlmId) {
+          (defToSave as { defaultLlmConfigId?: string }).defaultLlmConfigId = firstLlmId;
+        }
       }
     } catch {
       // Keep definition as is if JSON is invalid
@@ -232,18 +235,9 @@ export default function AgentDetailPage() {
 
       <div className="card" style={{ marginBottom: "1rem" }}>
         <div className="form" style={{ maxWidth: "100%" }}>
-          <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "1fr 1fr" }}>
-            <div className="field">
-              <label>Name</label>
-              <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Kind</label>
-              <select className="select" value={kind} onChange={(e) => setKind(e.target.value)}>
-                <option value="node">node (visual)</option>
-                <option value="code">code</option>
-              </select>
-            </div>
+          <div className="field" style={{ maxWidth: "24rem" }}>
+            <label>Name</label>
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="field">
             <label>Description</label>
@@ -288,7 +282,6 @@ export default function AgentDetailPage() {
       <div className="tab-content">
         {activeTab === "prompts" && <PromptsEditor agentId={agentId} definition={definition} onDefinitionChange={setDefinition} />}
         {activeTab === "tools" && <ToolsEditor agentId={agentId} definition={definition} onDefinitionChange={setDefinition} />}
-        {activeTab === "llm" && <LlmSettings agentId={agentId} agent={agent} onUpdate={setAgent} />}
         {activeTab === "knowledge" && (
           <div className="card">
             <h3 style={{ margin: "0 0 0.5rem" }}>RAG / Knowledge</h3>
@@ -331,7 +324,7 @@ export default function AgentDetailPage() {
             <div className="canvas-card-header">
               <h3 className="canvas-card-header-title">Agent graph</h3>
               <p className="canvas-card-header-desc">
-                Add LLM, tool, and context nodes. Connect them to define execution flow. Customize tools per-node without changing the library.
+                Add tools (LLM, Input, Output, Decision, Context, and library tools). Connect them to define execution flow. Customize each tool without changing the library.
               </p>
             </div>
             <AgentCanvas
@@ -400,7 +393,7 @@ export default function AgentDetailPage() {
             {showGraphJson && (
               <>
                 <div className="field">
-                  <label>Nodes (JSON)</label>
+                  <label>Graph / tools (JSON)</label>
                   <textarea
                     className="textarea"
                     rows={8}
@@ -424,7 +417,6 @@ export default function AgentDetailPage() {
           </div>
           </>
         )}
-        {activeTab === "code" && <CodeEditor agentId={agentId} definition={definition} onDefinitionChange={setDefinition} />}
         {activeTab === "permissions" && (
           <div className="card">
             <h3 style={{ margin: "0 0 0.25rem" }}>Scopes &amp; Permissions</h3>

@@ -3,15 +3,21 @@ import {
   db, agents, workflows, tools, llmConfigs, executions, files, sandboxes, customFunctions, feedback, conversations, chatMessages, chatAssistantSettings, assistantMemory, fromChatAssistantSettingsRow, toChatAssistantSettingsRow, fromAssistantMemoryRow, toAssistantMemoryRow,
   tokenUsage, modelPricing, remoteServers, toTokenUsageRow,
   fromAgentRow, fromWorkflowRow, fromToolRow, fromLlmConfigRow, fromLlmConfigRowWithSecret, fromFeedbackRow, fromFileRow, fromSandboxRow, fromModelPricingRow,
-  toAgentRow, toWorkflowRow, toToolRow, toCustomFunctionRow, toSandboxRow, toChatMessageRow, toConversationRow,
+  toAgentRow, toWorkflowRow, toToolRow, toCustomFunctionRow, toSandboxRow, toChatMessageRow, fromChatMessageRow, toConversationRow,
   fromRemoteServerRow, toRemoteServerRow,
   ensureStandardTools,
+  executionOutputSuccess,
+  executionOutputFailure,
+  toExecutionRow,
+  fromExecutionRow,
 } from "../_lib/db";
+import { runWorkflow, RUN_CANCELLED_MESSAGE } from "../_lib/run-workflow";
 import { getDeploymentCollectionId, retrieveChunks } from "../_lib/rag";
 import type { RemoteServer } from "../_lib/db";
 import { testRemoteConnection } from "../_lib/remote-test";
 import { randomAgentName, randomWorkflowName } from "../_lib/naming";
 import { eq, asc, desc, isNotNull } from "drizzle-orm";
+import type { LLMTraceCall } from "@agentron-studio/core";
 import { runAssistant, buildFeedbackInjection, createDefaultLLMManager, resolveModelPricing, calculateCost, type StudioContext } from "@agentron-studio/runtime";
 import { PodmanManager } from "@agentron-studio/runtime";
 import type { LLMMessage, LLMResponse } from "@agentron-studio/runtime";
@@ -53,23 +59,34 @@ function normalizeChatError(
 async function rephraseAndClassify(
   userMessage: string,
   manager: ReturnType<typeof createDefaultLLMManager>,
-  llmConfig: { provider: string; model: string; endpoint?: string; apiKey?: string; apiKeyRef?: string; extra?: { apiKey?: string } }
+  llmConfig: { provider: string; model: string; endpoint?: string; apiKey?: string; apiKeyRef?: string; extra?: { apiKey?: string } },
+  opts?: { onLlmCall?: (entry: LLMTraceCall) => void }
 ): Promise<{ rephrasedPrompt: string | undefined; wantsRetry: boolean }> {
   const trimmed = userMessage.trim().slice(0, 2000);
   if (!trimmed) return { rephrasedPrompt: undefined, wantsRetry: false };
-  try {
-    const response = await manager.chat(llmConfig, {
-      messages: [
-        {
-          role: "system",
-          content: `You rephrase the user's message into one clear, explicit sentence that captures their intent (what they want you to do). You MUST fix any typos and small grammar errors in the rephrased sentence (e.g. "fo" -> "for", "converstion" -> "conversation", "teh" -> "the"). Keep it concise. Then say whether they are asking to RETRY or REDO their last message (i.e. run the previous user message again and give a new response). Output exactly:
+  const messages: LLMMessage[] = [
+    {
+      role: "system",
+      content: `You rephrase the user's message into one clear, explicit sentence that captures their intent (what they want you to do). You MUST fix any typos and small grammar errors in the rephrased sentence (e.g. "fo" -> "for", "converstion" -> "conversation", "teh" -> "the"). Keep it concise. Then say whether they are asking to RETRY or REDO their last message (i.e. run the previous user message again and give a new response). Output exactly:
 <rephrased>your rephrased prompt here</rephrased>
 <wants_retry>yes</wants_retry> or <wants_retry>no</wants_retry>`,
-        },
-        { role: "user", content: trimmed },
-      ],
+    },
+    { role: "user", content: trimmed },
+  ];
+  try {
+    const response = await manager.chat(llmConfig, {
+      messages,
       maxTokens: 120,
       temperature: 0.2,
+    });
+    opts?.onLlmCall?.({
+      phase: "rephrase",
+      messageCount: messages.length,
+      lastUserContent: trimmed.slice(0, 500),
+      requestMessages: messages.map((m) => ({ role: m.role, content: (typeof m.content === "string" ? m.content : "").slice(0, 800) })),
+      responseContent: (response.content ?? "").slice(0, 2000),
+      responsePreview: (response.content ?? "").slice(0, 400),
+      usage: response.usage,
     });
     const raw = response.content?.trim() ?? "";
     const wantsRetry = /<wants_retry>\s*yes\s*<\/wants_retry>/i.test(raw);
@@ -91,27 +108,30 @@ async function rephraseAndClassify(
   }
 }
 
-/** Generate a short chat title from the first user message using the configured LLM. */
+const TITLE_FALLBACK_MAX_LEN = 40;
+
+/** Generate a short chat title from the first user message using the configured LLM. Falls back to truncated message if LLM fails or returns empty. */
 async function generateConversationTitle(
   firstMessage: string,
   manager: ReturnType<typeof createDefaultLLMManager>,
   llmConfig: { provider: string; model: string; endpoint?: string; apiKey?: string; apiKeyRef?: string; extra?: { apiKey?: string } }
 ): Promise<string | null> {
-  const truncated = firstMessage.trim().slice(0, 400);
-  if (!truncated) return null;
+  const trimmed = firstMessage.trim();
+  if (!trimmed) return null;
+  const fallback = trimmed.slice(0, TITLE_FALLBACK_MAX_LEN).trim() + (trimmed.length > TITLE_FALLBACK_MAX_LEN ? "…" : "");
   try {
     const response = await manager.chat(llmConfig, {
       messages: [
         { role: "system", content: "Generate a very short chat title (3–6 words) for the following user message. Reply with only the title, no quotes or punctuation." },
-        { role: "user", content: truncated },
+        { role: "user", content: trimmed.slice(0, 400) },
       ],
       maxTokens: 40,
       temperature: 0.3,
     });
     const title = response.content?.trim().replace(/^["']|["']$/g, "").slice(0, 80) || null;
-    return title || null;
+    return title || fallback;
   } catch {
-    return null;
+    return fallback;
   }
 }
 
@@ -142,12 +162,80 @@ async function summarizeConversation(
   }
 }
 
+/** Compress long conversation history by summarizing older messages so context stays within limits while preserving what happened. */
+const DEFAULT_HISTORY_COMPRESS_AFTER = 24;
+const DEFAULT_HISTORY_KEEP_RECENT = 16;
+
+async function summarizeHistoryChunk(
+  messages: { role: string; content: string }[],
+  manager: ReturnType<typeof createDefaultLLMManager>,
+  llmConfig: { provider: string; model: string; endpoint?: string; apiKey?: string; apiKeyRef?: string; extra?: { apiKey?: string } }
+): Promise<string> {
+  if (messages.length === 0) return "";
+  const text = messages.map((m) => `${m.role}: ${m.content.slice(0, 400)}${m.content.length > 400 ? "…" : ""}`).join("\n");
+  const response = await manager.chat(llmConfig, {
+    messages: [
+      { role: "system", content: "Summarize this conversation segment in 3–5 short sentences. Include: what the user asked or said, what the assistant did (created/updated agents, workflows, tools; answered questions; asked for confirmation). Preserve decisions and IDs if mentioned (e.g. 'user chose OpenAI', 'workflow X was created'). No preamble." },
+      { role: "user", content: text.slice(0, 6000) },
+    ],
+    maxTokens: 300,
+    temperature: 0.2,
+  });
+  return response.content?.trim().slice(0, 800) || "Earlier messages in this conversation.";
+}
+
+/** Ensure every llm node in graphNodes has a non-empty parameters.systemPrompt; fill from fallback when missing so agent behavior is defined. */
+function ensureLlmNodesHaveSystemPrompt(
+  graphNodes: { id: string; type?: string; position: [number, number]; parameters?: Record<string, unknown> }[],
+  fallback: string | undefined
+): void {
+  const defaultPrompt = "You are a helpful assistant. Follow the user's instructions and respond clearly.";
+  const prompt = (typeof fallback === "string" && fallback.trim()) ? fallback.trim() : defaultPrompt;
+  for (const node of graphNodes) {
+    if (node.type !== "llm") continue;
+    if (!node.parameters || typeof node.parameters !== "object") node.parameters = {};
+    const current = node.parameters.systemPrompt;
+    if (typeof current !== "string" || !current.trim()) {
+      node.parameters.systemPrompt = prompt;
+    }
+  }
+}
+
 const podman = new PodmanManager();
+
+/** When the assistant only called ask_user (no other text), use the question as the chat response. */
+function getAssistantDisplayContent(
+  content: string,
+  toolResults: { name: string; args: Record<string, unknown>; result: unknown }[]
+): string {
+  if (content.trim()) return content;
+  const q = getAskUserQuestionFromToolResults(toolResults);
+  return q ?? content;
+}
+
+/** Extract ask_user question from tool results or persisted toolCalls so history retains context. */
+function getAskUserQuestionFromToolResults(
+  toolResults: { name: string; result?: unknown }[] | undefined
+): string | undefined {
+  if (!Array.isArray(toolResults)) return undefined;
+  const askUser = toolResults.find((r) => r.name === "ask_user");
+  const res = askUser?.result;
+  if (res && typeof res === "object" && res !== null && "question" in res && typeof (res as { question: unknown }).question === "string") {
+    const q = (res as { question: string }).question.trim();
+    return q || undefined;
+  }
+  return undefined;
+}
 
 async function executeTool(name: string, args: Record<string, unknown>): Promise<unknown> {
   try {
     const a = args != null && typeof args === "object" && !Array.isArray(args) ? args : {};
     switch (name) {
+    case "ask_user": {
+      const question = typeof a.question === "string" ? a.question.trim() : "";
+      const reason = typeof a.reason === "string" ? (a.reason as string).trim() : undefined;
+      return { waitingForUser: true, question: question || "Please provide the information or confirmation.", ...(reason ? { reason } : {}) };
+    }
     case "retry_last_message": {
       const allRows = await db.select().from(chatMessages).where(eq(chatMessages.conversationId, conversationId!)).orderBy(asc(chatMessages.createdAt));
       const lastUserMsg = [...allRows].reverse().find((r) => r.role === "user")?.content ?? null;
@@ -167,10 +255,12 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       const agentName = (a.name && String(a.name).trim()) ? (a.name as string) : randomAgentName();
       let toolIds = Array.isArray(a.toolIds) ? (a.toolIds as string[]).filter((x) => typeof x === "string") : undefined;
       const def: Record<string, unknown> = {};
-      if (a.systemPrompt) def.systemPrompt = a.systemPrompt;
+      const topLevelSystemPrompt = typeof a.systemPrompt === "string" && a.systemPrompt.trim() ? (a.systemPrompt as string).trim() : undefined;
+      if (topLevelSystemPrompt) def.systemPrompt = topLevelSystemPrompt;
       if (Array.isArray(a.graphNodes) && a.graphNodes.length > 0) {
         const graphNodes = a.graphNodes as { id: string; type?: string; position: [number, number]; parameters?: Record<string, unknown> }[];
         const graphEdges = (Array.isArray(a.graphEdges) ? a.graphEdges : []) as { id: string; source: string; target: string }[];
+        ensureLlmNodesHaveSystemPrompt(graphNodes, topLevelSystemPrompt ?? (def.systemPrompt as string | undefined));
         def.graph = { nodes: graphNodes, edges: graphEdges };
         if (!toolIds || toolIds.length === 0) {
           const fromGraph = graphNodes
@@ -178,9 +268,9 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
             .map((n) => (n.parameters as { toolId: string }).toolId);
           if (fromGraph.length > 0) toolIds = [...new Set(fromGraph)];
         }
-      } else if (a.systemPrompt && (a.kind as string) !== "code") {
+      } else if (topLevelSystemPrompt && (a.kind as string) !== "code") {
         const nid = `n-${crypto.randomUUID().slice(0, 8)}`;
-        def.graph = { nodes: [{ id: nid, type: "llm", position: [100, 100], parameters: { systemPrompt: a.systemPrompt } }], edges: [] };
+        def.graph = { nodes: [{ id: nid, type: "llm", position: [100, 100], parameters: { systemPrompt: topLevelSystemPrompt } }], edges: [] };
       }
       if (toolIds && toolIds.length > 0) def.toolIds = toolIds;
       const llmConfigId = a.llmConfigId as string | undefined;
@@ -243,7 +333,12 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
           existingGraph != null && typeof existingGraph === "object" && !Array.isArray(existingGraph)
             ? { nodes: Array.isArray((existingGraph as { nodes?: unknown[] }).nodes) ? (existingGraph as { nodes: unknown[] }).nodes : [], edges: Array.isArray((existingGraph as { edges?: unknown[] }).edges) ? (existingGraph as { edges: unknown[] }).edges : [] }
             : { nodes: [], edges: [] };
-        if (Array.isArray(a.graphNodes)) graph.nodes = a.graphNodes as { id: string; type?: string; position: [number, number]; parameters?: Record<string, unknown> }[];
+        if (Array.isArray(a.graphNodes)) {
+          const nodes = a.graphNodes as { id: string; type?: string; position: [number, number]; parameters?: Record<string, unknown> }[];
+          const fallback = typeof a.systemPrompt === "string" && a.systemPrompt.trim() ? (a.systemPrompt as string).trim() : (def.systemPrompt as string | undefined);
+          ensureLlmNodesHaveSystemPrompt(nodes, fallback);
+          graph.nodes = nodes;
+        }
         if (Array.isArray(a.graphEdges)) graph.edges = a.graphEdges as { id: string; source: string; target: string }[];
         def.graph = graph;
         if (!Array.isArray(a.toolIds) && Array.isArray(graph.nodes)) {
@@ -315,7 +410,7 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       const w = fromWorkflowRow(rows[0]);
       const wNodes = Array.isArray(w.nodes) ? w.nodes : [];
       const wEdges = Array.isArray(w.edges) ? w.edges : [];
-      return { id: w.id, name: w.name, executionMode: w.executionMode, nodes: wNodes, edges: wEdges, maxRounds: w.maxRounds };
+      return { id: w.id, name: w.name, executionMode: w.executionMode, nodes: wNodes, edges: wEdges, maxRounds: w.maxRounds, turnInstruction: (w as { turnInstruction?: string | null }).turnInstruction };
     }
     case "add_workflow_edges": {
       const wfId = a.id as string;
@@ -348,7 +443,10 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
           mergedEdges.push({ id, source: src, target: tgt });
         }
       }
-      await db.update(workflows).set(toWorkflowRow({ ...existing, nodes: mergedNodes, edges: mergedEdges })).where(eq(workflows.id, wfId)).run();
+      const merged = { ...existing, nodes: mergedNodes, edges: mergedEdges };
+      if (a.maxRounds != null) (merged as { maxRounds?: number }).maxRounds = Number(a.maxRounds);
+      if (a.turnInstruction !== undefined) (merged as { turnInstruction?: string | null }).turnInstruction = a.turnInstruction === null ? null : String(a.turnInstruction);
+      await db.update(workflows).set(toWorkflowRow(merged)).where(eq(workflows.id, wfId)).run();
       return { id: wfId, message: `Added ${newEdges.length} edge(s) to workflow`, nodes: mergedNodes.length, edges: mergedEdges.length };
     }
     case "create_workflow": {
@@ -375,6 +473,7 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       if (a.name != null) updated.name = String(a.name);
       if (a.executionMode != null) updated.executionMode = a.executionMode as "one_time" | "continuous" | "interval";
       if (a.maxRounds != null) updated.maxRounds = Number(a.maxRounds);
+      if (a.turnInstruction !== undefined) updated.turnInstruction = a.turnInstruction === null ? null : String(a.turnInstruction);
       if (Array.isArray(a.nodes)) {
         const normalizedNodes: { id: string; type: string; position: [number, number]; parameters: Record<string, unknown> }[] = [];
         for (let i = 0; i < a.nodes.length; i++) {
@@ -411,7 +510,7 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
         }
         updated.edges = normalizedEdges;
       }
-      const workflowPayload = { id: updated.id, name: updated.name, description: updated.description, nodes: updated.nodes ?? [], edges: updated.edges ?? [], executionMode: updated.executionMode, schedule: updated.schedule, maxRounds: updated.maxRounds };
+      const workflowPayload = { id: updated.id, name: updated.name, description: updated.description, nodes: updated.nodes ?? [], edges: updated.edges ?? [], executionMode: updated.executionMode, schedule: updated.schedule, maxRounds: updated.maxRounds, turnInstruction: updated.turnInstruction };
       await db.update(workflows).set(toWorkflowRow(workflowPayload as Parameters<typeof toWorkflowRow>[0])).where(eq(workflows.id, wfId)).run();
       const nodeList = Array.isArray(workflowPayload.nodes) ? workflowPayload.nodes : [];
       const edgeList = Array.isArray(workflowPayload.edges) ? workflowPayload.edges : [];
@@ -470,6 +569,41 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       const run = runRows[0] as { id: string; targetType: string; targetId: string; status: string; startedAt: number; finishedAt: number | null; output: string | null };
       const output = run.output ? (() => { try { return JSON.parse(run.output) as unknown; } catch { return run.output; } })() : undefined;
       return { id: run.id, targetType: run.targetType, targetId: run.targetId, status: run.status, startedAt: run.startedAt, finishedAt: run.finishedAt, output };
+    }
+    case "execute_workflow": {
+      const workflowId = a.id as string;
+      if (!workflowId) return { error: "Workflow id is required" };
+      const wfRows = await db.select().from(workflows).where(eq(workflows.id, workflowId));
+      if (wfRows.length === 0) return { error: "Workflow not found" };
+      const runId = crypto.randomUUID();
+      const run = { id: runId, targetType: "workflow", targetId: workflowId, status: "running" };
+      await db.insert(executions).values(toExecutionRow(run)).run();
+      try {
+        const onStepComplete = async (trail: Array<{ order: number; round?: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string }>, lastOutput: unknown) => {
+          const payload = executionOutputSuccess(lastOutput ?? undefined, trail);
+          await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
+        };
+        const isCancelled = async () => {
+          const rows = await db.select({ status: executions.status }).from(executions).where(eq(executions.id, runId));
+          return rows[0]?.status === "cancelled";
+        };
+        const { output, context, trail } = await runWorkflow({ workflowId, runId, onStepComplete, isCancelled });
+        const payload = executionOutputSuccess(output ?? context, trail);
+        await db.update(executions).set({ status: "completed", finishedAt: Date.now(), output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
+        const updated = await db.select().from(executions).where(eq(executions.id, runId));
+        const runResult = fromExecutionRow(updated[0]);
+        return { id: runId, workflowId, status: "completed", message: "Workflow run completed. Check Runs in the sidebar for full output and execution trail.", output: runResult.output };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const cancelled = message === RUN_CANCELLED_MESSAGE;
+        if (cancelled) {
+          await db.update(executions).set({ status: "cancelled", finishedAt: Date.now() }).where(eq(executions.id, runId)).run();
+          return { id: runId, workflowId, status: "cancelled", message: "Run was stopped by the user." };
+        }
+        const payload = executionOutputFailure(message, { message, stack: err instanceof Error ? err.stack : undefined });
+        await db.update(executions).set({ status: "failed", finishedAt: Date.now(), output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
+        return { id: runId, workflowId, status: "failed", error: message, message: `Workflow run failed: ${message}` };
+      }
     }
     case "answer_question": {
       // Pass through — the LLM already has the question in context.
@@ -599,6 +733,8 @@ export async function POST(request: Request) {
       rating: null,
       note: null,
       summary: null,
+      lastUsedProvider: null,
+      lastUsedModel: null,
       createdAt: Date.now(),
     })).run();
   }
@@ -607,13 +743,29 @@ export async function POST(request: Request) {
   const MAX_HISTORY_MESSAGES = 50;
   let history = (payload.history ?? []) as LLMMessage[];
   const existingRows = await db
-    .select({ role: chatMessages.role, content: chatMessages.content })
+    .select({ role: chatMessages.role, content: chatMessages.content, toolCalls: chatMessages.toolCalls })
     .from(chatMessages)
     .where(eq(chatMessages.conversationId, conversationId))
     .orderBy(asc(chatMessages.createdAt));
   if (existingRows.length > 0) {
     const trimmed = existingRows.length > MAX_HISTORY_MESSAGES ? existingRows.slice(-MAX_HISTORY_MESSAGES) : existingRows;
-    history = trimmed.map((r) => ({ role: r.role as "user" | "assistant" | "system", content: r.content }));
+    history = trimmed.map((r) => {
+      const role = r.role as "user" | "assistant" | "system";
+      let content = r.content ?? "";
+      // When assistant message has no content (e.g. only tool calls), use ask_user question from toolCalls so the next turn retains context (e.g. "3" → option 3).
+      if (role === "assistant" && !content.trim()) {
+        const parsed = (() => {
+          try {
+            return typeof r.toolCalls === "string" ? (JSON.parse(r.toolCalls) as { name: string; result?: unknown }[]) : undefined;
+          } catch {
+            return undefined;
+          }
+        })();
+        const question = getAskUserQuestionFromToolResults(parsed);
+        if (question) content = question;
+      }
+      return { role, content };
+    });
   }
 
   const configRows = await db.select().from(llmConfigs);
@@ -647,8 +799,8 @@ export async function POST(request: Request) {
   const feedbackItems = fbRows.map(fromFeedbackRow);
   const feedbackInjection = buildFeedbackInjection(feedbackItems.slice(-10));
 
-  // Load chat assistant settings (custom prompt, context selection, recent summaries count). Fallback to null if table missing.
-  let chatSettings: { customSystemPrompt: string | null; contextAgentIds: string[] | null; contextWorkflowIds: string[] | null; contextToolIds: string[] | null; recentSummariesCount: number | null; temperature: number | null } | null = null;
+  // Load chat assistant settings (custom prompt, context selection, recent summaries count, history compression). Fallback to null if table missing.
+  let chatSettings: { customSystemPrompt: string | null; contextAgentIds: string[] | null; contextWorkflowIds: string[] | null; contextToolIds: string[] | null; recentSummariesCount: number | null; temperature: number | null; historyCompressAfter: number | null; historyKeepRecent: number | null } | null = null;
   try {
     const settingsRows = await db.select().from(chatAssistantSettings).where(eq(chatAssistantSettings.id, "default"));
     chatSettings = settingsRows.length > 0 ? fromChatAssistantSettingsRow(settingsRows[0]) : null;
@@ -745,11 +897,60 @@ export async function POST(request: Request) {
 
   // Track token usage across all LLM calls in this request
   const usageEntries: { response: LLMResponse }[] = [];
-  const trackingCallLLM = async (req: Parameters<typeof manager.chat>[1]) => {
-    const response = await manager.chat(llmConfig, req, { source: "chat" });
-    usageEntries.push({ response });
-    return response;
-  };
+
+  /** Build a callLLM wrapper that records usage and optionally records trace + streams trace_step events. */
+  function createTrackingCallLLM(opts: {
+    pushTrace?: (entry: LLMTraceCall) => void;
+    enqueueTraceStep?: (step: { phase: string; label?: string; messageCount?: number; contentPreview?: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }) => void;
+  }) {
+    return async (req: Parameters<typeof manager.chat>[1]) => {
+      opts.enqueueTraceStep?.({ phase: "llm_request", label: "Calling assistant LLM (main step)…", messageCount: req.messages.length });
+      const response = await manager.chat(llmConfig, req, { source: "chat" });
+      usageEntries.push({ response });
+      const lastUser = [...req.messages].reverse().find((m) => m.role === "user");
+      const contentStr = typeof response.content === "string" ? response.content : "";
+      opts.pushTrace?.({
+        messageCount: req.messages.length,
+        lastUserContent: typeof lastUser?.content === "string" ? lastUser.content.slice(0, 500) : undefined,
+        requestMessages: req.messages.slice(-6).map((m) => ({
+          role: m.role,
+          content: (typeof m.content === "string" ? m.content : "").slice(0, 800),
+        })),
+        responseContent: contentStr.slice(0, 12000),
+        responsePreview: contentStr.slice(0, 400),
+        usage: response.usage,
+      });
+      opts.enqueueTraceStep?.({
+        phase: "llm_response",
+        label: "Response received",
+        contentPreview: contentStr.slice(0, 200),
+        usage: response.usage,
+      });
+      return response;
+    };
+  }
+
+  // Compress long history so the agent keeps context without exceeding token limits (thresholds from settings)
+  const historyCompressAfter = Math.max(10, Math.min(200, chatSettings?.historyCompressAfter ?? DEFAULT_HISTORY_COMPRESS_AFTER));
+  const historyKeepRecent = Math.max(5, Math.min(100, chatSettings?.historyKeepRecent ?? DEFAULT_HISTORY_KEEP_RECENT));
+  const effectiveKeepRecent = Math.min(historyKeepRecent, historyCompressAfter - 1);
+  if (history.length > historyCompressAfter) {
+    try {
+      const toSummarize = history.slice(0, history.length - effectiveKeepRecent);
+      const summary = await summarizeHistoryChunk(
+        toSummarize.map((m) => ({ role: m.role, content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) })),
+        manager,
+        llmConfig
+      );
+      history = [
+        { role: "system" as const, content: `Earlier in this conversation (summarized):\n${summary}` },
+        ...history.slice(-effectiveKeepRecent),
+      ];
+    } catch {
+      // If summarization fails, just trim to last N so we don't blow context
+      history = history.slice(-effectiveKeepRecent);
+    }
+  }
 
   const streamRequested = request.url.includes("stream=1") || request.headers.get("accept")?.includes("text/event-stream");
 
@@ -757,8 +958,32 @@ export async function POST(request: Request) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
+        const userMsg = { id: crypto.randomUUID(), role: "user" as const, content: userMessage, createdAt: Date.now(), conversationId: conversationId! };
+        let generatedTitle: string | null = null;
+        const llmTraceEntries: LLMTraceCall[] = [];
+        let rephraseTraceEntry: LLMTraceCall | null = null;
+        const enqueue = (data: object) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        };
+        const streamTrackingCallLLM = createTrackingCallLLM({
+          pushTrace: (e) => llmTraceEntries.push(e),
+          enqueueTraceStep: (step) => enqueue({ type: "trace_step", ...step }),
+        });
         try {
-          const { rephrasedPrompt, wantsRetry } = await rephraseAndClassify(userMessage, manager, llmConfig);
+          await db.insert(chatMessages).values(toChatMessageRow(userMsg)).run();
+          if (existingRows.length === 0) {
+            enqueue({ type: "trace_step", phase: "title", label: "Generating title…" });
+            generatedTitle = await generateConversationTitle(userMessage.trim().slice(0, 2000), manager, llmConfig);
+            await db.update(conversations).set({ ...(generatedTitle && { title: generatedTitle }) }).where(eq(conversations.id, conversationId!)).run();
+            enqueue({ type: "trace_step", phase: "title_done", label: "Title set" });
+          }
+
+          // High-level context preparation step (history, feedback, knowledge, studio resources)
+          enqueue({ type: "trace_step", phase: "prepare", label: "Preparing context (history, knowledge, tools)…" });
+
+          enqueue({ type: "trace_step", phase: "rephrase", label: "Rephrasing…" });
+          const { rephrasedPrompt, wantsRetry } = await rephraseAndClassify(userMessage, manager, llmConfig, { onLlmCall: (e) => { rephraseTraceEntry = e; } });
+          enqueue({ type: "trace_step", phase: "rephrase_done", label: "Rephrase done" });
           if (rephrasedPrompt != null) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "rephrased_prompt", rephrasedPrompt })}\n\n`));
           }
@@ -771,7 +996,7 @@ export async function POST(request: Request) {
           }
 
           const result = await runAssistant(history, effectiveMessage, {
-            callLLM: trackingCallLLM,
+            callLLM: streamTrackingCallLLM,
             executeTool,
             feedbackInjection: feedbackInjection || undefined,
             ragContext,
@@ -779,14 +1004,15 @@ export async function POST(request: Request) {
             attachedContext: attachedContext || undefined,
             studioContext,
             crossChatContext: crossChatContextTrimmed,
+            chatSelectedLlm: llmConfig ? { id: llmConfig.id, provider: llmConfig.provider, model: llmConfig.model } : undefined,
             systemPromptOverride,
             temperature: chatTemperature,
             onProgress: {
               onPlan(reasoning, todos) {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "plan", reasoning, todos })}\n\n`));
               },
-              onStepStart(stepIndex, todoLabel, toolName) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "step_start", stepIndex, todoLabel, toolName })}\n\n`));
+              onStepStart(stepIndex, todoLabel, toolName, subStepLabel) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "step_start", stepIndex, todoLabel, toolName, ...(subStepLabel != null && { subStepLabel }) })}\n\n`));
               },
               onToolDone(index) {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "todo_done", index })}\n\n`));
@@ -794,21 +1020,40 @@ export async function POST(request: Request) {
             },
           });
 
-          const userMsg = { id: crypto.randomUUID(), role: "user" as const, content: userMessage, createdAt: Date.now(), conversationId };
+          const planToolCall = (result.reasoning || (result.todos && result.todos.length > 0))
+            ? {
+                id: crypto.randomUUID(),
+                name: "__plan__",
+                arguments: {
+                  ...(result.reasoning ? { reasoning: result.reasoning } : {}),
+                  ...(result.todos ? { todos: result.todos } : {}),
+                  ...(result.completedStepIndices ? { completedStepIndices: result.completedStepIndices } : {}),
+                },
+              }
+            : undefined;
+          const assistantToolCalls =
+            result.toolResults.length > 0 || planToolCall
+              ? [
+                  ...result.toolResults.map((r) => ({
+                    id: crypto.randomUUID(),
+                    name: r.name,
+                    arguments: r.args,
+                    result: r.result,
+                  })),
+                  ...(planToolCall ? [planToolCall] : []),
+                ]
+              : undefined;
+          const fullLlmTrace = rephraseTraceEntry ? [rephraseTraceEntry, ...llmTraceEntries] : llmTraceEntries;
+          const displayContent = getAssistantDisplayContent(result.content, result.toolResults);
           const assistantMsg = {
             id: crypto.randomUUID(),
             role: "assistant" as const,
-            content: result.content,
-            toolCalls: result.toolResults.length > 0 ? result.toolResults.map((r) => ({
-              id: crypto.randomUUID(),
-              name: r.name,
-              arguments: r.args,
-              result: r.result,
-            })) : undefined,
+            content: displayContent || getAskUserQuestionFromToolResults(result.toolResults) || "",
+            toolCalls: assistantToolCalls,
+            llmTrace: fullLlmTrace.length > 0 ? fullLlmTrace : undefined,
             createdAt: Date.now(),
             conversationId,
           };
-          await db.insert(chatMessages).values(toChatMessageRow(userMsg)).run();
           await db.insert(chatMessages).values(toChatMessageRow(assistantMsg)).run();
           const msgCount = existingRows.length + 2;
           const convRows = await db.select({ summary: conversations.summary }).from(conversations).where(eq(conversations.id, conversationId!));
@@ -831,30 +1076,27 @@ export async function POST(request: Request) {
             }
           }
 
-          let conversationTitle: string | null = null;
-          if (history.length === 0) {
-            conversationTitle = await generateConversationTitle(effectiveMessage, manager, llmConfig);
-            if (conversationTitle) {
-              await db.update(conversations).set({ title: conversationTitle }).where(eq(conversations.id, conversationId!)).run();
-            }
-          }
+          await db.update(conversations).set({
+            lastUsedProvider: llmConfig.provider,
+            lastUsedModel: llmConfig.model,
+          }).where(eq(conversations.id, conversationId!)).run();
 
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({
             type: "done",
-            content: result.content,
+            content: displayContent,
             toolResults: result.toolResults,
             messageId: assistantMsg.id,
+            userMessageId: userMsg.id,
             conversationId,
             reasoning: result.reasoning,
             todos: result.todos,
             completedStepIndices: result.completedStepIndices,
             rephrasedPrompt,
-            ...(conversationTitle && { conversationTitle }),
+            ...(generatedTitle && { conversationTitle: generatedTitle }),
           })}\n\n`));
         } catch (err: unknown) {
           const msg = normalizeChatError(err, llmConfig ? { provider: llmConfig.provider, model: llmConfig.model, endpoint: llmConfig.endpoint } : undefined);
           try {
-            const userMsg = { id: crypto.randomUUID(), role: "user" as const, content: userMessage, createdAt: Date.now(), conversationId };
             const assistantErrorMsg = {
               id: crypto.randomUUID(),
               role: "assistant" as const,
@@ -862,9 +1104,8 @@ export async function POST(request: Request) {
               createdAt: Date.now(),
               conversationId,
             };
-            await db.insert(chatMessages).values(toChatMessageRow(userMsg)).run();
             await db.insert(chatMessages).values(toChatMessageRow(assistantErrorMsg)).run();
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", error: msg, messageId: assistantErrorMsg.id })}\n\n`));
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", error: msg, messageId: assistantErrorMsg.id, userMessageId: userMsg.id })}\n\n`));
           } catch (persistErr) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", error: msg })}\n\n`));
           }
@@ -882,11 +1123,23 @@ export async function POST(request: Request) {
     });
   }
 
+  const userMsg = { id: crypto.randomUUID(), role: "user" as const, content: userMessage, createdAt: Date.now(), conversationId: conversationId! };
+  await db.insert(chatMessages).values(toChatMessageRow(userMsg)).run();
+  let generatedTitle: string | null = null;
+  if (existingRows.length === 0) {
+    generatedTitle = await generateConversationTitle(userMessage.trim().slice(0, 2000), manager, llmConfig);
+    await db.update(conversations).set({ ...(generatedTitle && { title: generatedTitle }) }).where(eq(conversations.id, conversationId!)).run();
+  }
+
+  const llmTraceEntries: LLMTraceCall[] = [];
+  let rephraseTraceEntry: LLMTraceCall | null = null;
+  const trackingCallLLM = createTrackingCallLLM({ pushTrace: (e) => llmTraceEntries.push(e) });
+
   const trimmedForFallback = userMessage.trim().slice(0, 2000);
   let rephrasedPrompt: string | undefined;
   let effectiveMessage = trimmedForFallback;
   try {
-    const rephraseResult = await rephraseAndClassify(userMessage, manager, llmConfig);
+    const rephraseResult = await rephraseAndClassify(userMessage, manager, llmConfig, { onLlmCall: (e) => { rephraseTraceEntry = e; } });
     rephrasedPrompt = rephraseResult.rephrasedPrompt;
     effectiveMessage = rephraseResult.rephrasedPrompt ?? trimmedForFallback;
     if (rephraseResult.wantsRetry) {
@@ -904,26 +1157,46 @@ export async function POST(request: Request) {
       attachedContext: attachedContext || undefined,
       studioContext,
       crossChatContext: crossChatContextTrimmed,
+      chatSelectedLlm: llmConfig ? { id: llmConfig.id, provider: llmConfig.provider, model: llmConfig.model } : undefined,
       systemPromptOverride,
       temperature: chatTemperature,
     });
 
-    // Save messages to DB
-    const userMsg = { id: crypto.randomUUID(), role: "user" as const, content: userMessage, createdAt: Date.now(), conversationId };
+    // Save assistant message to DB (user message already saved above)
+    const planToolCall = (result.reasoning || (result.todos && result.todos.length > 0))
+      ? {
+          id: crypto.randomUUID(),
+          name: "__plan__",
+          arguments: {
+            ...(result.reasoning ? { reasoning: result.reasoning } : {}),
+            ...(result.todos ? { todos: result.todos } : {}),
+            ...(result.completedStepIndices ? { completedStepIndices: result.completedStepIndices } : {}),
+          },
+        }
+      : undefined;
+    const assistantToolCalls =
+      result.toolResults.length > 0 || planToolCall
+        ? [
+            ...result.toolResults.map((r) => ({
+              id: crypto.randomUUID(),
+              name: r.name,
+              arguments: r.args,
+              result: r.result,
+            })),
+            ...(planToolCall ? [planToolCall] : []),
+          ]
+        : undefined;
+    const fullLlmTrace = rephraseTraceEntry ? [rephraseTraceEntry, ...llmTraceEntries] : llmTraceEntries;
+    const displayContent = getAssistantDisplayContent(result.content, result.toolResults);
     const assistantMsg = {
       id: crypto.randomUUID(),
       role: "assistant" as const,
-      content: result.content,
-      toolCalls: result.toolResults.length > 0 ? result.toolResults.map((r) => ({
-        id: crypto.randomUUID(),
-        name: r.name,
-        arguments: r.args,
-        result: r.result,
-      })) : undefined,
+      content: displayContent || getAskUserQuestionFromToolResults(result.toolResults) || "",
+      toolCalls: assistantToolCalls,
+      llmTrace: fullLlmTrace.length > 0 ? fullLlmTrace : undefined,
       createdAt: Date.now(),
       conversationId,
     };
-    await db.insert(chatMessages).values(toChatMessageRow(userMsg)).run();
     await db.insert(chatMessages).values(toChatMessageRow(assistantMsg)).run();
     const msgCount = existingRows.length + 2;
     const convRowsForSummary = await db.select({ summary: conversations.summary }).from(conversations).where(eq(conversations.id, conversationId!));
@@ -948,24 +1221,22 @@ export async function POST(request: Request) {
       }
     }
 
-    let conversationTitle: string | null = null;
-    if (history.length === 0) {
-      conversationTitle = await generateConversationTitle(effectiveMessage, manager, llmConfig);
-      if (conversationTitle) {
-        await db.update(conversations).set({ title: conversationTitle }).where(eq(conversations.id, conversationId!)).run();
-      }
-    }
+    await db.update(conversations).set({
+      lastUsedProvider: llmConfig.provider,
+      lastUsedModel: llmConfig.model,
+    }).where(eq(conversations.id, conversationId!)).run();
 
     return json({
-      content: result.content,
+      content: displayContent,
       toolResults: result.toolResults,
       messageId: assistantMsg.id,
+      userMessageId: userMsg.id,
       conversationId,
       reasoning: result.reasoning,
       todos: result.todos,
       completedStepIndices: result.completedStepIndices,
       rephrasedPrompt,
-      ...(conversationTitle && { conversationTitle }),
+      ...(generatedTitle && { conversationTitle: generatedTitle }),
     });
   } catch (err: unknown) {
     const msg = normalizeChatError(err, llmConfig ? { provider: llmConfig.provider, model: llmConfig.model, endpoint: llmConfig.endpoint } : undefined);
@@ -980,12 +1251,6 @@ export async function GET(request: Request) {
     ? db.select().from(chatMessages).where(eq(chatMessages.conversationId, conversationId))
     : db.select().from(chatMessages);
   const rows = await query;
-  const messages = rows.map((r) => ({
-    id: r.id,
-    role: r.role,
-    content: r.content,
-    toolCalls: r.toolCalls ? JSON.parse(r.toolCalls) : undefined,
-    createdAt: r.createdAt,
-  }));
+  const messages = rows.map((r) => fromChatMessageRow(r));
   return json(messages);
 }

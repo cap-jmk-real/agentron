@@ -80,35 +80,43 @@ const parseJson = <T>(value?: string | null, fallback?: T): T | undefined => {
   }
 };
 
-export const toAgentRow = (agent: Agent) => ({
-  id: agent.id,
-  name: agent.name,
-  description: agent.description ?? null,
-  kind: agent.kind,
-  type: agent.type,
-  protocol: agent.protocol,
-  endpoint: agent.endpoint ?? null,
-  agentKey: agent.agentKey ?? null,
-  capabilities: JSON.stringify(agent.capabilities ?? []),
-  scopes: JSON.stringify(agent.scopes ?? []),
-  llmConfig: agent.llmConfig ? JSON.stringify(agent.llmConfig) : null,
-  definition: null,
-  createdAt: Date.now()
-});
+export const toAgentRow = (agent: Agent) => {
+  const def = (agent as Agent & { definition?: unknown }).definition;
+  return {
+    id: agent.id,
+    name: agent.name,
+    description: agent.description ?? null,
+    kind: agent.kind,
+    type: agent.type,
+    protocol: agent.protocol,
+    endpoint: agent.endpoint ?? null,
+    agentKey: agent.agentKey ?? null,
+    capabilities: JSON.stringify(agent.capabilities ?? []),
+    scopes: JSON.stringify(agent.scopes ?? []),
+    llmConfig: agent.llmConfig ? JSON.stringify(agent.llmConfig) : null,
+    definition: def != null ? JSON.stringify(def) : null,
+    createdAt: Date.now()
+  };
+};
 
-export const fromAgentRow = (row: typeof agents.$inferSelect): Agent => ({
-  id: row.id,
-  name: row.name,
-  description: row.description ?? undefined,
-  kind: row.kind as Agent["kind"],
-  type: row.type as Agent["type"],
-  protocol: row.protocol as Agent["protocol"],
-  endpoint: row.endpoint ?? undefined,
-  agentKey: row.agentKey ?? undefined,
-  capabilities: parseJson<string[]>(row.capabilities, []) ?? [],
-  scopes: parseJson(row.scopes, []) ?? [],
-  llmConfig: parseJson<LLMConfig>(row.llmConfig) ?? undefined
-});
+export const fromAgentRow = (row: typeof agents.$inferSelect): Agent => {
+  const agent: Agent & { definition?: unknown } = {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? undefined,
+    kind: row.kind as Agent["kind"],
+    type: row.type as Agent["type"],
+    protocol: row.protocol as Agent["protocol"],
+    endpoint: row.endpoint ?? undefined,
+    agentKey: row.agentKey ?? undefined,
+    capabilities: parseJson<string[]>(row.capabilities, []) ?? [],
+    scopes: parseJson(row.scopes, []) ?? [],
+    llmConfig: parseJson<LLMConfig>(row.llmConfig) ?? undefined
+  };
+  const def = parseJson<unknown>(row.definition);
+  if (def != null && typeof def === "object") agent.definition = def;
+  return agent;
+};
 
 export const toWorkflowRow = (workflow: Workflow) => ({
   id: workflow.id,
@@ -118,6 +126,8 @@ export const toWorkflowRow = (workflow: Workflow) => ({
   edges: JSON.stringify(workflow.edges ?? []),
   executionMode: workflow.executionMode,
   schedule: workflow.schedule ?? null,
+  maxRounds: (workflow as Workflow & { maxRounds?: number | null }).maxRounds ?? null,
+  turnInstruction: (workflow as Workflow & { turnInstruction?: string | null }).turnInstruction ?? null,
   createdAt: Date.now()
 });
 
@@ -128,8 +138,10 @@ export const fromWorkflowRow = (row: typeof workflows.$inferSelect): Workflow =>
   nodes: parseJson(row.nodes, []) ?? [],
   edges: parseJson(row.edges, []) ?? [],
   executionMode: row.executionMode as Workflow["executionMode"],
-  schedule: row.schedule ?? undefined
-});
+  schedule: row.schedule ?? undefined,
+  maxRounds: row.maxRounds ?? undefined,
+  turnInstruction: row.turnInstruction ?? undefined
+} as Workflow);
 
 export const toToolRow = (tool: ToolDefinition) => ({
   id: tool.id,
@@ -195,6 +207,22 @@ export const fromExecutionRow = (row: typeof executions.$inferSelect) => ({
   output: parseJson(row.output)
 });
 
+/** Payload for execution output on success (workflow/agent run). */
+function executionOutputSuccess(
+  output: unknown,
+  trail?: Array<{ order: number; round?: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string }>
+): { output: unknown; trail?: typeof trail } {
+  return { output, ...(trail != null && trail.length > 0 ? { trail } : {}) };
+}
+
+/** Payload for execution output on failure (workflow/agent run). */
+function executionOutputFailure(
+  message: string,
+  errorDetails?: Record<string, unknown>
+): { success: false; error: string; errorDetails?: Record<string, unknown> } {
+  return { success: false, error: message, ...(errorDetails ? { errorDetails } : {}) };
+}
+
 export type TaskRow = {
   id: string;
   workflowId: string;
@@ -249,6 +277,8 @@ export const toConversationRow = (c: Conversation) => ({
   rating: c.rating ?? null,
   note: c.note ?? null,
   summary: c.summary ?? null,
+  lastUsedProvider: c.lastUsedProvider ?? null,
+  lastUsedModel: c.lastUsedModel ?? null,
   createdAt: c.createdAt
 });
 
@@ -258,6 +288,8 @@ export const fromConversationRow = (row: typeof conversations.$inferSelect): Con
   rating: row.rating ?? null,
   note: row.note ?? null,
   summary: row.summary ?? null,
+  lastUsedProvider: (row as { lastUsedProvider?: string | null }).lastUsedProvider ?? null,
+  lastUsedModel: (row as { lastUsedModel?: string | null }).lastUsedModel ?? null,
   createdAt: row.createdAt
 });
 
@@ -267,17 +299,22 @@ export const toChatMessageRow = (m: ChatMessage) => ({
   role: m.role,
   content: m.content,
   toolCalls: m.toolCalls ? JSON.stringify(m.toolCalls) : null,
+  llmTrace: m.llmTrace ? JSON.stringify(m.llmTrace) : null,
   createdAt: m.createdAt
 });
 
-export const fromChatMessageRow = (row: typeof chatMessages.$inferSelect): ChatMessage => ({
-  id: row.id,
-  role: row.role as ChatMessage["role"],
-  content: row.content,
-  toolCalls: parseJson(row.toolCalls),
-  createdAt: row.createdAt,
-  conversationId: row.conversationId ?? undefined
-});
+export const fromChatMessageRow = (row: typeof chatMessages.$inferSelect): ChatMessage => {
+  const r = row as typeof row & { llmTrace?: string | null };
+  return {
+    id: row.id,
+    role: row.role as ChatMessage["role"],
+    content: row.content,
+    toolCalls: parseJson(row.toolCalls),
+    llmTrace: parseJson(r.llmTrace),
+    createdAt: row.createdAt,
+    conversationId: row.conversationId ?? undefined
+  };
+};
 
 export const toChatAssistantSettingsRow = (s: ChatAssistantSettings) => ({
   id: s.id,
@@ -287,6 +324,8 @@ export const toChatAssistantSettingsRow = (s: ChatAssistantSettings) => ({
   contextToolIds: s.contextToolIds ? JSON.stringify(s.contextToolIds) : null,
   recentSummariesCount: s.recentSummariesCount ?? null,
   temperature: s.temperature != null ? String(s.temperature) : null,
+  historyCompressAfter: s.historyCompressAfter ?? null,
+  historyKeepRecent: s.historyKeepRecent ?? null,
   updatedAt: s.updatedAt
 });
 
@@ -298,6 +337,8 @@ export const fromChatAssistantSettingsRow = (row: typeof chatAssistantSettings.$
   contextToolIds: parseJson<string[]>(row.contextToolIds),
   recentSummariesCount: row.recentSummariesCount ?? null,
   temperature: row.temperature != null ? Number(row.temperature) : null,
+  historyCompressAfter: row.historyCompressAfter ?? null,
+  historyKeepRecent: row.historyKeepRecent ?? null,
   updatedAt: row.updatedAt
 });
 
@@ -492,7 +533,7 @@ export function ensureFilesDir(): string {
   return FILES_DIR;
 }
 
-const STANDARD_TOOLS: { id: string; name: string }[] = [
+export const STANDARD_TOOLS: { id: string; name: string }[] = [
   { id: "std-fetch-url", name: "Fetch URL" },
   { id: "std-browser", name: "Browser" },
   { id: "std-run-code", name: "Run Code" },
@@ -521,3 +562,5 @@ export async function ensureStandardTools(): Promise<void> {
     existingIds.add(t.id);
   }
 }
+
+export { executionOutputSuccess, executionOutputFailure };

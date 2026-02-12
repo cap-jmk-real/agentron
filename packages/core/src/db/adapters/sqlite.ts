@@ -76,6 +76,8 @@ const SCHEMA_SQL = `
           rating integer,
           note text,
           summary text,
+          last_used_provider text,
+          last_used_model text,
           created_at integer not null
         );
         create table if not exists assistant_memory (
@@ -289,6 +291,11 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         // Column already exists
       }
       try {
+        sqlite.exec("ALTER TABLE workflows ADD COLUMN turn_instruction text");
+      } catch {
+        // Column already exists
+      }
+      try {
         sqlite.exec("ALTER TABLE sandbox_site_bindings ADD COLUMN host_port integer");
       } catch {
         // Column already exists or table missing (created with new schema)
@@ -299,12 +306,22 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         // Column already exists
       }
       try {
-        sqlite.exec("CREATE TABLE IF NOT EXISTS conversations (id text primary key, title text, rating integer, note text, summary text, created_at integer not null)");
+        sqlite.exec("CREATE TABLE IF NOT EXISTS conversations (id text primary key, title text, rating integer, note text, summary text, last_used_provider text, last_used_model text, created_at integer not null)");
       } catch {
         // Already exists
       }
       try {
         sqlite.exec("ALTER TABLE conversations ADD COLUMN summary text");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE conversations ADD COLUMN last_used_provider text");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE conversations ADD COLUMN last_used_model text");
       } catch {
         // Column already exists
       }
@@ -334,7 +351,22 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         // Column already exists
       }
       try {
+        sqlite.exec("ALTER TABLE chat_assistant_settings ADD COLUMN history_compress_after integer");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE chat_assistant_settings ADD COLUMN history_keep_recent integer");
+      } catch {
+        // Column already exists
+      }
+      try {
         sqlite.exec("ALTER TABLE rag_collections ADD COLUMN vector_store_id text");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE chat_messages ADD COLUMN llm_trace text");
       } catch {
         // Column already exists
       }

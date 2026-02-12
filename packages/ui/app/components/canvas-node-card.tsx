@@ -92,7 +92,7 @@ export function CanvasNodeCard({
               onMouseDown={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
               title="Remove"
-              aria-label="Remove node"
+              aria-label="Remove"
             >
               <Trash2 size={12} />
             </button>

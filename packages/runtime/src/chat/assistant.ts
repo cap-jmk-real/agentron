@@ -3,10 +3,14 @@ import { ASSISTANT_TOOLS, SYSTEM_PROMPT, type AssistantToolDef } from "./tools";
 
 export type ToolExecutor = (name: string, args: Record<string, unknown>) => Promise<unknown>;
 
+/** Tracking fields in tool arguments; stripped before calling the tool. */
+const TRACKING_KEYS = ["todoIndex", "subStepIndex", "subStepLabel", "completeTodo"] as const;
+
 export interface AssistantProgress {
   onPlan?(reasoning: string, todos: string[]): void;
-  /** Called before executing each tool (step index 0-based, todo label from todos[stepIndex]) */
-  onStepStart?(stepIndex: number, todoLabel: string, toolName: string): void;
+  /** Called before executing each tool (todoIndex when plan present, else step index; optional subStepLabel for multi-step todos) */
+  onStepStart?(stepIndex: number, todoLabel: string, toolName: string, subStepLabel?: string): void;
+  /** Called when a todo is marked complete (completeTodo: true) or after each tool when no plan; index = todo index. */
   onToolDone?(index: number, name: string, result: unknown): void;
 }
 
@@ -31,6 +35,8 @@ export interface AssistantOptions {
   studioContext?: StudioContext;
   /** Optional cross-chat context: stored preferences + recent conversation summaries (injected after studio context) */
   crossChatContext?: string;
+  /** Optional: LLM currently selected in the chat UI. When user says "use this one", "same as chat", or doesn't specify, use this as llmConfigId for new agents. */
+  chatSelectedLlm?: { id: string; provider: string; model: string };
   /** Optional custom system prompt override (replaces default; rag/feedback/ui/attached/studio context still appended) */
   systemPromptOverride?: string;
   /** Optional progress callbacks: onPlan before running tools, onToolDone after each tool */
@@ -95,6 +101,10 @@ export async function runAssistant(
       systemPrompt += `\n\n## Studio resources (current state)\n${parts.join("\n\n")}`;
     }
   }
+  if (options.chatSelectedLlm) {
+    const { id, provider, model } = options.chatSelectedLlm;
+    systemPrompt += `\n\n## Chat-selected LLM\nThe user has this LLM selected in the chat dropdown: id ${id} (${provider} / ${model}). When they say "use this one", "same as chat", "default", "current", or do not specify which LLM to use for new agents, use this id as llmConfigId. You may still ask to confirm ("Use ${provider} ${model} for these agents?") if there are multiple providers and the user was ambiguous.`;
+  }
   if (options.crossChatContext && options.crossChatContext.trim().length > 0) {
     systemPrompt += `\n\n## Cross-chat context (preferences and recent conversation summaries)\n${options.crossChatContext.trim()}`;
   }
@@ -132,17 +142,23 @@ export async function runAssistant(
       .filter((line) => line.length > 0);
   }
 
+  // Track which todo indices actually had a successful tool execution, so we can
+  // report completed steps based on real tool runs instead of assuming a prefix.
+  const completedTodoIndices = new Set<number>();
+
   // Notify plan before executing any tools (so UI can show reasoning + todos immediately)
   if (options.onProgress?.onPlan && (reasoning || (todos && todos.length > 0))) {
     options.onProgress.onPlan(reasoning ?? "", todos ?? []);
   }
 
   // Parse tool calls: extract JSON from <tool_call>...</tool_call> or <|tool_call_start|>...<|tool_call_end|>
+  // When todos exist, use todoIndex/completeTodo from args (multi-step per todo). Otherwise use position-based step index.
   async function extractAndRunToolCalls(
     text: string,
-    options_: { startIndex?: number; todos?: string[] } = {}
+    options_: { startIndex?: number; todos?: string[]; maxSteps?: number } = {}
   ): Promise<{ name: string; args: Record<string, unknown>; result: unknown }[]> {
-    const { startIndex = 0, todos: todosForSteps = [] } = options_;
+    const { startIndex = 0, todos: todosForSteps = [], maxSteps } = options_;
+    const useTodoIndexMode = todosForSteps.length > 0;
     const results: { name: string; args: Record<string, unknown>; result: unknown }[] = [];
     const extractBlocks = (pattern: RegExp): string[] => {
       const blocks: string[] = [];
@@ -181,13 +197,42 @@ export async function runAssistant(
         if (!name) continue;
         const rawArgs = call.arguments ?? call.args;
         const args = (rawArgs != null && typeof rawArgs === "object" && !Array.isArray(rawArgs) ? rawArgs : {}) as Record<string, unknown>;
-        const stepIndex = startIndex + index;
+        // Resolve todo index: from args when in todo-index mode, else position-based
+        let stepIndex: number;
+        let completeTodo = false;
+        let subStepLabel: string | undefined;
+        if (useTodoIndexMode) {
+          const rawTodoIndex = args.todoIndex;
+          stepIndex =
+            typeof rawTodoIndex === "number" && Number.isInteger(rawTodoIndex) && rawTodoIndex >= 0
+              ? Math.min(rawTodoIndex, todosForSteps.length - 1)
+              : startIndex + index;
+          completeTodo = args.completeTodo === true;
+          if (typeof args.subStepLabel === "string" && args.subStepLabel.trim()) subStepLabel = args.subStepLabel.trim();
+        } else {
+          stepIndex = startIndex + index;
+          if (typeof maxSteps === "number" && maxSteps >= 0 && stepIndex >= maxSteps) break;
+        }
         const todoLabel = todosForSteps[stepIndex] ?? `Step ${stepIndex + 1}`;
-        options.onProgress?.onStepStart?.(stepIndex, todoLabel, name);
-        const result = await options.executeTool(name, args);
-        results.push({ name, args, result });
-        options.onProgress?.onToolDone?.(stepIndex, name, result);
+        // Strip tracking fields so the tool implementation does not receive them
+        const argsForTool = { ...args };
+        for (const key of TRACKING_KEYS) delete argsForTool[key];
+        options.onProgress?.onStepStart?.(stepIndex, todoLabel, name, subStepLabel);
+        const result = await options.executeTool(name, argsForTool);
+        results.push({ name, args: argsForTool, result });
+        if (useTodoIndexMode) {
+          if (completeTodo && stepIndex >= 0 && stepIndex < todosForSteps.length) {
+            completedTodoIndices.add(stepIndex);
+            options.onProgress?.onToolDone?.(stepIndex, name, result);
+          }
+        } else {
+          options.onProgress?.onToolDone?.(stepIndex, name, result);
+          if (stepIndex >= 0 && stepIndex < todosForSteps.length) completedTodoIndices.add(stepIndex);
+        }
         index++;
+        if (name === "ask_user" && result != null && typeof result === "object" && (result as { waitingForUser?: boolean }).waitingForUser === true) {
+          break;
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (/malformed|json|parse/i.test(msg)) {
@@ -200,7 +245,7 @@ export async function runAssistant(
     return results;
   }
 
-  let toolResults = await extractAndRunToolCalls(rawContent, { todos: todos ?? [] });
+  let toolResults = await extractAndRunToolCalls(rawContent, { todos: todos ?? [], maxSteps: todos?.length });
 
   // If the model gave no tool calls but the user asked for action, nudge to output tool calls
   let effectiveAssistantContent = rawContent;
@@ -214,40 +259,48 @@ export async function runAssistant(
       {
         role: "user",
         content:
-          "You responded with text but did not output any <tool_call> blocks. The user asked you to perform actions (create/configure/fix agents, workflows, or tools). You MUST output the required <tool_call> blocks now so the system can execute them. Start by listing or getting current state if needed (e.g. list_workflows, get_workflow, list_agents, list_llm_providers, list_tools), then create or update as needed. Use this exact format for each call: <tool_call>{\"name\": \"tool_name\", \"arguments\": {...}}</tool_call>. Output only the tool_call blocks, one after another.",
+          "You responded with text but did not output any <tool_call> blocks. The user asked you to perform actions (create/configure/fix agents, workflows, or tools). You MUST output the required <tool_call> blocks now so the system can execute them. Start by listing or getting current state if needed (e.g. list_workflows, get_workflow, list_agents, list_llm_providers, list_tools), then create or update as needed. Use this exact format for each call: <tool_call>{\"name\": \"tool_name\", \"arguments\": {...}}</tool_call>. When you have <todos>, include \"todoIndex\" and \"completeTodo\": true in each tool's arguments. Output only the tool_call blocks, one after another.",
       },
     ];
     const nudgeResponse = await options.callLLM({
       messages: nudgeMessages,
       temperature: nudgeTemp,
     });
-    const nudgeResults = await extractAndRunToolCalls(nudgeResponse.content, { todos: todos ?? [] });
+    const nudgeResults = await extractAndRunToolCalls(nudgeResponse.content, {
+      todos: todos ?? [],
+      maxSteps: todos?.length,
+    });
     if (nudgeResults.length > 0) {
       toolResults = nudgeResults;
       effectiveAssistantContent = nudgeResponse.content;
     }
   }
 
-  // If the model output a plan but no tool calls, nudge it to output them
+  // If the model asked the user for input (ask_user with waitingForUser), do not nudge for more tool calls this turn
+  const waitingForUser = toolResults.some(
+    (r) => r.name === "ask_user" && r.result != null && typeof r.result === "object" && (r.result as { waitingForUser?: boolean }).waitingForUser === true
+  );
+
+  // If the model output a plan but not all todos are complete, nudge (unless waiting for user input)
   const expectedSteps = todos?.length ?? 0;
-  if (toolResults.length < expectedSteps && expectedSteps > 0) {
+  const todosComplete = expectedSteps > 0 && completedTodoIndices.size >= expectedSteps;
+  const shouldNudgeMissingCalls = expectedSteps > 0 && !waitingForUser && !todosComplete;
+  if (shouldNudgeMissingCalls) {
+    const toolsSummary =
+      toolResults.length > 0
+        ? "\n\nContext: tools you already ran this turn and their results:\n" +
+          toolResults.map((r) => `- ${r.name}: ${JSON.stringify(r.result)}`).join("\n")
+        : "";
     const nudgeMessages: LLMMessage[] = [
       ...messages,
       { role: "assistant", content: rawContent },
-      ...(toolResults.length > 0
-        ? [
-            {
-              role: "tool",
-              content: toolResults.map((r) => `Tool "${r.name}" returned: ${JSON.stringify(r.result)}`).join("\n"),
-            },
-          ]
-        : []),
       {
         role: "user",
         content:
-          toolResults.length === 0
-            ? "You listed steps but did not output any <tool_call> blocks. Output them now, one after another, in the same order as your steps. Use the exact format: <tool_call>{\"name\": \"create_agent\", \"arguments\": {...}}</tool_call> for each call. Do not add explanation, only the tool_call blocks."
-            : `You listed ${expectedSteps} steps but only output ${toolResults.length} tool call(s). Output the REMAINING ${expectedSteps - toolResults.length} <tool_call> blocks now (steps ${toolResults.length + 1} through ${expectedSteps}). Use the same format. Only the missing tool_call blocks.`,
+          (toolResults.length === 0
+            ? "You listed steps but did not output any <tool_call> blocks. Output them now. For each step include \"todoIndex\" (0-based) and set \"completeTodo\": true on the last tool call for that step. Use the exact format: <tool_call>{\"name\": \"create_agent\", \"arguments\": {\"todoIndex\": 0, \"completeTodo\": true, ...}}</tool_call>. Do not add explanation, only the tool_call blocks."
+            : `You listed ${expectedSteps} steps but ${completedTodoIndices.size} are marked complete (completeTodo: true). Output <tool_call> blocks for the remaining step(s). Each call must include \"todoIndex\" and set \"completeTodo\": true on the last tool for that todo. Only the missing tool_call blocks.`) +
+          toolsSummary,
       },
     ];
     const nudgeResponse = await options.callLLM({
@@ -261,42 +314,52 @@ export async function runAssistant(
     toolResults = [...toolResults, ...moreResults];
   }
 
-  // Completed steps: first N todos map to first N tool results (order assumed)
-  const completedStepIndices: number[] = [];
-  if (todos && todos.length > 0 && toolResults.length > 0) {
-    const n = Math.min(toolResults.length, todos.length);
-    for (let i = 0; i < n; i++) completedStepIndices.push(i);
-  }
+  // Completed steps: use the indices where we actually ran at least one tool
+  // mapped to a todo (i.e. stepIndex within todos length). This avoids
+  // over-marking later todos as done when additional tools run for earlier steps.
+  const completedStepIndices: number[] = Array.from(completedTodoIndices).sort((a, b) => a - b);
 
-  // Multi-round: if we got tool results, do follow-up; keep executing any new tool calls (e.g. update_agent after seeing get_agent/list_tools results)
+  // Multi-round: if we got tool results, do one follow-up to allow e.g. update_workflow after create_agent; avoid re-running creation.
   let content = effectiveAssistantContent;
-  const maxRounds = 5;
+  const maxRounds = 2;
   let round = 0;
   let lastAssistantContent = effectiveAssistantContent;
   let allToolResults = [...toolResults];
 
-  while (toolResults.length > 0 && round < maxRounds) {
-    // API requires: assistant message with tool_calls immediately followed by one tool message per call (each with tool_call_id).
-    const syntheticToolCalls = toolResults.map((r, i) => ({
-      id: `call_${round}_${i}`,
-      name: r.name,
-      arguments: typeof r.args === "string" ? r.args : JSON.stringify(r.args ?? {}),
-    }));
-    const assistantWithTools: LLMMessage = {
-      role: "assistant",
-      content: lastAssistantContent,
-      toolCalls: syntheticToolCalls,
-    };
-    const toolMessages: LLMMessage[] = toolResults.map((r, i) => ({
-      role: "tool" as const,
-      content: typeof r.result === "string" ? r.result : JSON.stringify(r.result ?? null),
-      toolCallId: syntheticToolCalls[i].id,
-    }));
+  const followUpReminderText =
+    "[System reminder: You already ran tool calls this turn. If your results above include create_workflow and create_agent ids, you MUST call update_workflow now for each such workflow: pass id (workflow id from results), nodes (one per agent with parameters.agentId = exact agent id from results), edges (e.g. n1→n2 and n2→n1 for a chat loop), and maxRounds. maxRounds = number of full cycles (one cycle = each agent speaks once): for a 2-agent chat, '3 rounds each' means maxRounds: 3 (6 steps total), NOT 6. Do NOT run create_agent or create_workflow again. After update_workflow you may call execute_workflow if the user wanted to run. If an execute_workflow result is in the results above, inspect its output.trail: if the agents' conversation does not match the user's goal (e.g. should discuss weather but did not), call update_agent (e.g. add toolIds like std-weather, tighten systemPrompt) and execute_workflow again — at most 2–3 improvement rounds total. You MUST also respond to the user in this message: briefly summarize what was done and either ask for their input or state what they can do next.]";
+
+  const followUpSummaryInstruction =
+    "You MUST respond to the user in this turn: give a short summary of what was done and either (a) ask for their input (e.g. run the workflow now? need more information?) or (b) state what they can do next. Do not end the turn without a clear message to the user.";
+
+  while (toolResults.length > 0 && round < maxRounds && !waitingForUser) {
+    // Provide prior tool results back to the model as plain text so this works with any provider,
+    // without relying on provider-specific tool-calling APIs.
+    const toolsSummary = toolResults
+      .map((r, i) => {
+        const argsText = typeof r.args === "string" ? r.args : JSON.stringify(r.args ?? {});
+        const resultText = typeof r.result === "string" ? r.result : JSON.stringify(r.result ?? null);
+        return `Tool ${i + 1}: ${r.name}\n  arguments: ${argsText}\n  result: ${resultText}`;
+      })
+      .join("\n\n");
+
+    const isFirstFollowUp = round === 0;
+    const followUpUserContent =
+      "Earlier in this turn you already ran these tool calls:\n\n" +
+      toolsSummary +
+      "\n\n" +
+      (isFirstFollowUp
+        ? "Now, based on these tool results and the user's goal, continue. " +
+          "If you created workflow(s) and agent(s) above, you MUST call update_workflow for each workflow with the exact ids from the results (nodes with agentId, edges, maxRounds). Do NOT re-run create_agent or create_workflow. "
+        : "No further tool calls are needed. ") +
+      followUpSummaryInstruction +
+      "\n\n" +
+      followUpReminderText;
 
     const followUpMessages: LLMMessage[] = [
       ...messages,
-      assistantWithTools,
-      ...toolMessages,
+      { role: "assistant", content: lastAssistantContent },
+      { role: "user", content: followUpUserContent },
     ];
 
     const followUp = await options.callLLM({
@@ -311,10 +374,10 @@ export async function runAssistant(
     toolResults = await extractAndRunToolCalls(followUp.content, {
       startIndex: allToolResults.length,
       todos: todos ?? [],
+      maxSteps: todos?.length,
     });
     for (let i = 0; i < toolResults.length; i++) {
       allToolResults.push(toolResults[i]);
-      options.onProgress?.onToolDone?.(allToolResults.length - 1, toolResults[i].name, toolResults[i].result);
     }
     round++;
   }

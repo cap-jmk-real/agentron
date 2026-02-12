@@ -1,31 +1,37 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Copy, Check, ChevronDown, ChevronUp } from "lucide-react";
 
-type Part = { type: "text"; content: string } | { type: "code"; content: string; lang?: string };
-
-function parseContent(content: string): Part[] {
-  if (!content || typeof content !== "string") return [];
-  const parts: Part[] = [];
-  const re = /```(\w*)\n?([\s\S]*?)```/g;
-  let lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(content)) !== null) {
-    if (m.index > lastIndex) {
-      const text = content.slice(lastIndex, m.index);
-      parts.push({ type: "text", content: text });
+/** Format reasoning text: split by "Task understanding:", "Approach:", "Step plan:" and render as sections. */
+export function ReasoningContent({ text }: { text: string }) {
+  const trimmed = text.trim();
+  const hasSections = /(Task understanding|Approach|Step plan)\s*:/i.test(trimmed);
+  const parts = hasSections ? trimmed.split(/(?=\s*(?:Task understanding|Approach|Step plan)\s*:)/i).filter((s) => s.trim().length > 0) : [];
+  if (!hasSections || parts.length === 0) {
+    return <p className="chat-section-plan-text" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{trimmed}</p>;
+  }
+  const items: { label: string; body: string }[] = [];
+  for (const part of parts) {
+    const m = part.trim().match(/^\s*(Task understanding|Approach|Step plan)\s*:\s*(.*)/is);
+    if (m) {
+      items.push({ label: m[1]!, body: (m[2] ?? "").trim() });
+    } else {
+      items.push({ label: "", body: part.trim() });
     }
-    parts.push({ type: "code", content: m[2].replace(/\n$/, ""), lang: m[1] || undefined });
-    lastIndex = m.index + m[0].length;
   }
-  if (lastIndex < content.length) {
-    parts.push({ type: "text", content: content.slice(lastIndex) });
-  }
-  if (parts.length === 0 && content) {
-    parts.push({ type: "text", content });
-  }
-  return parts;
+  return (
+    <div className="chat-section-reasoning-formatted">
+      {items.map((p, i) => (
+        <div key={i} className="chat-section-reasoning-section">
+          {p.label ? <strong className="chat-section-reasoning-heading">{p.label}:</strong> : null}
+          <div className="chat-section-reasoning-body" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{p.body}</div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function CodeBlock({ content, lang, className }: { content: string; lang?: string; className?: string }) {
@@ -52,76 +58,166 @@ function CodeBlock({ content, lang, className }: { content: string; lang?: strin
   );
 }
 
-/** Renders text with inline code (`code`) as spans */
-function renderTextWithInlineCode(text: string): React.ReactNode[] {
-  const nodes: React.ReactNode[] = [];
-  const re = /`([^`]+)`/g;
-  let lastIndex = 0;
-  let m: RegExpExecArray | null;
-  let key = 0;
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > lastIndex) {
-      nodes.push(<span key={key++}>{text.slice(lastIndex, m.index)}</span>);
-    }
-    nodes.push(<code key={key++} className="chat-inline-code">{m[1]}</code>);
-    lastIndex = m.index + m[0].length;
-  }
-  if (lastIndex < text.length) {
-    nodes.push(<span key={key++}>{text.slice(lastIndex)}</span>);
-  }
-  return nodes.length > 0 ? nodes : [text];
-}
-
 type Props = {
   content: string;
 };
 
 export function ChatMessageContent({ content }: Props) {
-  const parts = parseContent(content);
+  if (!content?.trim()) {
+    return <div className="chat-msg-content" />;
+  }
   return (
-    <div className="chat-msg-content">
-      {parts.map((part, i) =>
-        part.type === "text" ? (
-          <div key={i} className="chat-msg-text">
-            {renderTextWithInlineCode(part.content)}
-          </div>
-        ) : (
-          <CodeBlock key={i} content={part.content} lang={part.lang} />
-        )
-      )}
+    <div className="chat-msg-content chat-msg-content-markdown">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          pre({ children }) {
+            const codeEl = Array.isArray(children) ? children[0] : children;
+            if (React.isValidElement(codeEl) && codeEl.type === "code") {
+              const { className, children: codeChildren } = (codeEl.props ?? {}) as { className?: string; children?: unknown };
+              const lang = className?.replace(/^language-/, "");
+              return (
+                <CodeBlock content={String(codeChildren ?? "").replace(/\n$/, "")} lang={lang || undefined} />
+              );
+            }
+            return <pre>{children}</pre>;
+          },
+          code({ inline, className, children, ...props }) {
+            if (inline) {
+              return (
+                <code className="chat-inline-code" {...props}>
+                  {children}
+                </code>
+              );
+            }
+            return <>{children}</>;
+          },
+          p: ({ children }) => <p className="chat-md-p">{children}</p>,
+          ul: ({ children }) => <ul className="chat-md-ul">{children}</ul>,
+          ol: ({ children }) => <ol className="chat-md-ol">{children}</ol>,
+          li: ({ children }) => <li className="chat-md-li">{children}</li>,
+          strong: ({ children }) => <strong className="chat-md-strong">{children}</strong>,
+          a: ({ href, children }) => (
+            <a href={href} target="_blank" rel="noopener noreferrer" className="chat-md-link">
+              {children}
+            </a>
+          ),
+          h1: ({ children }) => <h3 className="chat-md-h1">{children}</h3>,
+          h2: ({ children }) => <h3 className="chat-md-h2">{children}</h3>,
+          h3: ({ children }) => <h3 className="chat-md-h3">{children}</h3>,
+        }}
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }
 
-type ToolResult = { name: string; args: Record<string, unknown>; result: unknown };
+export type ToolResult = { name: string; args: Record<string, unknown>; result: unknown };
+
+/** Returns message content, using ask_user question only when stored content is empty (avoids duplicating the question). */
+export function getAssistantMessageDisplayContent(
+  content: string,
+  toolResults?: { name: string; result?: unknown }[]
+): string {
+  const base = (content ?? "").trim();
+  if (base) return base;
+  const question = getAskUserQuestionFromToolResults(toolResults);
+  return question ?? base;
+}
+
+function getAskUserQuestionFromToolResults(
+  toolResults: { name: string; result?: unknown }[] | undefined
+): string | undefined {
+  if (!Array.isArray(toolResults)) return undefined;
+  const askUser = toolResults.find((r) => r.name === "ask_user");
+  const res = askUser?.result;
+  if (res && typeof res === "object" && res !== null && "question" in res && typeof (res as { question: unknown }).question === "string") {
+    const q = (res as { question: string }).question.trim();
+    return q || undefined;
+  }
+  return undefined;
+}
+
+function getToolResultDisplayText(result: unknown): string {
+  if (result === null || result === undefined) return "done";
+  if (typeof result === "object" && result !== null) {
+    const obj = result as Record<string, unknown>;
+    // Special-case ask_user so the chip shows the actual question instead of a generic "done".
+    if ("waitingForUser" in obj && (obj as { waitingForUser?: boolean }).waitingForUser === true && typeof obj.question === "string" && obj.question.trim()) {
+      return obj.question.trim();
+    }
+    if ("message" in obj) {
+      return String(obj.message);
+    }
+  }
+  if (typeof result === "string") return result;
+  return "done";
+}
+
+function getToolResultCopyText(result: unknown): string {
+  const display = getToolResultDisplayText(result);
+  if (display !== "done" || (typeof result === "object" && result !== null)) return display;
+  return "done";
+}
 
 export function ChatToolResults({ results }: { results: ToolResult[] }) {
+  const [copiedAll, setCopiedAll] = useState(false);
+  const copyAll = useCallback(
+    async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const text = results
+        .map((r) => `${r.name}: ${getToolResultCopyText(r.result)}`)
+        .join("\n");
+      try {
+        await navigator.clipboard.writeText(text);
+        setCopiedAll(true);
+        setTimeout(() => setCopiedAll(false), 1500);
+      } catch {}
+    },
+    [results]
+  );
+
+  const count = results.length;
   return (
-    <div className="chat-tool-results">
-      {results.map((tr, i) => (
-        <ToolResultChip key={i} name={tr.name} args={tr.args} result={tr.result} />
-      ))}
-    </div>
+    <details className="chat-tool-results">
+      <summary className="chat-tool-results-summary">
+        <span className="chat-tool-results-title">Tool results ({count})</span>
+        <button
+          type="button"
+          className="chat-tool-results-copy-all"
+          onClick={copyAll}
+          title="Copy all as text"
+        >
+          {copiedAll ? <Check size={12} /> : <Copy size={12} />}
+          {copiedAll ? " Copied" : " Copy all"}
+        </button>
+      </summary>
+      <div className="chat-tool-results-list">
+        {results.map((tr, i) => (
+          <ToolResultChip key={i} name={tr.name} args={tr.args} result={tr.result} />
+        ))}
+      </div>
+    </details>
   );
 }
 
 function ToolResultChip({ name, args, result }: { name: string; args: Record<string, unknown>; result: unknown }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
-  const displayText =
-    typeof result === "object" && result !== null && "message" in (result as Record<string, unknown>)
-      ? String((result as Record<string, unknown>).message)
-      : "done";
+  const displayText = getToolResultDisplayText(result);
   const isObject = typeof result === "object" && result !== null;
   const jsonStr = isObject ? JSON.stringify(result, null, 2) : String(result ?? "");
+  const copyText = getToolResultCopyText(result);
 
   const copy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(jsonStr);
+      await navigator.clipboard.writeText(copyText);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {}
-  }, [jsonStr]);
+  }, [copyText]);
 
   return (
     <div className="chat-tool-chip-wrap">
@@ -130,22 +226,20 @@ function ToolResultChip({ name, args, result }: { name: string; args: Record<str
           type="button"
           className="chat-tool-chip-expand"
           onClick={() => isObject && setExpanded((e) => !e)}
-          title={isObject ? "Expand / collapse" : undefined}
+          title={isObject ? "Expand / collapse JSON" : undefined}
         >
-          {name}
+          <span className="chat-tool-chip-name">{name}</span>
           <span className="chat-tool-chip-status">{displayText}</span>
           {isObject && (expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
         </button>
-        {(isObject || jsonStr.length > 0) && (
-          <button
-            type="button"
-            className="chat-tool-chip-copy"
-            onClick={copy}
-            title="Copy JSON / result"
-          >
-            {copied ? <Check size={11} /> : <Copy size={11} />}
-          </button>
-        )}
+        <button
+          type="button"
+          className="chat-tool-chip-copy"
+          onClick={copy}
+          title="Copy result text"
+        >
+          {copied ? <Check size={11} /> : <Copy size={11} />}
+        </button>
       </div>
       {expanded && isObject && (
         <CodeBlock content={jsonStr} lang="json" className="chat-tool-chip-code" />
