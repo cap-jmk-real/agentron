@@ -4,10 +4,9 @@ import { GET as agentsGet } from "../../app/api/agents/route";
 import { POST as agentsPost } from "../../app/api/agents/route";
 import { GET as runsGet } from "../../app/api/runs/route";
 import { GET as runGet, PATCH as runPatch } from "../../app/api/runs/[id]/route";
-import { GET as logsGet, POST as logsPost } from "../../app/api/runs/[id]/logs/route";
 import { GET as traceGet } from "../../app/api/runs/[id]/trace/route";
 
-describe("Runs logs API", () => {
+describe("Runs API", () => {
   let runId: string;
 
   beforeAll(async () => {
@@ -50,49 +49,6 @@ describe("Runs logs API", () => {
     expect(data.some((r: { id: string }) => r.id === runId)).toBe(true);
   });
 
-  it("GET /api/runs/:id/logs returns empty array when no logs", async () => {
-    const res = await logsGet(new Request("http://localhost/api/runs/x/logs"), {
-      params: Promise.resolve({ id: runId }),
-    });
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(Array.isArray(data)).toBe(true);
-    expect(data.length).toBe(0);
-  });
-
-  it("POST /api/runs/:id/logs appends log entries", async () => {
-    const res = await logsPost(
-      new Request("http://localhost/api/runs/x/logs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          logs: [
-            { level: "info", message: "Step started" },
-            { level: "debug", message: "Detail", payload: { key: "value" } },
-          ],
-        }),
-      }),
-      { params: Promise.resolve({ id: runId }) }
-    );
-    expect(res.status).toBe(201);
-    const data = await res.json();
-    expect(data.ok).toBe(true);
-    expect(data.count).toBe(2);
-  });
-
-  it("GET /api/runs/:id/logs returns appended logs", async () => {
-    const res = await logsGet(new Request("http://localhost/api/runs/x/logs"), {
-      params: Promise.resolve({ id: runId }),
-    });
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(Array.isArray(data)).toBe(true);
-    expect(data.length).toBe(2);
-    expect(data[0].level).toBe("info");
-    expect(data[0].message).toBe("Step started");
-    expect(data[1].payload).toEqual({ key: "value" });
-  });
-
   it("GET /api/runs/:id returns run with output when patched", async () => {
     const patchRes = await runPatch(
       new Request("http://localhost/api/runs/x", {
@@ -110,6 +66,29 @@ describe("Runs logs API", () => {
     const run = await getRes.json();
     expect(run.output).toEqual({ result: "ok" });
     expect(run.status).toBe("completed");
+  });
+
+  it("GET /api/runs/:id returns 404 for unknown id", async () => {
+    const res = await runGet(new Request("http://localhost/api/runs/x"), {
+      params: Promise.resolve({ id: "non-existent-run-id-12345" }),
+    });
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe("Not found");
+  });
+
+  it("PATCH /api/runs/:id returns 400 for invalid JSON body", async () => {
+    const res = await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: "not valid json",
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBeDefined();
   });
 
   it("GET /api/runs/:id/trace returns 404 for non-existent run", async () => {

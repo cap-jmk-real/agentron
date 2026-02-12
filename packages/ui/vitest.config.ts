@@ -17,6 +17,8 @@ export default defineConfig({
         "**/__tests__/**",
         "**/node_modules/**",
         "**/*.d.ts",
+        // Chat POST handler is LLM/runtime-heavy; covered by integration/E2E. See __tests__/README.md.
+        "**/api/chat/route.ts",
       ],
     },
   },

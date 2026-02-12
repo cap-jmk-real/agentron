@@ -1,5 +1,6 @@
 import { json } from "../../_lib/response";
 import { db } from "../../_lib/db";
+import { getMaxFileUploadBytes, formatMaxFileUploadMb } from "../../_lib/app-settings";
 import { ragCollections, ragDocuments, ragDocumentStores } from "@agentron-studio/core";
 import { eq } from "drizzle-orm";
 import path from "node:path";
@@ -32,9 +33,9 @@ export async function POST(request: Request) {
     return json({ error: "No file provided" }, { status: 400 });
   }
 
-  const MAX_SIZE = 50 * 1024 * 1024; // 50MB
-  if (file.size > MAX_SIZE) {
-    return json({ error: "File too large (max 50MB)" }, { status: 413 });
+  const maxBytes = getMaxFileUploadBytes();
+  if (file.size > maxBytes) {
+    return json({ error: `File too large (max ${formatMaxFileUploadMb(maxBytes)})` }, { status: 413 });
   }
 
   let collectionId = (formData.get("collectionId") as string) || (await getDeploymentCollectionId());

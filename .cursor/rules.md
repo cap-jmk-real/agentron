@@ -195,24 +195,23 @@ After modifying code, **always run the relevant build(s)** to catch and fix pote
 
 - **Never create or push tags unless the user explicitly asks for a release.**
 
+- **Before a push that will become a release:** Bump the version using the release script, then commit, tag, and push.
+
 - **When preparing a release (vX.Y.Z):**
-  1. **Choose a semantic version** (X.Y.Z):
-     - **Major (X)**: breaking changes
-     - **Minor (Y)**: new features, backwards compatible
-     - **Patch (Z)**: bug fixes or small improvements
-  2. **Update all relevant `version` fields** to `X.Y.Z` (no `v` prefix):
-     - `package.json` (root)
-     - `apps/desktop/package.json`
-     - `apps/docs/package.json`
-  3. **Run tests and builds** before tagging:
-     - `npm test` (or the project’s test command)
+  1. **Bump version** (updates root, `apps/desktop`, `apps/docs`):
+     - Patch (bug fixes): `npm run release:bump` or `npm run release:bump -- patch`
+     - Minor (new features): `npm run release:bump -- minor`
+     - Major (breaking): `npm run release:bump -- major`
+  2. **Run tests and builds** before tagging:
+     - `npm test`
      - `npm run build:ui`
      - `npm run build:docs`
-  4. **Commit the version bumps** with a clear message, e.g. `chore(release): vX.Y.Z`
-  5. **Create an annotated tag** matching the version: `git tag -a vX.Y.Z -m "vX.Y.Z"`
-  6. **Push branch and tag** only when the user asks: `git push origin <branch>` then `git push origin vX.Y.Z`
+     - Or use `npm run release:prepare` (bump patch + test + UI build + docs build)
+  3. **Commit the version bumps** with a clear message: `git add -A && git commit -m "chore(release): vX.Y.Z"`
+  4. **Create an annotated tag** matching the version: `git tag -a vX.Y.Z -m "vX.Y.Z"`
+  5. **Push branch and tag** only when the user asks: `git push origin <branch>` then `git push origin vX.Y.Z`
 
-- **Consistency:** Do **not** create a `vX.Y.Z` tag if any of the above `package.json` files still have a different `version`. Align versions first.
+- **Consistency:** Do **not** create a `vX.Y.Z` tag if any of the above `package.json` files still have a different `version`. The `release:bump` script keeps them aligned.
 
 - **CI:** Pushing a `v*` tag triggers the desktop release workflow (installers on GitHub Releases). Pushing to the default branch triggers the docs deploy to GitHub Pages.
 

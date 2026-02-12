@@ -1,5 +1,6 @@
 import { json } from "../_lib/response";
 import { db, files, toFileRow, fromFileRow, ensureFilesDir } from "../_lib/db";
+import { getMaxFileUploadBytes, formatMaxFileUploadMb } from "../_lib/app-settings";
 import path from "node:path";
 import fs from "node:fs";
 
@@ -17,9 +18,9 @@ export async function POST(request: Request) {
     return json({ error: "No file provided" }, { status: 400 });
   }
 
-  const MAX_SIZE = 50 * 1024 * 1024; // 50MB
-  if (file.size > MAX_SIZE) {
-    return json({ error: "File too large (max 50MB)" }, { status: 413 });
+  const maxBytes = getMaxFileUploadBytes();
+  if (file.size > maxBytes) {
+    return json({ error: `File too large (max ${formatMaxFileUploadMb(maxBytes)})` }, { status: 413 });
   }
 
   const id = crypto.randomUUID();

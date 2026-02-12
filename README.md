@@ -1,5 +1,11 @@
 # AgentOS Studio
 
+[![CI](https://github.com/agentron-studio/agentron/actions/workflows/ci.yml/badge.svg)](https://github.com/agentron-studio/agentron/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-50%25%2B-brightgreen)](packages/ui/__tests__/README.md)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-15-black)](https://nextjs.org/)
+[![Local-first](https://img.shields.io/badge/local--first-sqlite%20%2B%20Electron-8B5CF6)](INSTALL.md)
+
 Local-first Studio for designing and running agents. Runs as a Next.js app with an Electron wrapper.
 
 ## How to install AgentOS Studio
