@@ -15,7 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "esbuild src/main.ts --bundle --platform=node --external:electron --external:better-sqlite3 --outfile=dist/main.js && esbuild src/preload.ts --bundle --platform=node --outfile=dist/preload.js",
     "prepare-icon": "node scripts/export-icon.cjs",
-    "dist": "npm run prepare-icon && electron-builder",
+    "dist": "npm run prepare-icon && electron-builder --publish never",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
@@ -32,7 +32,6 @@
   "build": {
     "appId": "com.agentron.studio",
     "productName": "Agentron Studio",
-    "publish": "never",
     "files": [
       "dist/**",
       "package.json"
