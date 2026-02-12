@@ -1,0 +1,4 @@
+owner: cap-jmk-real
+repo: agentron
+provider: github
+updaterCacheDirName: '@agentron-studiodesktop-updater'
