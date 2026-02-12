@@ -62,6 +62,12 @@ npm --workspace packages/ui run start
 
 ## Running the desktop app (Electron)
 
+**Option A – Download a pre-built installer (recommended)**
+
+- Use the **Download** page in the documentation site (or the project’s GitHub Releases). Installers are built automatically by CI when a version tag (e.g. `v0.1.0`) is pushed. Installers for Windows, macOS, and Linux are built automatically when we push a version tag (e.g. `v0.1.0`). Pick your platform and run the installer; then start the web UI (`npm run dev:ui`) and launch the desktop app so it can connect (e.g. to `http://localhost:3000`).
+
+**Option B – Build from source**
+
 If you installed with `npm install` (full install):
 
 1. Build the UI and the desktop app:
@@ -73,7 +79,7 @@ If you installed with `npm install` (full install):
    ```
    Output is in `apps/desktop/release/`.
 
-To run the desktop app in development, you typically start the UI with `npm run dev:ui` and then run the Electron main process (see `apps/desktop` scripts).
+To run the desktop app in development, start the UI with `npm run dev:ui` and then run the Electron main process (see `apps/desktop` scripts).
 
 ---
 

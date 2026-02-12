@@ -155,8 +155,35 @@ Before presenting code, the agent asks:
 * What assumptions are encoded in tests?
 * Are critical paths protected by unit tests?
 * Are boundaries validated by integration tests?
-* Did I run the unit tests? 
+* Did I run the unit tests?
 
-## Promopt Generation 
+---
 
-* 
+## Release & Tagging Rules
+
+- **Never create or push tags unless the user explicitly asks for a release.**
+
+- **When preparing a release (vX.Y.Z):**
+  1. **Choose a semantic version** (X.Y.Z):
+     - **Major (X)**: breaking changes
+     - **Minor (Y)**: new features, backwards compatible
+     - **Patch (Z)**: bug fixes or small improvements
+  2. **Update all relevant `version` fields** to `X.Y.Z` (no `v` prefix):
+     - `package.json` (root)
+     - `apps/desktop/package.json`
+     - `apps/docs/package.json`
+  3. **Run tests and builds** before tagging:
+     - `npm test` (or the project’s test command)
+     - `npm run build:ui`
+     - `npm run build:docs`
+  4. **Commit the version bumps** with a clear message, e.g. `chore(release): vX.Y.Z`
+  5. **Create an annotated tag** matching the version: `git tag -a vX.Y.Z -m "vX.Y.Z"`
+  6. **Push branch and tag** only when the user asks: `git push origin <branch>` then `git push origin vX.Y.Z`
+
+- **Consistency:** Do **not** create a `vX.Y.Z` tag if any of the above `package.json` files still have a different `version`. Align versions first.
+
+- **CI:** Pushing a `v*` tag triggers the desktop release workflow (installers on GitHub Releases). Pushing to the default branch triggers the docs deploy to GitHub Pages.
+
+## Promopt Generation
+
+*

@@ -9,7 +9,7 @@
 | **Tools** | Native, HTTP, MCP tools | create_tool, update_tool, list_tools, get_tool |
 | **Runs** | Execute workflows/agents, inspect results | list_runs, get_run |
 | **LLM Providers** | Configure OpenAI, Anthropic, Ollama, etc. | list_llm_providers (config via Settings) |
-| **Agentron** | Natural-language chat with tool execution | Built-in; uses all assistant tools |
+| **Agentron (Chat)** | Natural-language chat that creates/edits agents, workflows, tools via tool calls | Built-in; see [Agentron (Chat)](/docs/concepts/assistant) |
 | **Sandboxes** | Podman containers for code execution | create_sandbox, execute_code |
 | **Custom Functions** | JavaScript/Python/TypeScript as tools | create_custom_function |
 | **Knowledge / RAG** | Document ingestion and retrieval | UI-based; agents can use RAG collections |
@@ -23,7 +23,7 @@
 - **Build workflows** — Connect agents, set max rounds, run multi-agent conversations
 - **Add tools** — HTTP APIs, MCP servers, or custom code
 - **Run and debug** — Execute workflows, inspect run output and errors
-- **Chat with Agentron** — Ask in natural language; assistant creates/edits resources via tools
+- **Chat with Agentron** — Use the **Chat** page for natural-language commands; the assistant creates/edits agents, workflows, and tools via tool calls. Configure prompt and context in chat settings; rate replies to improve behavior (see [Agentron (Chat)](/docs/concepts/assistant)).
 - **Rate and improve** — Feedback on assistant responses; optional prompt refinement
 
 ## Limits and Constraints

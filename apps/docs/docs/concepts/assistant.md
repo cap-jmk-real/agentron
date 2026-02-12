@@ -1,18 +1,31 @@
-# Agentron
+# Agentron (Chat)
 
-## Definition
+## What is the chat?
 
-**Agentron** is the built-in chat interface. It uses an LLM and a set of **tools** to create, edit, list, and manage agents, workflows, tools, sandboxes, and more — on behalf of the user.
+**Agentron** is the built-in **chat assistant** in the app. You talk to it in natural language; it uses an LLM and a set of **tools** to create, edit, list, and manage agents, workflows, tools, sandboxes, and more on your behalf. You don’t have to click through every form — you can say things like “Create a workflow that runs my weather agent then my summarizer” and the assistant will call the right tools to do it.
 
-## How It Works
+## Where to find it
 
-1. User sends a message in the chat
-2. Assistant receives the message plus **context**: UI location, RAG chunks, feedback from past runs, studio resources (agents, workflows, tools, LLM providers)
-3. Assistant produces a response that may include **tool calls** in the format: `<tool_call>{"name": "...", "arguments": {...}}</tool_call>`
-4. System executes tool calls and feeds results back to the assistant
-5. Assistant may produce more tool calls (multi-round) or a final answer
+- **Dedicated chat page**: Open **Chat** in the sidebar (or go to `/chat`) for a full-screen chat with conversation history, ratings, and settings.
+- **Elsewhere in the app**: The chat is available from the main navigation so you can ask for help or run actions from anywhere.
 
-## Assistant Tools (Summary)
+On the chat page you get:
+
+- **Conversation list** — Previous chats; open one to continue or review.
+- **Ratings** — Rate assistant replies (e.g. thumbs up/down) to improve future behavior.
+- **Settings** — Customize the system prompt and choose which agents, workflows, and tools the assistant can see (context selection).
+
+## How it works (under the hood)
+
+1. **You send a message** in the chat input.
+2. **The assistant receives** your message plus **context**: where you are in the UI, relevant RAG chunks (if any), feedback from past runs, and the studio resources you’ve allowed (agents, workflows, tools, LLM providers).
+3. **The assistant can reply with tool calls** in a structured format, e.g. `<tool_call>{"name": "create_agent", "arguments": {...}}</tool_call>`.
+4. **The system runs those tools** (e.g. creates an agent, updates a workflow) and sends the results back to the assistant.
+5. **The assistant may do more tool calls** in the same turn or in follow-up turns, or it may answer you in plain text.
+
+So the chat is not just Q&A — it can change your agents, workflows, and tools by calling the same APIs the UI uses.
+
+## What the assistant can do (tools)
 
 | Category | Tools |
 |----------|-------|
@@ -24,24 +37,18 @@
 | **Other** | create_custom_function, create_sandbox, execute_code, list_files, answer_question, explain_software |
 | **Remote** | list_remote_servers, test_remote_connection, save_remote_server |
 
-## Routing Rules
-
-- **"Create", "edit", "list", "delete"** studio resources → Use the corresponding resource tools (create_agent, update_workflow, etc.)
-- **"Fix", "populate", "configure"** → Use get_* to diagnose first, then update_*
-- **Creating agents with tools** → Include `toolIds` for the decision layer; agents can only decide on tools defined in `toolIds`.
-- **General knowledge / coding questions** → Use `answer_question`
-- **Questions about Agentron itself** → Use `explain_software`
+- **“Create”, “edit”, “list”, “delete”** studio resources → The assistant uses the matching tools (create_agent, update_workflow, etc.).
+- **“Fix”, “configure”, “populate”** → It uses get_* first to see the current state, then update_*.
+- **General or coding questions** → It uses `answer_question`.
+- **Questions about Agentron** (e.g. “What is a workflow?”) → It uses `explain_software`.
 
 ## Customization
 
-Users can:
-- **Custom system prompt** — Override the default assistant prompt
-- **Restore standard prompt** — Revert to the built-in prompt
-- **Context selection** — Choose which agents, workflows, tools to include in the assistant's context
-- **Improve from feedback** — Use rated conversations to suggest prompt improvements
+- **Custom system prompt** — Override the default instructions so the assistant behaves the way you want.
+- **Restore standard prompt** — Revert to the built-in prompt.
+- **Context selection** — Choose which agents, workflows, and tools are included in the assistant’s context so it only suggests or edits what you care about.
+- **Improve from feedback** — Use conversation ratings so the system can suggest prompt improvements over time.
 
-## Dedicated Chat Page
+## Summary
 
-The `/chat` page provides a full-screen Agentron with:
-- Conversation list and ratings
-- Settings panel for prompt and context configuration
+The chat is your natural-language interface to the studio: describe what you want, and the assistant uses tools to create or change agents, workflows, and tools. Use the **Chat** page for full-screen use, history, ratings, and settings.
