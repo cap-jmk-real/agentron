@@ -1,7 +1,8 @@
 {
   "name": "agentron-studio",
+  "description": "Enterprise-ready local AI agent orchestration and workflow automation",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.2",
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -17,6 +18,9 @@
     "install:desktop": "npm install --workspace apps/desktop --include=dev",
     "dev:docs": "npm --workspace apps/docs run start",
     "build:docs": "npm --workspace apps/docs run build",
-    "serve:docs": "npm --workspace apps/docs run serve"
+    "serve:docs": "npm --workspace apps/docs run serve",
+    "release:bump": "node scripts/bump-version.mjs",
+    "release:prepare": "npm run release:bump -- patch && npm test && npm run build:ui && npm run build:docs",
+    "pre-push": "npm run typecheck && npm test && npm run build:ui && npm run build:docs && npm run dist --workspace apps/desktop"
   }
 }

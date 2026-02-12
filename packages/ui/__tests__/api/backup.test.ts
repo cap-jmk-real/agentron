@@ -1,6 +1,8 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
+import * as db from "../../app/api/_lib/db";
 import { GET as exportGet } from "../../app/api/backup/export/route";
 import { POST as restorePost } from "../../app/api/backup/restore/route";
+import { POST as resetPost } from "../../app/api/backup/reset/route";
 import { GET as agentsGet } from "../../app/api/agents/route";
 import { POST as agentsPost } from "../../app/api/agents/route";
 
@@ -52,5 +54,23 @@ describe("Backup API", () => {
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toBeDefined();
+  });
+
+  it("POST /api/backup/reset returns ok and message", async () => {
+    const res = await resetPost();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.message).toBeDefined();
+  });
+
+  it("POST /api/backup/reset returns 500 when reset throws", async () => {
+    vi.spyOn(db, "runReset").mockImplementationOnce(() => {
+      throw new Error("reset failed");
+    });
+    const res = await resetPost();
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.error).toBe("reset failed");
   });
 });

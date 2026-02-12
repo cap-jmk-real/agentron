@@ -30,7 +30,7 @@ export function ResourceUsage() {
   const prevCpuRef = useRef<{ user: number; system: number; ts: number } | null>(null);
 
   useEffect(() => {
-    setIntervalMs(getSystemStatsIntervalMs());
+    queueMicrotask(() => setIntervalMs(getSystemStatsIntervalMs()));
     const handler = () => setIntervalMs(getSystemStatsIntervalMs());
     window.addEventListener(SYSTEM_STATS_INTERVAL_CHANGED_EVENT, handler);
     return () => window.removeEventListener(SYSTEM_STATS_INTERVAL_CHANGED_EVENT, handler);

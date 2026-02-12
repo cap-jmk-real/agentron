@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Download, Upload, Database, RotateCcw, FileJson } from "lucide-react";
+import { Download, Upload, Database, RotateCcw, FileJson, HardDrive } from "lucide-react";
 import ConfirmModal from "../components/confirm-modal";
 import {
   getSystemStatsIntervalMs,
@@ -27,6 +27,17 @@ export default function SettingsPage() {
   const [defImportOverwrite, setDefImportOverwrite] = useState(false);
   const [defImportResult, setDefImportResult] = useState<Record<string, unknown> | null>(null);
   const [defImportError, setDefImportError] = useState<string | null>(null);
+  const [maxFileUploadMb, setMaxFileUploadMb] = useState<number>(50);
+  const [maxFileUploadSaving, setMaxFileUploadSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings/app")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: { maxFileUploadBytes?: number } | null) => {
+        if (data?.maxFileUploadBytes) setMaxFileUploadMb(Math.round(data.maxFileUploadBytes / (1024 * 1024)));
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     setIntervalMs(getSystemStatsIntervalMs());
@@ -62,6 +73,49 @@ export default function SettingsPage() {
             style={{ flex: "1 1 200px", minWidth: 120, accentColor: "var(--primary)" }}
           />
           <span style={{ fontSize: "0.85rem", fontWeight: 600, minWidth: 52 }}>{formatSystemStatsInterval(intervalMs)}</span>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
+        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          <HardDrive size={16} /> Max file upload size
+        </div>
+        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
+          Maximum size for a single file upload (Files and RAG). 1–500 MB.
+        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+          <input
+            type="number"
+            min={1}
+            max={500}
+            value={maxFileUploadMb}
+            onChange={(e) => setMaxFileUploadMb(Number(e.target.value) || 50)}
+            style={{ width: 80, padding: "0.35rem 0.5rem", fontSize: "0.9rem" }}
+          />
+          <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>MB</span>
+          <button
+            type="button"
+            className="button button-ghost button-small"
+            disabled={maxFileUploadSaving}
+            onClick={async () => {
+              setMaxFileUploadSaving(true);
+              try {
+                const res = await fetch("/api/settings/app", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ maxFileUploadBytes: maxFileUploadMb * 1024 * 1024 }),
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  setMaxFileUploadMb(Math.round((data.maxFileUploadBytes as number) / (1024 * 1024)));
+                }
+              } finally {
+                setMaxFileUploadSaving(false);
+              }
+            }}
+          >
+            {maxFileUploadSaving ? "Saving…" : "Save"}
+          </button>
         </div>
       </div>
 

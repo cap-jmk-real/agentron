@@ -1,11 +1,13 @@
 # Capabilities
 
+Agentron provides **local AI agent orchestration**, **workflow automation**, and **multi-agent** design in a single, self-hosted platform. Below is the feature matrix and what users can do.
+
 ## Feature Matrix
 
 | Feature | Description | Primary Actions |
 |---------|-------------|-----------------|
 | **Agents** | Create, edit, delete node and code agents | create_agent, update_agent, delete_agent, get_agent |
-| **Workflows** | Orchestrate agents in graphs | create_workflow, update_workflow, add_workflow_edges, get_workflow |
+| **Workflows** | Multi-agent orchestration in graphs | create_workflow, update_workflow, add_workflow_edges, get_workflow |
 | **Tools** | Native, HTTP, MCP tools | create_tool, update_tool, list_tools, get_tool |
 | **Runs** | Execute workflows/agents, inspect results | list_runs, get_run |
 | **LLM Providers** | Configure OpenAI, Anthropic, Ollama, etc. | list_llm_providers (config via Settings) |

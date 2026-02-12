@@ -16,6 +16,19 @@ describe("RAG encoding config API", () => {
     expect(Array.isArray(data)).toBe(true);
   });
 
+  it("POST /api/rag/encoding-config returns 400 for invalid JSON", async () => {
+    const res = await encPost(
+      new Request("http://localhost/api/rag/encoding-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not valid json",
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBeDefined();
+  });
+
   it("POST /api/rag/encoding-config creates config", async () => {
     const res = await encPost(
       new Request("http://localhost/api/rag/encoding-config", {

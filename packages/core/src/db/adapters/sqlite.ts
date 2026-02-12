@@ -72,6 +72,23 @@ const SCHEMA_SQL = `
           payload text,
           created_at integer not null
         );
+        create table if not exists skills (
+          id text primary key,
+          name text not null,
+          description text,
+          type text not null,
+          content text,
+          config text,
+          created_at integer not null
+        );
+        create table if not exists agent_skills (
+          agent_id text not null,
+          skill_id text not null,
+          sort_order integer not null,
+          config text,
+          created_at integer not null,
+          primary key (agent_id, skill_id)
+        );
         create table if not exists contexts (
           id text primary key,
           key text not null,
@@ -346,7 +363,7 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         "rag_vectors", "rag_connectors", "rag_documents", "rag_collections", "rag_vector_stores", "rag_document_stores", "rag_encoding_configs",
         "tasks", "sandbox_site_bindings", "feedback", "remote_servers", "model_pricing", "token_usage",
         "custom_functions", "sandboxes", "files", "chat_messages", "conversations", "assistant_memory", "chat_assistant_settings", "contexts",
-        "run_logs", "executions", "llm_configs", "prompts", "tools", "workflows", "agents"
+        "agent_skills", "skills", "run_logs", "executions", "llm_configs", "prompts", "tools", "workflows", "agents"
       ];
       for (const table of tables) {
         sqlite.exec(`DROP TABLE IF EXISTS ${table}`);

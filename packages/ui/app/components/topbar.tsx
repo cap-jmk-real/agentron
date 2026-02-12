@@ -8,8 +8,10 @@ export default function Topbar() {
 
   useEffect(() => {
     const stored = window.localStorage.getItem("agentron-theme") ?? "light";
-    setTheme(stored);
-    document.documentElement.setAttribute("data-theme", stored);
+    queueMicrotask(() => {
+      setTheme(stored);
+      document.documentElement.setAttribute("data-theme", stored);
+    });
   }, []);
 
   const toggleTheme = () => {

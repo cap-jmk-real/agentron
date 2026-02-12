@@ -167,9 +167,7 @@ Before presenting code, the agent asks:
 * Did I run the unit tests?
 * Did I run the test coverage (`npm run test:coverage --workspace packages/ui`) and check the report?
 * Did I run the build (and fix any errors)?
-* Before pushing: did I run the docs build locally (`npm run build:docs`) so the docs deploy does not break?
-* Before pushing: did I run the app (UI) build locally (`npm run build:ui`) so the release/PR build does not fail in CI?
-* Before pushing: did I run the Electron (desktop) app build locally (`npm run build:ui` then `npm run dist --workspace apps/desktop`) so the desktop release workflow does not fail in CI?
+* Before pushing: did I run `npm run pre-push` (or all CI steps: typecheck, lint, test, build:ui, build:docs, desktop dist) locally to save CI minutes?
 
 ---
 
@@ -177,44 +175,36 @@ Before presenting code, the agent asks:
 
 After modifying code, **always run the relevant build(s)** to catch and fix potential build errors before considering the change complete.
 
+- **Before pushing:** Run `npm run pre-push` to run all CI steps locally (typecheck, lint, test, build:ui, build:docs, desktop dist) and avoid wasting CI minutes. If the desktop build fails with "file is being used", close Agentron Studio, any Explorer windows showing `apps/desktop/release/`, and restart Cursor so the watcher excludes take effect (see `.vscode/settings.json`).
+
 - **Default:** Run `npm run build:ui` when changing app/UI, packages/ui, packages/core, or packages/runtime code.
 - **Docs:** Run `npm run build:docs` when changing anything under `apps/docs/`.
 - **Desktop (Electron):** When changing `apps/desktop` or anything the desktop app depends on, run `npm run build:ui` then `npm run dist --workspace apps/desktop` to verify the Electron build and installer packaging.
-- **Before pushing:** Run locally before pushing as relevant:
-  - `npm test` — so CI tests pass.
-  - `npm run test:coverage --workspace packages/ui` — run coverage and review the report (see *How to evaluate coverage* in Testing Strategy).
-  - `npm run build:docs` — so the docs build (and GitHub Pages deploy) does not fail in CI.
-  - `npm run build:ui` — so the UI build does not fail in CI.
-  - `npm run dist --workspace apps/desktop` (after `npm run build:ui`) — so the Electron/desktop release workflow does not fail in CI.
-- **Typecheck:** Run `npm run typecheck` when changing TypeScript; fix type errors before finishing.
+- **Before pushing:** Run `npm run pre-push` so all CI checks pass locally and CI minutes are not wasted.
 - If the build or typecheck fails, fix the errors and re-run until they pass. Do not leave broken builds.
 
 ---
 
 ## Release & Tagging Rules
 
-- **Never create or push tags unless the user explicitly asks for a release.**
+- **Releases are created only when merging to `main`.** The version comes from `package.json`; a GitHub Release with desktop installers is created for `v{version}`. The desktop build runs on PRs to verify the app builds before merge; the release is created only after merge to `main`.
 
-- **When preparing a release (vX.Y.Z):**
-  1. **Choose a semantic version** (X.Y.Z):
-     - **Major (X)**: breaking changes
-     - **Minor (Y)**: new features, backwards compatible
-     - **Patch (Z)**: bug fixes or small improvements
-  2. **Update all relevant `version` fields** to `X.Y.Z` (no `v` prefix):
-     - `package.json` (root)
-     - `apps/desktop/package.json`
-     - `apps/docs/package.json`
-  3. **Run tests and builds** before tagging:
-     - `npm test` (or the project’s test command)
+- **When preparing a release (vX.Y.Z):** The agent bumps the version in the package files **before** the user pushes to the branch that will be merged.
+  1. **Bump version** (updates `package.json`, `apps/desktop/package.json`, `apps/docs/package.json`): run `npm run release:bump` (or `-- minor` / `-- major`). Include the bumped version in the commit so it is part of the PR before merge.
+     - Patch (bug fixes): `npm run release:bump` or `npm run release:bump -- patch`
+     - Minor (new features): `npm run release:bump -- minor`
+     - Major (breaking): `npm run release:bump -- major`
+  2. **Run tests and builds** before pushing:
+     - `npm test`
      - `npm run build:ui`
      - `npm run build:docs`
-  4. **Commit the version bumps** with a clear message, e.g. `chore(release): vX.Y.Z`
-  5. **Create an annotated tag** matching the version: `git tag -a vX.Y.Z -m "vX.Y.Z"`
-  6. **Push branch and tag** only when the user asks: `git push origin <branch>` then `git push origin vX.Y.Z`
+     - Or use `npm run release:prepare` (bump patch + test + UI build + docs build)
+  3. **Commit** with a clear message: `git add -A && git commit -m "chore(release): vX.Y.Z"`
+  4. **Merge to `main`** (via PR or push). The desktop release workflow runs automatically and creates a GitHub Release with installers.
 
-- **Consistency:** Do **not** create a `vX.Y.Z` tag if any of the above `package.json` files still have a different `version`. Align versions first.
+- **Consistency:** Each merge to `main` must have a version bump. If you merge twice without bumping, the second release will fail (duplicate tag). The `release:bump` script keeps root, `apps/desktop`, and `apps/docs` versions aligned.
 
-- **CI:** Pushing a `v*` tag triggers the desktop release workflow (installers on GitHub Releases). Pushing to the default branch triggers the docs deploy to GitHub Pages.
+- **CI:** PRs to `main` run the desktop build (to verify the app builds). Merging to `main` creates the GitHub Release with installers and deploys docs.
 
 ## Promopt Generation
 

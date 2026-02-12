@@ -562,7 +562,7 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
       };
       onNodesEdgesChange(nodes, [...edges, newEdge]);
     },
-    [nodes, edges, onNodesEdgesChange]
+    [nodes, edges, onNodesEdgesChange, setFlowEdges]
   );
 
   const onNodesChangeInternal = useCallback(
@@ -574,7 +574,7 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
         return next;
       });
     },
-    [flowEdges, onNodesEdgesChange]
+    [flowEdges, onNodesEdgesChange, setFlowNodes]
   );
 
   const onEdgesChangeInternal = useCallback(
@@ -586,8 +586,17 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
         return next;
       });
     },
-    [flowNodes, onNodesEdgesChange]
+    [flowNodes, onNodesEdgesChange, setFlowEdges]
   );
+
+  const [addNodeModalOpen, setAddNodeModalOpen] = useState(false);
+  const [toolSearchOpen, setToolSearchOpen] = useState(false);
+  const [toolSearchQuery, setToolSearchQuery] = useState("");
+  const [toolSearchPosition, setToolSearchPosition] = useState<{ x: number; y: number } | undefined>(undefined);
+  const [addModalQuery, setAddModalQuery] = useState("");
+  const addMenuRef = useRef<HTMLDivElement>(null);
+  const toolSearchInputRef = useRef<HTMLInputElement>(null);
+  const addModalInputRef = useRef<HTMLInputElement>(null);
 
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -628,26 +637,21 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
     ev.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ type, toolId }));
   };
 
-  const [addNodeModalOpen, setAddNodeModalOpen] = useState(false);
-  const [toolSearchOpen, setToolSearchOpen] = useState(false);
-  const [toolSearchQuery, setToolSearchQuery] = useState("");
-  const [toolSearchPosition, setToolSearchPosition] = useState<{ x: number; y: number } | undefined>(undefined);
-  const [addModalQuery, setAddModalQuery] = useState("");
-  const addMenuRef = useRef<HTMLDivElement>(null);
-  const toolSearchInputRef = useRef<HTMLInputElement>(null);
-  const addModalInputRef = useRef<HTMLInputElement>(null);
-
   useEffect(() => {
     if (addNodeModalOpen) {
-      setAddModalQuery("");
-      queueMicrotask(() => addModalInputRef.current?.focus());
+      queueMicrotask(() => {
+        setAddModalQuery("");
+        addModalInputRef.current?.focus();
+      });
     }
   }, [addNodeModalOpen]);
 
   useEffect(() => {
     if (toolSearchOpen) {
-      setToolSearchQuery("");
-      queueMicrotask(() => toolSearchInputRef.current?.focus());
+      queueMicrotask(() => {
+        setToolSearchQuery("");
+        toolSearchInputRef.current?.focus();
+      });
     }
   }, [toolSearchOpen]);
 
