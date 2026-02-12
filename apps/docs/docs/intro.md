@@ -56,7 +56,7 @@ When a user asks "what can I do?", "how do I create an agent?", "fix my workflow
 ## Install and download
 
 - **Web UI**: Clone the repo, run `npm run install:ui` then `npm run dev:ui` (see INSTALL in the repo for full steps).
-- **Desktop app**: Download installers for Windows, macOS, or Linux from the [Download](/download) page. Builds are produced automatically from [GitHub Releases](https://github.com/agentron-studio/agentron/releases) when we tag a version (e.g. `v0.1.0`). After installing, run the web UI and then launch the desktop app so it can connect (e.g. to `http://localhost:3000`).
+- **Desktop app**: Download installers for Windows, macOS, or Linux from the [Download](/download) page. Builds are produced automatically from [GitHub Releases](https://github.com/cap-jmk-real/agentron/releases) when we tag a version (e.g. `v0.1.0`). After installing, run the web UI and then launch the desktop app so it can connect (e.g. to `http://localhost:3000`).
 - **This documentation**: Built and deployed automatically to **GitHub Pages** on every push to the default branch. Repo settings must use **GitHub Actions** as the Pages source.
 
 ## Deployment

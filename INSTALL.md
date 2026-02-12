@@ -21,7 +21,7 @@ git clone <repository-url>
 cd agentron
 ```
 
-Replace `<repository-url>` with the actual Git URL of the Agentron repository (e.g. `https://github.com/agentron-studio/agentron.git`).
+Replace `<repository-url>` with the actual Git URL of the Agentron repository (e.g. `https://github.com/cap-jmk-real/agentron.git`).
 
 ### 2. Install dependencies
 
@@ -64,33 +64,37 @@ npm --workspace packages/ui run start
 
 **Option A – Download a pre-built installer (recommended)**
 
-- Use the **Download** page in the documentation site (or the project’s GitHub Releases). Installers are built automatically by CI when changes are merged into `main`. Installers for Windows, macOS, and Linux are created on each merge to `main`. Pick your platform and run the installer; then start the web UI (`npm run dev:ui`) and launch the desktop app so it can connect (e.g. to `http://localhost:3000`).
+- Use the **Download** page in the documentation site (or the project’s GitHub Releases). Installers are built automatically by CI when changes are merged into `main`. Pick your platform and run the installer. When you launch the desktop app, it **starts the UI server automatically** (no need to run `npm run dev:ui`). Data (SQLite, uploads) is stored in the app’s user data directory. **Requirement:** Node.js 18+ must be installed and on your PATH so the bundled server can start; if Node is not found, set `AGENTRON_STUDIO_URL` to a running UI (e.g. `http://localhost:3000`) and start the UI separately.
 
 **Option B – Build from source**
 
 If you installed with `npm install` (full install):
 
-1. Build the UI and the desktop app:
-   - Ensure the UI is built: `npm run build:ui`
-   - Build the desktop app: `npm run build --workspace apps/desktop`
-2. Create the distributable (e.g. DMG on macOS, NSIS on Windows, AppImage on Linux):
-   ```bash
-   npm run dist --workspace apps/desktop
-   ```
-   Output is in `apps/desktop/release/`.
+1. **Run the Electron app locally (no installer):**
+   - In one terminal, start the UI: `npm run dev:ui`
+   - In another, build and run the desktop app: `npm run start:desktop`
+   - Or from the repo root: `npm run build:desktop` then `npx electron apps/desktop` (with the UI already running at http://localhost:3000).
 
-To run the desktop app in development, start the UI with `npm run dev:ui` and then run the Electron main process (see `apps/desktop` scripts).
+2. **Create the distributable** (installer: DMG on macOS, NSIS on Windows, AppImage on Linux):
+   ```bash
+   npm run dist:desktop
+   ```
+   This builds the UI, builds the desktop app, and runs electron-builder. Output is in `apps/desktop/release/`.
+   - Alternatively: `npm run build:desktop` then `npm run dist --workspace apps/desktop`.
 
 ---
 
 ## Quick reference
 
-| Goal              | Command           |
-|-------------------|-------------------|
+| Goal | Command |
+|------|---------|
 | Install (UI only) | `npm run install:ui` |
-| Run dev server    | `npm run dev:ui`  |
-| Build UI          | `npm run build:ui` |
-| Full install      | `npm install`    |
+| Run dev server | `npm run dev:ui` |
+| Build UI | `npm run build:ui` |
+| Run Electron app locally | `npm run dev:ui` (terminal 1), then `npm run start:desktop` (terminal 2) |
+| Build desktop (UI + Electron bundle) | `npm run build:desktop` |
+| Build installer (NSIS/DMG/AppImage) | `npm run dist:desktop` |
+| Full install | `npm install` |
 
 ---
 
