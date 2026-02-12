@@ -63,6 +63,15 @@ Coverage should:
 
 ---
 
+### How to evaluate coverage
+
+* **Run coverage (UI):** From repo root run `npm run test:coverage --workspace packages/ui`, or from `packages/ui` run `npm run test:coverage`. This runs the test suite with the V8 coverage provider and prints a text summary in the terminal.
+* **Reports:** A summary (statements, branches, functions, lines) is printed after the run. An HTML report is written to `packages/ui/coverage/`; open `packages/ui/coverage/index.html` in a browser for per-file, line-by-line coverage.
+* **When to run:** Run coverage when adding or changing tests, when touching critical paths, or before pushing (alongside `npm test`). CI runs tests with coverage in the docs and desktop workflows; the coverage report is uploaded as an artifact.
+* **Interpretation:** Use the summary and HTML report to find uncovered lines and branches. Treat coverage as a risk signal (see Coverage Expectations above); acknowledge and justify gaps. No coverage threshold is enforced in CI; the goal is visibility and informed decisions.
+
+---
+
 ### Unit Tests (Default)
 
 Unit tests are the **default testing tool**.
@@ -156,6 +165,7 @@ Before presenting code, the agent asks:
 * Are critical paths protected by unit tests?
 * Are boundaries validated by integration tests?
 * Did I run the unit tests?
+* Did I run the test coverage (`npm run test:coverage --workspace packages/ui`) and check the report?
 * Did I run the build (and fix any errors)?
 * Before pushing: did I run the docs build locally (`npm run build:docs`) so the docs deploy does not break?
 * Before pushing: did I run the app (UI) build locally (`npm run build:ui`) so the release/PR build does not fail in CI?
@@ -171,6 +181,8 @@ After modifying code, **always run the relevant build(s)** to catch and fix pote
 - **Docs:** Run `npm run build:docs` when changing anything under `apps/docs/`.
 - **Desktop (Electron):** When changing `apps/desktop` or anything the desktop app depends on, run `npm run build:ui` then `npm run dist --workspace apps/desktop` to verify the Electron build and installer packaging.
 - **Before pushing:** Run locally before pushing as relevant:
+  - `npm test` — so CI tests pass.
+  - `npm run test:coverage --workspace packages/ui` — run coverage and review the report (see *How to evaluate coverage* in Testing Strategy).
   - `npm run build:docs` — so the docs build (and GitHub Pages deploy) does not fail in CI.
   - `npm run build:ui` — so the UI build does not fail in CI.
   - `npm run dist --workspace apps/desktop` (after `npm run build:ui`) — so the Electron/desktop release workflow does not fail in CI.

@@ -43,7 +43,7 @@ describe("Runs logs API", () => {
   });
 
   it("GET /api/runs returns list including created run", async () => {
-    const res = await runsGet();
+    const res = await runsGet(new Request("http://localhost/api/runs"));
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);

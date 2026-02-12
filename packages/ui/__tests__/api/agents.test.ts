@@ -37,7 +37,7 @@ describe("Agents API", () => {
 
   it("GET /api/agents/:id returns agent", async () => {
     if (!createdId) return;
-    const res = await getOne(new Request("http://localhost/api/agents/x"), { params: { id: createdId } });
+    const res = await getOne(new Request("http://localhost/api/agents/x"), { params: Promise.resolve({ id: createdId }) });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.id).toBe(createdId);
@@ -45,13 +45,13 @@ describe("Agents API", () => {
   });
 
   it("GET /api/agents/:id returns 404 for unknown id", async () => {
-    const res = await getOne(new Request("http://localhost/api/agents/x"), { params: { id: "non-existent-id-12345" } });
+    const res = await getOne(new Request("http://localhost/api/agents/x"), { params: Promise.resolve({ id: "non-existent-id-12345" }) });
     expect(res.status).toBe(404);
   });
 
   it("GET /api/agents/:id/workflow-usage returns workflows array", async () => {
     if (!createdId) return;
-    const res = await workflowUsageGet(new Request("http://localhost/api/agents/x/workflow-usage"), { params: { id: createdId } });
+    const res = await workflowUsageGet(new Request("http://localhost/api/agents/x/workflow-usage"), { params: Promise.resolve({ id: createdId }) });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data.workflows)).toBe(true);
@@ -59,9 +59,9 @@ describe("Agents API", () => {
 
   it("DELETE /api/agents/:id removes agent", async () => {
     if (!createdId) return;
-    const res = await deleteOne(new Request("http://localhost/api/agents/x", { method: "DELETE" }), { params: { id: createdId } });
+    const res = await deleteOne(new Request("http://localhost/api/agents/x", { method: "DELETE" }), { params: Promise.resolve({ id: createdId }) });
     expect(res.status).toBe(200);
-    const getRes = await getOne(new Request("http://localhost/api/agents/x"), { params: { id: createdId } });
+    const getRes = await getOne(new Request("http://localhost/api/agents/x"), { params: Promise.resolve({ id: createdId }) });
     expect(getRes.status).toBe(404);
   });
 });

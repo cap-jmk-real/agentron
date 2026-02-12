@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { GET as encListGet, POST as encPost } from "../../app/api/rag/encoding-config/route";
 import { GET as encGet, PUT as encPut, DELETE as encDelete } from "../../app/api/rag/encoding-config/[id]/route";
 import { GET as storeListGet, POST as storePost } from "../../app/api/rag/document-store/route";

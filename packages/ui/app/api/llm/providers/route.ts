@@ -5,7 +5,12 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const rows = await db.select().from(llmConfigs);
-  return json(rows.map(fromLlmConfigRow));
+  const configs = rows.map(fromLlmConfigRow);
+  const safe = configs.map((c) => {
+    const extra = c.extra && typeof c.extra === "object" && !Array.isArray(c.extra) ? { ...(c.extra as Record<string, unknown>), apiKey: undefined } : c.extra;
+    return { ...c, extra };
+  });
+  return json(safe);
 }
 
 /** Build extra for storage: include apiKey when provided from the UI (never sent to client). */

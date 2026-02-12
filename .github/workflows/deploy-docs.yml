@@ -31,6 +31,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install optional deps (for Vitest/coverage)
+        run: npm install --include=optional
+
+      - name: Run tests with coverage
+        run: npm run test:coverage --workspace packages/ui
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-docs
+          path: packages/ui/coverage/
+        if: always()
+
       - name: Build docs
         run: npm run build:docs
         env:

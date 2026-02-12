@@ -25,6 +25,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache Electron and electron-builder
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'Windows' && 'C:\\Users\\runner\\AppData\\Local\\electron-builder\\Cache' || (runner.os == 'macOS' && '~/Library/Caches/electron-builder') || '~/.cache/electron-builder' }}
+          key: electron-builder-${{ runner.os }}-${{ hashFiles('apps/desktop/package.json', 'package-lock.json') }}
+          restore-keys: |
+            electron-builder-${{ runner.os }}-
+
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: packages/ui/.next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json', 'packages/ui/**') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -33,6 +49,19 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install optional deps (for Vitest/coverage)
+        run: npm install --include=optional
+
+      - name: Run tests with coverage
+        run: npm run test:coverage --workspace packages/ui
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.os }}
+          path: packages/ui/coverage/
+        if: always()
 
       - name: Install sharp with optional deps (for icon export)
         run: npm install --include=optional sharp --workspace apps/desktop

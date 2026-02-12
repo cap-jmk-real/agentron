@@ -27,6 +27,7 @@ import {
   guardrails,
   agentStoreEntries,
   trainingRuns,
+  runLogs,
 } from "@agentron-studio/core";
 import type {
   Agent,
@@ -43,15 +44,25 @@ import type {
   CustomFunction,
 } from "@agentron-studio/core";
 
-const ensureDataDir = () => {
-  const dataDir = path.join(process.cwd(), ".data");
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+const ensureDataDir = (dir: string) => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
-  return dataDir;
+  return dir;
 };
 
-const dbPath = path.join(ensureDataDir(), "agentron.sqlite");
+const getDbPath = () => {
+  if (process.env.AGENTRON_DB_PATH) {
+    const p = path.resolve(process.env.AGENTRON_DB_PATH);
+    ensureDataDir(path.dirname(p));
+    return p;
+  }
+  const dataDir = path.join(process.cwd(), ".data");
+  ensureDataDir(dataDir);
+  return path.join(dataDir, "agentron.sqlite");
+};
+
+const dbPath = getDbPath();
 const adapter = createSqliteAdapter(dbPath);
 adapter.initialize?.();
 
@@ -96,6 +107,7 @@ export {
   guardrails,
   agentStoreEntries,
   trainingRuns,
+  runLogs,
 };
 
 const parseJson = <T>(value?: string | null, fallback?: T): T | undefined => {
