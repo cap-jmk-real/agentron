@@ -36,6 +36,7 @@ apps/desktop/release/
 
 # Logs and debug
 logs/
+!packages/ui/app/api/runs/\[id\]/logs/
 *.log
 npm-debug.log*
 pnpm-debug.log*
