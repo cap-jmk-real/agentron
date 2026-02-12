@@ -19,6 +19,7 @@
     "build:docs": "npm --workspace apps/docs run build",
     "serve:docs": "npm --workspace apps/docs run serve",
     "release:bump": "node scripts/bump-version.mjs",
-    "release:prepare": "npm run release:bump -- patch && npm test && npm run build:ui && npm run build:docs"
+    "release:prepare": "npm run release:bump -- patch && npm test && npm run build:ui && npm run build:docs",
+    "pre-push": "npm run typecheck && npm test && npm run build:ui && npm run build:docs && npm run dist --workspace apps/desktop"
   }
 }

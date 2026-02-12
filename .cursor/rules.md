@@ -167,9 +167,7 @@ Before presenting code, the agent asks:
 * Did I run the unit tests?
 * Did I run the test coverage (`npm run test:coverage --workspace packages/ui`) and check the report?
 * Did I run the build (and fix any errors)?
-* Before pushing: did I run the docs build locally (`npm run build:docs`) so the docs deploy does not break?
-* Before pushing: did I run the app (UI) build locally (`npm run build:ui`) so the release/PR build does not fail in CI?
-* Before pushing: did I run the Electron (desktop) app build locally (`npm run build:ui` then `npm run dist --workspace apps/desktop`) so the desktop release workflow does not fail in CI?
+* Before pushing: did I run `npm run pre-push` (or all CI steps: typecheck, lint, test, build:ui, build:docs, desktop dist) locally to save CI minutes?
 
 ---
 
@@ -177,16 +175,12 @@ Before presenting code, the agent asks:
 
 After modifying code, **always run the relevant build(s)** to catch and fix potential build errors before considering the change complete.
 
+- **Before pushing:** Run `npm run pre-push` to run all CI steps locally (typecheck, lint, test, build:ui, build:docs, desktop dist) and avoid wasting CI minutes. If the desktop build fails with "file is being used", close Agentron Studio, any Explorer windows showing `apps/desktop/release/`, and restart Cursor so the watcher excludes take effect (see `.vscode/settings.json`).
+
 - **Default:** Run `npm run build:ui` when changing app/UI, packages/ui, packages/core, or packages/runtime code.
 - **Docs:** Run `npm run build:docs` when changing anything under `apps/docs/`.
 - **Desktop (Electron):** When changing `apps/desktop` or anything the desktop app depends on, run `npm run build:ui` then `npm run dist --workspace apps/desktop` to verify the Electron build and installer packaging.
-- **Before pushing:** Run locally before pushing as relevant:
-  - `npm test` — so CI tests pass.
-  - `npm run test:coverage --workspace packages/ui` — run coverage and review the report (see *How to evaluate coverage* in Testing Strategy).
-  - `npm run build:docs` — so the docs build (and GitHub Pages deploy) does not fail in CI.
-  - `npm run build:ui` — so the UI build does not fail in CI.
-  - `npm run dist --workspace apps/desktop` (after `npm run build:ui`) — so the Electron/desktop release workflow does not fail in CI.
-- **Typecheck:** Run `npm run typecheck` when changing TypeScript; fix type errors before finishing.
+- **Before pushing:** Run `npm run pre-push` so all CI checks pass locally and CI minutes are not wasted.
 - If the build or typecheck fails, fix the errors and re-run until they pass. Do not leave broken builds.
 
 ---

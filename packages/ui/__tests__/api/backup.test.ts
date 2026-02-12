@@ -57,7 +57,7 @@ describe("Backup API", () => {
   });
 
   it("POST /api/backup/reset returns ok and message", async () => {
-    const res = await resetPost(new Request("http://localhost/api/backup/reset", { method: "POST" }));
+    const res = await resetPost();
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.ok).toBe(true);
@@ -68,7 +68,7 @@ describe("Backup API", () => {
     vi.spyOn(db, "runReset").mockImplementationOnce(() => {
       throw new Error("reset failed");
     });
-    const res = await resetPost(new Request("http://localhost/api/backup/reset", { method: "POST" }));
+    const res = await resetPost();
     expect(res.status).toBe(500);
     const data = await res.json();
     expect(data.error).toBe("reset failed");

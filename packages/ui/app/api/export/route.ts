@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 import {
   db,
   agents,
@@ -16,7 +15,7 @@ const DEFINITION_VERSION = "1";
 export type ExportType = "tools" | "agents" | "workflows" | "all";
 
 /** Export tools, agents, and/or workflows as a portable JSON definition. Standard tools (std-*) are excluded so the file is portable. */
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const type = (searchParams.get("type") ?? "all") as ExportType;
   if (!["tools", "agents", "workflows", "all"].includes(type)) {
