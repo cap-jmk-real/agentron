@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { UserCheck, Check, X } from "lucide-react";
+import LogoLoading from "./components/logo-loading";
 
 type WorkflowOverview = {
   id: string;
@@ -132,7 +133,10 @@ export default function HomePage() {
       <section style={{ marginBottom: "1.5rem" }}>
         <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: "0 0 0.75rem" }}>Active workflows</h2>
         {loading ? (
-          <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Loading…</p>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem", padding: "1rem 0" }}>
+            <LogoLoading size={48} />
+            <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", margin: 0 }}>Loading…</p>
+          </div>
         ) : workflows.length === 0 ? (
           <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
             No workflows yet. Create one from <Link href="/workflows" style={{ color: "var(--link)" }}>Workflows</Link> or via the chat.

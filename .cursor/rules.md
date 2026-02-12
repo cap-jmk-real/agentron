@@ -63,6 +63,15 @@ Coverage should:
 
 ---
 
+### How to evaluate coverage
+
+* **Run coverage (UI):** From repo root run `npm run test:coverage --workspace packages/ui`, or from `packages/ui` run `npm run test:coverage`. This runs the test suite with the V8 coverage provider and prints a text summary in the terminal.
+* **Reports:** A summary (statements, branches, functions, lines) is printed after the run. An HTML report is written to `packages/ui/coverage/`; open `packages/ui/coverage/index.html` in a browser for per-file, line-by-line coverage.
+* **When to run:** Run coverage when adding or changing tests, when touching critical paths, or before pushing (alongside `npm test`). CI runs tests with coverage in the docs and desktop workflows; the coverage report is uploaded as an artifact.
+* **Interpretation:** Use the summary and HTML report to find uncovered lines and branches. Treat coverage as a risk signal (see Coverage Expectations above); acknowledge and justify gaps. No coverage threshold is enforced in CI; the goal is visibility and informed decisions.
+
+---
+
 ### Unit Tests (Default)
 
 Unit tests are the **default testing tool**.
@@ -155,8 +164,58 @@ Before presenting code, the agent asks:
 * What assumptions are encoded in tests?
 * Are critical paths protected by unit tests?
 * Are boundaries validated by integration tests?
-* Did I run the unit tests? 
+* Did I run the unit tests?
+* Did I run the test coverage (`npm run test:coverage --workspace packages/ui`) and check the report?
+* Did I run the build (and fix any errors)?
+* Before pushing: did I run the docs build locally (`npm run build:docs`) so the docs deploy does not break?
+* Before pushing: did I run the app (UI) build locally (`npm run build:ui`) so the release/PR build does not fail in CI?
+* Before pushing: did I run the Electron (desktop) app build locally (`npm run build:ui` then `npm run dist --workspace apps/desktop`) so the desktop release workflow does not fail in CI?
 
-## Promopt Generation 
+---
 
-* 
+## Build Verification
+
+After modifying code, **always run the relevant build(s)** to catch and fix potential build errors before considering the change complete.
+
+- **Default:** Run `npm run build:ui` when changing app/UI, packages/ui, packages/core, or packages/runtime code.
+- **Docs:** Run `npm run build:docs` when changing anything under `apps/docs/`.
+- **Desktop (Electron):** When changing `apps/desktop` or anything the desktop app depends on, run `npm run build:ui` then `npm run dist --workspace apps/desktop` to verify the Electron build and installer packaging.
+- **Before pushing:** Run locally before pushing as relevant:
+  - `npm test` — so CI tests pass.
+  - `npm run test:coverage --workspace packages/ui` — run coverage and review the report (see *How to evaluate coverage* in Testing Strategy).
+  - `npm run build:docs` — so the docs build (and GitHub Pages deploy) does not fail in CI.
+  - `npm run build:ui` — so the UI build does not fail in CI.
+  - `npm run dist --workspace apps/desktop` (after `npm run build:ui`) — so the Electron/desktop release workflow does not fail in CI.
+- **Typecheck:** Run `npm run typecheck` when changing TypeScript; fix type errors before finishing.
+- If the build or typecheck fails, fix the errors and re-run until they pass. Do not leave broken builds.
+
+---
+
+## Release & Tagging Rules
+
+- **Never create or push tags unless the user explicitly asks for a release.**
+
+- **When preparing a release (vX.Y.Z):**
+  1. **Choose a semantic version** (X.Y.Z):
+     - **Major (X)**: breaking changes
+     - **Minor (Y)**: new features, backwards compatible
+     - **Patch (Z)**: bug fixes or small improvements
+  2. **Update all relevant `version` fields** to `X.Y.Z` (no `v` prefix):
+     - `package.json` (root)
+     - `apps/desktop/package.json`
+     - `apps/docs/package.json`
+  3. **Run tests and builds** before tagging:
+     - `npm test` (or the project’s test command)
+     - `npm run build:ui`
+     - `npm run build:docs`
+  4. **Commit the version bumps** with a clear message, e.g. `chore(release): vX.Y.Z`
+  5. **Create an annotated tag** matching the version: `git tag -a vX.Y.Z -m "vX.Y.Z"`
+  6. **Push branch and tag** only when the user asks: `git push origin <branch>` then `git push origin vX.Y.Z`
+
+- **Consistency:** Do **not** create a `vX.Y.Z` tag if any of the above `package.json` files still have a different `version`. Align versions first.
+
+- **CI:** Pushing a `v*` tag triggers the desktop release workflow (installers on GitHub Releases). Pushing to the default branch triggers the docs deploy to GitHub Pages.
+
+## Promopt Generation
+
+*

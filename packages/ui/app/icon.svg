@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+  <defs>
+    <linearGradient id="a" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+  </defs>
+  <!-- A: apex, left leg, crossbar, right leg -->
+  <path d="M32 10 L14 54 H22 L28 38 H36 L42 54 H50 Z" fill="url(#a)"/>
+  <circle cx="32" cy="38" r="5.5" fill="#EEF2FF"/>
+  <circle cx="32" cy="38" r="2.8" fill="#4f46e5"/>
+</svg>

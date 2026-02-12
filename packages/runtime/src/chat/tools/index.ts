@@ -5,6 +5,9 @@ import { WORKFLOW_TOOLS } from "./workflow-tools";
 import { MISC_TOOLS } from "./misc-tools";
 import { REMOTE_TOOLS } from "./remote-tools";
 import { CONVERSATION_TOOLS } from "./conversation-tools";
+import { IMPROVEMENT_TOOLS } from "./improvement-tools";
+import { STORE_TOOLS } from "./store-tools";
+import { GUARDRAIL_TOOLS } from "./guardrail-tools";
 
 export type { AssistantToolDef } from "./types";
 export { SYSTEM_PROMPT } from "./prompt";
@@ -17,4 +20,7 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
   ...MISC_TOOLS,
   ...REMOTE_TOOLS,
   ...CONVERSATION_TOOLS,
+  ...IMPROVEMENT_TOOLS,
+  ...STORE_TOOLS,
+  ...GUARDRAIL_TOOLS,
 ];

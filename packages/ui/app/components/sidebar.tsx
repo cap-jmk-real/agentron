@@ -135,6 +135,7 @@ export default function Sidebar() {
     () => new Set(sections.map((s) => s.title))
   );
   const [pendingCount, setPendingCount] = useState(0);
+  const [agentHelpCount, setAgentHelpCount] = useState(0);
   useEffect(() => {
     const fetchQueue = async () => {
       try {
@@ -149,6 +150,22 @@ export default function Sidebar() {
     };
     fetchQueue();
     const interval = setInterval(fetchQueue, 3000);
+    return () => clearInterval(interval);
+  }, []);
+  useEffect(() => {
+    const fetchPendingHelp = async () => {
+      try {
+        const res = await fetch("/api/runs/pending-help");
+        if (res.ok) {
+          const data = await res.json();
+          setAgentHelpCount(typeof data.count === "number" ? data.count : 0);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    fetchPendingHelp();
+    const interval = setInterval(fetchPendingHelp, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -200,6 +217,18 @@ export default function Sidebar() {
                       >
                         <span className="nav-icon">{item.icon}</span>
                         {item.label}
+                        {item.href === "/chat" && agentHelpCount > 0 && (
+                          <span
+                            className="nav-badge nav-badge-help"
+                            title={
+                              agentHelpCount === 1
+                                ? "Agent needs your input – open Chat to respond"
+                                : `${agentHelpCount} requests waiting – open Chat to help the agent`
+                            }
+                          >
+                            {agentHelpCount}
+                          </span>
+                        )}
                         {item.href === "/requests" && pendingCount > 0 && (
                           <span className="nav-badge" title={`${pendingCount} request(s) waiting`}>
                             {pendingCount}

@@ -19,6 +19,7 @@ build/
 *.exe
 *.dmg
 *.AppImage
+apps/desktop/release/
 
 # Environment and secrets
 .env
@@ -35,6 +36,7 @@ build/
 
 # Logs and debug
 logs/
+!packages/ui/app/api/runs/\[id\]/logs/
 *.log
 npm-debug.log*
 pnpm-debug.log*
@@ -61,3 +63,4 @@ Thumbs.db
 # Misc
 *.local
 .cache/
+.data/

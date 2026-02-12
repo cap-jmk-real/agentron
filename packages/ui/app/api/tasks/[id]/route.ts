@@ -1,21 +1,23 @@
 import { json } from "../../_lib/response";
 import { db, tasks, fromTaskRow, toTaskRow } from "../../_lib/db";
 import { eq } from "drizzle-orm";
-import type { Task } from "../../_lib/db";
+import type { TaskRow } from "../../_lib/db";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 export const runtime = "nodejs";
 
 export async function GET(_: Request, { params }: Params) {
-  const rows = await db.select().from(tasks).where(eq(tasks.id, params.id));
+  const { id } = await params;
+  const rows = await db.select().from(tasks).where(eq(tasks.id, id));
   if (rows.length === 0) return json({ error: "Not found" }, { status: 404 });
   return json(fromTaskRow(rows[0]));
 }
 
 /** PATCH - resolve task: set status to approved or rejected, optional output/resolvedBy */
 export async function PATCH(request: Request, { params }: Params) {
-  const rows = await db.select().from(tasks).where(eq(tasks.id, params.id));
+  const { id } = await params;
+  const rows = await db.select().from(tasks).where(eq(tasks.id, id));
   if (rows.length === 0) return json({ error: "Not found" }, { status: 404 });
   const existing = fromTaskRow(rows[0]);
   if (existing.status !== "pending_approval") {
@@ -23,13 +25,13 @@ export async function PATCH(request: Request, { params }: Params) {
   }
   const body = await request.json();
   const newStatus = body.status === "rejected" ? "rejected" : "approved";
-  const updated: Task = {
+  const updated: TaskRow = {
     ...existing,
     status: newStatus,
     output: body.output !== undefined ? body.output : existing.output,
     resolvedAt: Date.now(),
     resolvedBy: body.resolvedBy ?? "user",
   };
-  await db.update(tasks).set(toTaskRow(updated)).where(eq(tasks.id, params.id)).run();
+  await db.update(tasks).set(toTaskRow(updated)).where(eq(tasks.id, id)).run();
   return json(updated);
 }

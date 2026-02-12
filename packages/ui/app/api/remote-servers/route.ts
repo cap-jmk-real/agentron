@@ -24,5 +24,5 @@ export async function POST(request: Request) {
     createdAt: Date.now(),
   };
   await db.insert(remoteServers).values(toRemoteServerRow(server)).run();
-  return json({ id, ...server });
+  return json(server);
 }

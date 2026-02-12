@@ -30,7 +30,7 @@ Agentron is a **local-first platform** for designing, configuring, and running A
 - Create, edit **workflows** (connect agents, set max rounds)
 - Create, edit **tools** (native, HTTP, MCP)
 - Run workflows and agents
-- **Agentron** — natural-language interface that executes tool calls
+- **Chat (Agentron)** — natural-language assistant that creates and edits agents, workflows, and tools via tool calls; use the **Chat** page for full-screen use, conversation history, ratings, and prompt/context settings (see [Agentron (Chat)](/concepts/assistant))
 - **Sandboxes** — Podman containers for code execution
 - **Knowledge / RAG** — document ingestion and retrieval for agents
 - **Feedback** — rate agent outputs for learning
@@ -44,8 +44,14 @@ When a user asks "what can I do?", "how do I create an agent?", "fix my workflow
 2. **Capabilities** — See the full feature matrix and available actions
 3. **AI Guide** — Decision tree for suggesting actions to users
 
+## Install and download
+
+- **Web UI**: Clone the repo, run `npm run install:ui` then `npm run dev:ui` (see INSTALL in the repo for full steps).
+- **Desktop app**: Download installers for Windows, macOS, or Linux from the [Download](/download) page. Builds are produced automatically from [GitHub Releases](https://github.com/agentos/agentos-studio/releases) when we tag a version (e.g. `v0.1.0`). After installing, run the web UI and then launch the desktop app so it can connect (e.g. to `http://localhost:3000`).
+- **This documentation**: Built and deployed automatically to **GitHub Pages** on every push to the default branch. Repo settings must use **GitHub Actions** as the Pages source.
+
 ## Deployment
 
 - **Typical**: Single deployment (Agentron on port 3000)
 - **MCP**: Agentron can expose an MCP server for IDEs and other tools
-- **Hosting**: Static docs (this site) can be deployed to Vercel, Netlify, GitHub Pages, or any static host
+- **Docs**: This site is hosted on GitHub Pages and updates automatically when the default branch is updated

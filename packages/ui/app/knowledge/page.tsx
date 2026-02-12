@@ -703,7 +703,7 @@ export default function KnowledgePage() {
         onCancel={() => setDeleteTarget(null)}
         confirmLabel="Delete"
         loading={deleting}
-        variant="danger"
+        danger
       />
     </div>
   );

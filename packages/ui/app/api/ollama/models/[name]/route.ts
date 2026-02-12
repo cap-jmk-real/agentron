@@ -1,11 +1,12 @@
 import { json } from "../../../_lib/response";
 
-type Params = { params: { name: string } };
+type Params = { params: Promise<{ name: string }> };
 
 export const runtime = "nodejs";
 
 export async function DELETE(_: Request, { params }: Params) {
-  const modelName = decodeURIComponent(params.name);
+  const { name } = await params;
+  const modelName = decodeURIComponent(name);
   try {
     const res = await fetch("http://localhost:11434/api/delete", {
       method: "DELETE",

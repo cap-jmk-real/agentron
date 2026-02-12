@@ -1,0 +1,121 @@
+name: Release Desktop
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+          - os: macos-latest
+          - os: ubuntu-latest
+
+    runs-on: ${{ matrix.os }}
+    env:
+      # Next.js TypeScript step is memory-heavy; macOS/ARM need more headroom (runner has ~7GB)
+      NODE_OPTIONS: --max-old-space-size=6144
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Electron and electron-builder
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'Windows' && 'C:\\Users\\runner\\AppData\\Local\\electron-builder\\Cache' || (runner.os == 'macOS' && '~/Library/Caches/electron-builder') || '~/.cache/electron-builder' }}
+          key: electron-builder-${{ runner.os }}-${{ hashFiles('apps/desktop/package.json', 'package-lock.json') }}
+          restore-keys: |
+            electron-builder-${{ runner.os }}-
+
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: packages/ui/.next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json', 'packages/ui/**') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install optional deps (for Vitest/coverage)
+        run: npm install --include=optional
+
+      - name: Run tests with coverage
+        run: npm run test:coverage --workspace packages/ui
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.os }}
+          path: packages/ui/coverage/
+        if: always()
+
+      - name: Install sharp with optional deps (for icon export)
+        run: npm install --include=optional sharp --workspace apps/desktop
+
+      - name: Build UI
+        run: npm run build:ui
+
+      - name: Build desktop (main + preload)
+        run: npm run build --workspace apps/desktop
+
+      - name: Rebuild native modules for Electron
+        run: npm run rebuild:electron --workspace apps/desktop
+
+      - name: Create distributable
+        run: npm run dist --workspace apps/desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: apps/desktop/release/
+        if: startsWith(github.ref, 'refs/tags/')
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: false
+
+      - name: Flatten artifacts for release
+        run: |
+          mkdir -p release-assets
+          for dir in artifacts/desktop-*; do
+            [ -d "$dir" ] && cp -a "$dir"/* release-assets/ 2>/dev/null || true
+          done
+          ls -la release-assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          generate_release_notes: true
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

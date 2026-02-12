@@ -1,3 +1,4 @@
+import type { ToolDefinition } from "@agentron-studio/core";
 import type { ToolAdapter, NativeToolHandler } from "../types";
 
 export class NativeToolAdapter implements ToolAdapter {
@@ -8,7 +9,7 @@ export class NativeToolAdapter implements ToolAdapter {
     this.handlers.set(toolId, handler);
   }
 
-  async execute(tool, input) {
+  async execute(tool: ToolDefinition, input: unknown) {
     const config = tool.config as { baseToolId?: string } | undefined;
     const handlerId = config?.baseToolId ?? tool.id;
     const handler = this.handlers.get(handlerId);

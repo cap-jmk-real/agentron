@@ -10,12 +10,12 @@ const resolvePath = (obj: unknown, path: string): unknown => {
   if (!obj || typeof obj !== "object") {
     return undefined;
   }
-  return path.split(".").reduce((acc, key) => {
+  return path.split(".").reduce<unknown>((acc, key) => {
     if (acc && typeof acc === "object" && key in acc) {
       return (acc as Record<string, unknown>)[key];
     }
     return undefined;
-  }, obj as Record<string, unknown>);
+  }, obj);
 };
 
 export const renderPromptTemplate = (

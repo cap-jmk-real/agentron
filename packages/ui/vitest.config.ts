@@ -8,6 +8,17 @@ export default defineConfig({
     setupFiles: [path.resolve(__dirname, "vitest.setup.ts")],
     include: ["__tests__/**/*.test.ts"],
     testTimeout: 10000,
+    maxWorkers: 1,
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "text-summary", "html"],
+      include: ["app/**/*.ts"],
+      exclude: [
+        "**/__tests__/**",
+        "**/node_modules/**",
+        "**/*.d.ts",
+      ],
+    },
   },
   resolve: {
     alias: {

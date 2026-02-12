@@ -12,9 +12,17 @@ type ToolDef = {
   outputSchema?: unknown;
 };
 
+type Step = {
+  id: string;
+  name: string;
+  type: "prompt" | "tool_call" | "condition" | "context_read" | "context_write";
+  content: string;
+  requiresApproval?: boolean;
+};
+
 type AgentDefinition = {
   systemPrompt?: string;
-  steps?: { id: string; name: string; type: string; content: string }[];
+  steps?: Step[];
   toolIds?: string[];
   graph?: unknown;
   source?: string;

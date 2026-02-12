@@ -134,6 +134,15 @@ export const sandboxes = sqliteTable("sandboxes", {
   createdAt: integer("created_at").notNull()
 });
 
+export const sandboxSiteBindings = sqliteTable("sandbox_site_bindings", {
+  id: text("id").primaryKey(),
+  sandboxId: text("sandbox_id").notNull(),
+  host: text("host").notNull(),
+  containerPort: integer("container_port").notNull(),
+  hostPort: integer("host_port").notNull(),
+  createdAt: integer("created_at").notNull()
+});
+
 export const customFunctions = sqliteTable("custom_functions", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -312,4 +321,72 @@ export const ragConnectors = sqliteTable("rag_connectors", {
   status: text("status").notNull(),
   lastSyncAt: integer("last_sync_at"),
   createdAt: integer("created_at").notNull()
+});
+
+// --- Autonomous agent / improvement (plan §2.0) ---
+export const improvementJobs = sqliteTable("improvement_jobs", {
+  id: text("id").primaryKey(),
+  name: text("name"),
+  scopeType: text("scope_type"),
+  scopeId: text("scope_id"),
+  studentLlmConfigId: text("student_llm_config_id"),
+  teacherLlmConfigId: text("teacher_llm_config_id"),
+  currentModelRef: text("current_model_ref"),
+  instanceRefs: text("instance_refs"),
+  architectureSpec: text("architecture_spec"),
+  lastTrainedAt: integer("last_trained_at"),
+  lastFeedbackAt: integer("last_feedback_at"),
+  createdAt: integer("created_at").notNull()
+});
+
+export const techniqueInsights = sqliteTable("technique_insights", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id").notNull(),
+  runId: text("run_id"),
+  techniqueOrStrategy: text("technique_or_strategy").notNull(),
+  outcome: text("outcome").notNull(),
+  summary: text("summary").notNull(),
+  config: text("config"),
+  createdAt: integer("created_at").notNull()
+});
+
+export const techniquePlaybook = sqliteTable("technique_playbook", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  whenToUse: text("when_to_use"),
+  downsides: text("downsides"),
+  interactions: text("interactions"),
+  observed: text("observed"),
+  updatedAt: integer("updated_at").notNull()
+});
+
+export const guardrails = sqliteTable("guardrails", {
+  id: text("id").primaryKey(),
+  scope: text("scope").notNull(),
+  scopeId: text("scope_id"),
+  config: text("config").notNull(),
+  createdAt: integer("created_at").notNull()
+});
+
+export const agentStoreEntries = sqliteTable("agent_store_entries", {
+  id: text("id").primaryKey(),
+  scope: text("scope").notNull(),
+  scopeId: text("scope_id").notNull(),
+  storeName: text("store_name").notNull(),
+  key: text("key").notNull(),
+  value: text("value").notNull(),
+  createdAt: integer("created_at").notNull()
+});
+
+export const trainingRuns = sqliteTable("training_runs", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id").notNull(),
+  backend: text("backend").notNull(),
+  status: text("status").notNull(),
+  datasetRef: text("dataset_ref"),
+  outputModelRef: text("output_model_ref"),
+  config: text("config"),
+  createdAt: integer("created_at").notNull(),
+  finishedAt: integer("finished_at")
 });

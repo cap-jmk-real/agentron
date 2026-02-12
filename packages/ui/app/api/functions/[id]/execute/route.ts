@@ -7,10 +7,11 @@ export const runtime = "nodejs";
 
 const podman = new PodmanManager();
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 export async function POST(request: Request, { params }: Params) {
-  const fnRows = await db.select().from(customFunctions).where(eq(customFunctions.id, params.id));
+  const { id } = await params;
+  const fnRows = await db.select().from(customFunctions).where(eq(customFunctions.id, id));
   if (fnRows.length === 0) return json({ error: "Function not found" }, { status: 404 });
 
   const fn = fromCustomFunctionRow(fnRows[0]);

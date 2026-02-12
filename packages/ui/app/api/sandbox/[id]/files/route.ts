@@ -8,10 +8,11 @@ export const runtime = "nodejs";
 
 const podman = new PodmanManager();
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 export async function POST(request: Request, { params }: Params) {
-  const rows = await db.select().from(sandboxes).where(eq(sandboxes.id, params.id));
+  const { id } = await params;
+  const rows = await db.select().from(sandboxes).where(eq(sandboxes.id, id));
   if (rows.length === 0) return json({ error: "Sandbox not found" }, { status: 404 });
 
   const sb = fromSandboxRow(rows[0]);

@@ -16,7 +16,7 @@ import {
   webhook,
   weather,
 } from "@agentron-studio/runtime";
-import type { Workflow, Agent } from "@agentron-studio/core";
+import type { Workflow, Agent, LLMConfig, Canvas } from "@agentron-studio/core";
 import type { PromptTemplate } from "@agentron-studio/core";
 import type { LLMResponse } from "@agentron-studio/runtime";
 import {
@@ -27,6 +27,7 @@ import {
   llmConfigs,
   tokenUsage,
   modelPricing,
+  executions,
   fromAgentRow,
   fromWorkflowRow,
   fromToolRow,
@@ -36,6 +37,8 @@ import {
   ensureStandardTools,
   STANDARD_TOOLS,
 } from "./db";
+
+export const WAITING_FOR_USER_MESSAGE = "WAITING_FOR_USER";
 
 const STD_IDS: Record<string, (input: unknown) => Promise<unknown>> = {
   "std-fetch-url": fetchUrl,
@@ -57,10 +60,10 @@ async function buildAvailableTools(toolIds: string[]): Promise<LLMToolDef[]> {
   if (toolIds.length === 0) return [];
   const out: LLMToolDef[] = [];
   for (const id of toolIds) {
-    const builtin = STD_IDS[id];
-    if (builtin) {
+    if (id in STD_IDS) {
       const tool = STANDARD_TOOLS.find((t) => t.id === id) ?? { id, name: id, protocol: "native" as const, config: {}, inputSchema: { type: "object", properties: {}, required: [] } };
-      const schema = (typeof tool.inputSchema === "object" && tool.inputSchema !== null ? tool.inputSchema : { type: "object", properties: {}, required: [] }) as Record<string, unknown>;
+      const inputSchema = "inputSchema" in tool ? tool.inputSchema : { type: "object", properties: {}, required: [] };
+      const schema = (typeof inputSchema === "object" && inputSchema !== null ? inputSchema : { type: "object", properties: {}, required: [] }) as Record<string, unknown>;
       out.push({
         type: "function",
         function: {
@@ -183,7 +186,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
   const customPricing: Record<string, { input: number; output: number }> = {};
   for (const r of pricingRows) {
     const p = fromModelPricingRow(r);
-    customPricing[p.modelPattern] = { input: p.inputCostPerM, output: p.outputCostPerM };
+    customPricing[p.modelPattern] = { input: Number(p.inputCostPerM), output: Number(p.outputCostPerM) };
   }
 
   const manager = createDefaultLLMManager(async (ref) => (ref ? process.env[ref] : undefined));
@@ -199,7 +202,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
   const trackingCallLLM = async (req: Parameters<typeof manager.chat>[1] & { llmConfigId?: string }) => {
     const cfg = resolveLlmConfig(req.llmConfigId);
     const { llmConfigId: _drop, ...chatReq } = req as Record<string, unknown>;
-    const response = await manager.chat(cfg, chatReq as Parameters<typeof manager.chat>[1], { source: "workflow" });
+    const response = await manager.chat(cfg as LLMConfig, chatReq as Parameters<typeof manager.chat>[1], { source: "workflow" });
     usageEntries.push({ response, agentId: currentAgentId, config: { provider: cfg.provider, model: cfg.model } });
     return response;
   };
@@ -266,7 +269,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
 
     currentAgentId = agentId;
 
-    const round = sharedContext.get<number>("__round");
+    const round = sharedContext.get("__round") as number | undefined;
     const step: ExecutionTraceStep = { nodeId, agentId, agentName: agent.name, order: stepOrder++, ...(round !== undefined && { round }), input };
 
     const workflowContextSnapshot = typeof sharedContext.snapshot === "function" ? sharedContext.snapshot() : {};
@@ -284,6 +287,22 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
           name: GET_WORKFLOW_CONTEXT_TOOL_ID,
           description: "Get current workflow context: summary, recent conversation turns, and round index. Call this when you need to see the full conversation so far.",
           parameters: { type: "object" as const, properties: {}, required: [] as string[] },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "request_user_help",
+          description: "Request help from the user (credentials, 2FA, confirmation, choice). The run pauses until the user responds in Chat or Runs. Use when you need input only the user can provide.",
+          parameters: {
+            type: "object" as const,
+            properties: {
+              type: { type: "string", enum: ["credentials", "two_fa", "confirmation", "choice", "other"], description: "Kind of help needed" },
+              message: { type: "string", description: "What you need (e.g. 'API key for X')" },
+              question: { type: "string", description: "Specific question to show the user" },
+            },
+            required: ["message"] as string[],
+          },
         },
       },
     ];
@@ -313,7 +332,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
         const req = (input && typeof input === "object" && "messages" in (input as object))
           ? (input as { llmConfigId?: string; messages: unknown[]; tools?: unknown[] })
           : { messages: [{ role: "user" as const, content: String(input ?? "") }] };
-        const res = await trackingCallLLM(req);
+        const res = await trackingCallLLM(req as Parameters<typeof trackingCallLLM>[0]);
         return req.tools && Array.isArray(req.tools) && req.tools.length > 0 ? res : res.content;
       },
       callTool: async (toolId: string, input: unknown, override?: ToolOverride) => {
@@ -323,6 +342,18 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
             recentTurns: sharedContext.get("__recent_turns"),
             round: sharedContext.get("__round"),
           };
+        }
+        if (toolId === "request_user_help") {
+          const arg = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+          const message = (typeof arg.message === "string" ? arg.message : "").trim() || "Need your input";
+          const question = (typeof arg.question === "string" ? arg.question : "").trim() || message;
+          const type = typeof arg.type === "string" ? arg.type : "other";
+          const payload = { question, type, message };
+          await db.update(executions).set({
+            status: "waiting_for_user",
+            output: JSON.stringify(payload),
+          }).where(eq(executions.id, runId)).run();
+          throw new Error(WAITING_FOR_USER_MESSAGE);
         }
         const toolContext = {
           summary: sharedContext.get("__summary"),
@@ -350,12 +381,18 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
       } else {
         const nodeDef = (agent as Agent & { definition?: { graph?: { nodes?: unknown[]; edges?: unknown[] }; toolIds?: string[] } }).definition ?? {};
         const rawGraph = nodeDef.graph;
-        const graph = rawGraph && typeof rawGraph === "object" && !Array.isArray(rawGraph)
-          ? { nodes: Array.isArray((rawGraph as { nodes?: unknown[] }).nodes) ? (rawGraph as { nodes: unknown[] }).nodes : [], edges: Array.isArray((rawGraph as { edges?: unknown[] }).edges) ? (rawGraph as { edges: unknown[] }).edges : [] }
-          : { nodes: [], edges: [] };
+        const rawNodes = rawGraph && typeof rawGraph === "object" && !Array.isArray(rawGraph) && Array.isArray((rawGraph as { nodes?: unknown[] }).nodes) ? (rawGraph as { nodes: unknown[] }).nodes : [];
+        const rawEdges = rawGraph && typeof rawGraph === "object" && !Array.isArray(rawGraph) && Array.isArray((rawGraph as { edges?: unknown[] }).edges) ? (rawGraph as { edges: unknown[] }).edges : [];
+        const graph = {
+          nodes: rawNodes.map((n, i) => {
+            const node = n as { id: string; type: string; position?: [number, number]; parameters?: Record<string, unknown> };
+            return { ...node, position: node.position ?? ([0, i * 100] as [number, number]) };
+          }),
+          edges: rawEdges,
+        };
         const nodeExecutor = new NodeAgentExecutor();
         output = await nodeExecutor.execute(
-          { graph: graph as NodeAgentGraph, sharedContextKeys: [], toolIds, defaultLlmConfigId },
+          { graph: graph as Canvas, sharedContextKeys: [], toolIds, defaultLlmConfigId },
           input,
           { ...context, prompts: {} as Record<string, PromptTemplate> }
         );
@@ -400,7 +437,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
         model: entry.config.model,
         promptTokens: usage.promptTokens,
         completionTokens: usage.completionTokens,
-        estimatedCost: cost,
+        estimatedCost: cost != null ? String(cost) : null,
       })).run();
     }
   }

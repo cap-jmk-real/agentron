@@ -8,9 +8,12 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const targetId = url.searchParams.get("targetId");
   const targetType = url.searchParams.get("targetType");
+  const executionId = url.searchParams.get("executionId");
 
   let rows;
-  if (targetId) {
+  if (executionId != null && executionId !== "") {
+    rows = await db.select().from(feedback).where(eq(feedback.executionId, executionId));
+  } else if (targetId) {
     rows = await db.select().from(feedback).where(eq(feedback.targetId, targetId));
   } else if (targetType) {
     rows = await db.select().from(feedback).where(eq(feedback.targetType, targetType));

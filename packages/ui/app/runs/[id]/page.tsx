@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Copy, CheckCircle, XCircle, Clock, Loader2, MessageCircle, GitBranch, Square } from "lucide-react";
+import { ArrowLeft, Copy, CheckCircle, XCircle, Clock, Loader2, MessageCircle, GitBranch, Square, ThumbsUp, ThumbsDown } from "lucide-react";
 import { openChatWithContext } from "../../components/chat-wrapper";
 
 type ExecutionTraceStep = {
@@ -205,6 +205,13 @@ function StatusBadge({ status }: { status: string }) {
       </span>
     );
   }
+  if (status === "waiting_for_user") {
+    return (
+      <span className="run-status" style={{ background: "var(--resource-amber)", color: "var(--bg)" }}>
+        <Clock size={14} /> Needs your input
+      </span>
+    );
+  }
   return (
     <span className="run-status run-status-queued">
       <Clock size={14} /> {status}
@@ -220,6 +227,10 @@ export default function RunDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [rating, setRating] = useState<"good" | "bad" | null>(null);
+  const [notes, setNotes] = useState("");
+  const [submittingRating, setSubmittingRating] = useState(false);
+  const [existingFeedback, setExistingFeedback] = useState<{ label: string; notes?: string } | null>(null);
 
   const load = useCallback(async (silent?: boolean) => {
     if (!id) return;
@@ -257,6 +268,47 @@ export default function RunDetailPage() {
     const interval = setInterval(() => void load(true), 1500);
     return () => clearInterval(interval);
   }, [run?.status, load]);
+
+  useEffect(() => {
+    if (!run?.id) return;
+    fetch(`/api/feedback?executionId=${encodeURIComponent(run.id)}`)
+      .then((r) => r.json())
+      .then((list) => {
+        const first = Array.isArray(list) && list.length > 0 ? list[0] : null;
+        if (first && first.label) {
+          setExistingFeedback({ label: first.label, notes: first.notes });
+          setRating(first.label as "good" | "bad");
+          setNotes(first.notes ?? "");
+        }
+      })
+      .catch(() => {});
+  }, [run?.id]);
+
+  const handleRateRun = useCallback(async (label: "good" | "bad") => {
+    if (!run) return;
+    setSubmittingRating(true);
+    try {
+      const input = (run.output && typeof run.output === "object" && (run.output as { trail?: ExecutionTraceStep[] }).trail?.[0]?.input) ?? run.targetId;
+      const output = (run.output && typeof run.output === "object" && (run.output as { output?: unknown }).output) ?? "";
+      await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetType: run.targetType,
+          targetId: run.targetId,
+          executionId: run.id,
+          input: typeof input === "object" ? JSON.stringify(input) : input,
+          output: typeof output === "object" ? JSON.stringify(output) : output,
+          label,
+          notes: notes.trim() || undefined,
+        }),
+      });
+      setRating(label);
+      setExistingFeedback({ label, notes: notes.trim() || undefined });
+    } finally {
+      setSubmittingRating(false);
+    }
+  }, [run, notes]);
 
   const handleCopyForChat = useCallback(() => {
     if (!run) return;
@@ -438,6 +490,53 @@ export default function RunDetailPage() {
           </div>
         </div>
       )}
+
+      <div className="run-detail-card">
+        <div className="run-detail-section">
+          <div className="run-detail-label" style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+            <ThumbsUp size={16} style={{ opacity: 0.8 }} /> Rate this run
+          </div>
+          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: "0.25rem 0 0.5rem 0" }}>
+            Your rating is used for improvement (generate_training_data from_feedback). Good = learn from this output; Bad = avoid or correct.
+          </p>
+          {existingFeedback ? (
+            <p style={{ fontSize: "0.9rem", margin: 0 }}>
+              You rated this run: <strong>{existingFeedback.label}</strong>
+              {existingFeedback.notes && ` — ${existingFeedback.notes}`}
+            </p>
+          ) : (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                <button
+                  type="button"
+                  className="button button-success"
+                  disabled={submittingRating}
+                  onClick={() => handleRateRun("good")}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                >
+                  <ThumbsUp size={14} /> Good
+                </button>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  disabled={submittingRating}
+                  onClick={() => handleRateRun("bad")}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                >
+                  <ThumbsDown size={14} /> Bad
+                </button>
+              </div>
+              <textarea
+                placeholder="Optional notes (e.g. what to improve)"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                style={{ width: "100%", maxWidth: "24rem", resize: "vertical", padding: "0.5rem", fontSize: "0.9rem" }}
+              />
+            </>
+          )}
+        </div>
+      </div>
 
       <div className="run-detail-card">
         <div className="run-detail-section">

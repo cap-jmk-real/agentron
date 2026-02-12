@@ -2,16 +2,17 @@ import { json } from "../../../_lib/response";
 import { db, tokenUsage, agents, fromAgentRow } from "../../../_lib/db";
 import { eq } from "drizzle-orm";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 export const runtime = "nodejs";
 
 export async function GET(_: Request, { params }: Params) {
-  const agentRows = await db.select().from(agents).where(eq(agents.id, params.id));
+  const { id } = await params;
+  const agentRows = await db.select().from(agents).where(eq(agents.id, id));
   if (agentRows.length === 0) return json({ error: "Agent not found" }, { status: 404 });
   const agent = fromAgentRow(agentRows[0]);
 
-  const rows = (await db.select().from(tokenUsage)).filter((r) => r.agentId === params.id);
+  const rows = (await db.select().from(tokenUsage)).filter((r) => r.agentId === id);
 
   const totalPrompt = rows.reduce((s, r) => s + r.promptTokens, 0);
   const totalCompletion = rows.reduce((s, r) => s + r.completionTokens, 0);
