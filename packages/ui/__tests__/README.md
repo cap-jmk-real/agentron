@@ -20,15 +20,16 @@
 
 ## Intentional coverage gaps
 
-These areas are **not** covered by unit tests by design; they are either integration-only, external, or low-risk.
+These areas are **not** covered by unit tests by design; they are either integration-only, external, or low-risk. For a detailed rationale (why each is hard to unit-test), see [.cursor/plans/coverage-above-70-percent.md](../../.cursor/plans/coverage-above-70-percent.md) § “Why some code is not (easily) unit testable”.
 
 | Area | Reason |
 |------|--------|
 | **`api/_lib/s3.ts`** | S3/external storage I/O; test via integration or manual. |
-| **`api/_lib/remote-test.ts`** | Remote server connectivity; integration or manual. |
+| **`api/_lib/remote-test.ts`** | Remote server connectivity (spawns `ssh`); integration or manual. |
 | **Ollama routes** (`api/ollama/*`) | External Ollama service; integration tests or manual. |
-| **Sandbox / run-code / sandbox-proxy** | Container/process boundaries; integration or E2E. |
+| **Sandbox / run-code / sandbox-proxy** | Container/process boundaries (Podman); integration or E2E. |
 | **Chat route (bulk of `api/chat/route.ts`)** | LLM and runtime calls; pure helpers are in `_lib/chat-helpers` and unit-tested. Main handler covered by integration/E2E or manual. |
 | **`api/_lib/run-workflow.ts`** | Heavy runtime/DB; testable units are limited; execution paths covered by workflow execute API test. |
+| **`app/lib/system-stats-interval.ts`** | Browser-only (`window`, `localStorage`); Node test env doesn’t provide them; logic is simple. |
 
-No coverage threshold is enforced in CI; coverage is used as a **risk signal**. Run `npm run test:coverage --workspace packages/ui` before pushing and review the report.
+**Coverage target:** >70% statements/lines for in-scope code (see exclusions in `vitest.config.ts`). A 70% threshold is enforced so CI fails if coverage drops below target. Run `npm run test:coverage --workspace packages/ui` before pushing and review the report.

@@ -62,7 +62,7 @@ export default function LlmSettings({ agentId, agent, onUpdate }: Props) {
   };
 
   useEffect(() => {
-    fetchPresets();
+    queueMicrotask(() => fetchPresets());
   }, []);
 
   const updateConfig = (patch: Partial<LLMConfig>) => {

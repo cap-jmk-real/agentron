@@ -3,7 +3,7 @@ import { db, executions, workflows, agents } from "../../_lib/db";
 import { eq, inArray } from "drizzle-orm";
 
 /** Returns count and list of runs waiting for user input. Used by sidebar (count) and chat (list with question/target). */
-export async function GET() {
+export async function GET(_request?: Request) {
   const rows = await db
     .select({ id: executions.id, targetType: executions.targetType, targetId: executions.targetId, output: executions.output })
     .from(executions)

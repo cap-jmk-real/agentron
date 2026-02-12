@@ -174,7 +174,7 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
       };
       onNodesEdgesChange(wfNodes, [...wfEdges, newEdge]);
     },
-    [wfNodes, wfEdges, onNodesEdgesChange]
+    [wfNodes, wfEdges, onNodesEdgesChange, setEdges]
   );
 
   const onNodesChangeInternal = useCallback(
@@ -185,7 +185,7 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
         return next;
       });
     },
-    [wfEdges, onNodesEdgesChange]
+    [wfEdges, onNodesEdgesChange, setNodes]
   );
 
   const onEdgesChangeInternal = useCallback(
@@ -196,7 +196,7 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
         return next;
       });
     },
-    [wfNodes, onNodesEdgesChange]
+    [wfNodes, onNodesEdgesChange, setEdges]
   );
 
   const onDragOver = useCallback((e: React.DragEvent) => {

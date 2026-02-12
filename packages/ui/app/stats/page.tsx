@@ -117,7 +117,7 @@ export default function StatsPage() {
   }, []);
 
   useEffect(() => {
-    setStatsIntervalMs(getSystemStatsIntervalMs());
+    queueMicrotask(() => setStatsIntervalMs(getSystemStatsIntervalMs()));
     const handler = () => setStatsIntervalMs(getSystemStatsIntervalMs());
     window.addEventListener(SYSTEM_STATS_INTERVAL_CHANGED_EVENT, handler);
     return () => window.removeEventListener(SYSTEM_STATS_INTERVAL_CHANGED_EVENT, handler);

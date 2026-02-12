@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import { GET as listGet, POST as listPost } from "../../app/api/agents/route";
 import { GET as getOne, DELETE as deleteOne } from "../../app/api/agents/[id]/route";
 import { GET as workflowUsageGet } from "../../app/api/agents/[id]/workflow-usage/route";
+import { GET as agentSkillsGet, POST as agentSkillsPost, DELETE as agentSkillsDelete } from "../../app/api/agents/[id]/skills/route";
+import { POST as agentRefinePost } from "../../app/api/agents/[id]/refine/route";
+import { POST as createSkill } from "../../app/api/skills/route";
 
 describe("Agents API", () => {
   let createdId: string;
@@ -55,6 +58,139 @@ describe("Agents API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data.workflows)).toBe(true);
+  });
+
+  it("POST /api/agents/:id/refine returns 404 for unknown agent", async () => {
+    const res = await agentRefinePost(new Request("http://localhost/api/agents/x/refine", { method: "POST" }), {
+      params: Promise.resolve({ id: "non-existent-agent-refine" }),
+    });
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe("Agent not found");
+  });
+
+  it("POST /api/agents/:id/refine returns 400 when agent has no feedback", async () => {
+    if (!createdId) return;
+    const res = await agentRefinePost(new Request("http://localhost/api/agents/x/refine", { method: "POST" }), {
+      params: Promise.resolve({ id: createdId }),
+    });
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("feedback");
+  });
+
+  describe("GET /api/agents/:id/skills", () => {
+    it("returns empty array when agent has no skills", async () => {
+      if (!createdId) return;
+      const res = await agentSkillsGet(new Request("http://localhost/api/agents/x/skills"), { params: Promise.resolve({ id: createdId }) });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(Array.isArray(data)).toBe(true);
+      expect(data).toHaveLength(0);
+    });
+  });
+
+  describe("POST /api/agents/:id/skills and DELETE", () => {
+    let skillId: string;
+
+    it("POST /api/skills creates a skill for attachment", async () => {
+      const res = await createSkill(
+        new Request("http://localhost/api/skills", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "Agent Skill", type: "prompt", content: "Help." }),
+        })
+      );
+      expect(res.status).toBe(201);
+      const data = await res.json();
+      skillId = data.id;
+    });
+
+    it("POST /api/agents/:id/skills attaches skill", async () => {
+      if (!createdId || !skillId) return;
+      const res = await agentSkillsPost(
+        new Request("http://localhost/api/agents/x/skills", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ skillId }),
+        }),
+        { params: Promise.resolve({ id: createdId }) }
+      );
+      expect(res.status).toBe(201);
+      const data = await res.json();
+      expect(data.id).toBe(skillId);
+      expect(data.name).toBe("Agent Skill");
+    });
+
+    it("GET /api/agents/:id/skills returns attached skills", async () => {
+      if (!createdId) return;
+      const res = await agentSkillsGet(new Request("http://localhost/api/agents/x/skills"), { params: Promise.resolve({ id: createdId }) });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(Array.isArray(data)).toBe(true);
+      expect(data.length).toBeGreaterThanOrEqual(1);
+      expect(data.some((s: { id: string }) => s.id === skillId)).toBe(true);
+    });
+
+    it("DELETE /api/agents/:id/skills removes skill", async () => {
+      if (!createdId || !skillId) return;
+      const res = await agentSkillsDelete(
+        new Request("http://localhost/api/agents/x/skills", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ skillId }),
+        }),
+        { params: Promise.resolve({ id: createdId }) }
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+    });
+
+    it("POST /api/agents/:id/skills returns 400 when body missing skillId", async () => {
+      if (!createdId) return;
+      const res = await agentSkillsPost(
+        new Request("http://localhost/api/agents/x/skills", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }),
+        { params: Promise.resolve({ id: createdId }) }
+      );
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toBeDefined();
+    });
+
+    it("POST /api/agents/:id/skills returns 400 for invalid JSON body", async () => {
+      if (!createdId) return;
+      const res = await agentSkillsPost(
+        new Request("http://localhost/api/agents/x/skills", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "not valid json",
+        }),
+        { params: Promise.resolve({ id: createdId }) }
+      );
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toBeDefined();
+    });
+
+    it("DELETE /api/agents/:id/skills returns 400 for invalid JSON body", async () => {
+      if (!createdId) return;
+      const res = await agentSkillsDelete(
+        new Request("http://localhost/api/agents/x/skills", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: "not valid json",
+        }),
+        { params: Promise.resolve({ id: createdId }) }
+      );
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toBeDefined();
+    });
   });
 
   it("DELETE /api/agents/:id removes agent", async () => {

@@ -5,6 +5,7 @@ import { POST as agentsPost } from "../../app/api/agents/route";
 import { GET as runsGet } from "../../app/api/runs/route";
 import { GET as runGet, PATCH as runPatch } from "../../app/api/runs/[id]/route";
 import { GET as traceGet } from "../../app/api/runs/[id]/trace/route";
+import { GET as pendingHelpGet } from "../../app/api/runs/pending-help/route";
 
 describe("Runs API", () => {
   let runId: string;
@@ -98,6 +99,33 @@ describe("Runs API", () => {
     expect(res.status).toBe(404);
     const data = await res.json();
     expect(data.error).toBe("Not found");
+  });
+
+  it("GET /api/runs/pending-help returns count and requests array", async () => {
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(typeof data.count).toBe("number");
+    expect(Array.isArray(data.requests)).toBe(true);
+  });
+
+  it("GET /api/runs/pending-help returns requests with names when runs are waiting_for_user", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { question: "Need your input?", reason: "Test" },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.count).toBeGreaterThanOrEqual(0);
+    expect(Array.isArray(data.requests)).toBe(true);
   });
 
   it("GET /api/runs/:id/trace returns run metadata and trail when run has output.trail", async () => {

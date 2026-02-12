@@ -86,7 +86,9 @@ export default function LocalModelsPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    queueMicrotask(() => refresh());
+  }, [refresh]);
 
   const checkCompat = async () => {
     setCheckingCompat(true);
