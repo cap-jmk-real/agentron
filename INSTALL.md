@@ -64,7 +64,7 @@ npm --workspace packages/ui run start
 
 **Option A – Download a pre-built installer (recommended)**
 
-- Use the **Download** page in the documentation site (or the project’s GitHub Releases). Installers are built automatically by CI when a version tag (e.g. `v0.1.0`) is pushed. Installers for Windows, macOS, and Linux are built automatically when we push a version tag (e.g. `v0.1.0`). Pick your platform and run the installer; then start the web UI (`npm run dev:ui`) and launch the desktop app so it can connect (e.g. to `http://localhost:3000`).
+- Use the **Download** page in the documentation site (or the project’s GitHub Releases). Installers are built automatically by CI when changes are merged into `main`. Installers for Windows, macOS, and Linux are created on each merge to `main`. Pick your platform and run the installer; then start the web UI (`npm run dev:ui`) and launch the desktop app so it can connect (e.g. to `http://localhost:3000`).
 
 **Option B – Build from source**
 

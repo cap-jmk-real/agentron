@@ -193,27 +193,24 @@ After modifying code, **always run the relevant build(s)** to catch and fix pote
 
 ## Release & Tagging Rules
 
-- **Never create or push tags unless the user explicitly asks for a release.**
+- **Releases are created only when merging to `main`.** The version comes from `package.json`; a GitHub Release with desktop installers is created for `v{version}`. The desktop build runs on PRs to verify the app builds before merge; the release is created only after merge to `main`.
 
-- **Before a push that will become a release:** Bump the version using the release script, then commit, tag, and push.
-
-- **When preparing a release (vX.Y.Z):**
-  1. **Bump version** (updates root, `apps/desktop`, `apps/docs`):
+- **When preparing a release (vX.Y.Z):** The agent bumps the version in the package files **before** the user pushes to the branch that will be merged.
+  1. **Bump version** (updates `package.json`, `apps/desktop/package.json`, `apps/docs/package.json`): run `npm run release:bump` (or `-- minor` / `-- major`). Include the bumped version in the commit so it is part of the PR before merge.
      - Patch (bug fixes): `npm run release:bump` or `npm run release:bump -- patch`
      - Minor (new features): `npm run release:bump -- minor`
      - Major (breaking): `npm run release:bump -- major`
-  2. **Run tests and builds** before tagging:
+  2. **Run tests and builds** before pushing:
      - `npm test`
      - `npm run build:ui`
      - `npm run build:docs`
      - Or use `npm run release:prepare` (bump patch + test + UI build + docs build)
-  3. **Commit the version bumps** with a clear message: `git add -A && git commit -m "chore(release): vX.Y.Z"`
-  4. **Create an annotated tag** matching the version: `git tag -a vX.Y.Z -m "vX.Y.Z"`
-  5. **Push branch and tag** only when the user asks: `git push origin <branch>` then `git push origin vX.Y.Z`
+  3. **Commit** with a clear message: `git add -A && git commit -m "chore(release): vX.Y.Z"`
+  4. **Merge to `main`** (via PR or push). The desktop release workflow runs automatically and creates a GitHub Release with installers.
 
-- **Consistency:** Do **not** create a `vX.Y.Z` tag if any of the above `package.json` files still have a different `version`. The `release:bump` script keeps them aligned.
+- **Consistency:** Each merge to `main` must have a version bump. If you merge twice without bumping, the second release will fail (duplicate tag). The `release:bump` script keeps root, `apps/desktop`, and `apps/docs` versions aligned.
 
-- **CI:** Pushing a `v*` tag triggers the desktop release workflow (installers on GitHub Releases). Pushing to the default branch triggers the docs deploy to GitHub Pages.
+- **CI:** PRs to `main` run the desktop build (to verify the app builds). Merging to `main` creates the GitHub Release with installers and deploys docs.
 
 ## Promopt Generation
 

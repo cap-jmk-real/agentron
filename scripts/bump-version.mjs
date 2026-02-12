@@ -58,7 +58,7 @@ for (const rel of PACKAGES) {
   console.log(`  Updated ${rel}`);
 }
 
-console.log(`\nNext: commit, tag, and push:`);
+console.log(`\nNext: commit and merge to main:`);
 console.log(`  git add -A && git commit -m "chore(release): v${next}"`);
-console.log(`  git tag -a v${next} -m "v${next}"`);
-console.log(`  git push origin <branch> && git push origin v${next}`);
+console.log(`  git push origin <branch>`);
+console.log(`  Then merge to main (via PR or direct) — the release will be created automatically.`);

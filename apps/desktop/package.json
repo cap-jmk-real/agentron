@@ -1,6 +1,6 @@
 {
   "name": "@agentron-studio/desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Local-first desktop app for designing and running AI agents.",
   "author": "Julian M. Kleber <julian.m.kleber@gmail.com>",
