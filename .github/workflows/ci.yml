@@ -30,8 +30,5 @@ jobs:
       - name: Lint UI
         run: npm run lint:ui
 
-      - name: Test (UI)
-        run: npm run test:ui -- --run
-
-      - name: Coverage
+      - name: Test (UI) with coverage
         run: npm run test:coverage --workspace packages/ui
