@@ -103,8 +103,50 @@ When the LLM calls a tool (e.g. `search_docs`, `run_code`), the **tool implement
   - `executeStudioTool` (or the tool adapter) merges `toolContext` into the payload the tool actually sees (e.g. under a reserved key `__context` or `_workflowContext`), or passes it as a second argument if the tool signature supports it.  
 - Standard tools (fetchUrl, runCode, etc.) can ignore `__context`; custom or HTTP tools that “need the context” can read it and use it (e.g. to improve a search query or to scope code execution).
 
-**External tools (HTTP, MCP):** External tools only see what we send in the request. For workflow context to be reflected there, we must include it in the outbound payload (or headers). HTTP: merge workflow context into the request body (e.g. `_workflowContext: { summary, recentTurns }`) or a header. MCP: inject into tool arguments (e.g. `arguments._workflowContext`) before the JSON-RPC call. One shared `toolContext` shape; native tools get it in-process; HTTP/MCP adapters serialize it into the request so external services can reflect the same workflow context.
+Run npm run build:docs
+  npm run build:docs
+  shell: /usr/bin/bash -e {0}
+  env:
+    BASE_URL: /agentron/
+    URL: https://cap-jmk-real.github.io/agentron/
+npm warn config optional Use `--omit=optional` to exclude optional dependencies, or
+npm warn config `--include=optional` to include them.
+npm warn config
+npm warn config       Default value does install optional deps unless otherwise omitted.
 
+> agentron-studio@0.1.0 build:docs
+> npm --workspace apps/docs run build
+
+npm warn config optional Use `--omit=optional` to exclude optional dependencies, or
+npm warn config `--include=optional` to include them.
+npm warn config
+npm warn config       Default value does install optional deps unless otherwise omitted.
+
+> @agentron-studio/docs@0.1.0 build
+> docusaurus build
+
+
+Error:  Error: The url is not supposed to contain a sub-path like "/agentron/". Please use the baseUrl field for sub-paths.
+
+    at validateConfig (/home/runner/work/agentron/agentron/node_modules/@docusaurus/core/lib/server/configValidation.js:397:15)
+    at loadSiteConfig (/home/runner/work/agentron/agentron/node_modules/@docusaurus/core/lib/server/config.js:40:62)
+    at async Promise.all (index 1)
+    at async loadContext (/home/runner/work/agentron/agentron/node_modules/@docusaurus/core/lib/server/site.js:39:97)
+    at async getLocalesToBuild (/home/runner/work/agentron/agentron/node_modules/@docusaurus/core/lib/commands/build/build.js:55:21)
+    at async Command.build (/home/runner/work/agentron/agentron/node_modules/@docusaurus/core/lib/commands/build/build.js:30:21)
+    at async Promise.all (index 0)
+    at async runCLI (/home/runner/work/agentron/agentron/node_modules/@docusaurus/core/lib/commands/cli.js:56:5)
+    at async file:///home/runner/work/agentron/agentron/node_modules/@docusaurus/core/bin/docusaurus.mjs:44:3
+[INFO] Docusaurus version: 3.9.2
+Node version: v20.20.0
+npm error Lifecycle script `build` failed with error:
+npm error code 1
+npm error path /home/runner/work/agentron/agentron/apps/docs
+npm error workspace @agentron-studio/docs@0.1.0
+npm error location /home/runner/work/agentron/agentron/apps/docs
+npm error command failed
+npm error command sh -c docusaurus build
+Error: Process completed with exit code 1.
 So:
 
 - **Workflow/runner** owns building the tool-context payload from `sharedContext` and passing it into every tool call during that run.  
