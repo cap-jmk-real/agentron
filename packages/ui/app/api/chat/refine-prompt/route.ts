@@ -92,7 +92,7 @@ Output the improved system prompt (plain text only, no markdown):`;
 
   try {
     const res = await manager.chat(
-      llmConfig as { provider: string; model: string; apiKeyRef?: string; endpoint?: string; extra?: Record<string, unknown> },
+      llmConfig as import("@agentron-studio/core").LLMConfig,
       { messages: [{ role: "user", content: user }], temperature: 0.3 }
     );
     const suggested = (res.content ?? "").trim();

@@ -82,10 +82,11 @@ export function ChatMessageContent({ content }: Props) {
             }
             return <pre>{children}</pre>;
           },
-          code({ inline, className, children, ...props }) {
+          code(props) {
+            const { inline, className, children, ...rest } = props as { inline?: boolean; className?: string; children?: React.ReactNode; [k: string]: unknown };
             if (inline) {
               return (
-                <code className="chat-inline-code" {...props}>
+                <code className="chat-inline-code" {...rest}>
                   {children}
                 </code>
               );

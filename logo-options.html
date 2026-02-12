@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agentron logo options</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 2rem;
+      margin: 0;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 2rem;
+      font-weight: 600;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1.5rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #334155;
+      border-radius: 12px;
+      padding: 1.5rem;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .card span {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .card figure {
+      width: 120px;
+      height: 120px;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0f172a;
+      border-radius: 12px;
+    }
+    .card figure svg {
+      max-width: 80px;
+      max-height: 80px;
+    }
+    .card.light figure {
+      background: #f8fafc;
+    }
+    .card.light figure svg [fill="#0f172a"],
+    .card.light figure svg [fill="#020617"],
+    .card.light figure svg [fill="#111827"],
+    .card.light figure svg [fill="#1e293b"] { fill: #0f172a; }
+    .card.light figure svg [stroke="#0f172a"] { stroke: #0f172a; }
+    .card.light figure svg text { fill: #0f172a; }
+    .toggle {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    .toggle button {
+      background: #475569;
+      color: #e2e8f0;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .toggle button:hover { background: #64748b; }
+    body.show-light { background: #f1f5f9; color: #0f172a; }
+    body.show-light .card { background: #e2e8f0; color: #0f172a; }
+    body.show-light .card figure { background: #fff; }
+    body.show-light .card span { color: #0f172a; }
+    body.show-light .card figure svg text { fill: #0f172a !important; }
+  </style>
+</head>
+<body>
+  <h1>Agentron logo options</h1>
+  <div class="toggle">
+    <button type="button" onclick="document.body.classList.toggle('show-light')">Toggle light background</button>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="a1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient></defs><path d="M32 6 L13 56 H21 L27.5 40 H36.5 L43 56 H51 Z" fill="url(#a1)"/><circle cx="32" cy="38" r="4.5" fill="#EEF2FF"/><circle cx="32" cy="38" r="2.2" fill="#4f46e5"/></svg></figure>
+      <span>1. Angular A + circuit node</span>
+    </div>
+    <div class="card">
+      <figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="a2" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#22c1c3"/><stop offset="100%" stop-color="#6366f1"/></linearGradient></defs><path d="M32 8 C27 8 24 11 22 16 L12 52 H20 L24 40 H40 L44 52 H52 L42 16 C40 11 37 8 32 8 Z" fill="url(#a2)"/><circle cx="32" cy="36" r="5" fill="#0f172a"/></svg></figure>
+      <span>2. Rounded A + core</span>
+    </div>
+    <div class="card">
+      <figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="6" y="6" width="52" height="52" rx="16" fill="#020617"/><path d="M32 10 L12 50 H52 Z" fill="none" stroke="#38bdf8" stroke-width="3" stroke-linejoin="round"/><circle cx="32" cy="10" r="3" fill="#38bdf8"/><circle cx="12" cy="50" r="3" fill="#38bdf8"/><circle cx="52" cy="50" r="3" fill="#38bdf8"/><circle cx="32" cy="32" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/></svg></figure>
+      <span>3. Network triangle</span>
+    </div>
+    <div class="card">
+      <figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="a4" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#22c55e"/></linearGradient></defs><path d="M32 6 L50 16 L50 36 L32 50 L14 36 L14 16 Z" fill="url(#a4)"/><path d="M32 14 L22 36 H26 L29 30 H35 L38 36 H42 L32 14 Z" fill="none" stroke="#EEF2FF" stroke-width="2.5" stroke-linejoin="round"/><circle cx="32" cy="30" r="3" fill="#EEF2FF"/></svg></figure>
+      <span>4. Hexagon chip + A</span>
+    </div>
+    <div class="card">
+      <figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="10" y="16" width="44" height="32" rx="12" fill="#0f172a"/><rect x="16" y="22" width="32" height="20" rx="8" fill="#1e293b"/><circle cx="24" cy="32" r="4" fill="#38bdf8"/><circle cx="40" cy="32" r="4" fill="#a5b4fc"/><path d="M28 44 L32 24 L36 44" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round"/><rect x="30" y="10" width="4" height="6" rx="2" fill="#6366f1"/></svg></figure>
+      <span>5. Robot/agent head</span>
+    </div>
+    <div class="card">
+      <figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="4" y="4" width="56" height="56" rx="18" fill="#020617"/><path d="M32 10 L15 54 H23 L27 44 H37 L41 54 H49 Z" fill="#6366f1"/><circle cx="32" cy="40" r="3.5" fill="#020617"/><ellipse cx="32" cy="40" rx="16" ry="8" fill="none" stroke="#22d3ee" stroke-width="1.8"/><circle cx="44" cy="38" r="2.5" fill="#22d3ee"/></svg></figure>
+      <span>6. A + orbital ring</span>
+    </div>
+    <div class="card">
+      <figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="a7" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#6366f1"/></linearGradient></defs><rect x="10" y="8" width="44" height="48" rx="16" fill="#020617"/><path d="M32 14 L20 28 H28 V42 H36 V28 H44 Z" fill="url(#a7)"/><circle cx="32" cy="22" r="3" fill="#0f172a"/><circle cx="32" cy="34" r="2.5" fill="#0f172a"/><circle cx="32" cy="42" r="2.5" fill="#0f172a"/></svg></figure>
+      <span>7. Node stack arrow</span>
+    </div>
+    <div class="card">
+      <figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path d="M32 6 L14 12 V28 C14 40 21 48 32 54 C43 48 50 40 50 28 V12 Z" fill="#111827"/><path d="M32 12 L20 44 H26 L29 36 H35 L38 44 H44 Z" fill="#6366f1"/><circle cx="32" cy="32" r="3.5" fill="#E5E7EB"/></svg></figure>
+      <span>8. Shield + A</span>
+    </div>
+    <div class="card">
+      <figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><g stroke="#a5b4fc" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M32 8 L14 56"/><path d="M32 8 L50 56"/><path d="M22 38 H42"/><circle cx="32" cy="38" r="3"/></g></svg></figure>
+      <span>9. Monoline A</span>
+    </div>
+    <div class="card">
+      <figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 64"><rect x="4" y="10" width="40" height="40" rx="12" fill="#6366f1"/><path d="M24 16 L14 40 H18 L20 34 H28 L30 40 H34 Z" fill="#EEF2FF"/><circle cx="24" cy="28" r="2.3" fill="#6366f1"/><text x="56" y="38" font-family="system-ui,sans-serif" font-size="22" font-weight="600" fill="#e2e8f0">agentron</text></svg></figure>
+      <span>10. Wordmark + icon</span>
+    </div>
+  </div>
+</body>
+</html>

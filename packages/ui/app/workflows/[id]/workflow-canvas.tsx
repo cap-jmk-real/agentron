@@ -162,7 +162,7 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
   useEffect(() => {
     setNodes(toFlowNodes(wfNodes, agents, onAgentChange, onRemove));
     setEdges(toFlowEdges(wfEdges));
-  }, [wfNodes.length, wfEdges.length, JSON.stringify(wfNodes.map((n) => [n.id, n.type, n.parameters ?? n.config, n.position])), JSON.stringify(wfEdges.map((e) => [e.id, e.source ?? e.from, e.target ?? e.to]))]);
+  }, [wfNodes.length, wfEdges.length, JSON.stringify(wfNodes.map((n) => [n.id, n.type, n.parameters, n.position])), JSON.stringify(wfEdges.map((e) => [e.id, e.source, e.target]))]);
 
   const onConnect = useCallback(
     (connection: Connection) => {

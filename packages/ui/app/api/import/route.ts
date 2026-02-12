@@ -22,15 +22,16 @@ type ImportPayload = {
 
 type Counts = { created: number; skipped: number; updated: number };
 
-function isToolLike(t: unknown): t is ImportPayload["tools"][number] {
+type ToolItem = NonNullable<ImportPayload["tools"]>[number];
+function isToolLike(t: unknown): t is ToolItem {
   return typeof t === "object" && t !== null && "id" in t && "name" in t && "protocol" in t;
 }
 
-function isAgentLike(a: unknown): a is ImportPayload["agents"][number] {
+function isAgentLike(a: unknown): a is NonNullable<ImportPayload["agents"]>[number] {
   return typeof a === "object" && a !== null && "id" in a && "name" in a;
 }
 
-function isWorkflowLike(w: unknown): w is ImportPayload["workflows"][number] {
+function isWorkflowLike(w: unknown): w is NonNullable<ImportPayload["workflows"]>[number] {
   return typeof w === "object" && w !== null && "id" in w && "name" in w;
 }
 
@@ -137,11 +138,11 @@ export async function POST(request: Request) {
         if (skipExisting) {
           counts.workflows.skipped++;
         } else {
-          await db.update(workflowsTable).set(toWorkflowRow(workflow)).where(eq(workflowsTable.id, workflow.id)).run();
+          await db.update(workflowsTable).set(toWorkflowRow(workflow as import("@agentron-studio/core").Workflow)).where(eq(workflowsTable.id, workflow.id)).run();
           counts.workflows.updated++;
         }
       } else {
-        await db.insert(workflowsTable).values(toWorkflowRow(workflow)).run();
+        await db.insert(workflowsTable).values(toWorkflowRow(workflow as import("@agentron-studio/core").Workflow)).run();
         counts.workflows.created++;
       }
     }

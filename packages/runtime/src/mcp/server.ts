@@ -37,19 +37,20 @@ export class MCPServer {
   createExpressApp() {
     const app = createMcpExpressApp();
     app.post("/mcp", async (req, res) => {
+      const resObj = res as { on(event: string, cb: () => void): void; headersSent: boolean; status(n: number): { json: (x: unknown) => void }; };
       try {
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: undefined
         });
         await this.server.connect(transport);
-        await transport.handleRequest(req, res, req.body);
-        res.on("close", () => {
+        await transport.handleRequest(req, res, (req as { body: unknown }).body);
+        resObj.on("close", () => {
           transport.close();
           this.server.close();
         });
       } catch (error) {
-        if (!res.headersSent) {
-          res.status(500).json({
+        if (!resObj.headersSent) {
+          resObj.status(500).json({
             jsonrpc: "2.0",
             error: {
               code: -32603,

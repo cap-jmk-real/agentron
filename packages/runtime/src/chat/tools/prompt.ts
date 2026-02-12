@@ -116,6 +116,15 @@ export const BLOCK_TOOL_GUIDANCE = `Tool choice guidance (you decide which tool 
 - Always use a tool for every user message. Never respond without calling a tool first.
 - Prefer reusing existing tools, agents, and workflows when they match the user's request. Before creating new ones, inspect state with list_* / get_*; only create new resources when reuse or refinement is clearly not appropriate.`;
 
+export const BLOCK_IMPROVEMENT = `Autonomous improvement (self-learning agent): The user can design an agent that improves a small LLM from feedback or runs training. There is no single built-in "improvement agent". You compose improvement tools into whatever structure fits: create_improvement_job, generate_training_data (strategies: from_feedback, teacher, contrastive), trigger_training, get_training_status, evaluate_model, decide_optimization_target, get_technique_knowledge, record_technique_insight, propose_architecture, spawn_instance. Use list_tools to see these; attach them to agents/workflows so the designed agent can run the improvement loop. Store tools (create_store, put_store, get_store, query_store, list_stores) let the agent keep eval sets and metadata. Guardrails (create_guardrail, list_guardrails, update_guardrail) limit internet use and sanitize remote content.`;
+
+export const BLOCK_DISAMBIGUATE = `When the user wants to run or execute something but did not specify which agent or workflow (e.g. "run it", "execute", "start the workflow", "use the agent", "run the last one", "go ahead"):
+1. Call list_agents and list_workflows in the same response to see what exists.
+2. If exactly one workflow exists and the user's intent is to run a workflow: you may call execute_workflow with that workflow's id and briefly confirm in your message.
+3. If multiple workflows or agents exist: in your response list the options by name (and optionally description), then call ask_user with a clear question like "Which should I run? (1) Workflow X, (2) Workflow Y, (3) Agent Z." Wait for the user's reply before calling execute_workflow or running an agent.
+4. If no workflows or agents exist (or none match): say so and offer to create one (e.g. "You don't have any workflows yet. I can create one for you — what should it do?").
+Do not guess which resource to run when the user was vague — list options and ask, or run the only one if there is exactly one.`;
+
 export const BLOCK_CONTEXT = `Context: You receive full conversation history for this chat (summarized when very long so you still know what happened). You also receive "Stored preferences" and "Recent conversation summaries" from other chats. Use this context so you know what was already discussed, created, or agreed — the user may reference "the output you gave me", "same as before", or "what we decided" — resolve from history. When the user states a clear preference or asks you to remember something, use the remember tool. When they ask to change how many recent summaries are used, use set_assistant_setting (recentSummariesCount, 1–10). When the user asks to retry, redo, or repeat the last message (e.g. 'retry the last message', 'try again', 'okay retry the last message'), call retry_last_message to get the last user message, then respond to it in your reply.`;
 
 /** Ordered blocks; all are always included. No derivation — the LLM routes. */
@@ -130,6 +139,8 @@ const ALL_BLOCKS = [
   BLOCK_RUN_AND_IMPROVE,
   BLOCK_MULTI_STEP,
   BLOCK_TOOL_GUIDANCE,
+  BLOCK_IMPROVEMENT,
+  BLOCK_DISAMBIGUATE,
   BLOCK_CONTEXT,
 ];
 

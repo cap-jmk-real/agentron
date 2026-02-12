@@ -176,6 +176,11 @@ a {
   color: var(--sidebar-text);
 }
 
+.nav-badge-help {
+  background: var(--accent, #f59e0b);
+  color: var(--bg, #0f172a);
+}
+
 .nav-section {
   margin-top: 0.75rem;
   margin-bottom: 0.125rem;
@@ -2220,6 +2225,88 @@ main {
   padding: 1.25rem 1.5rem;
   display: flex;
   flex-direction: column;
+}
+
+.chat-section-pending-help {
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  max-width: 48rem;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.chat-section-pending-help-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 0.25rem 0;
+}
+
+.chat-section-pending-help-sub {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin: 0 0 0.75rem 0;
+}
+
+.chat-section-pending-help-card {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.chat-section-pending-help-card:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.chat-section-pending-help-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.chat-section-pending-help-card-target {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.chat-section-pending-help-card-link {
+  font-size: 0.75rem;
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.chat-section-pending-help-card-link:hover {
+  text-decoration: underline;
+}
+
+.chat-section-pending-help-card-question {
+  font-size: 0.875rem;
+  color: var(--text);
+  margin: 0 0 0.25rem 0;
+}
+
+.chat-section-pending-help-card-reason {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin: 0 0 0.5rem 0;
+}
+
+.chat-section-pending-help-card-reply {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.chat-section-pending-help-card-reply .chat-section-input {
+  flex: 1;
+  min-width: 0;
 }
 
 .chat-section-loading {

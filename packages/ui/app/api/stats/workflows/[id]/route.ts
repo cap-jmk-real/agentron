@@ -2,16 +2,17 @@ import { json } from "../../../_lib/response";
 import { db, tokenUsage, workflows, agents, fromWorkflowRow, fromAgentRow } from "../../../_lib/db";
 import { eq } from "drizzle-orm";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 export const runtime = "nodejs";
 
 export async function GET(_: Request, { params }: Params) {
-  const wfRows = await db.select().from(workflows).where(eq(workflows.id, params.id));
+  const { id } = await params;
+  const wfRows = await db.select().from(workflows).where(eq(workflows.id, id));
   if (wfRows.length === 0) return json({ error: "Workflow not found" }, { status: 404 });
   const wf = fromWorkflowRow(wfRows[0]);
 
-  const rows = (await db.select().from(tokenUsage)).filter((r) => r.workflowId === params.id);
+  const rows = (await db.select().from(tokenUsage)).filter((r) => r.workflowId === id);
   const allAgents = (await db.select().from(agents)).map(fromAgentRow);
   const agentMap = new Map(allAgents.map((a) => [a.id, a]));
 

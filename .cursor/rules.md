@@ -156,6 +156,18 @@ Before presenting code, the agent asks:
 * Are critical paths protected by unit tests?
 * Are boundaries validated by integration tests?
 * Did I run the unit tests?
+* Did I run the build (and fix any errors)?
+
+---
+
+## Build Verification
+
+After modifying code, **always run the relevant build(s)** to catch and fix potential build errors before considering the change complete.
+
+- **Default:** Run `npm run build:ui` when changing app/UI, packages/ui, packages/core, or packages/runtime code.
+- **Docs:** Run `npm run build:docs` when changing anything under `apps/docs/`.
+- **Typecheck:** Run `npm run typecheck` when changing TypeScript; fix type errors before finishing.
+- If the build or typecheck fails, fix the errors and re-run until they pass. Do not leave broken builds.
 
 ---
 

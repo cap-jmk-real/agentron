@@ -10,11 +10,19 @@ import PromptsEditor from "./prompts-editor";
 import ToolsEditor from "./tools-editor";
 import FeedbackPanel from "./feedback-panel";
 
+type Step = {
+  id: string;
+  name: string;
+  type: "prompt" | "tool_call" | "condition" | "context_read" | "context_write";
+  content: string;
+  requiresApproval?: boolean;
+};
+
 type AgentDefinition = {
   systemPrompt?: string;
-  steps?: { id: string; name: string; type: string; content: string; requiresApproval?: boolean }[];
+  steps?: Step[];
   toolIds?: string[];
-  graph?: { nodes: unknown[]; edges: unknown[] };
+  graph?: unknown;
   source?: string;
   entrypoint?: string;
 };
@@ -96,7 +104,13 @@ export default function AgentDetailPage() {
         setProtocol(data.protocol ?? "native");
         setEndpoint(data.endpoint ?? "");
         setCapabilities((data.capabilities ?? []).join(", "));
-        setDefinition(data.definition ?? {});
+        const rawDef = data.definition ?? {};
+        const stepTypes: Step["type"][] = ["prompt", "tool_call", "condition", "context_read", "context_write"];
+        const steps = rawDef.steps?.map((s: { id: string; name: string; type?: string; content: string; requiresApproval?: boolean }) => ({
+          ...s,
+          type: (stepTypes.includes(s.type as Step["type"]) ? s.type : "prompt") as Step["type"],
+        }));
+        setDefinition({ ...rawDef, steps });
         setRagCollectionId(data.ragCollectionId ?? null);
         const g = data.definition?.graph;
         setGraphNodesStr(JSON.stringify(Array.isArray(g?.nodes) ? g.nodes : [], null, 2));
@@ -312,7 +326,13 @@ export default function AgentDetailPage() {
             onApplyRefinement={(systemPrompt, steps) => {
               const updated = { ...definition, systemPrompt };
               if (steps) {
-                updated.steps = steps.map((s) => ({ id: crypto.randomUUID(), ...s }));
+                const stepTypes: Step["type"][] = ["prompt", "tool_call", "condition", "context_read", "context_write"];
+                updated.steps = steps.map((s) => ({
+                  id: crypto.randomUUID(),
+                  name: s.name,
+                  type: (stepTypes.includes(s.type as Step["type"]) ? s.type : "prompt") as Step["type"],
+                  content: s.content,
+                }));
               }
               setDefinition(updated);
             }}
@@ -331,17 +351,21 @@ export default function AgentDetailPage() {
                 nodes={(() => {
                   try {
                     const n = JSON.parse(graphNodesStr);
-                    return (Array.isArray(n) ? n : definition.graph?.nodes ?? []) as { id: string; type: string; position: [number, number]; parameters?: Record<string, unknown> }[];
+                    const g = definition.graph as { nodes?: unknown[]; edges?: unknown[] } | undefined;
+                    return (Array.isArray(n) ? n : g?.nodes ?? []) as { id: string; type: string; position: [number, number]; parameters?: Record<string, unknown> }[];
                   } catch {
-                    return (definition.graph?.nodes ?? []) as { id: string; type: string; position: [number, number]; parameters?: Record<string, unknown> }[];
+                    const g = definition.graph as { nodes?: unknown[]; edges?: unknown[] } | undefined;
+                    return (g?.nodes ?? []) as { id: string; type: string; position: [number, number]; parameters?: Record<string, unknown> }[];
                   }
                 })()}
                 edges={(() => {
                   try {
                     const e = JSON.parse(graphEdgesStr);
-                    return (Array.isArray(e) ? e : definition.graph?.edges ?? []) as { id: string; source: string; target: string }[];
+                    const g = definition.graph as { nodes?: unknown[]; edges?: unknown[] } | undefined;
+                    return (Array.isArray(e) ? e : g?.edges ?? []) as { id: string; source: string; target: string }[];
                   } catch {
-                    return (definition.graph?.edges ?? []) as { id: string; source: string; target: string }[];
+                    const g = definition.graph as { nodes?: unknown[]; edges?: unknown[] } | undefined;
+                    return (g?.edges ?? []) as { id: string; source: string; target: string }[];
                   }
                 })()}
                 tools={tools}
@@ -367,13 +391,14 @@ export default function AgentDetailPage() {
                   });
                   const created = await res.json();
                   if (!res.ok || !created?.id) return null;
-                  const nextNodes = ((definition.graph?.nodes ?? []) as { id: string; type: string; position: [number, number]; parameters?: Record<string, unknown> }[]).map((n) =>
+                  const graph = definition.graph as { nodes?: unknown[]; edges?: unknown[] } | undefined;
+                  const nextNodes = ((graph?.nodes ?? []) as { id: string; type: string; position: [number, number]; parameters?: Record<string, unknown> }[]).map((n) =>
                     n.id === nodeId && n.type === "tool"
                       ? { ...n, parameters: { ...(n.parameters ?? {}), toolId: created.id, override: undefined } }
                       : n
                   );
                   const toolIds = [...new Set([...(definition.toolIds ?? []), created.id])];
-                  const nextEdges = definition.graph?.edges ?? [];
+                  const nextEdges = (definition.graph as { nodes?: unknown[]; edges?: unknown[] } | undefined)?.edges ?? [];
                   setDefinition({ ...definition, graph: { nodes: nextNodes, edges: nextEdges }, toolIds });
                   setGraphNodesStr(JSON.stringify(nextNodes, null, 2));
                   setTools((prev) => [...prev, created]);

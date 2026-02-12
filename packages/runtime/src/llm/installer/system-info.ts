@@ -67,7 +67,7 @@ function detectGpu(): GpuInfo[] {
     // AMD ROCm (Linux) or AMD on Windows (no standard CLI; skip or use wmic)
     if (gpus.length === 0 && platform === "linux") {
       try {
-        const out = execSync("which rocm-smi 2>/dev/null && rocm-smi --showmeminfo vram 2>/dev/null || true", { timeout: 5000, shell: true }).toString();
+        const out = execSync("which rocm-smi 2>/dev/null && rocm-smi --showmeminfo vram 2>/dev/null || true", { timeout: 5000, shell: "/bin/sh", encoding: "utf8" });
         if (out.includes("vram") || out.includes("VRAM")) {
           gpus.push({ available: true, name: "AMD GPU (ROCm)", vram: 0, backend: "rocm" });
         }
@@ -77,7 +77,7 @@ function detectGpu(): GpuInfo[] {
     // Intel GPU (Linux: intel_gpu_top or sysfs)
     if (gpus.length === 0 && platform === "linux") {
       try {
-        const hasIntel = execSync("ls /dev/dri/renderD* 2>/dev/null | head -1", { timeout: 2000, shell: true }).toString().trim();
+        const hasIntel = execSync("ls /dev/dri/renderD* 2>/dev/null | head -1", { timeout: 2000, shell: "/bin/sh", encoding: "utf8" }).trim();
         if (hasIntel) {
           gpus.push({ available: true, name: "Intel GPU", vram: 0, backend: "none" });
         }

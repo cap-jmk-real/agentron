@@ -52,6 +52,6 @@ export async function PUT(request: Request) {
   }
 
   const id = crypto.randomUUID();
-  await db.insert(modelPricing).values(toModelPricingRow({ id, modelPattern, inputCostPerM, outputCostPerM })).run();
+  await db.insert(modelPricing).values(toModelPricingRow({ id, modelPattern, inputCostPerM: String(inputCostPerM), outputCostPerM: String(outputCostPerM), updatedAt: Date.now() })).run();
   return json({ id, modelPattern, inputCostPerM, outputCostPerM }, { status: 201 });
 }

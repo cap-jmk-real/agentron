@@ -6,10 +6,11 @@ import fs from "node:fs";
 
 export const runtime = "nodejs";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_: Request, { params }: Params) {
-  const rows = await db.select().from(files).where(eq(files.id, params.id));
+  const { id } = await params;
+  const rows = await db.select().from(files).where(eq(files.id, id));
   if (rows.length === 0) {
     return json({ error: "Not found" }, { status: 404 });
   }
@@ -37,7 +38,8 @@ export async function GET(_: Request, { params }: Params) {
 }
 
 export async function DELETE(_: Request, { params }: Params) {
-  const rows = await db.select().from(files).where(eq(files.id, params.id));
+  const { id } = await params;
+  const rows = await db.select().from(files).where(eq(files.id, id));
   if (rows.length === 0) {
     return json({ error: "Not found" }, { status: 404 });
   }
@@ -49,6 +51,6 @@ export async function DELETE(_: Request, { params }: Params) {
     fs.unlinkSync(filePath);
   }
 
-  await db.delete(files).where(eq(files.id, params.id)).run();
+  await db.delete(files).where(eq(files.id, id)).run();
   return json({ ok: true });
 }

@@ -4,8 +4,15 @@ import { desc, eq, inArray } from "drizzle-orm";
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  const rows = await db.select().from(executions).orderBy(desc(executions.startedAt));
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const targetType = searchParams.get("targetType") ?? undefined;
+  const targetId = searchParams.get("targetId") ?? undefined;
+  const limit = Math.min(Number(searchParams.get("limit")) || 50, 200);
+  let rows = await db.select().from(executions).orderBy(desc(executions.startedAt));
+  if (targetType) rows = rows.filter((r) => r.targetType === targetType);
+  if (targetId) rows = rows.filter((r) => r.targetId === targetId);
+  rows = rows.slice(0, limit);
   const runs = rows.map(fromExecutionRow);
   const workflowIds = [...new Set(runs.filter((r) => r.targetType === "workflow").map((r) => r.targetId))];
   const agentIds = [...new Set(runs.filter((r) => r.targetType === "agent").map((r) => r.targetId))];

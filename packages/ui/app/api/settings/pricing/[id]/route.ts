@@ -2,11 +2,12 @@ import { json } from "../../../_lib/response";
 import { db, modelPricing } from "../../../_lib/db";
 import { eq } from "drizzle-orm";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 export const runtime = "nodejs";
 
 export async function DELETE(_: Request, { params }: Params) {
-  await db.delete(modelPricing).where(eq(modelPricing.id, params.id)).run();
+  const { id } = await params;
+  await db.delete(modelPricing).where(eq(modelPricing.id, id)).run();
   return json({ ok: true });
 }

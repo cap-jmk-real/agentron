@@ -246,6 +246,67 @@ const SCHEMA_SQL = `
           embedding text not null,
           created_at integer not null
         );
+        create table if not exists improvement_jobs (
+          id text primary key,
+          name text,
+          scope_type text,
+          scope_id text,
+          student_llm_config_id text,
+          teacher_llm_config_id text,
+          current_model_ref text,
+          instance_refs text,
+          architecture_spec text,
+          last_trained_at integer,
+          last_feedback_at integer,
+          created_at integer not null
+        );
+        create table if not exists technique_insights (
+          id text primary key,
+          job_id text not null,
+          run_id text,
+          technique_or_strategy text not null,
+          outcome text not null,
+          summary text not null,
+          config text,
+          created_at integer not null
+        );
+        create table if not exists technique_playbook (
+          id text primary key,
+          name text not null,
+          description text,
+          when_to_use text,
+          downsides text,
+          interactions text,
+          observed text,
+          updated_at integer not null
+        );
+        create table if not exists guardrails (
+          id text primary key,
+          scope text not null,
+          scope_id text,
+          config text not null,
+          created_at integer not null
+        );
+        create table if not exists agent_store_entries (
+          id text primary key,
+          scope text not null,
+          scope_id text not null,
+          store_name text not null,
+          key text not null,
+          value text not null,
+          created_at integer not null
+        );
+        create table if not exists training_runs (
+          id text primary key,
+          job_id text not null,
+          backend text not null,
+          status text not null,
+          dataset_ref text,
+          output_model_ref text,
+          config text,
+          created_at integer not null,
+          finished_at integer
+        );
       `;
 
 export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
@@ -273,6 +334,7 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
     },
     resetDatabase: () => {
       const tables = [
+        "training_runs", "agent_store_entries", "guardrails", "technique_insights", "technique_playbook", "improvement_jobs",
         "rag_vectors", "rag_connectors", "rag_documents", "rag_collections", "rag_vector_stores", "rag_document_stores", "rag_encoding_configs",
         "tasks", "sandbox_site_bindings", "feedback", "remote_servers", "model_pricing", "token_usage",
         "custom_functions", "sandboxes", "files", "chat_messages", "conversations", "assistant_memory", "chat_assistant_settings", "contexts",
@@ -370,6 +432,14 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
       } catch {
         // Column already exists
       }
+      sqlite.exec(`
+        CREATE TABLE IF NOT EXISTS improvement_jobs (id text primary key, name text, scope_type text, scope_id text, student_llm_config_id text, teacher_llm_config_id text, current_model_ref text, instance_refs text, architecture_spec text, last_trained_at integer, last_feedback_at integer, created_at integer not null);
+        CREATE TABLE IF NOT EXISTS technique_insights (id text primary key, job_id text not null, run_id text, technique_or_strategy text not null, outcome text not null, summary text not null, config text, created_at integer not null);
+        CREATE TABLE IF NOT EXISTS technique_playbook (id text primary key, name text not null, description text, when_to_use text, downsides text, interactions text, observed text, updated_at integer not null);
+        CREATE TABLE IF NOT EXISTS guardrails (id text primary key, scope text not null, scope_id text, config text not null, created_at integer not null);
+        CREATE TABLE IF NOT EXISTS agent_store_entries (id text primary key, scope text not null, scope_id text not null, store_name text not null, key text not null, value text not null, created_at integer not null);
+        CREATE TABLE IF NOT EXISTS training_runs (id text primary key, job_id text not null, backend text not null, status text not null, dataset_ref text, output_model_ref text, config text, created_at integer not null, finished_at integer);
+      `);
     }
   };
 };

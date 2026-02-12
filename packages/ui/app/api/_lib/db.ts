@@ -16,10 +16,17 @@ import {
   assistantMemory,
   files,
   sandboxes,
+  sandboxSiteBindings,
   customFunctions,
   feedback,
   modelPricing,
   remoteServers,
+  improvementJobs,
+  techniqueInsights,
+  techniquePlaybook,
+  guardrails,
+  agentStoreEntries,
+  trainingRuns,
 } from "@agentron-studio/core";
 import type {
   Agent,
@@ -49,6 +56,21 @@ const adapter = createSqliteAdapter(dbPath);
 adapter.initialize?.();
 
 export const db = adapter.db;
+
+export async function runBackup(targetPath: string): Promise<void> {
+  if (!adapter.backupToPath) throw new Error("Adapter does not support backup");
+  await adapter.backupToPath(targetPath);
+}
+
+export async function runRestore(sourcePath: string): Promise<void> {
+  if (!adapter.restoreFromPath) throw new Error("Adapter does not support restore");
+  await adapter.restoreFromPath(sourcePath);
+}
+
+export function runReset(): void {
+  if (!adapter.resetDatabase) throw new Error("Adapter does not support reset");
+  adapter.resetDatabase();
+}
 export {
   agents,
   workflows,
@@ -63,10 +85,17 @@ export {
   assistantMemory,
   files,
   sandboxes,
+  sandboxSiteBindings,
   customFunctions,
   feedback,
   modelPricing,
   remoteServers,
+  improvementJobs,
+  techniqueInsights,
+  techniquePlaybook,
+  guardrails,
+  agentStoreEntries,
+  trainingRuns,
 };
 
 const parseJson = <T>(value?: string | null, fallback?: T): T | undefined => {
@@ -332,9 +361,9 @@ export const toChatAssistantSettingsRow = (s: ChatAssistantSettings) => ({
 export const fromChatAssistantSettingsRow = (row: typeof chatAssistantSettings.$inferSelect): ChatAssistantSettings => ({
   id: row.id,
   customSystemPrompt: row.customSystemPrompt ?? null,
-  contextAgentIds: parseJson<string[]>(row.contextAgentIds),
-  contextWorkflowIds: parseJson<string[]>(row.contextWorkflowIds),
-  contextToolIds: parseJson<string[]>(row.contextToolIds),
+  contextAgentIds: parseJson<string[]>(row.contextAgentIds) ?? null,
+  contextWorkflowIds: parseJson<string[]>(row.contextWorkflowIds) ?? null,
+  contextToolIds: parseJson<string[]>(row.contextToolIds) ?? null,
   recentSummariesCount: row.recentSummariesCount ?? null,
   temperature: row.temperature != null ? Number(row.temperature) : null,
   historyCompressAfter: row.historyCompressAfter ?? null,
@@ -377,6 +406,33 @@ export const fromSandboxRow = (row: typeof sandboxes.$inferSelect): Sandbox => (
   status: row.status as Sandbox["status"],
   containerId: row.containerId ?? undefined,
   config: parseJson(row.config, {}) ?? {},
+  createdAt: row.createdAt
+});
+
+export type SandboxSiteBinding = {
+  id: string;
+  sandboxId: string;
+  host: string;
+  containerPort: number;
+  hostPort: number;
+  createdAt: number;
+};
+
+export const toSandboxSiteBindingRow = (b: SandboxSiteBinding) => ({
+  id: b.id,
+  sandboxId: b.sandboxId,
+  host: b.host,
+  containerPort: b.containerPort,
+  hostPort: b.hostPort,
+  createdAt: b.createdAt
+});
+
+export const fromSandboxSiteBindingRow = (row: typeof sandboxSiteBindings.$inferSelect): SandboxSiteBinding => ({
+  id: row.id,
+  sandboxId: row.sandboxId,
+  host: row.host,
+  containerPort: row.containerPort,
+  hostPort: row.hostPort,
   createdAt: row.createdAt
 });
 

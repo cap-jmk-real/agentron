@@ -165,6 +165,8 @@ function getMessageCopyText(msg: Message): string {
 type ConversationItem = { id: string; title: string | null; rating: number | null; note: string | null; createdAt: number };
 type LlmProvider = { id: string; provider: string; model: string; endpoint?: string };
 
+type PendingHelpRequest = { runId: string; question: string; reason?: string; targetName: string; targetType: string };
+
 type Props = {
   onOpenSettings?: () => void;
 };
@@ -185,6 +187,9 @@ export default function ChatSection({ onOpenSettings }: Props) {
   const [providerId, setProviderId] = useState("");
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [collapsedStepsByMsg, setCollapsedStepsByMsg] = useState<Record<string, boolean>>({});
+  const [pendingHelp, setPendingHelp] = useState<{ count: number; requests: PendingHelpRequest[] }>({ count: 0, requests: [] });
+  const [respondingToRunId, setRespondingToRunId] = useState<string | null>(null);
+  const [pendingReplyByRunId, setPendingReplyByRunId] = useState<Record<string, string>>({});
 
   const CHAT_DEFAULT_PROVIDER_KEY = "chat-default-provider-id";
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -340,6 +345,23 @@ export default function ChatSection({ onOpenSettings }: Props) {
       setSavingNote(false);
     }
   }, [conversationId, noteDraft]);
+
+  const fetchPendingHelp = useCallback(() => {
+    fetch("/api/runs/pending-help")
+      .then((r) => r.json())
+      .then((data) => {
+        const count = typeof data.count === "number" ? data.count : 0;
+        const requests = Array.isArray(data.requests) ? data.requests as PendingHelpRequest[] : [];
+        setPendingHelp({ count, requests });
+      })
+      .catch(() => setPendingHelp({ count: 0, requests: [] }));
+  }, []);
+
+  useEffect(() => {
+    fetchPendingHelp();
+    const interval = setInterval(fetchPendingHelp, 8000);
+    return () => clearInterval(interval);
+  }, [fetchPendingHelp]);
 
   useEffect(() => {
     fetch("/api/llm/providers")
@@ -531,6 +553,26 @@ export default function ChatSection({ onOpenSettings }: Props) {
     });
   }, [messages]);
 
+  const handleRespondToRun = useCallback(
+    async (runId: string, response: string) => {
+      if (!response.trim()) return;
+      setRespondingToRunId(runId);
+      try {
+        const res = await fetch(`/api/runs/${runId}/respond`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ response: response.trim() }),
+        });
+        if (res.ok) {
+          fetchPendingHelp();
+        }
+      } finally {
+        setRespondingToRunId(null);
+      }
+    },
+    [fetchPendingHelp]
+  );
+
   return (
     <section className="chat-section">
       {sidebarOpen && (
@@ -602,6 +644,46 @@ export default function ChatSection({ onOpenSettings }: Props) {
         </header>
 
         <div className="chat-section-messages" ref={scrollRef}>
+          {pendingHelp.requests.length > 0 && (
+            <div className="chat-section-pending-help">
+              <div className="chat-section-pending-help-title">Agent needs your input</div>
+              <p className="chat-section-pending-help-sub">Respond here to unblock the run. Your reply is sent to the agent.</p>
+              {pendingHelp.requests.map((req) => (
+                <div key={req.runId} className="chat-section-pending-help-card">
+                  <div className="chat-section-pending-help-card-header">
+                    <span className="chat-section-pending-help-card-target">{req.targetName || req.targetType}</span>
+                    <a href={`/runs/${req.runId}`} target="_blank" rel="noopener noreferrer" className="chat-section-pending-help-card-link">View run</a>
+                  </div>
+                  <p className="chat-section-pending-help-card-question">{req.question}</p>
+                  {req.reason && <p className="chat-section-pending-help-card-reason">{req.reason}</p>}
+                  <div className="chat-section-pending-help-card-reply">
+                    <input
+                      type="text"
+                      className="chat-section-input"
+                      placeholder="Your response…"
+                      value={pendingReplyByRunId[req.runId] ?? ""}
+                      onChange={(e) => setPendingReplyByRunId((prev) => ({ ...prev, [req.runId]: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && handleRespondToRun(req.runId, pendingReplyByRunId[req.runId] ?? "")}
+                      disabled={respondingToRunId === req.runId}
+                    />
+                    <button
+                      type="button"
+                      className="chat-section-send"
+                      disabled={!(pendingReplyByRunId[req.runId] ?? "").trim() || respondingToRunId === req.runId}
+                      onClick={() => {
+                        const text = pendingReplyByRunId[req.runId] ?? "";
+                        handleRespondToRun(req.runId, text);
+                        setPendingReplyByRunId((prev) => ({ ...prev, [req.runId]: "" }));
+                      }}
+                      title="Send response to agent"
+                    >
+                      {respondingToRunId === req.runId ? <Loader size={18} className="spin" /> : <Send size={18} />}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           {!loaded ? (
             <div className="chat-section-loading">Loading…</div>
           ) : messages.length === 0 ? (

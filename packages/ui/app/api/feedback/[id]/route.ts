@@ -4,9 +4,10 @@ import { eq } from "drizzle-orm";
 
 export const runtime = "nodejs";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 export async function DELETE(_: Request, { params }: Params) {
-  await db.delete(feedback).where(eq(feedback.id, params.id)).run();
+  const { id } = await params;
+  await db.delete(feedback).where(eq(feedback.id, id)).run();
   return json({ ok: true });
 }

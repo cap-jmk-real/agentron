@@ -1,8 +1,8 @@
 import { json } from "../../../_lib/response";
 import { db, agents, feedback, llmConfigs, fromAgentRow, fromFeedbackRow, fromLlmConfigRowWithSecret } from "../../../_lib/db";
 import { eq } from "drizzle-orm";
-import { refinePrompt } from "@agentron-studio/runtime";
-import { createDefaultLLMManager } from "@agentron-studio/runtime";
+import type { LLMConfig } from "@agentron-studio/core";
+import { refinePrompt, createDefaultLLMManager } from "@agentron-studio/runtime";
 
 export const runtime = "nodejs";
 
@@ -41,7 +41,7 @@ export async function POST(_: Request, { params }: Params) {
         currentSteps: (definition as { steps?: { name: string; type: string; content: string }[] }).steps,
         feedback: items,
       },
-      (req) => manager.chat(cfg, req, { source: "agent", agentId: id })
+      (req) => manager.chat(cfg as LLMConfig, req, { source: "agent", agentId: id })
     );
     return json(result);
   }
@@ -54,7 +54,7 @@ export async function POST(_: Request, { params }: Params) {
       currentSteps: (definition as { steps?: { name: string; type: string; content: string }[] }).steps,
       feedback: items,
     },
-    (req) => manager.chat(llmConfig, req, { source: "agent", agentId: id })
+    (req) => manager.chat(llmConfig as LLMConfig, req, { source: "agent", agentId: id })
   );
   return json(result);
 }

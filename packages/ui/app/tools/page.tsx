@@ -167,7 +167,7 @@ export default function ToolsPage() {
           </div>
           <div className="field">
             <label>Protocol</label>
-            <select className="select" value={protocol} onChange={(e) => setProtocol(e.target.value as ToolDef["protocol"])}>
+            <select className="select" value={protocol} onChange={(e) => setProtocol(e.target.value as "mcp" | "http" | "native")}>
               <option value="native">Native (code / built-in)</option>
               <option value="http">HTTP</option>
               <option value="mcp">MCP</option>

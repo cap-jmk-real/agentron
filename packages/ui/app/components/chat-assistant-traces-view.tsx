@@ -159,9 +159,9 @@ function TurnCard({ turn, index }: { turn: Turn; index: number }) {
                 <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)" }}>Model output</span>
                 <CopyBtn text={turnSectionText} label="Copy this turn" />
               </div>
-              {turn.assistant!.content?.trim() && (
+              {turn.assistant?.content?.trim() && (
                 <pre style={{ margin: 0, padding: "0.5rem", background: "var(--surface)", borderRadius: 6, fontSize: "0.8rem", overflow: "auto", maxHeight: 200, whiteSpace: "pre-wrap" }}>
-                  {turn.assistant.content}
+                  {turn.assistant?.content}
                 </pre>
               )}
               {hasTools &&

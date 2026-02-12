@@ -10,14 +10,20 @@ import {
   executionOutputFailure,
   toExecutionRow,
   fromExecutionRow,
+  improvementJobs,
+  techniqueInsights,
+  techniquePlaybook,
+  guardrails,
+  agentStoreEntries,
+  trainingRuns,
 } from "../_lib/db";
-import { runWorkflow, RUN_CANCELLED_MESSAGE } from "../_lib/run-workflow";
+import { runWorkflow, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE } from "../_lib/run-workflow";
 import { getDeploymentCollectionId, retrieveChunks } from "../_lib/rag";
 import type { RemoteServer } from "../_lib/db";
 import { testRemoteConnection } from "../_lib/remote-test";
 import { randomAgentName, randomWorkflowName } from "../_lib/naming";
-import { eq, asc, desc, isNotNull } from "drizzle-orm";
-import type { LLMTraceCall } from "@agentron-studio/core";
+import { eq, asc, desc, isNotNull, and, like } from "drizzle-orm";
+import type { LLMTraceCall, LLMConfig } from "@agentron-studio/core";
 import { runAssistant, buildFeedbackInjection, createDefaultLLMManager, resolveModelPricing, calculateCost, type StudioContext } from "@agentron-studio/runtime";
 import { PodmanManager } from "@agentron-studio/runtime";
 import type { LLMMessage, LLMResponse } from "@agentron-studio/runtime";
@@ -74,7 +80,7 @@ async function rephraseAndClassify(
     { role: "user", content: trimmed },
   ];
   try {
-    const response = await manager.chat(llmConfig, {
+    const response = await manager.chat(llmConfig as LLMConfig, {
       messages,
       maxTokens: 120,
       temperature: 0.2,
@@ -120,7 +126,7 @@ async function generateConversationTitle(
   if (!trimmed) return null;
   const fallback = trimmed.slice(0, TITLE_FALLBACK_MAX_LEN).trim() + (trimmed.length > TITLE_FALLBACK_MAX_LEN ? "…" : "");
   try {
-    const response = await manager.chat(llmConfig, {
+    const response = await manager.chat(llmConfig as LLMConfig, {
       messages: [
         { role: "system", content: "Generate a very short chat title (3–6 words) for the following user message. Reply with only the title, no quotes or punctuation." },
         { role: "user", content: trimmed.slice(0, 400) },
@@ -145,7 +151,7 @@ async function summarizeConversation(
     const rows = await db.select().from(chatMessages).where(eq(chatMessages.conversationId, convId)).orderBy(asc(chatMessages.createdAt));
     const text = rows.map((r) => `${r.role}: ${r.content.slice(0, 300)}${r.content.length > 300 ? "…" : ""}`).join("\n");
     if (!text.trim()) return;
-    const response = await manager.chat(llmConfig, {
+    const response = await manager.chat(llmConfig as LLMConfig, {
       messages: [
         { role: "system", content: "Summarize this chat in 2–3 short sentences. Include: (1) what the user asked, (2) what the assistant did or produced (e.g. created agents/workflows, gave code, suggested changes) so the user can refer to 'the output' or 'what you said' later. No preamble." },
         { role: "user", content: text.slice(0, 4000) },
@@ -173,7 +179,7 @@ async function summarizeHistoryChunk(
 ): Promise<string> {
   if (messages.length === 0) return "";
   const text = messages.map((m) => `${m.role}: ${m.content.slice(0, 400)}${m.content.length > 400 ? "…" : ""}`).join("\n");
-  const response = await manager.chat(llmConfig, {
+  const response = await manager.chat(llmConfig as LLMConfig, {
     messages: [
       { role: "system", content: "Summarize this conversation segment in 3–5 short sentences. Include: what the user asked or said, what the assistant did (created/updated agents, workflows, tools; answered questions; asked for confirmation). Preserve decisions and IDs if mentioned (e.g. 'user chose OpenAI', 'workflow X was created'). No preamble." },
       { role: "user", content: text.slice(0, 6000) },
@@ -227,9 +233,14 @@ function getAskUserQuestionFromToolResults(
   return undefined;
 }
 
-async function executeTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+async function executeTool(
+  name: string,
+  args: Record<string, unknown>,
+  ctx?: { conversationId?: string }
+): Promise<unknown> {
   try {
     const a = args != null && typeof args === "object" && !Array.isArray(args) ? args : {};
+    const conversationId = ctx?.conversationId;
     switch (name) {
     case "ask_user": {
       const question = typeof a.question === "string" ? a.question.trim() : "";
@@ -237,7 +248,8 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       return { waitingForUser: true, question: question || "Please provide the information or confirmation.", ...(reason ? { reason } : {}) };
     }
     case "retry_last_message": {
-      const allRows = await db.select().from(chatMessages).where(eq(chatMessages.conversationId, conversationId!)).orderBy(asc(chatMessages.createdAt));
+      if (!conversationId) return { lastUserMessage: null, message: "No conversation context." };
+      const allRows = await db.select().from(chatMessages).where(eq(chatMessages.conversationId, conversationId)).orderBy(asc(chatMessages.createdAt));
       const lastUserMsg = [...allRows].reverse().find((r) => r.role === "user")?.content ?? null;
       if (!lastUserMsg) return { lastUserMessage: null, message: "No previous user message in this conversation." };
       return { lastUserMessage: lastUserMsg, message: "Use this as the message to respond to. Reply to it now in your response." };
@@ -296,7 +308,7 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
         llmConfig,
         definition: hasDef ? def : undefined,
       };
-      await db.insert(agents).values(toAgentRow(agent)).run();
+      await db.insert(agents).values(toAgentRow(agent as import("@agentron-studio/core").Agent)).run();
       return { id, name: agent.name, message: `Agent "${agent.name}" created`, toolIds: toolIds?.length, llmConfig: !!llmConfig };
     }
     case "get_agent": {
@@ -600,6 +612,9 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
           await db.update(executions).set({ status: "cancelled", finishedAt: Date.now() }).where(eq(executions.id, runId)).run();
           return { id: runId, workflowId, status: "cancelled", message: "Run was stopped by the user." };
         }
+        if (message === WAITING_FOR_USER_MESSAGE) {
+          return { id: runId, workflowId, status: "waiting_for_user", message: "Run is waiting for user input. Respond from Chat or the run detail page." };
+        }
         const payload = executionOutputFailure(message, { message, stack: err instanceof Error ? err.stack : undefined });
         await db.update(executions).set({ status: "failed", finishedAt: Date.now(), output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
         return { id: runId, workflowId, status: "failed", error: message, message: `Workflow run failed: ${message}` };
@@ -692,12 +707,250 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
           contextWorkflowIds: null,
           contextToolIds: null,
           recentSummariesCount: value,
+          temperature: null,
+          historyCompressAfter: null,
+          historyKeepRecent: null,
           updatedAt: now,
         })).run();
       } else {
         await db.update(chatAssistantSettings).set({ recentSummariesCount: value, updatedAt: now }).where(eq(chatAssistantSettings.id, "default")).run();
       }
       return { key, value, message: `Set ${key} to ${value}. Up to ${value} recent conversation summaries will be included in context.` };
+    }
+    case "create_improvement_job": {
+      const id = crypto.randomUUID();
+      await db.insert(improvementJobs).values({
+        id,
+        name: typeof a.name === "string" ? a.name : null,
+        scopeType: typeof a.scopeType === "string" ? a.scopeType : null,
+        scopeId: typeof a.scopeId === "string" ? a.scopeId : null,
+        studentLlmConfigId: typeof a.studentLlmConfigId === "string" ? a.studentLlmConfigId : null,
+        teacherLlmConfigId: typeof a.teacherLlmConfigId === "string" ? a.teacherLlmConfigId : null,
+        currentModelRef: null,
+        instanceRefs: null,
+        architectureSpec: null,
+        lastTrainedAt: null,
+        lastFeedbackAt: null,
+        createdAt: Date.now(),
+      }).run();
+      return { id, message: "Improvement job created." };
+    }
+    case "get_improvement_job": {
+      const jobId = a.id as string;
+      const rows = await db.select().from(improvementJobs).where(eq(improvementJobs.id, jobId));
+      if (rows.length === 0) return { error: "Job not found" };
+      const r = rows[0];
+      const instanceRefs = r.instanceRefs ? (() => { try { return JSON.parse(r.instanceRefs) as string[]; } catch { return []; } })() : [];
+      const architectureSpec = r.architectureSpec ? (() => { try { return JSON.parse(r.architectureSpec) as Record<string, unknown>; } catch { return undefined; } })() : undefined;
+      return { id: r.id, name: r.name, scopeType: r.scopeType, scopeId: r.scopeId, studentLlmConfigId: r.studentLlmConfigId, teacherLlmConfigId: r.teacherLlmConfigId, currentModelRef: r.currentModelRef, instanceRefs, architectureSpec, lastTrainedAt: r.lastTrainedAt, lastFeedbackAt: r.lastFeedbackAt, createdAt: r.createdAt };
+    }
+    case "list_improvement_jobs": {
+      const rows = await db.select().from(improvementJobs).orderBy(desc(improvementJobs.createdAt));
+      return rows.map((r) => ({ id: r.id, name: r.name, scopeType: r.scopeType, scopeId: r.scopeId, currentModelRef: r.currentModelRef, lastTrainedAt: r.lastTrainedAt }));
+    }
+    case "update_improvement_job": {
+      const jobId = a.id as string;
+      const rows = await db.select().from(improvementJobs).where(eq(improvementJobs.id, jobId));
+      if (rows.length === 0) return { error: "Job not found" };
+      const updates: Record<string, unknown> = {};
+      if (a.currentModelRef !== undefined) updates.currentModelRef = a.currentModelRef;
+      if (Array.isArray(a.instanceRefs)) updates.instanceRefs = JSON.stringify(a.instanceRefs);
+      if (a.architectureSpec != null && typeof a.architectureSpec === "object") updates.architectureSpec = JSON.stringify(a.architectureSpec);
+      if (typeof a.lastTrainedAt === "number") updates.lastTrainedAt = a.lastTrainedAt;
+      if (Object.keys(updates).length === 0) return { id: jobId, message: "No updates" };
+      await db.update(improvementJobs).set(updates as Record<string, unknown>).where(eq(improvementJobs.id, jobId)).run();
+      return { id: jobId, message: "Job updated." };
+    }
+    case "generate_training_data": {
+      const strategy = (a.strategy as string) || "from_feedback";
+      const scopeType = (a.scopeType as string) || "agent";
+      const scopeId = (a.scopeId as string) || "";
+      const jobId = (a.jobId as string) || "";
+      const since = typeof a.since === "number" ? a.since : undefined;
+      if (strategy === "from_feedback") {
+        const feedbackRows = await db.select().from(feedback).where(
+          scopeId ? eq(feedback.targetId, scopeId) : isNotNull(feedback.id)
+        ).orderBy(desc(feedback.createdAt));
+        const filtered = since ? feedbackRows.filter((f) => f.createdAt >= since) : feedbackRows;
+        const slice = filtered.slice(0, 500);
+        const datasetRef = `.data/improvement/from_feedback_${Date.now()}.jsonl`;
+        return { datasetRef, strategy, count: slice.length, message: `Generated ${slice.length} feedback rows for training. Save to ${datasetRef} for trigger_training.` };
+      }
+      return { datasetRef: `.data/improvement/${strategy}_${Date.now()}.jsonl`, strategy, message: "Dataset ref created; use trigger_training with this ref. Teacher/self_play require external data generation." };
+    }
+    case "evaluate_model": {
+      const jobId = a.jobId as string;
+      const rows = await db.select().from(improvementJobs).where(eq(improvementJobs.id, jobId));
+      if (rows.length === 0) return { error: "Job not found" };
+      return { jobId, metrics: { accuracy: 0, loss: null }, message: "Evaluation stub; plug in eval set and run student for real metrics." };
+    }
+    case "trigger_training": {
+      const jobId = a.jobId as string;
+      const datasetRef = (a.datasetRef as string) || "";
+      const backend = (a.backend as string) || "local";
+      const addInstance = !!a.addInstance;
+      const runId = crypto.randomUUID();
+      const localUrl = process.env.LOCAL_TRAINER_URL || "http://localhost:8765";
+      if (backend === "local") {
+        try {
+          const res = await fetch(`${localUrl}/train`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jobId, datasetRef, runId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          const extId = (data.run_id ?? data.id ?? runId) as string;
+          await db.insert(trainingRuns).values({ id: runId, jobId, backend: "local", status: "pending", datasetRef, outputModelRef: null, config: JSON.stringify({ addInstance }), createdAt: Date.now(), finishedAt: null }).run();
+          return { runId, backend, status: "pending", message: `Training started. Poll get_training_status(runId: ${runId}) for completion.` };
+        } catch {
+          await db.insert(trainingRuns).values({ id: runId, jobId, backend: "local", status: "pending", datasetRef, outputModelRef: null, config: JSON.stringify({ addInstance }), createdAt: Date.now(), finishedAt: null }).run();
+          return { runId, backend, status: "pending", message: `Training run created (local trainer at ${localUrl} may be unavailable). Poll get_training_status(runId: ${runId}).` };
+        }
+      }
+      await db.insert(trainingRuns).values({ id: runId, jobId, backend, status: "pending", datasetRef, outputModelRef: null, config: JSON.stringify({ addInstance }), createdAt: Date.now(), finishedAt: null }).run();
+      return { runId, backend, status: "pending", message: `Training run created. Poll get_training_status(runId: ${runId}) for replicate/huggingface.` };
+    }
+    case "get_training_status": {
+      const runId = (a.runId as string) || "";
+      const rows = await db.select().from(trainingRuns).where(eq(trainingRuns.id, runId));
+      if (rows.length === 0) return { error: "Run not found" };
+      const r = rows[0];
+      return { runId: r.id, status: r.status, outputModelRef: r.outputModelRef, finishedAt: r.finishedAt };
+    }
+    case "decide_optimization_target": {
+      const scopeType = (a.scopeType as string) || "agent";
+      const scopeId = (a.scopeId as string) || "";
+      return { target: "model_instance", scope: scopeType, reason: "Use model_instance to generate data and trigger training; use prompt when only instructions need change.", optionalSpec: null };
+    }
+    case "get_technique_knowledge": {
+      const jobId = (a.jobId as string) || "";
+      const playbookRows = await db.select().from(techniquePlaybook);
+      let playbook = playbookRows.map((p) => ({ name: p.name, description: p.description, whenToUse: p.whenToUse, downsides: p.downsides }));
+      if (playbook.length === 0) {
+        playbook = [
+          { name: "Teacher distillation", description: "Use a stronger LLM to produce trajectories; train small model to imitate. Cold start before any RL.", whenToUse: "When the student has no prior agentic data.", downsides: "Requires teacher inference cost." },
+          { name: "LoRA/DoRA", description: "Low-rank adapters; only a small set of parameters updated.", whenToUse: "Prefer for add-instance and memory-constrained training.", downsides: "May underfit if rank too low." },
+          { name: "from_feedback", description: "Training data from user ratings (good/bad) and run outcomes.", whenToUse: "When you have feedback in the feedback table for the scope.", downsides: "Needs enough feedback; sparse signal." },
+          { name: "Contrastive", description: "Train on both positive and negative traces.", whenToUse: "When you have both good and bad runs.", downsides: "Can cause instability if feedback count is low." },
+          { name: "Multi-instance", description: "Spawn multiple instances; do not overwrite single model.", whenToUse: "To avoid capability collapse; specialization per tool/task.", downsides: "More compute and routing logic." },
+        ];
+      }
+      const insights = jobId ? await db.select().from(techniqueInsights).where(eq(techniqueInsights.jobId, jobId)).orderBy(desc(techniqueInsights.createdAt)) : [];
+      return { playbook, recentInsights: insights.slice(0, 10).map((i) => ({ techniqueOrStrategy: i.techniqueOrStrategy, outcome: i.outcome, summary: i.summary })) };
+    }
+    case "record_technique_insight": {
+      const id = crypto.randomUUID();
+      await db.insert(techniqueInsights).values({
+        id,
+        jobId: (a.jobId as string) || "",
+        runId: typeof a.runId === "string" ? a.runId : null,
+        techniqueOrStrategy: (a.techniqueOrStrategy as string) || "",
+        outcome: (a.outcome as string) || "neutral",
+        summary: (a.summary as string) || "",
+        config: a.config != null ? JSON.stringify(a.config) : null,
+        createdAt: Date.now(),
+      }).run();
+      return { id, message: "Insight recorded." };
+    }
+    case "propose_architecture": {
+      const jobId = a.jobId as string;
+      const spec = a.spec as Record<string, unknown>;
+      const rows = await db.select().from(improvementJobs).where(eq(improvementJobs.id, jobId));
+      if (rows.length === 0) return { error: "Job not found" };
+      await db.update(improvementJobs).set({ architectureSpec: JSON.stringify(spec || {}) }).where(eq(improvementJobs.id, jobId)).run();
+      return { jobId, message: "Architecture spec attached to job. Next trigger_training will pass it to the backend if supported." };
+    }
+    case "spawn_instance": {
+      return executeTool("trigger_training", { ...a, addInstance: true });
+    }
+    case "create_store": {
+      const scope = (a.scope as string) || "agent";
+      const scopeId = (a.scopeId as string) || "";
+      const name = (a.name as string) || "";
+      if (!scopeId || !name) return { error: "scopeId and name required" };
+      return { message: "Store is created when you first put_store a key. No separate create needed." };
+    }
+    case "put_store": {
+      const scope = (a.scope as string) || "agent";
+      const scopeId = (a.scopeId as string) || "";
+      const storeName = (a.storeName as string) || "";
+      const key = (a.key as string) || "";
+      const value = typeof a.value === "string" ? a.value : JSON.stringify(a.value ?? "");
+      const id = crypto.randomUUID();
+      const existing = await db.select().from(agentStoreEntries).where(and(eq(agentStoreEntries.scope, scope), eq(agentStoreEntries.scopeId, scopeId), eq(agentStoreEntries.storeName, storeName), eq(agentStoreEntries.key, key)));
+      if (existing.length > 0) {
+        await db.update(agentStoreEntries).set({ value, createdAt: Date.now() }).where(eq(agentStoreEntries.id, existing[0].id)).run();
+        return { message: "Updated." };
+      }
+      await db.insert(agentStoreEntries).values({ id, scope, scopeId, storeName, key, value, createdAt: Date.now() }).run();
+      return { message: "Stored." };
+    }
+    case "get_store": {
+      const scope = (a.scope as string) || "agent";
+      const scopeId = (a.scopeId as string) || "";
+      const storeName = (a.storeName as string) || "";
+      const key = (a.key as string) || "";
+      const rows = await db.select().from(agentStoreEntries).where(and(eq(agentStoreEntries.scope, scope), eq(agentStoreEntries.scopeId, scopeId), eq(agentStoreEntries.storeName, storeName), eq(agentStoreEntries.key, key)));
+      if (rows.length === 0) return { error: "Key not found" };
+      return { value: rows[0].value };
+    }
+    case "query_store": {
+      const scope = (a.scope as string) || "agent";
+      const scopeId = (a.scopeId as string) || "";
+      const storeName = (a.storeName as string) || "";
+      const prefix = (a.prefix as string) || "";
+      const rows = await db.select().from(agentStoreEntries).where(and(eq(agentStoreEntries.scope, scope), eq(agentStoreEntries.scopeId, scopeId), eq(agentStoreEntries.storeName, storeName)));
+      const filtered = prefix ? rows.filter((r) => r.key.startsWith(prefix)) : rows;
+      return { entries: filtered.map((r) => ({ key: r.key, value: r.value })) };
+    }
+    case "list_stores": {
+      const scope = (a.scope as string) || "agent";
+      const scopeId = (a.scopeId as string) || "";
+      const rows = await db.select({ storeName: agentStoreEntries.storeName }).from(agentStoreEntries).where(and(eq(agentStoreEntries.scope, scope), eq(agentStoreEntries.scopeId, scopeId)));
+      const names = [...new Set(rows.map((r) => r.storeName))];
+      return { stores: names };
+    }
+    case "delete_store": {
+      const scope = (a.scope as string) || "agent";
+      const scopeId = (a.scopeId as string) || "";
+      const storeName = (a.storeName as string) || "";
+      await db.delete(agentStoreEntries).where(and(eq(agentStoreEntries.scope, scope), eq(agentStoreEntries.scopeId, scopeId), eq(agentStoreEntries.storeName, storeName))).run();
+      return { message: "Store deleted." };
+    }
+    case "create_guardrail": {
+      const id = crypto.randomUUID();
+      const scope = (a.scope as string) || "deployment";
+      const scopeId = (a.scopeId as string) || null;
+      const config = a.config != null && typeof a.config === "object" ? (a.config as Record<string, unknown>) : {};
+      await db.insert(guardrails).values({ id, scope, scopeId, config: JSON.stringify(config), createdAt: Date.now() }).run();
+      return { id, message: "Guardrail created. It will be applied when the agent uses fetch/browser." };
+    }
+    case "list_guardrails": {
+      const scope = a.scope as string | undefined;
+      const scopeId = a.scopeId as string | undefined;
+      let rows = await db.select().from(guardrails);
+      if (scope) rows = rows.filter((r) => r.scope === scope);
+      if (scopeId) rows = rows.filter((r) => r.scopeId === scopeId);
+      return { guardrails: rows.map((r) => ({ id: r.id, scope: r.scope, scopeId: r.scopeId, config: r.config })) };
+    }
+    case "get_guardrail": {
+      const gid = a.id as string;
+      const rows = await db.select().from(guardrails).where(eq(guardrails.id, gid));
+      if (rows.length === 0) return { error: "Guardrail not found" };
+      const r = rows[0];
+      return { id: r.id, scope: r.scope, scopeId: r.scopeId, config: typeof r.config === "string" ? JSON.parse(r.config) : r.config };
+    }
+    case "update_guardrail": {
+      const gid = a.id as string;
+      const config = a.config != null && typeof a.config === "object" ? JSON.stringify(a.config) : undefined;
+      if (!config) return { error: "config required" };
+      await db.update(guardrails).set({ config }).where(eq(guardrails.id, gid)).run();
+      return { id: gid, message: "Guardrail updated." };
+    }
+    case "delete_guardrail": {
+      const gid = a.id as string;
+      await db.delete(guardrails).where(eq(guardrails.id, gid)).run();
+      return { message: "Guardrail deleted." };
     }
     default:
       return { error: `Unknown tool: ${name}` };
@@ -892,7 +1145,7 @@ export async function POST(request: Request) {
   const customPricing: Record<string, { input: number; output: number }> = {};
   for (const r of pricingRows) {
     const p = fromModelPricingRow(r);
-    customPricing[p.modelPattern] = { input: p.inputCostPerM, output: p.outputCostPerM };
+    customPricing[p.modelPattern] = { input: Number(p.inputCostPerM), output: Number(p.outputCostPerM) };
   }
 
   // Track token usage across all LLM calls in this request
@@ -905,7 +1158,7 @@ export async function POST(request: Request) {
   }) {
     return async (req: Parameters<typeof manager.chat>[1]) => {
       opts.enqueueTraceStep?.({ phase: "llm_request", label: "Calling assistant LLM (main step)…", messageCount: req.messages.length });
-      const response = await manager.chat(llmConfig, req, { source: "chat" });
+      const response = await manager.chat(llmConfig as LLMConfig, req, { source: "chat" });
       usageEntries.push({ response });
       const lastUser = [...req.messages].reverse().find((m) => m.role === "user");
       const contentStr = typeof response.content === "string" ? response.content : "";
@@ -997,7 +1250,7 @@ export async function POST(request: Request) {
 
           const result = await runAssistant(history, effectiveMessage, {
             callLLM: streamTrackingCallLLM,
-            executeTool,
+            executeTool: (toolName: string, toolArgs: Record<string, unknown>) => executeTool(toolName, toolArgs, { conversationId }),
             feedbackInjection: feedbackInjection || undefined,
             ragContext,
             uiContext: uiContext || undefined,
@@ -1071,7 +1324,7 @@ export async function POST(request: Request) {
                 model: llmConfig.model,
                 promptTokens: usage.promptTokens,
                 completionTokens: usage.completionTokens,
-                estimatedCost: cost,
+                estimatedCost: cost != null ? String(cost) : null,
               })).run();
             }
           }
@@ -1150,7 +1403,7 @@ export async function POST(request: Request) {
 
     const result = await runAssistant(history, effectiveMessage, {
       callLLM: trackingCallLLM,
-      executeTool,
+      executeTool: (toolName: string, toolArgs: Record<string, unknown>) => executeTool(toolName, toolArgs, { conversationId }),
       feedbackInjection: feedbackInjection || undefined,
       ragContext,
       uiContext: uiContext || undefined,
@@ -1216,7 +1469,7 @@ export async function POST(request: Request) {
           model: llmConfig.model,
           promptTokens: usage.promptTokens,
           completionTokens: usage.completionTokens,
-          estimatedCost: cost,
+          estimatedCost: cost != null ? String(cost) : null,
         })).run();
       }
     }

@@ -44,6 +44,13 @@ function StatusBadge({ status }: { status: string }) {
       </span>
     );
   }
+  if (status === "waiting_for_user") {
+    return (
+      <span className="run-status" style={{ background: "var(--resource-amber)", color: "var(--bg)" }}>
+        <Clock size={14} /> Needs your input
+      </span>
+    );
+  }
   return (
     <span className="run-status run-status-queued">
       <Clock size={14} /> {status}
@@ -54,17 +61,21 @@ function StatusBadge({ status }: { status: string }) {
 export default function RunsPage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filterTargetType, setFilterTargetType] = useState<string>("");
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/runs", { cache: "no-store" });
+      const params = new URLSearchParams();
+      if (filterTargetType && filterTargetType !== "all") params.set("targetType", filterTargetType);
+      params.set("limit", "50");
+      const response = await fetch(`/api/runs?${params.toString()}`, { cache: "no-store" });
       const data = await response.json();
       setRuns(Array.isArray(data) ? data : []);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filterTargetType]);
 
   useEffect(() => {
     void load();
@@ -84,6 +95,19 @@ export default function RunsPage() {
         <p className="page-description">
           Inspect agent, workflow, and tool runs. Open a run to see output or errors and copy a paste-ready block for the chat to help debug.
         </p>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "0.5rem" }}>
+          <label htmlFor="runs-filter" style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>Filter:</label>
+          <select
+            id="runs-filter"
+            value={filterTargetType || "all"}
+            onChange={(e) => setFilterTargetType(e.target.value === "all" ? "" : e.target.value)}
+            style={{ padding: "0.35rem 0.6rem", borderRadius: 6, border: "1px solid var(--border)" }}
+          >
+            <option value="all">All</option>
+            <option value="workflow">Workflows</option>
+            <option value="agent">Agents</option>
+          </select>
+        </div>
       </div>
       {loading ? (
         <div className="loading-placeholder">Loading runs…</div>
