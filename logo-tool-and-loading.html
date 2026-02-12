@@ -118,10 +118,11 @@
       71.5% { transform: rotateY(90deg) rotateZ(0deg); }
       73% { transform: rotateY(45deg) rotateZ(0deg); }
       75% { transform: rotateY(0deg) rotateZ(0deg); }
-      /* One short wave only (no second A tilt): tiny dip and return so we keep moving into the loop */
-      78% { transform: rotateY(0deg) rotateZ(-1.5deg); }
-      85% { transform: rotateY(0deg) rotateZ(0deg); }
-      92% { transform: rotateY(0deg) rotateZ(0deg); }
+      /* One short wave only (no second A tilt): small dip and return so we keep moving, no break */
+      77% { transform: rotateY(0deg) rotateZ(-2deg); }
+      82% { transform: rotateY(0deg) rotateZ(-3deg); }
+      88% { transform: rotateY(0deg) rotateZ(-0.5deg); }
+      94% { transform: rotateY(0deg) rotateZ(0deg); }
       100% { transform: rotateY(0deg) rotateZ(0deg); }
     }
     .anim-a-t-a .stage .flip-inner {

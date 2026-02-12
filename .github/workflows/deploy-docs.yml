@@ -3,6 +3,8 @@ name: Deploy Docs to GitHub Pages
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -39,10 +41,12 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: apps/docs/build
+        if: github.event_name == 'push'
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
