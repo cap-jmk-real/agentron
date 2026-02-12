@@ -26,4 +26,39 @@ describe("Chat settings API", () => {
     expect(data.customSystemPrompt).toBe("You are helpful.");
     expect(data.temperature).toBe(0.5);
   });
+
+  it("PATCH /api/chat/settings accepts context ids and numeric options", async () => {
+    const res = await PATCH(
+      new Request("http://localhost/api/chat/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contextAgentIds: ["a1", "a2"],
+          contextWorkflowIds: ["w1"],
+          contextToolIds: [],
+          recentSummariesCount: 5,
+          historyCompressAfter: 50,
+          historyKeepRecent: 20,
+        }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.recentSummariesCount).toBe(5);
+    expect(data.historyCompressAfter).toBe(50);
+    expect(data.historyKeepRecent).toBe(20);
+  });
+
+  it("PATCH /api/chat/settings with invalid JSON returns 200 with existing state", async () => {
+    const res = await PATCH(
+      new Request("http://localhost/api/chat/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: "not json",
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toHaveProperty("id", "default");
+  });
 });

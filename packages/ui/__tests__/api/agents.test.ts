@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { GET as listGet, POST as listPost } from "../../app/api/agents/route";
-import { GET as getOne, DELETE as deleteOne } from "../../app/api/agents/[id]/route";
+import { GET as getOne, PUT as putOne, DELETE as deleteOne } from "../../app/api/agents/[id]/route";
 import { GET as workflowUsageGet } from "../../app/api/agents/[id]/workflow-usage/route";
+import { POST as workflowsPost } from "../../app/api/workflows/route";
 import { GET as agentSkillsGet, POST as agentSkillsPost, DELETE as agentSkillsDelete } from "../../app/api/agents/[id]/skills/route";
 import { POST as agentRefinePost } from "../../app/api/agents/[id]/refine/route";
 import { POST as createSkill } from "../../app/api/skills/route";
@@ -52,12 +53,50 @@ describe("Agents API", () => {
     expect(res.status).toBe(404);
   });
 
+  it("PUT /api/agents/:id updates agent", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/agents/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Updated Agent", kind: "node", type: "internal", protocol: "native", capabilities: [], scopes: [] }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.name).toBe("Updated Agent");
+  });
+
   it("GET /api/agents/:id/workflow-usage returns workflows array", async () => {
     if (!createdId) return;
     const res = await workflowUsageGet(new Request("http://localhost/api/agents/x/workflow-usage"), { params: Promise.resolve({ id: createdId }) });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data.workflows)).toBe(true);
+  });
+
+  it("GET /api/agents/:id/workflow-usage returns workflows that reference this agent", async () => {
+    if (!createdId) return;
+    const createWf = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Uses Agent Workflow",
+          nodes: [{ id: "n1", type: "agent", config: { agentId: createdId } }],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    expect(createWf.status).toBe(201);
+    const wf = await createWf.json();
+    const res = await workflowUsageGet(new Request("http://localhost/api/agents/x/workflow-usage"), { params: Promise.resolve({ id: createdId }) });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.workflows.some((w: { id: string }) => w.id === wf.id)).toBe(true);
+    expect(data.workflows.some((w: { name: string }) => w.name === "Uses Agent Workflow")).toBe(true);
   });
 
   it("POST /api/agents/:id/refine returns 404 for unknown agent", async () => {
