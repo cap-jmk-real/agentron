@@ -30,8 +30,8 @@
     "electron": "40.2.1",
     "electron-builder": "26.7.0",
     "esbuild": "0.24.0",
-    "sharp": "^0.33.5",
-    "pngjs": "^7.0.0"
+    "pngjs": "^7.0.0",
+    "sharp": "^0.33.5"
   },
   "build": {
     "appId": "com.agentron.studio",
@@ -50,8 +50,17 @@
         "dmg"
       ],
       "extraResources": [
-        { "from": "standalone", "to": "app", "filter": ["**/*"] },
-        { "from": "standalone/node_modules", "to": "app/node_modules" }
+        {
+          "from": "standalone",
+          "to": "app",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "standalone/node_modules",
+          "to": "app/node_modules"
+        }
       ]
     },
     "win": {
@@ -59,8 +68,17 @@
         "nsis"
       ],
       "extraResources": [
-        { "from": "standalone", "to": "app", "filter": ["**/*"] },
-        { "from": "standalone/node_modules", "to": "app/node_modules" }
+        {
+          "from": "standalone",
+          "to": "app",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "standalone/node_modules",
+          "to": "app/node_modules"
+        }
       ]
     },
     "linux": {
@@ -69,8 +87,17 @@
       ],
       "category": "Development",
       "extraResources": [
-        { "from": "standalone", "to": "app", "filter": ["**/*"] },
-        { "from": "standalone/node_modules", "to": "app/node_modules" }
+        {
+          "from": "standalone",
+          "to": "app",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "standalone/node_modules",
+          "to": "app/node_modules"
+        }
       ]
     }
   }

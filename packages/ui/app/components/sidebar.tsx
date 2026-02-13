@@ -187,9 +187,11 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brand-mark">A</div>
+        <div className="brand-mark">
+          <img src="/icon.svg" alt="" width={32} height={32} className="brand-logo" />
+        </div>
         <div>
-          <div className="brand-title">AgentOS</div>
+          <div className="brand-title">Agentron</div>
           <div className="brand-subtitle">Studio</div>
         </div>
       </div>

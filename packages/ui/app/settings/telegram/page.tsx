@@ -8,6 +8,7 @@ type TelegramSettings = {
   hasToken: boolean;
   notificationChatId?: string;
   botUsername?: string;
+  usePolling?: boolean;
 };
 
 const BOTFATHER_URL = "https://t.me/BotFather";
@@ -28,6 +29,7 @@ export default function TelegramSettingsPage() {
   const [envVarName, setEnvVarName] = useState("TELEGRAM_BOT_TOKEN");
   const [notificationChatId, setNotificationChatId] = useState("");
   const [enabled, setEnabled] = useState(false);
+  const [usePolling, setUsePolling] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; username?: string; error?: string } | null>(null);
 
@@ -39,6 +41,7 @@ export default function TelegramSettingsPage() {
         setSettings(data);
         setEnabled(data.enabled);
         setNotificationChatId(data.notificationChatId ?? "");
+        setUsePolling(data.usePolling ?? false);
       }
     } catch {
       setSettings(null);
@@ -75,6 +78,7 @@ export default function TelegramSettingsPage() {
     try {
       const payload: Record<string, unknown> = {
         enabled,
+        usePolling,
         notificationChatId: notificationChatId.trim() || undefined,
       };
       if (useEnvVar) {
@@ -184,26 +188,46 @@ export default function TelegramSettingsPage() {
         </div>
 
         <div style={{ marginBottom: "1.25rem" }}>
-          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.35rem" }}>Step 3: Set webhook URL</div>
+          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.35rem" }}>Step 3: How to receive messages</div>
           <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
-            So Telegram can deliver messages to this app, set your bot&apos;s webhook to the URL below. In Telegram, send <code style={{ background: "var(--bg-muted)", padding: "0.1rem 0.3rem", borderRadius: 4 }}>/setwebhook</code> to @BotFather, then paste the URL. If your app is not reachable from the internet (e.g. localhost), use a tunnel (ngrok, Cloudflare Tunnel) and use that public URL when opening this page.
+            <strong>Polling</strong> (recommended if you run on localhost): the app fetches new messages from Telegram periodically. No webhook or public URL needed. Just enable Telegram below and save.
           </p>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-            <code style={{ fontSize: "0.8rem", background: "var(--bg-muted)", padding: "0.35rem 0.5rem", borderRadius: 4, wordBreak: "break-all" }}>
-              {getWebhookUrl()}
-            </code>
-            <button
-              type="button"
-              className="button"
-              style={{ fontSize: "0.8rem" }}
-              onClick={() => navigator.clipboard?.writeText(getWebhookUrl())}
-            >
-              Copy
-            </button>
+          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
+            <strong>Webhook</strong>: Telegram pushes messages to a public URL. Use this if your app is reachable from the internet (e.g. with a tunnel like ngrok or Cloudflare Tunnel).
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "0.75rem" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}>
+              <input type="radio" name="delivery" checked={usePolling} onChange={() => setUsePolling(true)} />
+              Use polling (no webhook) — works on localhost
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}>
+              <input type="radio" name="delivery" checked={!usePolling} onChange={() => setUsePolling(false)} />
+              Use webhook (set URL below)
+            </label>
           </div>
-          <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.5rem" }}>
-            Optional: set <code style={{ background: "var(--bg-muted)", padding: "0.1rem 0.2rem", borderRadius: 2 }}>TELEGRAM_WEBHOOK_SECRET</code> in your environment and add <code style={{ background: "var(--bg-muted)", padding: "0.1rem 0.2rem", borderRadius: 2 }}>?secret=YOUR_SECRET</code> to the webhook URL so only Telegram (with that secret in the URL) can call it.
-          </p>
+          {!usePolling && (
+            <>
+              <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
+                Set your bot&apos;s webhook to this URL. In Telegram, send <code style={{ background: "var(--bg-muted)", padding: "0.1rem 0.3rem", borderRadius: 4 }}>/setwebhook</code> to @BotFather, then paste the URL.
+              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                <code style={{ fontSize: "0.8rem", background: "var(--bg-muted)", padding: "0.35rem 0.5rem", borderRadius: 4, wordBreak: "break-all" }}>
+                  {getWebhookUrl()}
+                </code>
+                <button
+                  type="button"
+                  className="button"
+                  style={{ fontSize: "0.8rem" }}
+                  onClick={() => navigator.clipboard?.writeText(getWebhookUrl())}
+                >
+                  Copy
+                </button>
+              </div>
+              <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.5rem" }}>
+                Optional: set <code style={{ background: "var(--bg-muted)", padding: "0.1rem 0.2rem", borderRadius: 2 }}>TELEGRAM_WEBHOOK_SECRET</code> and add <code style={{ background: "var(--bg-muted)", padding: "0.1rem 0.2rem", borderRadius: 2 }}>?secret=YOUR_SECRET</code> to the webhook URL.
+              </p>
+            </>
+          )}
         </div>
 
         <div style={{ marginBottom: "1.25rem" }}>

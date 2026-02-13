@@ -7,6 +7,8 @@ export type TelegramSettings = {
   botToken?: string;
   botTokenEnvVar?: string;
   notificationChatId?: string;
+  /** When true, use getUpdates (long polling) instead of webhook. Works on localhost without a public URL. */
+  usePolling?: boolean;
 };
 
 /** Safe view for API responses: never includes token. */
@@ -15,6 +17,7 @@ export type TelegramSettingsPublic = {
   hasToken: boolean;
   notificationChatId?: string;
   botUsername?: string;
+  usePolling?: boolean;
 };
 
 const FILENAME = "telegram-settings.json";
@@ -63,6 +66,7 @@ export function getTelegramSettings(): TelegramSettingsPublic {
     hasToken,
     notificationChatId: raw.notificationChatId?.trim() || undefined,
     botUsername: undefined, // can be set by test endpoint or after getMe
+    usePolling: raw.usePolling === true,
   };
 }
 
@@ -86,6 +90,9 @@ export function updateTelegramSettings(updates: Partial<TelegramSettings>): Tele
   }
   if (updates.notificationChatId !== undefined) {
     next.notificationChatId = typeof updates.notificationChatId === "string" ? updates.notificationChatId.trim() || undefined : undefined;
+  }
+  if (updates.usePolling !== undefined) {
+    next.usePolling = updates.usePolling === true;
   }
 
   save(next);

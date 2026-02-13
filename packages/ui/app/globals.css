@@ -116,10 +116,15 @@ a {
   display: grid;
   place-items: center;
   border-radius: 10px;
-  background: linear-gradient(135deg, #5b7cfa, #7c3aed);
-  font-weight: 700;
-  font-size: 0.9rem;
-  letter-spacing: 0.05em;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.brand-mark .brand-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 .brand-title {

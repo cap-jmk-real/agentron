@@ -5,6 +5,10 @@
  * copy only (avoids EPERM and wrong-path issues with electron-rebuild in a monorepo).
  * Run after prepare-standalone.cjs, before electron-builder.
  *
+ * Next.js only traces the built .node and lib/ into standalone (no binding.gyp/src).
+ * We copy binding.gyp, src/, and deps/ from the repo's better-sqlite3 into the
+ * traced folder so node-gyp can rebuild for Electron. Works on macOS and Windows.
+ *
  * Requires on Windows: Visual Studio 2022 Build Tools with the "Desktop development
  * with C++" workload (or at least the MSVC C++ toolset). Install via the
  * Visual Studio Installer → Modify → check "Desktop development with C++".
@@ -36,6 +40,34 @@ function getElectronVersion() {
   return null;
 }
 
+/** Copy a file or directory recursively into dest. */
+function copyRecursive(src, dest) {
+  const stat = fs.statSync(src);
+  if (stat.isDirectory()) {
+    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+    for (const name of fs.readdirSync(src)) {
+      copyRecursive(path.join(src, name), path.join(dest, name));
+    }
+    return;
+  }
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(src, dest);
+}
+
+/** Ensure the standalone better-sqlite3-* dir has binding.gyp, src, deps so node-gyp can rebuild. */
+function ensureBuildFiles(standaloneBetterSqlite3Dir, repoBetterSqlite3Dir) {
+  if (fs.existsSync(path.join(standaloneBetterSqlite3Dir, "binding.gyp"))) return;
+  const files = ["binding.gyp", "src", "deps"];
+  for (const name of files) {
+    const src = path.join(repoBetterSqlite3Dir, name);
+    const dest = path.join(standaloneBetterSqlite3Dir, name);
+    if (fs.existsSync(src)) {
+      copyRecursive(src, dest);
+      console.log("Copied", name, "into standalone better-sqlite3 for rebuild.");
+    }
+  }
+}
+
 function main() {
   if (!fs.existsSync(standaloneDir)) {
     console.error("Standalone not found. Run prepare:standalone first.");
@@ -48,15 +80,31 @@ function main() {
   }
 
   const entries = fs.readdirSync(nextNodeModules, { withFileTypes: true });
-  const betterSqlite3Dir = entries
+  const betterSqlite3Candidates = entries
     .filter((d) => d.isDirectory() && d.name.startsWith("better-sqlite3"))
-    .map((d) => path.join(nextNodeModules, d.name))
-    .find((dir) => fs.existsSync(path.join(dir, "binding.gyp")));
+    .map((d) => path.join(nextNodeModules, d.name));
 
-  if (!betterSqlite3Dir) {
+  const betterSqlite3Dir = betterSqlite3Candidates.find((dir) =>
+    fs.existsSync(path.join(dir, "binding.gyp"))
+  );
+
+  let targetDir = betterSqlite3Dir;
+  if (!targetDir && betterSqlite3Candidates.length > 0) {
+    targetDir = betterSqlite3Candidates[0];
+    const repoBetterSqlite3 = path.join(repoRoot, "node_modules", "better-sqlite3");
+    if (!fs.existsSync(repoBetterSqlite3)) {
+      console.log("better-sqlite3 not found in repo node_modules, skipping native rebuild.");
+      return;
+    }
+    ensureBuildFiles(targetDir, repoBetterSqlite3);
+  }
+
+  if (!targetDir || !fs.existsSync(path.join(targetDir, "binding.gyp"))) {
     console.log("better-sqlite3 (with binding.gyp) not found in .next/node_modules, skipping rebuild.");
     return;
   }
+
+  const betterSqlite3DirForRebuild = targetDir;
 
   if (process.env.SKIP_STANDALONE_NATIVE_REBUILD === "1") {
     console.warn(
@@ -80,12 +128,12 @@ function main() {
   const arch = process.arch;
   const headerURL = "https://www.electronjs.org/headers";
 
-  console.log("Rebuilding better-sqlite3 for Electron", electronVersion, "in:", betterSqlite3Dir);
+  console.log("Rebuilding better-sqlite3 for Electron", electronVersion, "in:", betterSqlite3DirForRebuild);
   try {
     execSync(
       `node "${nodeGypPath}" rebuild --runtime=electron --target=${electronVersion} --dist-url=${headerURL} --arch=${arch} --build-from-source`,
       {
-        cwd: betterSqlite3Dir,
+        cwd: betterSqlite3DirForRebuild,
         stdio: "inherit",
         shell: true,
         env: { ...process.env, HOME: process.env.HOME || process.env.USERPROFILE || standaloneDir },

@@ -121,6 +121,10 @@ async function startInProcessServer(): Promise<string> {
   process.env.AGENTRON_APP_VERSION = app.getVersion();
 
   const origCwd = process.cwd();
+  const serverDir = path.dirname(serverPath);
+  process.chdir(serverDir);
+  logLine(`Server cwd set to ${serverDir}`);
+
   const origExit = process.exit;
   (process as NodeJS.Process).exit = ((code?: number) => {
     logLine(`Server called process.exit(${code ?? "undefined"})`);

@@ -67,7 +67,7 @@ export default function HomePage() {
 
   return (
     <div>
-      <h1 style={{ margin: "0 0 0.25rem" }}>AgentOS Studio</h1>
+      <h1 style={{ margin: "0 0 0.25rem" }}>Agentron</h1>
       <p style={{ color: "var(--text-muted)", margin: "0 0 1.5rem", fontSize: "0.9rem" }}>
         Overview of active workflows and token usage.
       </p>

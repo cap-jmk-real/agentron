@@ -41,6 +41,8 @@ npm install
 
 If you only need the web UI, use Option A. Use Option B if you plan to build or run the Electron desktop app.
 
+**Building and tests:** The repo omits optional dependencies by default (`.npmrc`). To build the UI (`npm run build:ui`) or run tests with coverage, set `optional=true` in `.npmrc`, or run `npm install --include=optional` after installing.
+
 ### 3. Run the application
 
 **Run the web UI (Next.js)**

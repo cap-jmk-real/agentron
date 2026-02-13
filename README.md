@@ -48,4 +48,4 @@ When you need desktop packaging dependencies:
 npm run install:desktop
 ```
 
-**Optional dependencies:** We omit optional deps by default (see `.npmrc`). The desktop app needs optional deps (e.g. `sharp`) for icon export. CI and local desktop builds use `npm install --include=optional sharp --workspace apps/desktop` so that workspace gets them; no need to change the default for the rest of the repo.
+**Optional dependencies:** We omit optional deps by default (see `.npmrc`). To **build the UI** (e.g. `npm run build:ui`) or run tests with coverage, optional deps must be installed (Next.js SWC and tooling). Set `optional=true` in `.npmrc`, or run `npm install --include=optional` after your first install. The desktop app also needs optional deps (e.g. `sharp`) for icon export; CI uses `npm install --include=optional` (and for desktop: `npm install --include=optional sharp --workspace apps/desktop`).
