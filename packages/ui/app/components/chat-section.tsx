@@ -692,6 +692,11 @@ export default function ChatSection({ onOpenSettings }: Props) {
               <div className="chat-section-welcome-icon">AI</div>
               <h2 className="chat-section-welcome-title">How can I help?</h2>
               <p className="chat-section-welcome-sub">Ask anything about agents, workflows, and tools.</p>
+              {providers.length === 0 && (
+                <p className="chat-section-welcome-sub" style={{ marginTop: "0.5rem" }}>
+                  <a href="/settings/llm" className="chat-section-settings-link">Add an LLM provider</a> in Settings to start chatting.
+                </p>
+              )}
             </div>
           ) : (
             <div className="chat-section-message-list">
@@ -869,6 +874,11 @@ export default function ChatSection({ onOpenSettings }: Props) {
           )}
         </div>
 
+        {providers.length === 0 && (
+          <div className="chat-section-no-model-banner">
+            No model selected. <a href="/settings/llm" className="chat-section-settings-link">Add an LLM provider in Settings</a> to send messages.
+          </div>
+        )}
         <div className="chat-section-input-wrap">
           <div className="chat-section-input-inner">
             <input

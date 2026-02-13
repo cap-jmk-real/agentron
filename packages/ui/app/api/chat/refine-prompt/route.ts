@@ -1,4 +1,5 @@
 import { json } from "../../_lib/response";
+import { logApiError } from "../../_lib/api-logger";
 import {
   db,
   feedback,
@@ -98,6 +99,7 @@ Output the improved system prompt (plain text only, no markdown):`;
     const suggested = (res.content ?? "").trim();
     return json({ suggestedPrompt: suggested || currentPrompt });
   } catch (err) {
+    logApiError("/api/chat/refine-prompt", "POST", err);
     const msg = err instanceof Error ? err.message : String(err);
     return json({ error: msg }, { status: 500 });
   }

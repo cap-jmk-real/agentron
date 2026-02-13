@@ -1,10 +1,12 @@
-# AgentOS Studio Architecture
+# Agentron Architecture
 
 This repo provides a standalone, local-first Studio application:
 
 - Electron wrapper with a Next.js UI.
 - Local agent runtime and SQLite storage.
-- Optional connection to remote AgentOS Server instances.
+- Optional connection to remote Agentron Server instances.
+
+**Desktop installer (future):** The goal is for the desktop app to work **independently** after install—no separate Node/npm or “run the UI” step. See [desktop-standalone.md](desktop-standalone.md) for the design and implementation checklist.
 
 ## Boundaries
 

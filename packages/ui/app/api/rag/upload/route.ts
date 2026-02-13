@@ -1,5 +1,5 @@
 import { json } from "../../_lib/response";
-import { db } from "../../_lib/db";
+import { db, getRagUploadsDir } from "../../_lib/db";
 import { getMaxFileUploadBytes, formatMaxFileUploadMb } from "../../_lib/app-settings";
 import { ragCollections, ragDocuments, ragDocumentStores } from "@agentron-studio/core";
 import { eq } from "drizzle-orm";
@@ -10,10 +10,8 @@ import { putObject } from "../../_lib/s3";
 
 export const runtime = "nodejs";
 
-const RAG_UPLOADS_DIR = ".data/rag-uploads";
-
 function ensureRagUploadsDir(collectionId: string): string {
-  const dir = path.join(process.cwd(), RAG_UPLOADS_DIR, collectionId);
+  const dir = path.join(getRagUploadsDir(), collectionId);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }

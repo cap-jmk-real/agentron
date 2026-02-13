@@ -17,7 +17,7 @@ function mapAssetToPlatform(name, url) {
   return null;
 }
 
-export function DownloadLinks({ repo = 'agentos/agentos-studio' }) {
+export function DownloadLinks({ repo = 'cap-jmk-real/agentron' }) {
   const githubRepo = repo;
   const [release, setRelease] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -84,7 +84,7 @@ export function DownloadLinks({ repo = 'agentos/agentos-studio' }) {
           id="platform-select"
           value={selectedPlatform}
           onChange={(e) => setSelectedPlatform(e.target.value)}
-          style={{ padding: '0.25rem 0.5rem' }}
+          className="download-platform-select"
         >
           <option value="windows">Windows</option>
           <option value="macos">macOS</option>

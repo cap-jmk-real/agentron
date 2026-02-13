@@ -1,9 +1,9 @@
 # Agentron — Enterprise-Ready Local AI Agent Orchestration & Automation
 
-[![CI](https://github.com/agentron-studio/agentron/actions/workflows/ci.yml/badge.svg)](https://github.com/agentron-studio/agentron/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-50%25%2B-brightgreen)](packages/ui/__tests__/README.md)
+[![CI](https://github.com/cap-jmk-real/agentron/actions/workflows/ci.yml/badge.svg)](https://github.com/cap-jmk-real/agentron/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/cap-jmk-real/agentron/graph/badge.svg)](https://codecov.io/gh/cap-jmk-real/agentron)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)](https://www.typescriptlang.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-15-black)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
 [![Local-first](https://img.shields.io/badge/local--first-sqlite%20%2B%20Electron-8B5CF6)](INSTALL.md)
 
 **Agentron** is an **enterprise-ready, local-first** platform for **AI agent orchestration** and **workflow automation**. Design and run multi-agent systems entirely on your own infrastructure—no cloud lock-in, full data privacy, and optional desktop deployment.
@@ -17,7 +17,7 @@ Ideal for teams that need **local AI automation**, **privacy-first agent orchest
 
 ## How to install Agentron
 
-**Prerequisites:** Node.js 18+ and npm.
+**Prerequisites:** Node.js version in `.nvmrc` (e.g. 22.x) and npm.
 
 1. Clone the repo and enter the project: `git clone <repo-url> && cd agentron`
 2. Install dependencies: `npm run install:ui` (UI only) or `npm install` (full, including desktop)

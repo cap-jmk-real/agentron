@@ -14,9 +14,12 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "esbuild src/main.ts --bundle --platform=node --external:electron --external:better-sqlite3 --outfile=dist/main.js && esbuild src/preload.ts --bundle --platform=node --outfile=dist/preload.js",
+    "start": "electron .",
     "prepare-icon": "node scripts/export-icon.cjs",
     "clean:release": "node scripts/clean-release.cjs",
-    "dist": "npm run clean:release && npm run prepare-icon && electron-builder --publish never",
+    "prepare:standalone": "node scripts/prepare-standalone.cjs",
+    "rebuild:standalone-native": "node scripts/rebuild-standalone-native.cjs",
+    "dist": "npm run clean:release && npm run prepare-icon && npm run prepare:standalone && npm run rebuild:standalone-native && electron-builder --publish never",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
@@ -33,6 +36,7 @@
   "build": {
     "appId": "com.agentron.studio",
     "productName": "Agentron Studio",
+    "copyright": "Copyright © 2025 Julian M. Kleber",
     "files": [
       "dist/**",
       "package.json"
@@ -44,18 +48,30 @@
     "mac": {
       "target": [
         "dmg"
+      ],
+      "extraResources": [
+        { "from": "standalone", "to": "app", "filter": ["**/*"] },
+        { "from": "standalone/node_modules", "to": "app/node_modules" }
       ]
     },
     "win": {
       "target": [
         "nsis"
+      ],
+      "extraResources": [
+        { "from": "standalone", "to": "app", "filter": ["**/*"] },
+        { "from": "standalone/node_modules", "to": "app/node_modules" }
       ]
     },
     "linux": {
       "target": [
         "AppImage"
       ],
-      "category": "Development"
+      "category": "Development",
+      "extraResources": [
+        { "from": "standalone", "to": "app", "filter": ["**/*"] },
+        { "from": "standalone/node_modules", "to": "app/node_modules" }
+      ]
     }
   }
 }

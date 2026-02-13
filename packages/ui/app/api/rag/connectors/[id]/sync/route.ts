@@ -1,5 +1,5 @@
 import { json } from "../../../../_lib/response";
-import { db } from "../../../../_lib/db";
+import { db, getRagUploadsDir } from "../../../../_lib/db";
 import { ragConnectors, ragCollections, ragDocumentStores, ragDocuments } from "@agentron-studio/core";
 import { eq } from "drizzle-orm";
 import path from "node:path";
@@ -10,8 +10,6 @@ import { putObject } from "../../../../_lib/s3";
 type Params = { params: Promise<{ id: string }> };
 
 export const runtime = "nodejs";
-
-const RAG_UPLOADS_DIR = ".data/rag-uploads";
 
 /**
  * POST — Run sync for a connector. For google_drive: list files in folder, download, store in collection's document store, register in rag_documents.
@@ -98,7 +96,7 @@ export async function POST(_: Request, { params }: Params) {
             mimeType
           );
         } else {
-          const dir = path.join(process.cwd(), RAG_UPLOADS_DIR, collectionId);
+          const dir = path.join(getRagUploadsDir(), collectionId);
           if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
           const fileName = localStorePath.replace(/^uploads\//, "");
           fs.writeFileSync(path.join(dir, fileName), buffer);

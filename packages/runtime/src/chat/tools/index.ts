@@ -8,6 +8,7 @@ import { CONVERSATION_TOOLS } from "./conversation-tools";
 import { IMPROVEMENT_TOOLS } from "./improvement-tools";
 import { STORE_TOOLS } from "./store-tools";
 import { GUARDRAIL_TOOLS } from "./guardrail-tools";
+import { OPENCLAW_TOOLS } from "./openclaw-tools";
 
 export type { AssistantToolDef } from "./types";
 export { SYSTEM_PROMPT } from "./prompt";
@@ -23,4 +24,5 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
   ...IMPROVEMENT_TOOLS,
   ...STORE_TOOLS,
   ...GUARDRAIL_TOOLS,
+  ...OPENCLAW_TOOLS,
 ];

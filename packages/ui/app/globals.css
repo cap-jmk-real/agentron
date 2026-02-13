@@ -2355,6 +2355,24 @@ main {
   margin: 0;
 }
 
+.chat-section-settings-link {
+  color: var(--primary);
+  text-decoration: none;
+}
+.chat-section-settings-link:hover {
+  text-decoration: underline;
+}
+
+.chat-section-no-model-banner {
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 0 1rem 0.5rem;
+}
+
 .chat-section-message-list {
   display: flex;
   flex-direction: column;
@@ -3372,6 +3390,23 @@ main {
 
 .chat-empty-sub {
   font-size: 0.85rem;
+  margin: 0;
+}
+
+.chat-settings-link {
+  color: var(--primary);
+  text-decoration: none;
+}
+.chat-settings-link:hover {
+  text-decoration: underline;
+}
+
+.chat-no-model-banner {
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
   margin: 0;
 }
 

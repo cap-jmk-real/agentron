@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import { runRestore } from "../../_lib/db";
 import { json } from "../../_lib/response";
+import { logApiError } from "../../_lib/api-logger";
 
 export const runtime = "nodejs";
 
@@ -22,6 +23,7 @@ export async function POST(request: Request) {
     await runRestore(tempPath);
     return json({ ok: true, message: "Restore complete. Refresh the app to see restored data." });
   } catch (e) {
+    logApiError("/api/backup/restore", "POST", e);
     const message = e instanceof Error ? e.message : "Restore failed";
     return json({ error: message }, { status: 500 });
   } finally {

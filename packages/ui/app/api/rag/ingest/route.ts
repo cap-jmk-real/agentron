@@ -1,5 +1,5 @@
 import { json } from "../../_lib/response";
-import { db } from "../../_lib/db";
+import { db, getRagUploadsDir } from "../../_lib/db";
 import { ragDocuments, ragCollections, ragVectors, ragDocumentStores } from "@agentron-studio/core";
 import { eq } from "drizzle-orm";
 import path from "node:path";
@@ -8,8 +8,6 @@ import { embed } from "../../_lib/embeddings";
 import { getObject } from "../../_lib/s3";
 
 export const runtime = "nodejs";
-
-const RAG_UPLOADS_DIR = ".data/rag-uploads";
 const CHUNK_SIZE = 500;
 const CHUNK_OVERLAP = 50;
 
@@ -77,7 +75,7 @@ export async function POST(request: Request) {
     }
   } else {
     const fileName = doc.storePath.replace(/^uploads\//, "");
-    const localPath = path.join(process.cwd(), RAG_UPLOADS_DIR, collectionId, fileName);
+    const localPath = path.join(getRagUploadsDir(), collectionId, fileName);
     if (!fs.existsSync(localPath)) {
       return json({ error: "Document file not found on disk. Use bundled storage or re-upload." }, { status: 404 });
     }

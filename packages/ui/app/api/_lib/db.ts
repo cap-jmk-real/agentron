@@ -1,6 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { createSqliteAdapter } from "@agentron-studio/core";
+import { appendLogLine } from "./api-logger";
 import {
   agents,
   workflows,
@@ -51,22 +52,36 @@ const ensureDataDir = (dir: string) => {
   return dir;
 };
 
+/** Data directory for DB, files, RAG uploads, etc. When running in Electron packaged app, set AGENTRON_DATA_DIR to app.getPath('userData'). */
+export function getDataDir(): string {
+  const dir = process.env.AGENTRON_DATA_DIR ?? path.join(process.cwd(), ".data");
+  ensureDataDir(dir);
+  return dir;
+}
+
 const getDbPath = () => {
   if (process.env.AGENTRON_DB_PATH) {
     const p = path.resolve(process.env.AGENTRON_DB_PATH);
     ensureDataDir(path.dirname(p));
     return p;
   }
-  const dataDir = path.join(process.cwd(), ".data");
-  ensureDataDir(dataDir);
+  const dataDir = getDataDir();
   return path.join(dataDir, "agentron.sqlite");
 };
 
-const dbPath = getDbPath();
-const adapter = createSqliteAdapter(dbPath);
-adapter.initialize?.();
+let adapter: ReturnType<typeof createSqliteAdapter>;
+try {
+  const dbPath = getDbPath();
+  adapter = createSqliteAdapter(dbPath);
+  adapter.initialize?.();
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  const stack = err instanceof Error ? err.stack : "";
+  appendLogLine("/api/_lib/db", "INIT", `${msg}${stack ? `\n${stack}` : ""}`);
+  throw err;
+}
 
-export const db = adapter.db;
+export const db = adapter!.db;
 
 export async function runBackup(targetPath: string): Promise<void> {
   if (!adapter.backupToPath) throw new Error("Adapter does not support backup");
@@ -593,12 +608,20 @@ export const fromCustomFunctionRow = (row: typeof customFunctions.$inferSelect):
   createdAt: row.createdAt
 });
 
-const FILES_DIR = path.join(process.cwd(), ".data", "files");
+function getFilesDir(): string {
+  return path.join(getDataDir(), "files");
+}
 export function ensureFilesDir(): string {
-  if (!fs.existsSync(FILES_DIR)) {
-    fs.mkdirSync(FILES_DIR, { recursive: true });
+  const dir = getFilesDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
-  return FILES_DIR;
+  return dir;
+}
+
+/** Directory for RAG uploaded files (when not using S3). Uses same data dir as DB (AGENTRON_DATA_DIR). */
+export function getRagUploadsDir(): string {
+  return path.join(getDataDir(), "rag-uploads");
 }
 
 export const STANDARD_TOOLS: { id: string; name: string }[] = [

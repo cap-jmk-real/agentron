@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Download, Upload, Database, RotateCcw, FileJson, HardDrive } from "lucide-react";
 import ConfirmModal from "../components/confirm-modal";
+import CopyDebugInfoButton from "../components/copy-debug-info-button";
 import {
   getSystemStatsIntervalMs,
   setSystemStatsIntervalMs,
@@ -356,10 +357,21 @@ export default function SettingsPage() {
       />
 
       <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
+        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>Debug</div>
+        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.5rem" }}>
+          Copy version, data directory path and recent API errors for GitHub issues.
+        </p>
+        <CopyDebugInfoButton />
+      </div>
+
+      <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
         <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>Quick Links</div>
         <div style={{ display: "grid", gap: "0.4rem" }}>
           <a href="/settings/llm" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
             LLM Providers &rarr;
+          </a>
+          <a href="/settings/telegram" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+            Telegram &rarr;
           </a>
           <a href="/agents" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
             Agents &rarr;

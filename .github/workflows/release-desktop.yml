@@ -75,6 +75,15 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npm run rebuild:electron --workspace apps/desktop
 
+      - name: Add VS C++ workload (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $vsPath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools"
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+          if (Test-Path $installer) {
+            & $installer modify --installPath $vsPath --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive --norestart
+          }
+
       - name: Create distributable
         run: npm run dist --workspace apps/desktop
         env:

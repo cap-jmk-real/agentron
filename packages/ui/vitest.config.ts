@@ -11,7 +11,7 @@ export default defineConfig({
     maxWorkers: 1,
     coverage: {
       provider: "v8",
-      reporter: ["text", "text-summary", "html"],
+      reporter: ["text", "text-summary", "html", "lcov"],
       include: ["app/**/*.ts"],
       thresholds: {
         lines: 70,
@@ -30,6 +30,9 @@ export default defineConfig({
         "**/api/_lib/remote-test.ts",
         "**/api/_lib/run-workflow.ts",
         "**/api/ollama/**",
+        // OpenClaw Gateway WebSocket client and proxy routes; external service. See docs/openclaw-integration.md.
+        "**/api/_lib/openclaw-client.ts",
+        "**/api/openclaw/**",
         "**/api/sandbox/**",
         "**/api/sandbox-proxy/**",
         "**/api/sandbox-site-bindings/**",

@@ -666,6 +666,11 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
               <p className="chat-empty-sub">
                 Create agents, write functions, manage sandboxes, and more.
               </p>
+              {providers.length === 0 && (
+                <p className="chat-empty-sub" style={{ marginTop: "0.5rem" }}>
+                  <a href="/settings/llm" className="chat-settings-link">Add an LLM provider</a> in Settings to start chatting.
+                </p>
+              )}
             </div>
           )}
           {messages.map((msg, index) => {
@@ -792,6 +797,11 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
           })}
         </div>
 
+        {providers.length === 0 && (
+          <div className="chat-no-model-banner">
+            No model selected. <a href="/settings/llm" className="chat-settings-link">Add an LLM provider in Settings</a> to send messages.
+          </div>
+        )}
         {/* Input */}
         <div className="chat-input-bar">
           <input

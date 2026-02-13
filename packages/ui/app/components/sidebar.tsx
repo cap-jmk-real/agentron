@@ -102,6 +102,12 @@ const icons = {
       <path d="M8 11h8" />
     </svg>
   ),
+  telegram: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 2L11 13" />
+      <path d="M22 2L15 22L11 13L2 9L22 2Z" />
+    </svg>
+  ),
 };
 
 const sections: NavSection[] = [
@@ -124,6 +130,7 @@ const sections: NavSection[] = [
     items: [
       { label: "LLM Providers", href: "/settings/llm", icon: icons.llm },
       { label: "Local Models", href: "/settings/local", icon: icons.localModels },
+      { label: "Telegram", href: "/settings/telegram", icon: icons.telegram },
       { label: "General", href: "/settings", icon: icons.settings },
     ],
   },

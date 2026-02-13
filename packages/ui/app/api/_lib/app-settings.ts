@@ -1,5 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
+import { getDataDir } from "./db";
 
 const DEFAULT_MAX_FILE_UPLOAD_BYTES = 50 * 1024 * 1024; // 50MB
 const MIN_MAX_BYTES = 1 * 1024 * 1024; // 1MB
@@ -10,11 +11,7 @@ export type AppSettings = {
 };
 
 function getSettingsPath(): string {
-  const dataDir = process.env.AGENTRON_DATA_DIR ?? path.join(process.cwd(), ".data");
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-  return path.join(dataDir, "app-settings.json");
+  return path.join(getDataDir(), "app-settings.json");
 }
 
 function loadRaw(): Partial<AppSettings> {

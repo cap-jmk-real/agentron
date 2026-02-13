@@ -20,6 +20,11 @@ build/
 *.dmg
 *.AppImage
 apps/desktop/release/
+apps/desktop/standalone/
+# Downloaded Node runtime (placeholders: node-runtime-*/README.txt)
+apps/desktop/node-runtime-win/node.exe
+apps/desktop/node-runtime-darwin/bin/
+apps/desktop/node-runtime-linux/bin/
 
 # Environment and secrets
 .env

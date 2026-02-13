@@ -1,6 +1,7 @@
 import { json } from "../_lib/response";
 import { db, workflows as workflowsTable, toWorkflowRow, fromWorkflowRow } from "../_lib/db";
 import { randomWorkflowName } from "../_lib/naming";
+import { refreshScheduledWorkflows } from "../_lib/scheduled-workflows";
 
 export const runtime = "nodejs";
 
@@ -15,5 +16,6 @@ export async function POST(request: Request) {
   const name = (payload.name && String(payload.name).trim()) ? payload.name : randomWorkflowName();
   const workflow = { ...payload, id, name };
   await db.insert(workflowsTable).values(toWorkflowRow(workflow)).run();
+  refreshScheduledWorkflows();
   return json(workflow, { status: 201 });
 }

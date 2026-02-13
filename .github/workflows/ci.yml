@@ -15,7 +15,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
@@ -32,3 +32,9 @@ jobs:
 
       - name: Test (UI) with coverage
         run: npm run test:coverage --workspace packages/ui
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: packages/ui/coverage/lcov.info
+          fail_ci_if_error: false

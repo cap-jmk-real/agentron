@@ -105,7 +105,12 @@ export function collectSystemStats(): SystemStatsSnapshot {
 const MAX_HISTORY = 300; // 0.5s * 300 = 2.5 min
 const history: SystemStatsSnapshot[] = [];
 
-const HISTORY_FILE = path.join(process.cwd(), ".data", "system-stats-history.json");
+function getHistoryFilePath(): string {
+  // Lazy to avoid circular dependency (db.ts defines getDataDir)
+  const dataDir = process.env.AGENTRON_DATA_DIR ?? path.join(process.cwd(), ".data");
+  return path.join(dataDir, "system-stats-history.json");
+}
+const HISTORY_FILE = getHistoryFilePath();
 const FLUSH_INTERVAL_MS = 30_000; // persist at most every 30s
 let lastFlushTs = 0;
 let loadAttempted = false;

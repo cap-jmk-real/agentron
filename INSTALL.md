@@ -6,7 +6,7 @@ This document describes how to install and run **Agentron** (enterprise-ready lo
 
 ## Prerequisites
 
-- **Node.js** 18 or later (LTS recommended). Check with: `node -v`
+- **Node.js** — version in repo root `.nvmrc` (e.g. 22.x). Check with: `node -v`
 - **npm** (included with Node.js). Check with: `npm -v`
 - **Git** (to clone the repository)
 
@@ -64,7 +64,7 @@ npm --workspace packages/ui run start
 
 **Option A – Download a pre-built installer (recommended)**
 
-- Use the **Download** page in the documentation site (or the project’s GitHub Releases). Installers are built automatically by CI when changes are merged into `main`. Pick your platform and run the installer. When you launch the desktop app, it **starts the UI server automatically** (no need to run `npm run dev:ui`). Data (SQLite, uploads) is stored in the app’s user data directory. **Requirement:** Node.js 18+ must be installed and on your PATH so the bundled server can start; if Node is not found, set `AGENTRON_STUDIO_URL` to a running UI (e.g. `http://localhost:3000`) and start the UI separately.
+- Use the **Download** page in the documentation site (or the project’s GitHub Releases). Installers are built automatically by CI when changes are merged into `main`. Pick your platform and run the installer. When you launch the desktop app, it **starts the UI server automatically** (no need to run `npm run dev:ui`). Data (SQLite, uploads) is stored in the app’s user data directory. **Node.js is bundled in the installer**, so users do not need to install Node separately.
 
 **Option B – Build from source**
 
@@ -103,6 +103,11 @@ If you installed with `npm install` (full install):
 - **Port 3000 in use:** Change the port, e.g. `PORT=3001 npm run dev:ui` (or set `PORT` in your environment).
 - **Node version:** Ensure Node.js is 18+ with `node -v`. Use [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm) to switch versions if needed.
 - **Desktop build fails:** Run `npm run install:desktop` to pull in Electron and native build tools, then retry.
+- **Installed app doesn’t open or window is blank:** The app writes a log file so you can see what failed. Open the log at:
+  - **Windows:** `%APPDATA%\Agentron Studio\agentron-desktop.log` (or `%LOCALAPPDATA%\Agentron Studio\agentron-desktop.log` if installed per-user).
+  - **macOS:** `~/Library/Application Support/Agentron Studio/agentron-desktop.log`
+  - **Linux:** `~/.config/Agentron Studio/agentron-desktop.log`  
+  Check for messages like "Server spawn error", "Server exited", or "did-fail-load". If the bundled Node or server fails to start, the log will show the reason.
 
 ---
 

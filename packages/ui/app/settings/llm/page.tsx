@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import CopyDebugInfoButton from "../../components/copy-debug-info-button";
 
 interface RateLimitConfig {
   requestsPerMinute?: number;
@@ -53,6 +54,7 @@ export default function LlmSettingsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; msg: string }>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Form state
   const [provider, setProvider] = useState("openai");
@@ -67,10 +69,15 @@ export default function LlmSettingsPage() {
   const [openrouterKeyInfo, setOpenrouterKeyInfo] = useState<Record<string, { loading: boolean; error?: string; envVar?: string; hint?: string; data?: OpenRouterKeyData }>>({});
 
   const loadProviders = useCallback(async () => {
-    const res = await fetch("/api/llm/providers");
-    const data = await res.json();
-    setProviders(Array.isArray(data) ? data : []);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/llm/providers");
+      const data = await res.json();
+      setProviders(Array.isArray(data) ? data : []);
+    } catch {
+      setProviders([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadProviders(); }, [loadProviders]);
@@ -174,18 +181,31 @@ export default function LlmSettingsPage() {
   const addProvider = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setSaveError(null);
     try {
-      await fetch("/api/llm/providers", {
+      const res = await fetch("/api/llm/providers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildPayload()),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSaveError((data.error as string) || res.statusText || "Failed to save provider");
+        return;
+      }
       setShowForm(false);
       setApiKey("");
       setRateLimitRPM("");
       setRateLimitTPM("");
       setContextLengthInput("");
-      await loadProviders();
+      // Add the created provider from response so list updates even if GET fails (e.g. desktop app)
+      if (data && typeof data.id === "string" && typeof data.provider === "string" && typeof data.model === "string") {
+        setProviders((prev) => [...prev, data as LlmProvider]);
+      } else {
+        await loadProviders();
+      }
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Network or server error");
     } finally {
       setSaving(false);
     }
@@ -210,14 +230,22 @@ export default function LlmSettingsPage() {
     e.preventDefault();
     if (!editingId) return;
     setSaving(true);
+    setSaveError(null);
     try {
-      await fetch(`/api/llm/providers/${editingId}`, {
+      const res = await fetch(`/api/llm/providers/${editingId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildPayload()),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSaveError((data.error as string) || res.statusText || "Failed to update provider");
+        return;
+      }
       setEditingId(null);
       await loadProviders();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Network or server error");
     } finally {
       setSaving(false);
     }
@@ -288,8 +316,14 @@ export default function LlmSettingsPage() {
         <div className="card" style={{ marginBottom: "1rem" }}>
           <div style={{ padding: "0.85rem 1rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span style={{ fontWeight: 600, fontSize: "0.85rem" }}>New Provider</span>
-            <button type="button" className="button button-ghost button-small" onClick={() => setShowForm(false)}>Cancel</button>
+            <button type="button" className="button button-ghost button-small" onClick={() => { setShowForm(false); setSaveError(null); }}>Cancel</button>
           </div>
+          {saveError && !editingId && (
+            <div style={{ padding: "0.6rem 1rem", background: "#fef2f2", color: "#dc2626", fontSize: "0.85rem", borderBottom: "1px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap" }}>
+              <span style={{ flex: "1 1 200px" }}>{saveError}</span>
+              <CopyDebugInfoButton label="Copy debug info" variant="ghost" size="small" />
+            </div>
+          )}
           <form onSubmit={addProvider} className="form" style={{ padding: "1rem" }}>
             <div className="field">
               <label>Provider</label>
@@ -423,8 +457,14 @@ export default function LlmSettingsPage() {
                 <div className="card" style={{ marginBottom: "0.5rem" }}>
                   <div style={{ padding: "0.85rem 1rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <span style={{ fontWeight: 600, fontSize: "0.85rem" }}>Edit Provider</span>
-                    <button type="button" className="button button-ghost button-small" onClick={() => setEditingId(null)}>Cancel</button>
+                    <button type="button" className="button button-ghost button-small" onClick={() => { setEditingId(null); setSaveError(null); }}>Cancel</button>
                   </div>
+                  {saveError && (
+                    <div style={{ padding: "0.6rem 1rem", background: "#fef2f2", color: "#dc2626", fontSize: "0.85rem", borderBottom: "1px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap" }}>
+                      <span style={{ flex: "1 1 200px" }}>{saveError}</span>
+                      <CopyDebugInfoButton label="Copy debug info" variant="ghost" size="small" />
+                    </div>
+                  )}
                   <form onSubmit={updateProvider} className="form" style={{ padding: "1rem" }}>
                     <div className="field">
                       <label>Provider</label>

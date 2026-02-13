@@ -1,4 +1,5 @@
 import { json } from "../_lib/response";
+import { logApiError } from "../_lib/api-logger";
 import {
   db, agents, workflows, tools, llmConfigs, executions, files, sandboxes, customFunctions, feedback, conversations, chatMessages, chatAssistantSettings, assistantMemory, fromChatAssistantSettingsRow, toChatAssistantSettingsRow, fromAssistantMemoryRow, toAssistantMemoryRow,
   tokenUsage, modelPricing, remoteServers, toTokenUsageRow,
@@ -22,7 +23,9 @@ import { getDeploymentCollectionId, retrieveChunks } from "../_lib/rag";
 import type { RemoteServer } from "../_lib/db";
 import { testRemoteConnection } from "../_lib/remote-test";
 import { randomAgentName, randomWorkflowName } from "../_lib/naming";
+import { runSerializedByConversation } from "../_lib/chat-queue";
 import { llmContextPrefix, normalizeChatError } from "../_lib/chat-helpers";
+import { openclawSend, openclawHistory, openclawAbort } from "../_lib/openclaw-client";
 import { eq, asc, desc, isNotNull, and, like } from "drizzle-orm";
 import type { LLMTraceCall, LLMConfig } from "@agentron-studio/core";
 import { runAssistant, buildFeedbackInjection, createDefaultLLMManager, resolveModelPricing, calculateCost, type StudioContext } from "@agentron-studio/runtime";
@@ -922,6 +925,37 @@ async function executeTool(
       await db.delete(guardrails).where(eq(guardrails.id, gid)).run();
       return { message: "Guardrail deleted." };
     }
+    case "send_to_openclaw": {
+      const content = (a.content as string)?.trim();
+      if (!content) return { error: "content is required" };
+      try {
+        const result = await openclawSend(content);
+        return { ...result, message: result.runId ? "Message sent to OpenClaw." : result.message ?? "Sent." };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { error: `OpenClaw: ${msg}`, message: "Make sure the OpenClaw Gateway is running (e.g. openclaw gateway) and OPENCLAW_GATEWAY_URL/OPENCLAW_GATEWAY_TOKEN are set if needed." };
+      }
+    }
+    case "openclaw_history": {
+      try {
+        const limit = typeof a.limit === "number" && a.limit > 0 ? Math.min(a.limit, 50) : 20;
+        const result = await openclawHistory({ limit });
+        if (result.error) return { error: result.error, messages: [] };
+        return { messages: result.messages ?? [], message: `Last ${(result.messages ?? []).length} message(s) from OpenClaw.` };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { error: `OpenClaw: ${msg}`, messages: [] };
+      }
+    }
+    case "openclaw_abort": {
+      try {
+        const result = await openclawAbort();
+        return result.ok ? { message: "OpenClaw run aborted." } : { error: result.error, message: "Could not abort." };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { error: `OpenClaw: ${msg}` };
+      }
+    }
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -962,6 +996,7 @@ export async function POST(request: Request) {
     })).run();
   }
 
+  return runSerializedByConversation(conversationId, async () => {
   // Use server-side history when we have an existing conversation so context is reliable (single source of truth, works across tabs).
   const MAX_HISTORY_MESSAGES = 50;
   let history = (payload.history ?? []) as LLMMessage[];
@@ -1462,18 +1497,26 @@ export async function POST(request: Request) {
       ...(generatedTitle && { conversationTitle: generatedTitle }),
     });
   } catch (err: unknown) {
+    logApiError("/api/chat", "POST", err);
     const msg = normalizeChatError(err, llmConfig ? { provider: llmConfig.provider, model: llmConfig.model, endpoint: llmConfig.endpoint } : undefined);
     return json({ error: msg }, { status: 500 });
   }
+  });
 }
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const conversationId = searchParams.get("conversationId")?.trim() || undefined;
-  const query = conversationId
-    ? db.select().from(chatMessages).where(eq(chatMessages.conversationId, conversationId))
-    : db.select().from(chatMessages);
-  const rows = await query;
-  const messages = rows.map((r) => fromChatMessageRow(r));
-  return json(messages);
+  try {
+    const { searchParams } = new URL(request.url);
+    const conversationId = searchParams.get("conversationId")?.trim() || undefined;
+    const query = conversationId
+      ? db.select().from(chatMessages).where(eq(chatMessages.conversationId, conversationId))
+      : db.select().from(chatMessages);
+    const rows = await query;
+    const messages = rows.map((r) => fromChatMessageRow(r));
+    return json(messages);
+  } catch (err) {
+    logApiError("/api/chat", "GET", err);
+    const message = err instanceof Error ? err.message : "Failed to load messages";
+    return json({ error: message }, { status: 500 });
+  }
 }
