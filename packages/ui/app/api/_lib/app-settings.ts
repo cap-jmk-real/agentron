@@ -6,8 +6,11 @@ const DEFAULT_MAX_FILE_UPLOAD_BYTES = 50 * 1024 * 1024; // 50MB
 const MIN_MAX_BYTES = 1 * 1024 * 1024; // 1MB
 const MAX_MAX_BYTES = 500 * 1024 * 1024; // 500MB
 
+export type ContainerEngine = "podman" | "docker";
+
 export type AppSettings = {
   maxFileUploadBytes: number;
+  containerEngine: ContainerEngine;
 };
 
 function getSettingsPath(): string {
@@ -42,6 +45,18 @@ export function getMaxFileUploadBytes(): number {
   return Math.floor(v);
 }
 
+function normalizeContainerEngine(v: unknown): ContainerEngine {
+  return v === "docker" ? "docker" : "podman";
+}
+
+/**
+ * Returns the configured container engine (used by API routes that run containers).
+ * Default "podman" if unset or invalid.
+ */
+export function getContainerEngine(): ContainerEngine {
+  return normalizeContainerEngine(loadRaw().containerEngine);
+}
+
 /**
  * Returns full app settings for the settings API (GET).
  */
@@ -52,11 +67,13 @@ export function getAppSettings(): AppSettings {
     typeof max === "number" && !Number.isNaN(max) && max >= MIN_MAX_BYTES && max <= MAX_MAX_BYTES
       ? Math.floor(max)
       : DEFAULT_MAX_FILE_UPLOAD_BYTES;
-  return { maxFileUploadBytes };
+  const containerEngine = normalizeContainerEngine(raw.containerEngine);
+  return { maxFileUploadBytes, containerEngine };
 }
 
 /**
  * Updates app settings. Validates and clamps maxFileUploadBytes to [1MB, 500MB].
+ * Accepts containerEngine "podman" | "docker".
  */
 export function updateAppSettings(updates: Partial<AppSettings>): AppSettings {
   const current = getAppSettings();
@@ -67,7 +84,9 @@ export function updateAppSettings(updates: Partial<AppSettings>): AppSettings {
       maxFileUploadBytes = Math.floor(Math.min(MAX_MAX_BYTES, Math.max(MIN_MAX_BYTES, v)));
     }
   }
-  const next: AppSettings = { maxFileUploadBytes };
+  const containerEngine =
+    updates.containerEngine !== undefined ? normalizeContainerEngine(updates.containerEngine) : current.containerEngine;
+  const next: AppSettings = { maxFileUploadBytes, containerEngine };
   save(next);
   return next;
 }

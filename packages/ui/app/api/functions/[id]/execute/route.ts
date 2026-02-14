@@ -1,11 +1,9 @@
 import { json } from "../../../_lib/response";
 import { db, customFunctions, sandboxes, fromCustomFunctionRow, fromSandboxRow } from "../../../_lib/db";
+import { getContainerManager } from "../../../_lib/container-manager";
 import { eq } from "drizzle-orm";
-import { PodmanManager } from "@agentron-studio/runtime";
 
 export const runtime = "nodejs";
-
-const podman = new PodmanManager();
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -49,6 +47,7 @@ export async function POST(request: Request, { params }: Params) {
       command = `echo "Unsupported language: ${fn.language}"`;
   }
 
+  const podman = getContainerManager();
   try {
     const result = await podman.exec(containerId, command);
     return json(result);

@@ -7,8 +7,14 @@ const run = promisify(execFile);
 const LABEL = "agentos=true";
 const DEFAULT_TIMEOUT = 30_000;
 
+export type ContainerEngine = "podman" | "docker";
+
 export class PodmanManager {
-  private bin = "podman";
+  private bin: string;
+
+  constructor(options?: { engine?: ContainerEngine }) {
+    this.bin = options?.engine === "docker" ? "docker" : "podman";
+  }
 
   private async podman(...args: string[]): Promise<{ stdout: string; stderr: string }> {
     return run(this.bin, args, { timeout: DEFAULT_TIMEOUT });

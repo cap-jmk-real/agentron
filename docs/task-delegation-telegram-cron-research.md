@@ -11,7 +11,7 @@ This document summarizes how Agentron can be improved so users **delegate tasks*
 - **Chat assistant** already creates/edits agents and workflows via tools (`create_agent`, `create_workflow`, `update_workflow`, `execute_workflow`, etc.) and can run workflows from natural language.
 - **User-in-the-loop** is supported in two places:
   - **Chat:** `ask_user` tool — assistant asks a clear question; same response must not include create/update/execute; user replies in the next message.
-  - **Workflow runs:** `request_user_help` tool — during a workflow run, an agent can call this tool; the run is marked `waiting_for_user`, and the question is stored in the run’s `output`. The user sees “Agent needs your input” in the chat (pending-help cards) and on the run detail page.
+  - **Workflow runs:** `request_user_help` tool — during a workflow run, an agent can call this tool; the run is marked `waiting_for_user`, and the question is stored in the run’s `output`. The user sees “Agent needs your input” in the chat (pending-help cards) and on the run detail page. **Workflow agents should call `request_user_help` (not just return text) when they need user input so the run is surfaced in the UI** (global banner, Chat cards, Runs badge).
 
 ### 1.2 Pending help and “respond”
 

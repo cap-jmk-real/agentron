@@ -1,11 +1,9 @@
 import { json } from "../_lib/response";
 import { db, sandboxes, toSandboxRow, fromSandboxRow } from "../_lib/db";
+import { getContainerManager } from "../_lib/container-manager";
 import type { Sandbox } from "@agentron-studio/core";
-import { PodmanManager } from "@agentron-studio/runtime";
 
 export const runtime = "nodejs";
-
-const podman = new PodmanManager();
 
 export async function GET() {
   const rows = await db.select().from(sandboxes);
@@ -27,6 +25,7 @@ export async function POST(request: Request) {
 
   await db.insert(sandboxes).values(toSandboxRow(sb)).run();
 
+  const podman = getContainerManager();
   try {
     const containerId = await podman.create(sb.image, sb.name, sb.config);
     sb.status = "running";

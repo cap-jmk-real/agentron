@@ -230,7 +230,7 @@ export async function runAssistant(
           if (stepIndex >= 0 && stepIndex < todosForSteps.length) completedTodoIndices.add(stepIndex);
         }
         index++;
-        if (name === "ask_user" && result != null && typeof result === "object" && (result as { waitingForUser?: boolean }).waitingForUser === true) {
+        if ((name === "ask_user" || name === "ask_credentials") && result != null && typeof result === "object" && (result as { waitingForUser?: boolean }).waitingForUser === true) {
           break;
         }
       } catch (err) {
@@ -276,9 +276,9 @@ export async function runAssistant(
     }
   }
 
-  // If the model asked the user for input (ask_user with waitingForUser), do not nudge for more tool calls this turn
+  // If the model asked the user for input (ask_user or ask_credentials with waitingForUser), do not nudge for more tool calls this turn
   const waitingForUser = toolResults.some(
-    (r) => r.name === "ask_user" && r.result != null && typeof r.result === "object" && (r.result as { waitingForUser?: boolean }).waitingForUser === true
+    (r) => (r.name === "ask_user" || r.name === "ask_credentials") && r.result != null && typeof r.result === "object" && (r.result as { waitingForUser?: boolean }).waitingForUser === true
   );
 
   // If the model output a plan but not all todos are complete, nudge (unless waiting for user input)

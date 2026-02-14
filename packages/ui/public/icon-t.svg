@@ -5,10 +5,10 @@
       <stop offset="100%" stop-color="#4f46e5"/>
     </linearGradient>
   </defs>
-  <!-- T shape for A?T?A loading animation. Scaled 1.4 from center to match icon.svg A. -->
+  <!-- T shape for A→T→A loading animation. Scaled 1.4 from center; circle at local cy=38 so it aligns with icon.svg A circle at 40.4. -->
   <g transform="translate(32,32) scale(1.4) translate(-32,-32)">
-    <path d="M4.5 22 H59.5 V30 H37 V62 H27 V30 H4.5 V22 Z" fill="url(#t)"/>
-    <circle cx="32" cy="30" r="5.5" fill="#EEF2FF"/>
-    <circle cx="32" cy="30" r="2.8" fill="#4f46e5"/>
+    <path d="M4.5 30 H59.5 V38 H37 V62 H27 V38 H4.5 V30 Z" fill="url(#t)"/>
+    <circle cx="32" cy="38" r="5.5" fill="#EEF2FF"/>
+    <circle cx="32" cy="38" r="2.8" fill="#4f46e5"/>
   </g>
 </svg>

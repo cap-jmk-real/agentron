@@ -192,6 +192,7 @@ export default function ChatSection({ onOpenSettings }: Props) {
   const [pendingHelp, setPendingHelp] = useState<{ count: number; requests: PendingHelpRequest[] }>({ count: 0, requests: [] });
   const [respondingToRunId, setRespondingToRunId] = useState<string | null>(null);
   const [pendingReplyByRunId, setPendingReplyByRunId] = useState<Record<string, string>>({});
+  const [runFinishedNotification, setRunFinishedNotification] = useState<{ runId: string; status: string } | null>(null);
 
   const CHAT_DEFAULT_PROVIDER_KEY = "chat-default-provider-id";
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -366,6 +367,12 @@ export default function ChatSection({ onOpenSettings }: Props) {
   }, [fetchPendingHelp]);
 
   useEffect(() => {
+    if (!runFinishedNotification) return;
+    const t = setTimeout(() => setRunFinishedNotification(null), 15_000);
+    return () => clearTimeout(t);
+  }, [runFinishedNotification]);
+
+  useEffect(() => {
     fetch("/api/llm/providers")
       .then((r) => r.json())
       .then((data) => {
@@ -387,6 +394,14 @@ export default function ChatSection({ onOpenSettings }: Props) {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  const lastMsg = messages[messages.length - 1];
+  const lastTraceSteps = lastMsg?.role === "assistant" ? lastMsg.traceSteps : undefined;
+  useEffect(() => {
+    if (loading && lastMsg?.role === "assistant") {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }
+  }, [loading, lastTraceSteps, lastMsg?.role]);
 
   const stopRequest = useCallback(() => {
     abortRef.current?.abort();
@@ -518,6 +533,11 @@ export default function ChatSection({ onOpenSettings }: Props) {
                     if (has) return prev.map((c) => (c.id === event.conversationId ? { ...c, title: newTitle ?? c.title } : c));
                     return [{ id: event.conversationId!, title: newTitle, rating: null, note: null, createdAt: Date.now() }, ...prev];
                   });
+                }
+                const execWf = event.toolResults?.find((r: { name: string; result?: unknown }) => r.name === "execute_workflow");
+                const wfResult = execWf?.result as { id?: string; status?: string } | undefined;
+                if (wfResult?.id && (wfResult.status === "completed" || wfResult.status === "waiting_for_user")) {
+                  setRunFinishedNotification({ runId: wfResult.id, status: wfResult.status });
                 }
               } else if (event.type === "error") {
                 const errorContent = `Error: ${event.error ?? "Unknown error"}`;
@@ -875,11 +895,45 @@ export default function ChatSection({ onOpenSettings }: Props) {
               })}
             </div>
           )}
+          {loaded && messages.length > 0 && loading && lastMsg?.role === "assistant" && (() => {
+            const msg = lastMsg;
+            const status = msg.todos?.length
+              ? (msg.completedStepIndices?.length === msg.todos.length
+                  ? "Completing…"
+                  : msg.executingToolName
+                    ? (msg.executingSubStepLabel ? `${msg.executingSubStepLabel} (${msg.executingToolName === "execute_workflow" ? "workflow" : msg.executingToolName})…` : msg.executingToolName === "execute_workflow" ? "Running workflow…" : `Running ${msg.executingToolName}…`)
+                    : `Step ${(msg.executingStepIndex ?? 0) + 1} of ${msg.todos.length}`)
+              : (msg.traceSteps?.length ?? 0) > 0
+                ? (msg.traceSteps![msg.traceSteps!.length - 1].label ?? msg.traceSteps![msg.traceSteps!.length - 1].phase ?? "Thinking…")
+                : "Thinking…";
+            return (
+              <div className="chat-section-status-bar" aria-live="polite">
+                <LogoLoading size={18} className="chat-section-status-bar-logo" />
+                <span>{status}</span>
+              </div>
+            );
+          })()}
         </div>
 
         {providers.length === 0 && (
           <div className="chat-section-no-model-banner">
             No model selected. <a href="/settings/llm" className="chat-section-settings-link">Add an LLM provider in Settings</a> to send messages.
+          </div>
+        )}
+        {runFinishedNotification && (
+          <div className="chat-section-run-finished-toast">
+            <span>
+              Workflow run finished.
+              {runFinishedNotification.status === "waiting_for_user"
+                ? " The agent is waiting for your input."
+                : " The agent may need your input."}
+            </span>
+            <a href={`/runs/${runFinishedNotification.runId}`} target="_blank" rel="noopener noreferrer" className="chat-section-run-finished-link">
+              View run
+            </a>
+            <button type="button" className="chat-section-run-finished-dismiss" onClick={() => setRunFinishedNotification(null)} aria-label="Dismiss">
+              ×
+            </button>
           </div>
         )}
         <div className="chat-section-input-wrap">

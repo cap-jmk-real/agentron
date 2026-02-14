@@ -360,11 +360,17 @@ export default function LlmSettingsPage() {
                 className="input"
                 type="number"
                 min={1}
-                step={1000}
+                step={1}
                 value={contextLengthInput}
                 onChange={(e) => setContextLengthInput(e.target.value)}
                 placeholder={selectedCatalogModel?.contextLength != null ? `Default for model: ${selectedCatalogModel.contextLength.toLocaleString()}` : "e.g. 128000 (optional)"}
+                list="context-length-presets"
               />
+              <datalist id="context-length-presets">
+                {[4096, 8192, 16384, 32768, 64000, 128000, 131072, 200000, 262000, 1000000].map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
               <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
                 Max context window for this model. Used to cap workflow memory and RAG. Leave blank to use model default when available.
               </span>
@@ -501,11 +507,17 @@ export default function LlmSettingsPage() {
                         className="input"
                         type="number"
                         min={1}
-                        step={1000}
+                        step={1}
                         value={contextLengthInput}
                         onChange={(e) => setContextLengthInput(e.target.value)}
                         placeholder={selectedCatalogModel?.contextLength != null ? `Default for model: ${selectedCatalogModel.contextLength.toLocaleString()}` : "e.g. 128000 (optional)"}
+                        list="context-length-presets-edit"
                       />
+                      <datalist id="context-length-presets-edit">
+                        {[4096, 8192, 16384, 32768, 64000, 128000, 131072, 200000, 262000, 1000000].map((n) => (
+                          <option key={n} value={n} />
+                        ))}
+                      </datalist>
                       <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
                         Max context window for this model. Used to cap workflow memory and RAG.
                       </span>

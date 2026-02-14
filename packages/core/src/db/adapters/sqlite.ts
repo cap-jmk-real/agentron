@@ -362,7 +362,7 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         "training_runs", "agent_store_entries", "guardrails", "technique_insights", "technique_playbook", "improvement_jobs",
         "rag_vectors", "rag_connectors", "rag_documents", "rag_collections", "rag_vector_stores", "rag_document_stores", "rag_encoding_configs",
         "tasks", "sandbox_site_bindings", "feedback", "remote_servers", "model_pricing", "token_usage",
-        "custom_functions", "sandboxes", "files", "chat_messages", "conversations", "assistant_memory", "chat_assistant_settings", "contexts",
+        "custom_functions", "sandboxes", "files", "chat_messages", "conversations", "assistant_memory", "chat_assistant_settings", "saved_credentials", "vault_meta", "contexts",
         "agent_skills", "skills", "run_logs", "executions", "llm_configs", "prompts", "tools", "workflows", "agents"
       ];
       for (const table of tables) {
@@ -456,6 +456,16 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         sqlite.exec("ALTER TABLE chat_messages ADD COLUMN llm_trace text");
       } catch {
         // Column already exists
+      }
+      try {
+        sqlite.exec("CREATE TABLE IF NOT EXISTS saved_credentials (key text primary key, value text not null, created_at integer not null)");
+      } catch {
+        // Already exists
+      }
+      try {
+        sqlite.exec("CREATE TABLE IF NOT EXISTS vault_meta (id text primary key, salt text not null, check text not null, created_at integer not null)");
+      } catch {
+        // Already exists
       }
       sqlite.exec(`
         CREATE TABLE IF NOT EXISTS improvement_jobs (id text primary key, name text, scope_type text, scope_id text, student_llm_config_id text, teacher_llm_config_id text, current_model_ref text, instance_refs text, architecture_spec text, last_trained_at integer, last_feedback_at integer, created_at integer not null);

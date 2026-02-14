@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { flushSync } from "react-dom";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Send, ThumbsUp, ThumbsDown, Loader, Minus, Copy, Check, Circle, Square, MessageSquarePlus, List, Star, Trash2, ExternalLink, GitBranch, Settings2 } from "lucide-react";
+import { Send, ThumbsUp, ThumbsDown, Loader, Minus, Copy, Check, Circle, Square, MessageSquarePlus, List, Star, Trash2, ExternalLink, GitBranch, Settings2, KeyRound, Lock, Unlock } from "lucide-react";
 import { ChatMessageContent, ChatToolResults, getAssistantMessageDisplayContent, ReasoningContent } from "./chat-message-content";
 import ChatFeedbackModal from "./chat-feedback-modal";
 import LogoLoading from "./logo-loading";
@@ -115,6 +115,8 @@ function getToolResultCopyLine(result: unknown): string {
   return "done";
 }
 
+const CHAT_FAB_DRAFT_KEY = "agentron-chat-fab-draft";
+
 function getMessageCopyText(msg: Message): string {
   const parts: string[] = [];
   if (msg.content.trim()) parts.push(msg.content.trim());
@@ -165,6 +167,14 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [providers, setProviders] = useState<LlmProvider[]>([]);
   const [providerId, setProviderId] = useState<string>("");
+  const [credentialInput, setCredentialInput] = useState("");
+  const [credentialSave, setCredentialSave] = useState(false);
+  const [vaultLocked, setVaultLocked] = useState(true);
+  const [vaultExists, setVaultExists] = useState(false);
+  const [vaultPassword, setVaultPassword] = useState("");
+  const [vaultError, setVaultError] = useState<string | null>(null);
+  const [vaultLoading, setVaultLoading] = useState(false);
+  const [showVaultForm, setShowVaultForm] = useState(false);
   const CHAT_DEFAULT_PROVIDER_KEY = "chat-default-provider-id";
   const scrollRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
@@ -180,6 +190,28 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
     }
   }, [open, initialConversationId, clearInitialConversationId]);
 
+  // Persist FAB input draft so it survives close/reopen (only when using FAB, not embedded chat page)
+  useEffect(() => {
+    if (embedded) return;
+    try {
+      if (input) sessionStorage.setItem(CHAT_FAB_DRAFT_KEY, input);
+      else sessionStorage.removeItem(CHAT_FAB_DRAFT_KEY);
+    } catch {
+      // ignore
+    }
+  }, [input, embedded]);
+
+  // Restore FAB draft when reopening the popover
+  useEffect(() => {
+    if (open && !embedded && typeof sessionStorage !== "undefined") {
+      try {
+        const draft = sessionStorage.getItem(CHAT_FAB_DRAFT_KEY);
+        if (draft != null && draft !== "") setInput(draft);
+      } catch {
+        // ignore
+      }
+    }
+  }, [open, embedded]);
 
   const startNewChat = useCallback(() => {
     fetch("/api/chat/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) })
@@ -292,6 +324,63 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
     if (embedded) setShowConversationList(true);
   }, [embedded]);
 
+  const fetchVaultStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/vault/status", { credentials: "include" });
+      const data = await res.json();
+      setVaultLocked(data.locked === true);
+      setVaultExists(data.vaultExists === true);
+    } catch {
+      setVaultLocked(true);
+      setVaultExists(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) fetchVaultStatus();
+  }, [open, fetchVaultStatus]);
+
+  const handleVaultUnlock = useCallback(async () => {
+    if (!vaultPassword.trim()) return;
+    setVaultLoading(true);
+    setVaultError(null);
+    try {
+      const endpoint = vaultExists ? "/api/vault/unlock" : "/api/vault/create";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ masterPassword: vaultPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setVaultError(data.error || "Failed");
+        return;
+      }
+      setVaultLocked(false);
+      setVaultExists(true);
+      setVaultPassword("");
+      setShowVaultForm(false);
+    } catch {
+      setVaultError("Request failed");
+    } finally {
+      setVaultLoading(false);
+    }
+  }, [vaultExists, vaultPassword]);
+
+  const handleVaultLock = useCallback(async () => {
+    setVaultLoading(true);
+    try {
+      await fetch("/api/vault/lock", { method: "POST", credentials: "include" });
+      setVaultLocked(true);
+      setShowVaultForm(false);
+    } catch {
+      // ignore
+    } finally {
+      setVaultLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (open) {
       fetch("/api/llm/providers")
@@ -319,6 +408,15 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
     }
   }, [messages, open]);
 
+  // Keep status at bottom in view when trace steps or loading state update
+  const lastMsg = messages[messages.length - 1];
+  const lastTraceSteps = lastMsg?.role === "assistant" ? lastMsg.traceSteps : undefined;
+  useEffect(() => {
+    if (open && loading && lastMsg?.role === "assistant") {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }
+  }, [loading, lastTraceSteps, lastMsg?.role, open]);
+
   useEffect(() => {
     if (!showConversationList) return;
     const onKey = (e: KeyboardEvent) => {
@@ -339,10 +437,11 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
     abortRef.current?.abort();
   }, []);
 
-  const send = async () => {
-    const text = input.trim();
+  const send = async (credentialPayload?: { credentialKey: string; value: string; save: boolean }) => {
+    const isCredentialReply = credentialPayload != null;
+    const text = isCredentialReply ? "Credentials provided." : input.trim();
     if (!text || loading) return;
-    setInput("");
+    if (!isCredentialReply) setInput("");
 
     const userMsg: Message = { id: randomId(), role: "user", content: text };
     const placeholderId = randomId();
@@ -362,8 +461,9 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
 
     try {
       const history = messages.map((m) => ({ role: m.role, content: m.content }));
-      const body: { message: string; history: { role: string; content: string }[]; providerId?: string; uiContext?: string; attachedContext?: string; conversationId?: string } = { message: text, history };
+      const body: { message: string; history: { role: string; content: string }[]; providerId?: string; uiContext?: string; attachedContext?: string; conversationId?: string; credentialResponse?: { credentialKey: string; value: string; save: boolean } } = { message: text, history };
       if (providerId) body.providerId = providerId;
+      if (isCredentialReply && credentialPayload) body.credentialResponse = credentialPayload;
       const uiContext = getUiContext(pathname);
       if (uiContext) body.uiContext = uiContext;
       if (attachedContext) {
@@ -518,7 +618,7 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         updatePlaceholder({ content: "Request stopped." });
-        setInput(text);
+        if (!isCredentialReply) setInput(text);
       } else {
         updatePlaceholder({ content: "Failed to reach assistant." });
       }
@@ -658,8 +758,75 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
           </div>
         )}
 
+        {/* Vault: credentials are stored only when vault is unlocked (master password). Agent cannot access when locked. */}
+        <div className="chat-vault-bar">
+          {vaultLocked ? (
+            <>
+              <Lock size={14} className="chat-vault-icon" aria-hidden />
+              <span className="chat-vault-label">Vault locked — saved credentials unavailable</span>
+              {!showVaultForm ? (
+                <button type="button" className="chat-vault-btn" onClick={() => setShowVaultForm(true)}>
+                  {vaultExists ? "Unlock" : "Create vault"}
+                </button>
+              ) : (
+                <div className="chat-vault-form">
+                  <input
+                    type="password"
+                    className="chat-vault-input"
+                    placeholder={vaultExists ? "Master password" : "Choose master password"}
+                    value={vaultPassword}
+                    onChange={(e) => { setVaultPassword(e.target.value); setVaultError(null); }}
+                    onKeyDown={(e) => e.key === "Enter" && handleVaultUnlock()}
+                    aria-label="Vault master password"
+                  />
+                  <button type="button" className="chat-vault-btn" onClick={handleVaultUnlock} disabled={vaultLoading || !vaultPassword.trim()}>
+                    {vaultLoading ? "…" : vaultExists ? "Unlock" : "Create"}
+                  </button>
+                  <button type="button" className="chat-vault-btn chat-vault-btn-ghost" onClick={() => { setShowVaultForm(false); setVaultPassword(""); setVaultError(null); }}>Cancel</button>
+                  {vaultError && <span className="chat-vault-error">{vaultError}</span>}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <Unlock size={14} className="chat-vault-icon chat-vault-icon-unlocked" aria-hidden />
+              <span className="chat-vault-label">Vault unlocked</span>
+              <button type="button" className="chat-vault-btn" onClick={handleVaultLock} disabled={vaultLoading}>Lock vault</button>
+            </>
+          )}
+        </div>
+
+        {/* Steps panel: current turn's todo list (open/done), visible as soon as plan exists, including while loading */}
+        {lastMsg?.role === "assistant" && (lastMsg.todos?.length ?? 0) > 0 && (
+          <div className="chat-steps-panel" aria-label="Current steps">
+            <span className="chat-steps-panel-title">Steps</span>
+            <ul className="chat-steps-list">
+              {lastMsg.todos!.map((todo, i) => {
+                const done = lastMsg.completedStepIndices?.includes(i) === true;
+                const executing = lastMsg.executingStepIndex === i;
+                return (
+                  <li
+                    key={i}
+                    className={`chat-steps-item ${done ? "chat-steps-item-done" : ""} ${executing ? "chat-steps-item-executing" : ""}`}
+                  >
+                    {done ? (
+                      <Check size={14} className="chat-steps-icon chat-steps-icon-done" aria-hidden />
+                    ) : executing ? (
+                      <Loader size={14} className="chat-steps-icon chat-steps-icon-spin" aria-hidden />
+                    ) : (
+                      <Circle size={14} className="chat-steps-icon chat-steps-icon-open" aria-hidden />
+                    )}
+                    <span className="chat-steps-label">{todo}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
         {/* Messages */}
         <div className="chat-messages" ref={scrollRef}>
+          <div className="chat-messages-content">
           {messages.length === 0 && (
             <div className="chat-empty">
               <div className="chat-empty-icon">
@@ -687,43 +854,14 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
                   <p className="chat-rephrased-text">{msg.rephrasedPrompt}</p>
                 </div>
               )}
-              {msg.role === "assistant" && (msg.traceSteps?.length ?? 0) > 0 && (
+              {msg.role === "assistant" && (msg.traceSteps?.length ?? 0) > 0 && !(loading && isLastMessage) && (
                 <div className="chat-trace-steps">
                   <span className="chat-trace-step" title={msg.traceSteps![msg.traceSteps!.length - 1].contentPreview ?? undefined}>
-                    {loading && isLastMessage && (msg as Message & { executingToolName?: string }).executingToolName === "execute_workflow"
-                      ? "Running workflow…"
-                      : msg.traceSteps![msg.traceSteps!.length - 1].label ?? msg.traceSteps![msg.traceSteps!.length - 1].phase}
+                    {msg.traceSteps![msg.traceSteps!.length - 1].label ?? msg.traceSteps![msg.traceSteps!.length - 1].phase}
                   </span>
                 </div>
               )}
-              {msg.role === "assistant" && isLastMessage && loading && (() => {
-                const stepIndex = msg.executingStepIndex;
-                const todos = msg.todos ?? [];
-                const total = todos.length;
-                const allDone = total > 0 && (msg.completedStepIndices?.length ?? 0) === total;
-                const toolName = (msg as Message & { executingToolName?: string }).executingToolName;
-                let status: string;
-                if (allDone) {
-                  status = "Completing…";
-                } else if (toolName) {
-                  const subStep = (msg as Message & { executingSubStepLabel?: string }).executingSubStepLabel;
-                  const toolLabel = toolName === "execute_workflow" ? "workflow" : toolName;
-                  status = subStep ? `${subStep} (${toolLabel})…` : toolName === "execute_workflow" ? "Running workflow…" : `Running ${toolName}…`;
-                } else if (stepIndex !== undefined && total > 0 && todos[stepIndex] != null) {
-                  status = total > 1 ? `Step ${stepIndex + 1} of ${total}: ${todos[stepIndex]}` : String(todos[stepIndex]);
-                } else if (todos.length > 0 || (msg.reasoning != null && String(msg.reasoning).trim() !== "")) {
-                  status = "Planning…";
-                } else {
-                  status = "Thinking…";
-                }
-                return (
-                  <span className="chat-typing-status">
-                    <LogoLoading size={20} className="chat-typing-logo" />
-                    {status}
-                  </span>
-                );
-              })()}
-              {msg.role === "assistant" && msg.reasoning && isLastMessage && (
+              {msg.role === "assistant" && msg.reasoning && isLastMessage && !(loading && isLastMessage) && (
                 <div className="chat-plan">
                   <div className="chat-plan-reasoning">
                     <span className="chat-plan-label">Reasoning</span>
@@ -731,7 +869,8 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
                   </div>
                 </div>
               )}
-              {msg.role === "assistant" && msg.todos && msg.todos.length > 0 && (
+              {/* Inline steps only for past messages; current turn uses the separate Steps panel above */}
+              {msg.role === "assistant" && msg.todos && msg.todos.length > 0 && !isLastMessage && (
                 <div className="chat-plan chat-plan-todos-only">
                   <div className="chat-plan-todos">
                     <span className="chat-plan-label">Steps</span>
@@ -752,7 +891,7 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
               )}
               {(() => {
                 const list = msg.toolResults ?? [];
-                const filtered = list.filter((r) => r.name !== "ask_user");
+                const filtered = list.filter((r) => r.name !== "ask_user" && r.name !== "ask_credentials");
                 const displayContent = msg.role === "assistant" ? getAssistantMessageDisplayContent(msg.content, list) : msg.content;
                 return (
                   <>
@@ -798,6 +937,84 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
             </div>
           );
           })}
+          </div>
+          {(() => {
+            const askCreds = lastMsg?.role === "assistant" && lastMsg.toolResults
+              ? lastMsg.toolResults.find((r) => r.name === "ask_credentials" && r.result && typeof r.result === "object" && (r.result as { credentialRequest?: boolean }).credentialRequest === true)
+              : undefined;
+            const pendingCredential = !loading && askCreds?.result && typeof askCreds.result === "object"
+              ? { question: (askCreds.result as { question?: string }).question ?? "Enter credential", credentialKey: (askCreds.result as { credentialKey?: string }).credentialKey ?? "credential" }
+              : null;
+            if (!pendingCredential) return null;
+            return (
+              <div className="chat-credential-form" aria-label="Enter credential securely">
+                <p className="chat-credential-prompt">{pendingCredential.question}</p>
+                <div className="chat-credential-fields">
+                  <KeyRound size={16} className="chat-credential-icon" aria-hidden />
+                  <input
+                    type="password"
+                    className="chat-credential-input"
+                    placeholder="Enter value (never shown in chat)"
+                    value={credentialInput}
+                    onChange={(e) => setCredentialInput(e.target.value)}
+                    autoComplete="off"
+                    aria-label="Credential value"
+                  />
+                </div>
+                <label className="chat-credential-save-label" title={vaultLocked ? "Unlock the vault above to save credentials" : undefined}>
+                  <input
+                    type="checkbox"
+                    checked={credentialSave}
+                    onChange={(e) => setCredentialSave(e.target.checked)}
+                    disabled={vaultLocked}
+                    className="chat-credential-save-checkbox"
+                  />
+                  <span>Save for future use{vaultLocked ? " (unlock vault first)" : ""}</span>
+                </label>
+                <button
+                  type="button"
+                  className="chat-credential-submit"
+                  disabled={!credentialInput.trim()}
+                  onClick={() => {
+                    const value = credentialInput.trim();
+                    if (!value) return;
+                    setCredentialInput("");
+                    setCredentialSave(false);
+                    send({ credentialKey: pendingCredential.credentialKey, value, save: credentialSave });
+                  }}
+                >
+                  Submit
+                </button>
+              </div>
+            );
+          })()}
+          {loading && lastMsg?.role === "assistant" && (() => {
+            const msg = lastMsg as Message & { executingToolName?: string; executingSubStepLabel?: string };
+            const stepIndex = msg.executingStepIndex;
+            const todos = msg.todos ?? [];
+            const total = todos.length;
+            const allDone = total > 0 && (msg.completedStepIndices?.length ?? 0) === total;
+            const toolName = msg.executingToolName;
+            let status: string;
+            if (allDone) status = "Completing…";
+            else if (toolName) {
+              const subStep = msg.executingSubStepLabel;
+              const toolLabel = toolName === "execute_workflow" ? "workflow" : toolName;
+              status = subStep ? `${subStep} (${toolLabel})…` : toolName === "execute_workflow" ? "Running workflow…" : `Running ${toolName}…`;
+            } else if (stepIndex !== undefined && total > 0 && todos[stepIndex] != null) {
+              status = total > 1 ? `Step ${stepIndex + 1} of ${total}: ${todos[stepIndex]}` : String(todos[stepIndex]);
+            } else if ((msg.traceSteps?.length ?? 0) > 0) {
+              status = msg.traceSteps![msg.traceSteps!.length - 1].label ?? msg.traceSteps![msg.traceSteps!.length - 1].phase ?? "Thinking…";
+            } else if (todos.length > 0 || (msg.reasoning != null && String(msg.reasoning).trim() !== "")) {
+              status = "Planning…";
+            } else status = "Thinking…";
+            return (
+              <div className="chat-status-bar" aria-live="polite">
+                <LogoLoading size={18} className="chat-status-bar-logo" />
+                <span>{status}</span>
+              </div>
+            );
+          })()}
         </div>
 
         {providers.length === 0 && (

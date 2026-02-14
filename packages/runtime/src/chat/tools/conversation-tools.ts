@@ -15,6 +15,19 @@ export const CONVERSATION_TOOLS: AssistantToolDef[] = [
     },
   },
   {
+    name: "ask_credentials",
+    description:
+      "Ask the user for a secret (password, API key, token) that only they can provide. Use when a task requires credentials (e.g. API key for a new LLM provider, SSH password). The user will see a secure input and can optionally save the credential for future use. Call with a clear prompt and a stable credentialKey so saved credentials can be reused (e.g. 'openai_api_key', 'github_token'). In the SAME response do NOT output create_* or execute_workflow — only ask_credentials and a short message. Wait for the user to submit before proceeding.",
+    parameters: {
+      type: "object",
+      properties: {
+        question: { type: "string", description: "Clear prompt for the user (e.g. 'Enter your OpenAI API key' or 'Enter the SSH password for user@host')" },
+        credentialKey: { type: "string", description: "Stable key for this credential so it can be saved and reused (e.g. 'openai_api_key', 'github_token'). Use lowercase with underscores." },
+      },
+      required: ["question", "credentialKey"],
+    },
+  },
+  {
     name: "retry_last_message",
     description: "Get the last user message in this conversation so you can respond to it again. Use when the user asks to retry, redo, or repeat the last message (e.g. 'retry the last message', 'try again', 'redo', 'run that again'). Call this tool, then respond to the returned lastUserMessage in your reply.",
     parameters: { type: "object", properties: {}, required: [] },

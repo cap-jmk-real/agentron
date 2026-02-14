@@ -115,6 +115,21 @@ export const assistantMemory = sqliteTable("assistant_memory", {
   createdAt: integer("created_at").notNull()
 });
 
+/** User-saved credentials (e.g. API keys) keyed by credentialKey from ask_credentials. Encrypted with vault master password; never echoed in chat. */
+export const savedCredentials = sqliteTable("saved_credentials", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  createdAt: integer("created_at").notNull()
+});
+
+/** Single row: vault salt and encrypted check value. Used to verify master password; credentials are encrypted with key derived from master password. */
+export const vaultMeta = sqliteTable("vault_meta", {
+  id: text("id").primaryKey(),
+  salt: text("salt").notNull(),
+  check: text("check").notNull(),
+  createdAt: integer("created_at").notNull()
+});
+
 export const files = sqliteTable("files", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

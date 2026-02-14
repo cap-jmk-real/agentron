@@ -1,12 +1,10 @@
 import { json } from "../../../_lib/response";
 import { db, sandboxes, files, fromSandboxRow, fromFileRow, ensureFilesDir } from "../../../_lib/db";
+import { getContainerManager } from "../../../_lib/container-manager";
 import { eq } from "drizzle-orm";
-import { PodmanManager } from "@agentron-studio/runtime";
 import path from "node:path";
 
 export const runtime = "nodejs";
-
-const podman = new PodmanManager();
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -23,6 +21,7 @@ export async function POST(request: Request, { params }: Params) {
   if (!fileIds?.length) return json({ error: "fileIds required" }, { status: 400 });
 
   const filesDir = ensureFilesDir();
+  const podman = getContainerManager();
   const mounted: string[] = [];
 
   for (const fileId of fileIds) {

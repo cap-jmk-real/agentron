@@ -131,7 +131,7 @@ function getAskUserQuestionFromToolResults(
   toolResults: { name: string; result?: unknown }[] | undefined
 ): string | undefined {
   if (!Array.isArray(toolResults)) return undefined;
-  const askUser = toolResults.find((r) => r.name === "ask_user");
+  const askUser = toolResults.find((r) => r.name === "ask_user" || r.name === "ask_credentials");
   const res = askUser?.result;
   if (res && typeof res === "object" && res !== null && "question" in res && typeof (res as { question: unknown }).question === "string") {
     const q = (res as { question: string }).question.trim();
@@ -144,8 +144,11 @@ function getToolResultDisplayText(result: unknown): string {
   if (result === null || result === undefined) return "done";
   if (typeof result === "object" && result !== null) {
     const obj = result as Record<string, unknown>;
-    // Special-case ask_user so the chip shows the actual question instead of a generic "done".
+    // Special-case ask_user and ask_credentials so the chip shows the actual question instead of a generic "done".
     if ("waitingForUser" in obj && (obj as { waitingForUser?: boolean }).waitingForUser === true && typeof obj.question === "string" && obj.question.trim()) {
+      return obj.question.trim();
+    }
+    if ("credentialRequest" in obj && (obj as { credentialRequest?: boolean }).credentialRequest === true && typeof obj.question === "string" && obj.question.trim()) {
       return obj.question.trim();
     }
     if ("message" in obj) {

@@ -8,12 +8,10 @@ import {
   fromSandboxRow,
   type SandboxSiteBinding,
 } from "../../../_lib/db";
+import { getContainerManager } from "../../../_lib/container-manager";
 import { eq } from "drizzle-orm";
-import { PodmanManager } from "@agentron-studio/runtime";
 
 export const runtime = "nodejs";
-
-const podman = new PodmanManager();
 
 const PORT_START = Math.max(1, parseInt(process.env.SANDBOX_PORT_START ?? "18100", 10));
 const PORT_END = Math.max(PORT_START + 1, parseInt(process.env.SANDBOX_PORT_END ?? "18200", 10));
@@ -74,6 +72,7 @@ export async function POST(request: Request, { params }: Params) {
   };
 
   if (sb.containerId) {
+    const podman = getContainerManager();
     try {
       await podman.destroy(sb.containerId);
     } catch {

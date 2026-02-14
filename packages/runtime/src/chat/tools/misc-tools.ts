@@ -17,7 +17,7 @@ export const MISC_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "run_container_command",
-    description: "Run a one-off command in a Podman container and return the output. Use this when the user wants to run a container just to execute a single command (e.g. 'run a podman container to echo hello world', 'run docker to print something'). Creates a container from the image, runs the command, then removes the container. For a persistent sandbox where you run multiple commands, use create_sandbox then execute_code instead.",
+    description: "Run a one-off command in a Podman/Docker container and return the output. Use this when the user wants to run a container just to execute a single command (e.g. 'run a podman container to echo hello world', 'run docker to print something'). Creates a container from the image, runs the command, then removes the container. For a persistent sandbox where you run multiple commands, use create_sandbox then execute_code instead.",
     parameters: {
       type: "object",
       properties: {
@@ -29,12 +29,12 @@ export const MISC_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "list_sandboxes",
-    description: "List all Podman sandboxes (name, id, image, status). Use when the user asks what sandboxes exist or before reusing an existing sandbox with execute_code.",
+    description: "List all Podman/Docker sandboxes (name, id, image, status). Use when the user asks what sandboxes exist or before reusing an existing sandbox with execute_code.",
     parameters: { type: "object", properties: {}, required: [] },
   },
   {
     name: "create_sandbox",
-    description: "Create a new Podman sandbox for code execution (persistent container). Use when the user wants a long-lived environment for multiple commands. For a single command, use run_container_command instead.",
+    description: "Create a new Podman/Docker sandbox for code execution (persistent container). Use when the user wants a long-lived environment for multiple commands. For a single command, use run_container_command instead.",
     parameters: {
       type: "object",
       properties: {

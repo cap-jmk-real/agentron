@@ -1,11 +1,9 @@
 import { json } from "../_lib/response";
 import { db, sandboxes, fromSandboxRow, toSandboxRow } from "../_lib/db";
+import { getContainerManager } from "../_lib/container-manager";
 import { eq } from "drizzle-orm";
-import { PodmanManager } from "@agentron-studio/runtime";
 
 export const runtime = "nodejs";
-
-const podman = new PodmanManager();
 
 const RUNNER_NODE_NAME = "agentron-runner-node";
 const RUNNER_PYTHON_NAME = "agentron-runner-python";
@@ -13,6 +11,7 @@ const RUNNER_NODE_IMAGE = "node:22-slim";
 const RUNNER_PYTHON_IMAGE = "python:3.12-slim";
 
 async function ensureRunnerSandbox(name: string, image: string): Promise<string> {
+  const podman = getContainerManager();
   const rows = await db.select().from(sandboxes).where(eq(sandboxes.name, name)).limit(1);
   if (rows.length > 0) {
     const sb = fromSandboxRow(rows[0]);
@@ -76,6 +75,7 @@ else:
     command = `node -e ${JSON.stringify(codeWithInput)}`;
   }
 
+  const podman = getContainerManager();
   try {
     const result = await podman.exec(containerId, command);
     let output: unknown = null;

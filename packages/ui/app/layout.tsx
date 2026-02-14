@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import Sidebar from "./components/sidebar";
 import Topbar from "./components/topbar";
 import ChatWrapper from "./components/chat-wrapper";
+import ActionRequiredBanner from "./components/action-required-banner";
 
 export const metadata = {
   title: "Agentron Studio",
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <Sidebar />
           <div className="content">
             <Topbar />
+            <ActionRequiredBanner />
             {children}
           </div>
         </div>

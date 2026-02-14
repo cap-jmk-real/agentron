@@ -5,7 +5,7 @@ description: How to install the Podman container engine on Windows, macOS, and L
 
 # Installing Podman
 
-Agentron uses **Podman** to run sandboxes—isolated containers for code execution, custom functions, and agent tools. Install Podman on your machine using the steps below for your platform.
+Agentron uses a **container engine** (Podman or Docker) to run sandboxes—isolated containers for code execution, custom functions, and agent tools. You can choose **Podman** or **Docker** in **Settings → Container Engine**. This page describes installing Podman; if you prefer Docker, install [Docker Engine](https://docs.docker.com/engine/install/) and select Docker in Container Engine settings.
 
 :::tip Need a GUI?
 You can install **Podman Desktop** instead of (or in addition to) the CLI. It sets up the Podman engine and a Podman machine for you. See [Podman Desktop downloads](https://podman-desktop.io/downloads).
@@ -71,9 +71,13 @@ Install the package for your distribution. No separate “machine” is needed; 
 
 For **RHEL**, see [Red Hat solution 3650231](https://access.redhat.com/solutions/3650231). For **Linux Mint**, use the same commands as Ubuntu (or Debian for LMDE).
 
+## Using Docker instead
+
+You can use **Docker** instead of Podman. Install Docker for your platform, then in Agentron go to **Settings → Container Engine** and select **Docker**. Ensure the Docker daemon is running (e.g. `docker info`).
+
 ## After installing
 
-Once Podman is installed and (on Windows/macOS) the Podman machine is running, you can:
+Once your chosen engine (Podman or Docker) is installed and running, you can:
 
 - Use **sandboxes** in Agentron (create sandboxes, run code, custom functions).
 - Use tools that run commands in containers (e.g. `run_container_command`, `create_sandbox`, `execute_code`).

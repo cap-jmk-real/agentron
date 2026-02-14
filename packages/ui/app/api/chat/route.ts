@@ -29,7 +29,9 @@ import { openclawSend, openclawHistory, openclawAbort } from "../_lib/openclaw-c
 import { eq, asc, desc, isNotNull, and, like } from "drizzle-orm";
 import type { LLMTraceCall, LLMConfig } from "@agentron-studio/core";
 import { runAssistant, buildFeedbackInjection, createDefaultLLMManager, resolveModelPricing, calculateCost, type StudioContext } from "@agentron-studio/runtime";
-import { PodmanManager } from "@agentron-studio/runtime";
+import { getContainerManager } from "../_lib/container-manager";
+import { getStoredCredential, setStoredCredential } from "../_lib/credential-store";
+import { getVaultKeyFromRequest } from "../_lib/vault";
 import type { LLMMessage, LLMResponse } from "@agentron-studio/runtime";
 
 export const runtime = "nodejs";
@@ -180,8 +182,6 @@ function ensureLlmNodesHaveSystemPrompt(
   }
 }
 
-const podman = new PodmanManager();
-
 /** When the assistant only called ask_user (no other text), use the question as the chat response. */
 function getAssistantDisplayContent(
   content: string,
@@ -197,7 +197,7 @@ function getAskUserQuestionFromToolResults(
   toolResults: { name: string; result?: unknown }[] | undefined
 ): string | undefined {
   if (!Array.isArray(toolResults)) return undefined;
-  const askUser = toolResults.find((r) => r.name === "ask_user");
+  const askUser = toolResults.find((r) => r.name === "ask_user" || r.name === "ask_credentials");
   const res = askUser?.result;
   if (res && typeof res === "object" && res !== null && "question" in res && typeof (res as { question: unknown }).question === "string") {
     const q = (res as { question: string }).question.trim();
@@ -209,16 +209,27 @@ function getAskUserQuestionFromToolResults(
 async function executeTool(
   name: string,
   args: Record<string, unknown>,
-  ctx?: { conversationId?: string }
+  ctx?: { conversationId?: string; vaultKey?: Buffer | null }
 ): Promise<unknown> {
   try {
     const a = args != null && typeof args === "object" && !Array.isArray(args) ? args : {};
     const conversationId = ctx?.conversationId;
+    const vaultKey = ctx?.vaultKey ?? null;
     switch (name) {
     case "ask_user": {
       const question = typeof a.question === "string" ? a.question.trim() : "";
       const reason = typeof a.reason === "string" ? (a.reason as string).trim() : undefined;
       return { waitingForUser: true, question: question || "Please provide the information or confirmation.", ...(reason ? { reason } : {}) };
+    }
+    case "ask_credentials": {
+      const question = typeof a.question === "string" ? a.question.trim() : "Please enter the requested credential.";
+      const credentialKey = typeof a.credentialKey === "string" ? (a.credentialKey as string).trim().toLowerCase().replace(/\s+/g, "_") : "";
+      if (!credentialKey) return { waitingForUser: true, credentialRequest: true, question: "Please provide a credential key.", credentialKey: "credential" };
+      const plaintext = await getStoredCredential(credentialKey, vaultKey);
+      if (plaintext != null && plaintext !== "") {
+        return { credentialProvided: true, value: plaintext };
+      }
+      return { waitingForUser: true, credentialRequest: true, question: question || "Please enter the requested credential.", credentialKey };
     }
     case "retry_last_message": {
       if (!conversationId) return { lastUserMessage: null, message: "No conversation context." };
@@ -520,6 +531,7 @@ async function executeTool(
       const image = a.image as string;
       let containerId: string | undefined;
       let status = "creating";
+      const podman = getContainerManager();
       try {
         containerId = await podman.create(image, name, {});
         status = "running";
@@ -537,13 +549,14 @@ async function executeTool(
       if (rows.length === 0) return { error: "Sandbox not found" };
       const sb = fromSandboxRow(rows[0]);
       if (!sb.containerId) return { error: "Sandbox has no container" };
-      return podman.exec(sb.containerId, a.command as string);
+      return getContainerManager().exec(sb.containerId, a.command as string);
     }
     case "run_container_command": {
       const image = (a.image as string)?.trim();
       const command = (a.command as string)?.trim();
       if (!image || !command) return { error: "image and command are required" };
       const name = `chat-one-shot-${Date.now()}`;
+      const podman = getContainerManager();
       let containerId: string;
       try {
         containerId = await podman.create(image, name, {});
@@ -628,7 +641,7 @@ async function executeTool(
         agents: "Agents are the core building blocks. Each agent has a kind (node or code), a protocol (native, MCP, HTTP), a system prompt, optional steps, and can be connected to tools and LLMs. Agents can learn from user feedback — thumbs up/down on their outputs refines their prompts over time.",
         workflows: "Workflows chain multiple agents together into a pipeline. They support execution modes: one_time, continuous, or interval. Agents within a workflow share context so outputs from one agent can be used by the next.",
         tools: "Tools extend what agents can do. They can be native (built-in), MCP (Model Context Protocol), or HTTP (external APIs). Custom code functions also register as native tools automatically.",
-        sandboxes: "Sandboxes are Podman containers that provide isolated execution environments. They support any language or runtime — just specify a container image. You can execute commands, mount files, and even run databases inside them. If the user needs to install Podman, direct them to the installation guide: [Installing Podman](/podman-install).",
+        sandboxes: "Sandboxes are Podman or Docker containers that provide isolated execution environments. The user chooses the engine in Settings → Container Engine. They support any language or runtime — just specify a container image. You can execute commands, mount files, and even run databases inside them. If the user needs to install Podman or Docker, direct them to the installation guide: [Installing Podman](/podman-install).",
         functions: "Custom functions let you write code (JavaScript, Python, TypeScript) that becomes a tool agents can call. Functions run inside sandboxes for isolation.",
         files: "You can upload context files that agents can access during execution. Files are stored locally and can be mounted into sandboxes.",
         feedback: "The feedback system lets you rate agent outputs as good or bad. This feedback is used in two ways: runtime injection (few-shot examples added to prompts) and on-demand LLM-driven prompt refinement.",
@@ -1002,9 +1015,13 @@ export async function POST(request: Request) {
   const attachedContext = typeof payload.attachedContext === "string" ? payload.attachedContext.trim() : undefined;
   let conversationId = typeof payload.conversationId === "string" ? payload.conversationId.trim() || undefined : undefined;
   const conversationTitle = typeof payload.conversationTitle === "string" ? payload.conversationTitle.trim() || undefined : undefined;
+  const credentialResponse = payload.credentialResponse as { credentialKey?: string; value?: string; save?: boolean } | undefined;
+  const isCredentialReply = credentialResponse && typeof credentialResponse.value === "string" && credentialResponse.value.trim() !== "";
 
-  if (!userMessage) return json({ error: "message required" }, { status: 400 });
+  if (!userMessage && !isCredentialReply) return json({ error: "message required" }, { status: 400 });
 
+  const vaultKey = getVaultKeyFromRequest(request);
+  const contentToStore = isCredentialReply ? "Credentials provided." : (userMessage || "");
   if (!conversationId) {
     conversationId = crypto.randomUUID();
     await db.insert(conversations).values(toConversationRow({
@@ -1020,6 +1037,13 @@ export async function POST(request: Request) {
   }
 
   return runSerializedByConversation(conversationId, async () => {
+  // When user submits credentials, save to vault (only when vault is unlocked)
+  if (isCredentialReply && credentialResponse?.credentialKey && credentialResponse.save) {
+    const key = String(credentialResponse.credentialKey).trim().toLowerCase().replace(/\s+/g, "_") || "credential";
+    const plaintext = credentialResponse.value!.trim();
+    await setStoredCredential(key, plaintext, true, vaultKey);
+  }
+
   // Use server-side history when we have an existing conversation so context is reliable (single source of truth, works across tabs).
   const MAX_HISTORY_MESSAGES = 50;
   let history = (payload.history ?? []) as LLMMessage[];
@@ -1239,7 +1263,7 @@ export async function POST(request: Request) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        const userMsg = { id: crypto.randomUUID(), role: "user" as const, content: userMessage, createdAt: Date.now(), conversationId: conversationId! };
+        const userMsg = { id: crypto.randomUUID(), role: "user" as const, content: contentToStore, createdAt: Date.now(), conversationId: conversationId! };
         let generatedTitle: string | null = null;
         const llmTraceEntries: LLMTraceCall[] = [];
         let rephraseTraceEntry: LLMTraceCall | null = null;
@@ -1252,9 +1276,9 @@ export async function POST(request: Request) {
         });
         try {
           await db.insert(chatMessages).values(toChatMessageRow(userMsg)).run();
-          if (existingRows.length === 0) {
+          if (existingRows.length === 0 && !isCredentialReply) {
             enqueue({ type: "trace_step", phase: "title", label: "Generating title…" });
-            generatedTitle = await generateConversationTitle(userMessage.trim().slice(0, 2000), manager, llmConfig);
+            generatedTitle = await generateConversationTitle((userMessage || contentToStore).trim().slice(0, 2000), manager, llmConfig);
             await db.update(conversations).set({ ...(generatedTitle && { title: generatedTitle }) }).where(eq(conversations.id, conversationId!)).run();
             enqueue({ type: "trace_step", phase: "title_done", label: "Title set" });
           }
@@ -1262,23 +1286,29 @@ export async function POST(request: Request) {
           // High-level context preparation step (history, feedback, knowledge, studio resources)
           enqueue({ type: "trace_step", phase: "prepare", label: "Preparing context (history, knowledge, tools)…" });
 
-          enqueue({ type: "trace_step", phase: "rephrase", label: "Rephrasing…" });
-          const { rephrasedPrompt, wantsRetry } = await rephraseAndClassify(userMessage, manager, llmConfig, { onLlmCall: (e) => { rephraseTraceEntry = e; } });
-          enqueue({ type: "trace_step", phase: "rephrase_done", label: "Rephrase done" });
-          if (rephrasedPrompt != null) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "rephrased_prompt", rephrasedPrompt })}\n\n`));
-          }
-          const trimmed = userMessage.trim().slice(0, 2000);
-          let effectiveMessage = rephrasedPrompt ?? trimmed;
-          if (wantsRetry) {
-            const allRows = await db.select().from(chatMessages).where(eq(chatMessages.conversationId, conversationId!)).orderBy(asc(chatMessages.createdAt));
-            const lastUserMsg = [...allRows].reverse().find((r) => r.role === "user")?.content ?? null;
-            if (lastUserMsg) effectiveMessage = lastUserMsg;
+          let effectiveMessage: string;
+          if (isCredentialReply && credentialResponse?.value) {
+            effectiveMessage = credentialResponse.value.trim();
+            enqueue({ type: "trace_step", phase: "rephrase_done", label: "Using provided credential" });
+          } else {
+            enqueue({ type: "trace_step", phase: "rephrase", label: "Rephrasing…" });
+            const { rephrasedPrompt, wantsRetry } = await rephraseAndClassify(userMessage || contentToStore, manager, llmConfig, { onLlmCall: (e) => { rephraseTraceEntry = e; } });
+            enqueue({ type: "trace_step", phase: "rephrase_done", label: "Rephrase done" });
+            if (rephrasedPrompt != null) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "rephrased_prompt", rephrasedPrompt })}\n\n`));
+            }
+            const trimmed = (userMessage || contentToStore).trim().slice(0, 2000);
+            effectiveMessage = rephrasedPrompt ?? trimmed;
+            if (wantsRetry) {
+              const allRows = await db.select().from(chatMessages).where(eq(chatMessages.conversationId, conversationId!)).orderBy(asc(chatMessages.createdAt));
+              const lastUserMsg = [...allRows].reverse().find((r) => r.role === "user")?.content ?? null;
+              if (lastUserMsg) effectiveMessage = lastUserMsg;
+            }
           }
 
           const result = await runAssistant(history, effectiveMessage, {
             callLLM: streamTrackingCallLLM,
-            executeTool: (toolName: string, toolArgs: Record<string, unknown>) => executeTool(toolName, toolArgs, { conversationId }),
+            executeTool: (toolName: string, toolArgs: Record<string, unknown>) => executeTool(toolName, toolArgs, { conversationId, vaultKey }),
             feedbackInjection: feedbackInjection || undefined,
             ragContext,
             uiContext: uiContext || undefined,
@@ -1404,11 +1434,11 @@ export async function POST(request: Request) {
     });
   }
 
-  const userMsg = { id: crypto.randomUUID(), role: "user" as const, content: userMessage, createdAt: Date.now(), conversationId: conversationId! };
+  const userMsg = { id: crypto.randomUUID(), role: "user" as const, content: contentToStore, createdAt: Date.now(), conversationId: conversationId! };
   await db.insert(chatMessages).values(toChatMessageRow(userMsg)).run();
   let generatedTitle: string | null = null;
-  if (existingRows.length === 0) {
-    generatedTitle = await generateConversationTitle(userMessage.trim().slice(0, 2000), manager, llmConfig);
+  if (existingRows.length === 0 && !isCredentialReply) {
+    generatedTitle = await generateConversationTitle((userMessage || contentToStore).trim().slice(0, 2000), manager, llmConfig);
     await db.update(conversations).set({ ...(generatedTitle && { title: generatedTitle }) }).where(eq(conversations.id, conversationId!)).run();
   }
 
@@ -1416,22 +1446,26 @@ export async function POST(request: Request) {
   let rephraseTraceEntry: LLMTraceCall | null = null;
   const trackingCallLLM = createTrackingCallLLM({ pushTrace: (e) => llmTraceEntries.push(e) });
 
-  const trimmedForFallback = userMessage.trim().slice(0, 2000);
+  const trimmedForFallback = (userMessage || contentToStore).trim().slice(0, 2000);
   let rephrasedPrompt: string | undefined;
-  let effectiveMessage = trimmedForFallback;
+  let effectiveMessage: string;
   try {
-    const rephraseResult = await rephraseAndClassify(userMessage, manager, llmConfig, { onLlmCall: (e) => { rephraseTraceEntry = e; } });
-    rephrasedPrompt = rephraseResult.rephrasedPrompt;
-    effectiveMessage = rephraseResult.rephrasedPrompt ?? trimmedForFallback;
-    if (rephraseResult.wantsRetry) {
-      const allRows = await db.select().from(chatMessages).where(eq(chatMessages.conversationId, conversationId!)).orderBy(asc(chatMessages.createdAt));
-      const lastUserMsg = [...allRows].reverse().find((r) => r.role === "user")?.content ?? null;
-      if (lastUserMsg) effectiveMessage = lastUserMsg;
+    if (isCredentialReply && credentialResponse?.value) {
+      effectiveMessage = credentialResponse.value.trim();
+    } else {
+      const rephraseResult = await rephraseAndClassify(userMessage || contentToStore, manager, llmConfig, { onLlmCall: (e) => { rephraseTraceEntry = e; } });
+      rephrasedPrompt = rephraseResult.rephrasedPrompt;
+      effectiveMessage = rephraseResult.rephrasedPrompt ?? trimmedForFallback;
+      if (rephraseResult.wantsRetry) {
+        const allRows = await db.select().from(chatMessages).where(eq(chatMessages.conversationId, conversationId!)).orderBy(asc(chatMessages.createdAt));
+        const lastUserMsg = [...allRows].reverse().find((r) => r.role === "user")?.content ?? null;
+        if (lastUserMsg) effectiveMessage = lastUserMsg;
+      }
     }
 
     const result = await runAssistant(history, effectiveMessage, {
       callLLM: trackingCallLLM,
-      executeTool: (toolName: string, toolArgs: Record<string, unknown>) => executeTool(toolName, toolArgs, { conversationId }),
+      executeTool: (toolName: string, toolArgs: Record<string, unknown>) => executeTool(toolName, toolArgs, { conversationId, vaultKey }),
       feedbackInjection: feedbackInjection || undefined,
       ragContext,
       uiContext: uiContext || undefined,

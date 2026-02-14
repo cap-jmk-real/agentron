@@ -373,6 +373,9 @@ export default function SettingsPage() {
           <a href="/settings/telegram" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
             Telegram &rarr;
           </a>
+          <a href="/settings/container" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+            Container Engine &rarr;
+          </a>
           <a href="/agents" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
             Agents &rarr;
           </a>

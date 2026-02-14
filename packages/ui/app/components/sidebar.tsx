@@ -109,6 +109,13 @@ const icons = {
       <path d="M22 2L15 22L11 13L2 9L22 2Z" />
     </svg>
   ),
+  container: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
+      <path d="M3.27 6.96L12 12.01l8.73-5.05" />
+      <path d="M12 22.08V12" />
+    </svg>
+  ),
 };
 
 const sections: NavSection[] = [
@@ -132,6 +139,7 @@ const sections: NavSection[] = [
       { label: "LLM Providers", href: "/settings/llm", icon: icons.llm },
       { label: "Local Models", href: "/settings/local", icon: icons.localModels },
       { label: "Telegram", href: "/settings/telegram", icon: icons.telegram },
+      { label: "Container Engine", href: "/settings/container", icon: icons.container },
       { label: "General", href: "/settings", icon: icons.settings },
     ],
   },
@@ -235,6 +243,18 @@ export default function Sidebar() {
                               agentHelpCount === 1
                                 ? "Agent needs your input – open Chat to respond"
                                 : `${agentHelpCount} requests waiting – open Chat to help the agent`
+                            }
+                          >
+                            {agentHelpCount}
+                          </span>
+                        )}
+                        {item.href === "/runs" && agentHelpCount > 0 && (
+                          <span
+                            className="nav-badge nav-badge-help"
+                            title={
+                              agentHelpCount === 1
+                                ? "1 run waiting for your input"
+                                : `${agentHelpCount} runs waiting for your input`
                             }
                           >
                             {agentHelpCount}

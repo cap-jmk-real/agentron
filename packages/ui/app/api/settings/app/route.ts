@@ -16,14 +16,17 @@ export async function GET() {
   }
 }
 
-/** PATCH updates general app settings. Body: { maxFileUploadBytes?: number } (bytes). */
+/** PATCH updates general app settings. Body: { maxFileUploadBytes?: number, containerEngine?: "podman" | "docker" }. */
 export async function PATCH(request: Request) {
   try {
     const payload = await request.json().catch(() => ({}));
-    const updates: { maxFileUploadBytes?: number } = {};
+    const updates: { maxFileUploadBytes?: number; containerEngine?: "podman" | "docker" } = {};
     if (payload.maxFileUploadBytes !== undefined) {
       const v = Number(payload.maxFileUploadBytes);
       if (!Number.isNaN(v)) updates.maxFileUploadBytes = v;
+    }
+    if (payload.containerEngine !== undefined && (payload.containerEngine === "podman" || payload.containerEngine === "docker")) {
+      updates.containerEngine = payload.containerEngine;
     }
     const settings = updateAppSettings(updates);
     return json(settings);
