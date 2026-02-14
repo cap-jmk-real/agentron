@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none" aria-hidden="true" shape-rendering="geometricPrecision" overflow="hidden">
+  <defs>
+    <linearGradient id="t" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+  </defs>
+  <!-- T shape for A?T?A loading animation. Scaled 1.4 from center to match icon.svg A. -->
+  <g transform="translate(32,32) scale(1.4) translate(-32,-32)">
+    <path d="M4.5 22 H59.5 V30 H37 V62 H27 V30 H4.5 V22 Z" fill="url(#t)"/>
+    <circle cx="32" cy="30" r="5.5" fill="#EEF2FF"/>
+    <circle cx="32" cy="30" r="2.8" fill="#4f46e5"/>
+  </g>
+</svg>

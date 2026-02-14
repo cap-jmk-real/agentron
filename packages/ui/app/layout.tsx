@@ -6,7 +6,8 @@ import ChatWrapper from "./components/chat-wrapper";
 
 export const metadata = {
   title: "Agentron Studio",
-  description: "Local-first agent design studio."
+  description: "Local-first agent design studio.",
+  icons: { icon: "/icon.svg" },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

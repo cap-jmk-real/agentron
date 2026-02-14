@@ -539,6 +539,29 @@ async function executeTool(
       if (!sb.containerId) return { error: "Sandbox has no container" };
       return podman.exec(sb.containerId, a.command as string);
     }
+    case "run_container_command": {
+      const image = (a.image as string)?.trim();
+      const command = (a.command as string)?.trim();
+      if (!image || !command) return { error: "image and command are required" };
+      const name = `chat-one-shot-${Date.now()}`;
+      let containerId: string;
+      try {
+        containerId = await podman.create(image, name, {});
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { error: `Failed to create container: ${msg}`, stdout: "", stderr: msg, exitCode: -1 };
+      }
+      try {
+        const result = await podman.exec(containerId, command);
+        return result;
+      } finally {
+        try { await podman.destroy(containerId); } catch { /* ignore */ }
+      }
+    }
+    case "list_sandboxes": {
+      const rows = await db.select().from(sandboxes);
+      return rows.map(fromSandboxRow).map((s) => ({ id: s.id, name: s.name, image: s.image, status: s.status }));
+    }
     case "list_files": {
       const rows = await db.select().from(files);
       return rows.map(fromFileRow).map((f) => ({ id: f.id, name: f.name, size: f.size }));
@@ -605,7 +628,7 @@ async function executeTool(
         agents: "Agents are the core building blocks. Each agent has a kind (node or code), a protocol (native, MCP, HTTP), a system prompt, optional steps, and can be connected to tools and LLMs. Agents can learn from user feedback — thumbs up/down on their outputs refines their prompts over time.",
         workflows: "Workflows chain multiple agents together into a pipeline. They support execution modes: one_time, continuous, or interval. Agents within a workflow share context so outputs from one agent can be used by the next.",
         tools: "Tools extend what agents can do. They can be native (built-in), MCP (Model Context Protocol), or HTTP (external APIs). Custom code functions also register as native tools automatically.",
-        sandboxes: "Sandboxes are Podman containers that provide isolated execution environments. They support any language or runtime — just specify a container image. You can execute commands, mount files, and even run databases inside them.",
+        sandboxes: "Sandboxes are Podman containers that provide isolated execution environments. They support any language or runtime — just specify a container image. You can execute commands, mount files, and even run databases inside them. If the user needs to install Podman, direct them to the installation guide: [Installing Podman](/podman-install).",
         functions: "Custom functions let you write code (JavaScript, Python, TypeScript) that becomes a tool agents can call. Functions run inside sandboxes for isolation.",
         files: "You can upload context files that agents can access during execution. Files are stored locally and can be mounted into sandboxes.",
         feedback: "The feedback system lets you rate agent outputs as good or bad. This feedback is used in two ways: runtime injection (few-shot examples added to prompts) and on-demand LLM-driven prompt refinement.",

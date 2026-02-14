@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { ResourceUsage } from "./resource-usage";
+import BrandIcon from "./brand-icon";
 
 type NavItem = {
   label: string;
@@ -188,7 +189,7 @@ export default function Sidebar() {
     <aside className="sidebar">
       <div className="brand">
         <div className="brand-mark">
-          <img src="/icon.svg" alt="" width={32} height={32} className="brand-logo" />
+          <BrandIcon size={32} className="brand-logo" />
         </div>
         <div>
           <div className="brand-title">Agentron</div>
@@ -223,9 +224,10 @@ export default function Sidebar() {
                         key={item.href}
                         className={`nav-link ${isActive ? "active" : ""}`}
                         href={item.href}
+                        title={item.label}
                       >
                         <span className="nav-icon">{item.icon}</span>
-                        {item.label}
+                        <span className="nav-label">{item.label}</span>
                         {item.href === "/chat" && agentHelpCount > 0 && (
                           <span
                             className="nav-badge nav-badge-help"

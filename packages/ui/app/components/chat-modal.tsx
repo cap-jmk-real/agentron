@@ -8,6 +8,7 @@ import { Send, ThumbsUp, ThumbsDown, Loader, Minus, Copy, Check, Circle, Square,
 import { ChatMessageContent, ChatToolResults, getAssistantMessageDisplayContent, ReasoningContent } from "./chat-message-content";
 import ChatFeedbackModal from "./chat-feedback-modal";
 import LogoLoading from "./logo-loading";
+import BrandIcon from "./brand-icon";
 
 /** UUID v4; works in insecure context where crypto.randomUUID is not available */
 function randomId(): string {
@@ -661,7 +662,9 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
         <div className="chat-messages" ref={scrollRef}>
           {messages.length === 0 && (
             <div className="chat-empty">
-              <div className="chat-empty-icon">AI</div>
+              <div className="chat-empty-icon">
+                <BrandIcon size={48} />
+              </div>
               <p className="chat-empty-title">How can I help?</p>
               <p className="chat-empty-sub">
                 Create agents, write functions, manage sandboxes, and more.

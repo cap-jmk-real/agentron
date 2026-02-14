@@ -12,7 +12,7 @@ Agentron provides **local AI agent orchestration**, **workflow automation**, and
 | **Runs** | Execute workflows/agents, inspect results | list_runs, get_run |
 | **LLM Providers** | Configure OpenAI, Anthropic, Ollama, etc. | list_llm_providers (config via Settings) |
 | **Agentron (Chat)** | Natural-language chat that creates/edits agents, workflows, tools via tool calls | Built-in; see [Agentron (Chat)](/concepts/assistant) |
-| **Sandboxes** | Podman containers for code execution | create_sandbox, execute_code |
+| **Sandboxes** | Podman containers for code execution ([Installing Podman](/podman-install)) | create_sandbox, execute_code |
 | **Custom Functions** | JavaScript/Python/TypeScript as tools | create_custom_function |
 | **Knowledge / RAG** | Document ingestion and retrieval | UI-based; agents can use RAG collections |
 | **Feedback** | Rate agent outputs for learning | UI-based; stored for prompt refinement |

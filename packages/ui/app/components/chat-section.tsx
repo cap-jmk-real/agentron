@@ -26,6 +26,7 @@ import {
 import { ChatMessageContent, ChatToolResults, getAssistantMessageDisplayContent, ReasoningContent } from "./chat-message-content";
 import ChatFeedbackModal from "./chat-feedback-modal";
 import LogoLoading from "./logo-loading";
+import BrandIcon from "./brand-icon";
 
 /** UUID v4; works in insecure context where crypto.randomUUID is not available */
 function randomId(): string {
@@ -689,7 +690,9 @@ export default function ChatSection({ onOpenSettings }: Props) {
             <div className="chat-section-loading">Loading…</div>
           ) : messages.length === 0 ? (
             <div className="chat-section-welcome">
-              <div className="chat-section-welcome-icon">AI</div>
+              <div className="chat-section-welcome-icon">
+                <BrandIcon size={64} />
+              </div>
               <h2 className="chat-section-welcome-title">How can I help?</h2>
               <p className="chat-section-welcome-sub">Ask anything about agents, workflows, and tools.</p>
               {providers.length === 0 && (
