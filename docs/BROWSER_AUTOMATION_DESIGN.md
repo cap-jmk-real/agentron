@@ -160,10 +160,26 @@ Optional: support `steps: [...]` for executing a sequence in one call (batch of 
 
 ---
 
+## Enabling browser automation
+
+To use the **std-browser-automation** tool (navigate, click, fill, getContent, screenshot, waitFor):
+
+1. Start Chrome with remote debugging:  
+   `chrome --remote-debugging-port=9222`  
+   (On macOS you may need the full path, e.g. `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-port=9222`.)
+2. Ensure at least one tab is open. The tool connects to the first context and first page.
+3. Attach **std-browser-automation** (and **std-request-user-help** when the agent should ask the user to choose from a list) to the workflow agent. For "get list from web then ask user which one", the runtime injects an instruction so the agent uses the browser first, then calls request_user_help.
+
+Login/session reuse: the tool uses the user's existing Chrome instance, so cookies and logged-in sessions (e.g. LinkedIn) are available. For credentials, use the vault when the user has approved (see optional vault integration).
+
+### Vault and credentials for browser login (optional)
+
+For "login then fetch list" agents (e.g. LinkedIn, Sales Navigator): the workflow run or browser tool can resolve credentials from the vault when the user has approved (e.g. "use vault credentials"). Document for users: store credentials in the vault and approve their use for the run; the agent's system prompt should state "use vault-stored credentials only when permitted" and must not log or echo them. Implementation: ensure the workflow run (or browser tool) can receive vault-resolved credentials via tool context or run context when the user has approved.
+
 ## Next Steps
 
-1. Add `playwright` to `packages/runtime`.
-2. Implement CDP browser tool in `builtins.ts` or a new module.
-3. Add a `std-browser-interactive` tool definition in the DB and register it.
+1. ~~Add `playwright` to `packages/runtime`.~~ Done.
+2. ~~Implement CDP browser tool.~~ Done: `packages/runtime/src/tools/browser-automation.ts`; tool id `std-browser-automation`.
+3. ~~Add tool definition in the DB and wire in run-workflow.~~ Done.
 4. Add assistant tool descriptions for “enable browser automation” and “record demonstration”.
 5. Implement recording pipeline (CDP or extension) and workflow generation from recorded steps.

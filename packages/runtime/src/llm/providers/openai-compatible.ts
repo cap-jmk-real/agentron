@@ -24,14 +24,44 @@ function normalizeOpenAIEndpoint(endpoint: string): string {
   return endpoint.replace(/\/v1\/?$/, "").replace(/\/$/, "") || endpoint;
 }
 
-function buildRequestBody(request: LLMRequest, config: ResolvedLLMConfig, temperatureOverride?: number) {
+/** Models that require max_completion_tokens instead of max_tokens (OpenAI API). */
+function modelRequiresMaxCompletionTokens(model: string): boolean {
+  const m = (model || "").toLowerCase();
+  return (
+    m.startsWith("gpt-5") ||
+    m.startsWith("o1") ||
+    m.startsWith("o3") ||
+    m.startsWith("o4") ||
+    /^o\d+-mini$/i.test(m)
+  );
+}
+
+export type OpenAICompatibleOptions = {
+  /** Use max_completion_tokens instead of max_tokens (required for newer OpenAI models e.g. gpt-5-mini). */
+  useMaxCompletionTokens?: boolean;
+};
+
+function buildRequestBody(
+  request: LLMRequest,
+  config: ResolvedLLMConfig,
+  temperatureOverride?: number,
+  options?: OpenAICompatibleOptions
+) {
   const temperature = temperatureOverride ?? request.temperature;
+  const useMaxCompletionTokens =
+    options?.useMaxCompletionTokens === true || modelRequiresMaxCompletionTokens(config.model);
+  const completionLimit =
+    request.maxTokens !== undefined && request.maxTokens !== null
+      ? useMaxCompletionTokens
+        ? { max_completion_tokens: request.maxTokens }
+        : { max_tokens: request.maxTokens }
+      : {};
   return {
     model: config.model,
     messages: mapMessagesToApi(request.messages ?? []),
     ...(temperature !== undefined && temperature !== null ? { temperature } : {}),
     top_p: request.topP,
-    max_tokens: request.maxTokens,
+    ...completionLimit,
     ...(request.tools && request.tools.length > 0 ? { tools: request.tools } : {}),
   };
 }
@@ -40,10 +70,11 @@ export const openAICompatibleChat = async (
   endpoint: string,
   config: ResolvedLLMConfig,
   request: LLMRequest,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  options?: OpenAICompatibleOptions
 ): Promise<LLMResponse> => {
   const base = normalizeOpenAIEndpoint(endpoint);
-  let body = buildRequestBody(request, config);
+  let body = buildRequestBody(request, config, undefined, options);
   let response = await fetch(`${base}/v1/chat/completions`, {
     method: "POST",
     headers: {
@@ -59,7 +90,7 @@ export const openAICompatibleChat = async (
       try {
         const err = JSON.parse(errorText) as { error?: { param?: string; code?: string } };
         if (err.error?.param === "temperature" && err.error?.code === "unsupported_value") {
-          body = buildRequestBody(request, config, 1);
+          body = buildRequestBody(request, config, 1, options);
           response = await fetch(`${base}/v1/chat/completions`, {
             method: "POST",
             headers: { "Content-Type": "application/json", ...headers },

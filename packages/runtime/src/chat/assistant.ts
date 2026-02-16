@@ -35,6 +35,8 @@ export interface AssistantOptions {
   studioContext?: StudioContext;
   /** Optional cross-chat context: stored preferences + recent conversation summaries (injected after studio context) */
   crossChatContext?: string;
+  /** Optional: when a workflow run is waiting for user input, inject this context so the assistant can decide to call respond_to_run or take another action */
+  runWaitingContext?: string;
   /** Optional: LLM currently selected in the chat UI. When user says "use this one", "same as chat", or doesn't specify, use this as llmConfigId for new agents. */
   chatSelectedLlm?: { id: string; provider: string; model: string };
   /** Optional custom system prompt override (replaces default; rag/feedback/ui/attached/studio context still appended) */
@@ -111,6 +113,11 @@ export async function runAssistant(
   }
   if (options.crossChatContext && options.crossChatContext.trim().length > 0) {
     systemPrompt += `\n\n## Cross-chat context (preferences and recent conversation summaries)\n${options.crossChatContext.trim()}`;
+  }
+  if (options.runWaitingContext && options.runWaitingContext.trim().length > 0) {
+    systemPrompt += `\n\n## Workflow run waiting for user input\n${options.runWaitingContext.trim()}\n\n**CRITICAL:** Do NOT output a generic "The agent is waiting for your input. Reply above to continue." message. Instead:
+1. First, surface the run's question to the user (from runWaitingContext above) so they know what to reply.
+2. Then process their message: (a) If they are directly answering the run's question (e.g. selecting an option, providing data), call respond_to_run with runId and response. (b) If they want to stop or cancel the run, call cancel_run. (c) If they want something else (modify the agent, ask a different question), do that instead. Always take action — never just tell them to reply.`;
   }
 
   const messages: LLMMessage[] = [

@@ -407,7 +407,8 @@ export default function AgentDetailPage() {
                 tools={tools}
                 llmConfigs={llmConfigs}
                 onNodesEdgesChange={(nodes, edges) => {
-                  setDefinition({ ...definition, graph: { nodes, edges } });
+                  if (!Array.isArray(nodes) || !Array.isArray(edges)) return;
+                  setDefinition((prev) => ({ ...prev, graph: { nodes, edges } }));
                   setGraphNodesStr(JSON.stringify(nodes, null, 2));
                   setGraphEdgesStr(JSON.stringify(edges, null, 2));
                 }}

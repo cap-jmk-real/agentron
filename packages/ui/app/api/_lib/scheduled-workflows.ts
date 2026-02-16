@@ -99,6 +99,13 @@ async function runOneScheduledWorkflow(workflowId: string, branchId?: string): P
       const payload = executionOutputSuccess(lastOutput ?? undefined, trail);
       await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
     };
+    const onProgress = async (
+      state: { message: string; toolId?: string },
+      currentTrail: Array<{ order: number; round?: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string }>
+    ) => {
+      const payload = executionOutputSuccess(undefined, currentTrail.length > 0 ? currentTrail : undefined, state.message);
+      await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
+    };
     const isCancelled = async () => {
       const rows = await db.select({ status: executions.status }).from(executions).where(eq(executions.id, runId));
       return rows[0]?.status === "cancelled";
@@ -108,6 +115,7 @@ async function runOneScheduledWorkflow(workflowId: string, branchId?: string): P
       runId,
       branchId,
       onStepComplete,
+      onProgress,
       isCancelled,
       maxSelfFixRetries: getWorkflowMaxSelfFixRetries(),
     });

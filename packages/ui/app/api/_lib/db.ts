@@ -314,9 +314,15 @@ export const fromExecutionRow = (row: typeof executions.$inferSelect) => ({
 /** Payload for execution output on success (workflow/agent run). */
 export function executionOutputSuccess(
   output: unknown,
-  trail?: Array<{ order: number; round?: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string }>
-): { output: unknown; trail?: typeof trail } {
-  return { output, ...(trail != null && trail.length > 0 ? { trail } : {}) };
+  trail?: Array<{ order: number; round?: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string }>,
+  /** When set, run is in progress; UI can show this message (e.g. "Starting workflow…", "Executing: std-browser-automation"). */
+  executing?: string
+): { output: unknown; trail?: typeof trail; executing?: string } {
+  return {
+    output,
+    ...(trail != null && trail.length > 0 ? { trail } : {}),
+    ...(executing != null && executing !== "" ? { executing } : {}),
+  };
 }
 
 /** Payload for execution output on failure (workflow/agent run). */
@@ -404,6 +410,7 @@ export const toChatMessageRow = (m: ChatMessage) => ({
   content: m.content,
   toolCalls: m.toolCalls ? JSON.stringify(m.toolCalls) : null,
   llmTrace: m.llmTrace ? JSON.stringify(m.llmTrace) : null,
+  rephrasedPrompt: m.rephrasedPrompt ?? null,
   createdAt: m.createdAt
 });
 
@@ -426,7 +433,7 @@ function normalizeToolCalls(raw: unknown): ChatMessage["toolCalls"] {
 }
 
 export const fromChatMessageRow = (row: typeof chatMessages.$inferSelect): ChatMessage => {
-  const r = row as typeof row & { llmTrace?: string | null };
+  const r = row as typeof row & { llmTrace?: string | null; rephrasedPrompt?: string | null };
   const parsed = parseJson<unknown[]>(row.toolCalls);
   return {
     id: row.id,
@@ -434,6 +441,7 @@ export const fromChatMessageRow = (row: typeof chatMessages.$inferSelect): ChatM
     content: row.content,
     toolCalls: parsed ? normalizeToolCalls(parsed) : undefined,
     llmTrace: parseJson(r.llmTrace),
+    rephrasedPrompt: typeof r.rephrasedPrompt === "string" && r.rephrasedPrompt.trim() ? r.rephrasedPrompt : undefined,
     createdAt: row.createdAt,
     conversationId: row.conversationId ?? undefined
   };
@@ -691,9 +699,24 @@ export function getRagUploadsDir(): string {
   return path.join(getDataDir(), "rag-uploads");
 }
 
+/** Directory for agent-created files, scoped by context (e.g. runId or conversationId) for build context. Lives under files dir so path resolution works. */
+export function getAgentFilesDir(contextId: string): string {
+  return path.join(getFilesDir(), "agent-files", contextId);
+}
+
+export function ensureAgentFilesDir(contextId: string): string {
+  ensureFilesDir();
+  const dir = getAgentFilesDir(contextId);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
+
 export const STANDARD_TOOLS: { id: string; name: string }[] = [
   { id: "std-fetch-url", name: "Fetch URL" },
   { id: "std-browser", name: "Browser" },
+  { id: "std-browser-automation", name: "Browser automation (navigate, snapshot, click, fill). Use first to get lists from web pages; then request_user_help to ask the user to choose." },
   { id: "std-run-code", name: "Run Code" },
   { id: "std-http-request", name: "HTTP Request" },
   { id: "std-webhook", name: "Webhook" },
@@ -702,6 +725,7 @@ export const STANDARD_TOOLS: { id: string; name: string }[] = [
   { id: "std-container-run", name: "Run Container" },
   { id: "std-container-session", name: "Container session (create once, exec many)" },
   { id: "std-container-build", name: "Build image from Containerfile" },
+  { id: "std-write-file", name: "Write file" },
   { id: "std-request-user-help", name: "Request user input (workflow pause)" },
 ];
 
@@ -747,11 +771,32 @@ export async function ensureStandardTools(): Promise<void> {
   const stdContainerBuildInputSchema = {
     type: "object",
     properties: {
-      contextPath: { type: "string", description: "Path to build context directory (e.g. . or absolute path)" },
-      dockerfilePath: { type: "string", description: "Path to Containerfile or Dockerfile (relative to context or absolute)" },
+      contextPath: { type: "string", description: "Path to build context directory (optional if dockerfileContent is provided)" },
+      dockerfilePath: { type: "string", description: "Path to Containerfile or Dockerfile (optional if dockerfileContent is provided)" },
       imageTag: { type: "string", description: "Tag for the built image (e.g. myapp:latest)" },
+      dockerfileContent: { type: "string", description: "Optional inline Containerfile/Dockerfile content; if set, a temp context is created and used for build" },
     },
-    required: ["contextPath", "dockerfilePath", "imageTag"],
+    required: ["imageTag"],
+  };
+  const stdWriteFileInputSchema = {
+    type: "object",
+    properties: {
+      name: { type: "string", description: "File name (e.g. Containerfile, script.sh)" },
+      content: { type: "string", description: "File content (text)" },
+    },
+    required: ["name", "content"],
+  };
+  const stdBrowserAutomationInputSchema = {
+    type: "object",
+    properties: {
+      action: { type: "string", enum: ["navigate", "click", "fill", "screenshot", "getContent", "waitFor"], description: "Action to perform" },
+      url: { type: "string", description: "URL (required for navigate)" },
+      selector: { type: "string", description: "CSS selector (for click, fill, waitFor)" },
+      value: { type: "string", description: "Value to fill (for fill)" },
+      timeout: { type: "number", description: "Timeout in ms (optional)" },
+      cdpUrl: { type: "string", description: "Chrome CDP URL (default http://localhost:9222). Start Chrome with: chrome --remote-debugging-port=9222" },
+    },
+    required: ["action"],
   };
 
   for (const t of STANDARD_TOOLS) {
@@ -761,6 +806,8 @@ export async function ensureStandardTools(): Promise<void> {
     const isRequestUserHelp = t.id === "std-request-user-help";
     const isContainerSession = t.id === "std-container-session";
     const isContainerBuild = t.id === "std-container-build";
+    const isWriteFile = t.id === "std-write-file";
+    const isBrowserAutomation = t.id === "std-browser-automation";
     await db
       .insert(tools)
       .values({
@@ -768,7 +815,7 @@ export async function ensureStandardTools(): Promise<void> {
         name: t.name,
         protocol: "native",
         config: "{}",
-        inputSchema: isContainerRun ? JSON.stringify(stdContainerRunInputSchema) : isWebSearch ? JSON.stringify(stdWebSearchInputSchema) : isRequestUserHelp ? JSON.stringify(stdRequestUserHelpInputSchema) : isContainerSession ? JSON.stringify(stdContainerSessionInputSchema) : isContainerBuild ? JSON.stringify(stdContainerBuildInputSchema) : null,
+        inputSchema: isContainerRun ? JSON.stringify(stdContainerRunInputSchema) : isWebSearch ? JSON.stringify(stdWebSearchInputSchema) : isRequestUserHelp ? JSON.stringify(stdRequestUserHelpInputSchema) : isContainerSession ? JSON.stringify(stdContainerSessionInputSchema) : isContainerBuild ? JSON.stringify(stdContainerBuildInputSchema) : isWriteFile ? JSON.stringify(stdWriteFileInputSchema) : isBrowserAutomation ? JSON.stringify(stdBrowserAutomationInputSchema) : null,
         outputSchema: null,
       })
       .run();

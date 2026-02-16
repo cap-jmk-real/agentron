@@ -77,6 +77,7 @@ export function CanvasNodeCard({
 
   const style: React.CSSProperties = {
     ...cardStyle,
+    position: "relative",
     border: `2px solid ${selected ? "var(--primary)" : "var(--border)"}`,
     ...(minWidth != null && { minWidth: typeof minWidth === "number" ? minWidth : minWidth }),
     ...(maxWidth != null && { maxWidth: typeof maxWidth === "number" ? maxWidth : maxWidth }),
@@ -85,16 +86,18 @@ export function CanvasNodeCard({
   return (
     <div style={style}>
       {showTargetLeft && (
-        <Handle type="target" position={Position.Left} style={{ left: 0, width: 10, height: 10 }} />
+        <Handle type="target" position={Position.Left} style={{ width: 10, height: 10 }} />
       )}
       {showTargetTop && (
         <Handle type="target" position={Position.Top} style={{ top: 0, width: 10, height: 10 }} />
       )}
-      {/* Wrapper with nopan so the whole node body does not trigger canvas pan; cursor over controls is set by .nopan in CSS; node shows move for drag */}
+      {/* Drag handle: only icon+label start node drag; rest is nodrag so click works on controls */}
       <div className="nopan">
         <div style={headerStyle}>
-          {icon}
-          <span style={labelStyle}>{label}</span>
+          <div className="drag-handle" style={{ display: "flex", alignItems: "center", gap: "0.35rem", minWidth: 0 }}>
+            {icon}
+            <span style={labelStyle}>{label}</span>
+          </div>
           {onRemove && (
             <button
               type="button"
@@ -113,10 +116,16 @@ export function CanvasNodeCard({
             </button>
           )}
         </div>
-        {children}
+        <div
+          className="nodrag"
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {children}
+        </div>
       </div>
       {showSourceRight && (
-        <Handle type="source" position={Position.Right} style={{ right: 0, width: 10, height: 10 }} />
+        <Handle type="source" position={Position.Right} style={{ width: 10, height: 10 }} />
       )}
       {showSourceBottom && (
         <Handle type="source" position={Position.Bottom} style={{ bottom: 0, width: 10, height: 10 }} />

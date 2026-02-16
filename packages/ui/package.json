@@ -31,7 +31,8 @@
     "react-markdown": "^10.1.0",
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "playwright": "^1.49.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",

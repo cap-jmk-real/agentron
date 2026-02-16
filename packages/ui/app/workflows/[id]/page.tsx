@@ -24,7 +24,7 @@ type Workflow = {
 type Agent = { id: string; name: string };
 
 type WfNode = { id: string; type: string; position: [number, number]; parameters?: Record<string, unknown> };
-type WfEdge = { id: string; source: string; target: string };
+type WfEdge = { id: string; source: string; target: string; data?: { label?: string } };
 
 const INTERVAL_PRESETS = [
   { value: "60", label: "Every 1 minute" },
@@ -138,6 +138,10 @@ export default function WorkflowDetailPage() {
       return [];
     }
   })();
+
+  const hasUnwiredAgentNodes = parsedNodes.some(
+    (n) => n.type === "agent" && !(typeof n.parameters?.agentId === "string" && n.parameters.agentId.trim() !== "")
+  );
 
   const addAgentNode = useCallback(() => {
     const id = `agent-${Date.now()}`;

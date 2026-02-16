@@ -171,7 +171,7 @@ export function ChatMessageContent({ content, structuredContent }: Props) {
 
 export type ToolResult = { name: string; args: Record<string, unknown>; result: unknown };
 
-/** Parse numbered options from text, e.g. "(1) Option A (2) Option B" or "1. First 2. Second". */
+/** Parse numbered options from text, e.g. "(1) Option A (2) Option B", "1) First 2) Second", or "1. First 2. Second". */
 function parseSuggestedOptionsFromText(text: string): { value: string; label: string }[] {
   if (!text?.trim()) return [];
   const options: { value: string; label: string }[] = [];
@@ -179,6 +179,16 @@ function parseSuggestedOptionsFromText(text: string): { value: string; label: st
   let m: RegExpExecArray | null;
   while ((m = parenRegex.exec(text)) !== null) {
     const label = m[2].trim().replace(/\s+/g, " ");
+    if (label) options.push({ value: m[1], label });
+  }
+  if (options.length > 0) return options;
+  // "1) Option text\n2) Option text" (digit + closing paren, common in assistant replies)
+  const digitParenRegex = /(\d+)\)\s*([\s\S]+?)(?=\n\s*\d+\)|$)/g;
+  while ((m = digitParenRegex.exec(text)) !== null) {
+    let raw = m[2].trim();
+    // Drop trailing "Please reply..." / "Tell me what to change" line so it isn't part of the last option label
+    raw = raw.replace(/\n\n\s*(Please reply|reply with|tell me what to change)[\s\S]*$/i, "").trim();
+    const label = raw.replace(/\s+/g, " ");
     if (label) options.push({ value: m[1], label });
   }
   if (options.length > 0) return options;
@@ -291,7 +301,19 @@ export function getMessageDisplayState(
   options: { isLast: boolean; loading: boolean }
 ) {
   const list = msg.toolResults ?? [];
-  const hasAskUserWaiting = msg.status === "waiting_for_input" || msg.interactivePrompt != null || hasAskUserWaitingForInput(list);
+  const parsedOptionsFromContent =
+    msg.role === "assistant" ? parseSuggestedOptionsFromText(msg.content || "") : [];
+  const contentSuggestsChoice = /pick one|choose one|please reply|reply with|what would you like|what you would like|option \d|^\s*1\)/im.test(msg.content || "");
+  const hasAskUserWaiting =
+    msg.status === "waiting_for_input" ||
+    msg.interactivePrompt != null ||
+    hasAskUserWaitingForInput(list) ||
+    (parsedOptionsFromContent.length >= 2 && contentSuggestsChoice);
+  // #region agent log
+  if (msg.role === "assistant" && (list.length > 0 || (msg.content && /choose|option|please pick/i.test(msg.content)))) {
+    fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ location: "chat-message-content.tsx:getMessageDisplayState", message: "Inline options detection", data: { hasAskUserWaiting, status: msg.status, hasInteractivePrompt: !!msg.interactivePrompt, interactivePromptOptions: msg.interactivePrompt?.options, toolNames: list.map((r) => r.name), hasAskUserFromToolResults: hasAskUserWaitingForInput(list), contentPreview: msg.content?.slice(0, 200) }, timestamp: Date.now(), hypothesisId: "H1" }) }).catch(() => {});
+  }
+  // #endregion
   const displayContent = msg.role === "assistant"
     ? (hasAskUserWaiting && msg.content.startsWith("Error: ")
       ? (getAssistantMessageDisplayContent("", list) || msg.content)

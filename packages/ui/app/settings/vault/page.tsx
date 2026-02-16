@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { Lock, Unlock, Trash2, Pencil, Upload } from "lucide-react";
+import { Lock, Unlock, Trash2, Pencil, Upload, Plus } from "lucide-react";
 import ConfirmModal from "../../components/confirm-modal";
 
 type VaultStatus = { locked: boolean; vaultExists: boolean };
@@ -16,13 +16,21 @@ export default function VaultSettingsPage() {
   const [vaultError, setVaultError] = useState<string | null>(null);
   const [vaultLoading, setVaultLoading] = useState(false);
   const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [clearModal, setClearModal] = useState(false);
   const [clearLoading, setClearLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   const [importResult, setImportResult] = useState<{ imported: number; errors?: string[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newWebsite, setNewWebsite] = useState("");
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [addSaving, setAddSaving] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [editWebsite, setEditWebsite] = useState("");
+  const [editUsername, setEditUsername] = useState("");
+  const [editPassword, setEditPassword] = useState("");
 
   const fetchStatus = () =>
     fetch("/api/vault/status", { credentials: "include" })
@@ -91,18 +99,25 @@ export default function VaultSettingsPage() {
   };
 
   const handleEditSave = async () => {
-    if (!editingKey || editValue.trim() === "") return;
+    if (!editingKey || !editPassword.trim()) return;
     setEditSaving(true);
     try {
+      const value = JSON.stringify({
+        website: editWebsite.trim(),
+        username: editUsername.trim(),
+        password: editPassword.trim(),
+      });
       const res = await fetch(`/api/vault/credentials/${encodeURIComponent(editingKey)}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: editValue.trim() }),
+        body: JSON.stringify({ value }),
       });
       if (res.ok) {
         setEditingKey(null);
-        setEditValue("");
+        setEditWebsite("");
+        setEditUsername("");
+        setEditPassword("");
         fetchKeys();
       }
     } finally {
@@ -123,6 +138,51 @@ export default function VaultSettingsPage() {
       }
     } finally {
       setClearLoading(false);
+    }
+  };
+
+  /** Derive storage key from website (e.g. "LinkedIn" → "linkedin"). */
+  const websiteToKey = (website: string) =>
+    website.trim().toLowerCase().replace(/\s+/g, "_") || "";
+
+  const handleAddCredential = async () => {
+    const key = websiteToKey(newWebsite);
+    if (!key) {
+      setAddError("Website is required.");
+      return;
+    }
+    if (!newPassword.trim()) {
+      setAddError("Password is required.");
+      return;
+    }
+    const value = JSON.stringify({
+      website: newWebsite.trim(),
+      username: newUsername.trim(),
+      password: newPassword.trim(),
+    });
+    setAddSaving(true);
+    setAddError(null);
+    try {
+      const res = await fetch(`/api/vault/credentials/${encodeURIComponent(key)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setNewWebsite("");
+        setNewUsername("");
+        setNewPassword("");
+        setShowAddForm(false);
+        fetchKeys();
+      } else {
+        setAddError(data.error ?? "Failed to save credential.");
+      }
+    } catch {
+      setAddError("Request failed.");
+    } finally {
+      setAddSaving(false);
     }
   };
 
@@ -177,14 +237,14 @@ export default function VaultSettingsPage() {
           <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
             Set a master password. You will need it to unlock the vault and manage stored credentials.
           </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 320 }}>
+          <div className="form-group" style={{ maxWidth: 320 }}>
             <input
               type="password"
+              className="input"
               placeholder="Master password"
               value={masterPassword}
               onChange={(e) => { setMasterPassword(e.target.value); setVaultError(null); }}
               onKeyDown={(e) => e.key === "Enter" && handleCreateOrUnlock()}
-              style={{ padding: "0.5rem 0.6rem", fontSize: "0.9rem" }}
               aria-label="Master password"
             />
             <button
@@ -208,14 +268,14 @@ export default function VaultSettingsPage() {
           <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
             Enter your master password to view and manage stored credentials.
           </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 320 }}>
+          <div className="form-group" style={{ maxWidth: 320 }}>
             <input
               type="password"
+              className="input"
               placeholder="Master password"
               value={masterPassword}
               onChange={(e) => { setMasterPassword(e.target.value); setVaultError(null); }}
               onKeyDown={(e) => e.key === "Enter" && handleCreateOrUnlock()}
-              style={{ padding: "0.5rem 0.6rem", fontSize: "0.9rem" }}
               aria-label="Master password"
             />
             <button
@@ -248,13 +308,68 @@ export default function VaultSettingsPage() {
           </div>
 
           <div className="card" style={{ padding: "1rem" }}>
-            <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.75rem" }}>Stored credentials</div>
+            <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.75rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+              Stored credentials
+              {!showAddForm && (
+                <button
+                  type="button"
+                  className="button button-small"
+                  onClick={() => { setShowAddForm(true); setAddError(null); setNewWebsite(""); setNewUsername(""); setNewPassword(""); }}
+                >
+                  <Plus size={14} /> Add credential
+                </button>
+              )}
+            </div>
             <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
-              Credential names (keys) only; values are never shown here. Edit to change the stored value, or delete to remove.
+              Each credential stores website, username/email, and password. The key is derived from the website (e.g. linkedin). Add a new one or edit/delete existing.
             </p>
-            {keys.length === 0 ? (
-              <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: 0 }}>No credentials stored yet. Save them from Chat when the agent asks, or import from CSV below.</p>
-            ) : (
+
+            {showAddForm && (
+              <div style={{ padding: "0.75rem", background: "var(--surface-muted)", borderRadius: 10, marginBottom: "1rem" }}>
+                <div style={{ fontSize: "0.82rem", fontWeight: 600, marginBottom: "0.5rem" }}>New credential</div>
+                <div className="form-group">
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Website (e.g. LinkedIn, Gmail)"
+                    value={newWebsite}
+                    onChange={(e) => { setNewWebsite(e.target.value); setAddError(null); }}
+                    aria-label="Website"
+                  />
+                  <input
+                    type="text"
+                    className="input"
+                    autoComplete="username"
+                    placeholder="Username or email"
+                    value={newUsername}
+                    onChange={(e) => { setNewUsername(e.target.value); setAddError(null); }}
+                    aria-label="Username or email"
+                  />
+                  <input
+                    type="password"
+                    className="input"
+                    autoComplete="current-password"
+                    placeholder="Password"
+                    value={newPassword}
+                    onChange={(e) => { setNewPassword(e.target.value); setAddError(null); }}
+                    aria-label="Password"
+                  />
+                </div>
+                {addError && <p style={{ fontSize: "0.82rem", color: "#dc2626", margin: "0 0 0.5rem" }}>{addError}</p>}
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button type="button" className="button button-small" disabled={addSaving || !websiteToKey(newWebsite) || !newPassword.trim()} onClick={handleAddCredential}>
+                    {addSaving ? "Saving…" : "Save"}
+                  </button>
+                  <button type="button" className="button button-ghost button-small" onClick={() => { setShowAddForm(false); setNewWebsite(""); setNewUsername(""); setNewPassword(""); setAddError(null); }} disabled={addSaving}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {keys.length === 0 && !showAddForm ? (
+              <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: 0 }}>No credentials stored yet. Add one above, save from Chat when the agent asks, or import from CSV below.</p>
+            ) : keys.length > 0 ? (
               <ul style={{ listStyle: "none", padding: 0, margin: "0 0 1rem", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
                 {keys.map(({ key }) => (
                   <li
@@ -274,8 +389,8 @@ export default function VaultSettingsPage() {
                       <button
                         type="button"
                         className="button button-ghost button-small"
-                        title="Edit value"
-                        onClick={() => { setEditingKey(key); setEditValue(""); }}
+                        title="Edit credential"
+                        onClick={() => { setEditingKey(key); setEditWebsite(""); setEditUsername(""); setEditPassword(""); }}
                       >
                         <Pencil size={14} />
                       </button>
@@ -292,24 +407,44 @@ export default function VaultSettingsPage() {
                   </li>
                 ))}
               </ul>
-            )}
+            ) : null}
 
             {editingKey && (
-              <div style={{ padding: "0.75rem", background: "var(--surface-muted)", borderRadius: 6, marginBottom: "1rem" }}>
-                <div style={{ fontSize: "0.82rem", fontWeight: 600, marginBottom: "0.35rem" }}>New value for {editingKey}</div>
-                <input
-                  type="password"
-                  placeholder="New value"
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                  style={{ width: "100%", padding: "0.5rem 0.6rem", fontSize: "0.9rem", marginBottom: "0.5rem" }}
-                  aria-label="New value"
-                />
+              <div style={{ padding: "0.75rem", background: "var(--surface-muted)", borderRadius: 10, marginBottom: "1rem" }}>
+                <div style={{ fontSize: "0.82rem", fontWeight: 600, marginBottom: "0.35rem" }}>Edit credential: {editingKey}</div>
+                <div className="form-group">
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Website (e.g. LinkedIn)"
+                    value={editWebsite}
+                    onChange={(e) => setEditWebsite(e.target.value)}
+                    aria-label="Website"
+                  />
+                  <input
+                    type="text"
+                    className="input"
+                    autoComplete="username"
+                    placeholder="Username or email"
+                    value={editUsername}
+                    onChange={(e) => setEditUsername(e.target.value)}
+                    aria-label="Username or email"
+                  />
+                  <input
+                    type="password"
+                    className="input"
+                    autoComplete="current-password"
+                    placeholder="Password"
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    aria-label="Password"
+                  />
+                </div>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button type="button" className="button button-small" disabled={editSaving || !editValue.trim()} onClick={handleEditSave}>
+                  <button type="button" className="button button-small" disabled={editSaving || !editPassword.trim()} onClick={handleEditSave}>
                     {editSaving ? "Saving…" : "Save"}
                   </button>
-                  <button type="button" className="button button-ghost button-small" onClick={() => { setEditingKey(null); setEditValue(""); }} disabled={editSaving}>
+                  <button type="button" className="button button-ghost button-small" onClick={() => { setEditingKey(null); setEditWebsite(""); setEditUsername(""); setEditPassword(""); }} disabled={editSaving}>
                     Cancel
                   </button>
                 </div>

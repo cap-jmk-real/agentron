@@ -1,0 +1,45 @@
+diff --git a/node_modules/@xyflow/react/dist/style.css b/node_modules/@xyflow/react/dist/style.css
+index 1e7a020..ebbf84b 100644
+--- a/node_modules/@xyflow/react/dist/style.css
++++ b/node_modules/@xyflow/react/dist/style.css
+@@ -122,7 +122,7 @@
+ .react-flow__viewport {
+   transform-origin: 0 0;
+   z-index: 2;
+-  pointer-events: none;
++  pointer-events: auto;
+ }
+ .react-flow__renderer {
+   z-index: 4;
+@@ -208,7 +208,7 @@ svg.react-flow__connectionline {
+   position: absolute;
+ }
+ .react-flow__nodes {
+-  pointer-events: none;
++  pointer-events: auto;
+   transform-origin: 0 0;
+ }
+ .react-flow__node {
+@@ -222,10 +222,12 @@ svg.react-flow__connectionline {
+   cursor: default;
+ }
+ .react-flow__node.selectable {
+-    cursor: pointer;
++    /* cursor: pointer removed so node body stays default; use .drag-handle / buttons for move/pointer */
++    cursor: default;
+   }
+ .react-flow__node.draggable {
+-    cursor: grab;
++    /* cursor: grab removed so nodes with interactive content or dragHandle show default/move only on handle; pane still has grab for empty canvas */
++    cursor: default;
+     pointer-events: all;
+   }
+ .react-flow__node.draggable.dragging {
+@@ -344,6 +346,7 @@ svg.react-flow__connectionline {
+   height: 100%;
+   left: 0;
+   top: 0;
++  pointer-events: none;
+   -webkit-user-select: none;
+      -moz-user-select: none;
+           user-select: none;

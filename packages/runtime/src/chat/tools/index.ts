@@ -10,6 +10,7 @@ import { STORE_TOOLS } from "./store-tools";
 import { GUARDRAIL_TOOLS } from "./guardrail-tools";
 import { OPENCLAW_TOOLS } from "./openclaw-tools";
 import { REMINDER_TOOLS } from "./reminder-tools";
+import { OPENAPI_TOOLS } from "./openapi-tools";
 
 export type { AssistantToolDef } from "./types";
 export { SYSTEM_PROMPT } from "./prompt";
@@ -18,6 +19,7 @@ export { SYSTEM_PROMPT } from "./prompt";
 export const ASSISTANT_TOOLS: AssistantToolDef[] = [
   ...AGENT_TOOLS,
   ...TOOL_TOOLS,
+  ...OPENAPI_TOOLS,
   ...WORKFLOW_TOOLS,
   ...MISC_TOOLS,
   ...REMOTE_TOOLS,

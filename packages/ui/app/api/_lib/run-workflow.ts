@@ -13,6 +13,7 @@ import {
   fetchUrl,
   runCode,
   httpRequest,
+  httpToolAdapter,
   webhook,
   weather,
   webSearch,
@@ -27,6 +28,7 @@ import {
   tools as toolsTable,
   customFunctions,
   sandboxes,
+  files,
   llmConfigs,
   tokenUsage,
   modelPricing,
@@ -42,11 +44,15 @@ import {
   fromLlmConfigRowWithSecret,
   fromModelPricingRow,
   toTokenUsageRow,
+  toFileRow,
   ensureStandardTools,
+  ensureAgentFilesDir,
   STANDARD_TOOLS,
 } from "./db";
 import { getContainerManager, withContainerInstallHint } from "./container-manager";
-import { getWorkflowMaxSelfFixRetries } from "./app-settings";
+import { getWorkflowMaxSelfFixRetries, getMaxFileUploadBytes } from "./app-settings";
+import path from "node:path";
+import fs from "node:fs";
 
 export const WAITING_FOR_USER_MESSAGE = "WAITING_FOR_USER";
 
@@ -65,7 +71,8 @@ export function isToolResultFailure(result: unknown): boolean {
 
 export type ContainerStreamChunk = { stdout?: string; stderr?: string; meta?: "container_started" | "container_stopped" };
 
-async function runContainer(input: unknown, onChunk?: (chunk: ContainerStreamChunk) => void): Promise<unknown> {
+/** Run a container one-shot (create, exec, destroy). Exported for chat. */
+export async function runContainer(input: unknown, onChunk?: (chunk: ContainerStreamChunk) => void): Promise<unknown> {
   const arg = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const image = (arg.image as string)?.trim();
   const rawCommand = arg.command;
@@ -141,7 +148,8 @@ async function destroyContainerSession(runId: string): Promise<void> {
   }
 }
 
-async function runContainerSession(
+/** Run-scoped or conversation-scoped container session. Exported for chat (pass conversationId as runId). */
+export async function runContainerSession(
   runId: string,
   input: unknown,
   onChunk?: (chunk: ContainerStreamChunk) => void
@@ -203,14 +211,30 @@ async function runContainerSession(
   return { error: `Unknown action: ${action}. Use ensure, exec, or destroy.`, stdout: "", stderr: "Unknown action", exitCode: -1 };
 }
 
-async function runContainerBuild(input: unknown): Promise<unknown> {
+/** Build image from Containerfile. Exported for chat. Supports inline dockerfileContent (creates temp context) or contextPath + dockerfilePath. */
+export async function runContainerBuild(input: unknown): Promise<unknown> {
   const arg = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
-  const contextPath = typeof arg.contextPath === "string" ? arg.contextPath.trim() : "";
-  const dockerfilePath = typeof arg.dockerfilePath === "string" ? arg.dockerfilePath.trim() : "";
   const imageTag = typeof arg.imageTag === "string" ? arg.imageTag.trim() : "";
-  if (!contextPath || !dockerfilePath || !imageTag) {
-    return { error: "contextPath, dockerfilePath, and imageTag are required", stdout: "", stderr: "Missing required fields", exitCode: -1 };
+  if (!imageTag) {
+    return { error: "imageTag is required", stdout: "", stderr: "Missing imageTag", exitCode: -1 };
   }
+  const inlineContent = typeof arg.dockerfileContent === "string" ? arg.dockerfileContent : "";
+  let contextPath = typeof arg.contextPath === "string" ? arg.contextPath.trim() : "";
+  let dockerfilePath = typeof arg.dockerfilePath === "string" ? arg.dockerfilePath.trim() : "";
+
+  if (inlineContent) {
+    const tmpId = `build-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+    const tmpDir = ensureAgentFilesDir(tmpId);
+    const dfPath = path.join(tmpDir, "Containerfile");
+    fs.writeFileSync(dfPath, inlineContent, "utf-8");
+    contextPath = tmpDir;
+    dockerfilePath = path.join(tmpDir, "Containerfile");
+  }
+
+  if (!contextPath || !dockerfilePath) {
+    return { error: "contextPath and dockerfilePath are required, or provide dockerfileContent", stdout: "", stderr: "Missing required fields", exitCode: -1 };
+  }
+
   const mgr = getContainerManager();
   try {
     await mgr.build(contextPath, dockerfilePath, imageTag);
@@ -220,6 +244,37 @@ async function runContainerBuild(input: unknown): Promise<unknown> {
     const hint = withContainerInstallHint(msg);
     return { error: hint !== msg ? hint : `Build failed: ${msg}`, stdout: "", stderr: msg, exitCode: -1 };
   }
+}
+
+/** Write a file to agent-files/{contextId}, insert into files table. Exported for chat. */
+export async function runWriteFile(input: unknown, contextId: string): Promise<unknown> {
+  const arg = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const name = typeof arg.name === "string" ? arg.name.trim() : "";
+  const content = typeof arg.content === "string" ? arg.content : "";
+  if (!name) {
+    return { error: "name is required", id: null, name: null, path: null, contextDir: null };
+  }
+  const maxBytes = getMaxFileUploadBytes();
+  const buf = Buffer.from(content, "utf-8");
+  if (buf.length > maxBytes) {
+    return { error: `Content too large (max ${Math.round(maxBytes / 1024 / 1024)}MB)`, id: null, name: null, path: null, contextDir: null };
+  }
+  const dir = ensureAgentFilesDir(contextId);
+  const id = crypto.randomUUID();
+  const ext = path.extname(name) || "";
+  const storedName = `${id}${ext}`;
+  const filePath = path.join(dir, storedName);
+  fs.writeFileSync(filePath, buf, "utf-8");
+  const entry = {
+    id,
+    name,
+    mimeType: "text/plain",
+    size: buf.length,
+    path: `agent-files/${contextId}/${storedName}`,
+    createdAt: Date.now(),
+  };
+  await db.insert(files).values(toFileRow(entry)).run();
+  return { id: entry.id, name: entry.name, path: entry.path, contextDir: dir };
 }
 
 const STD_IDS: Record<string, (input: unknown) => Promise<unknown>> = {
@@ -325,6 +380,10 @@ async function buildAvailableTools(toolIds: string[]): Promise<LLMToolDef[]> {
 }
 
 async function executeStudioTool(toolId: string, input: unknown, override?: ToolOverride): Promise<unknown> {
+  if (toolId === "std-browser-automation") {
+    const { browserAutomation } = await import("./browser-automation");
+    return browserAutomation(input ?? {});
+  }
   const builtin = STD_IDS[toolId];
   if (builtin) return builtin(input ?? {});
 
@@ -334,10 +393,16 @@ async function executeStudioTool(toolId: string, input: unknown, override?: Tool
   const mergedConfig = { ...(tool.config ?? {}), ...(override?.config ?? {}) };
 
   if (tool.protocol === "http") {
-    const url =
-      (mergedConfig as { url?: string }).url ??
-      (typeof input === "object" && input !== null && "url" in (input as object) ? (input as { url: string }).url : undefined);
-    if (typeof url === "string") return httpRequest({ ...(typeof input === "object" && input !== null ? (input as object) : {}), url });
+    const url = (mergedConfig as { url?: string }).url;
+    if (url) {
+      return httpToolAdapter.execute(
+        { ...tool, config: mergedConfig },
+        typeof input === "object" && input !== null ? input : {}
+      );
+    }
+    const fallbackUrl =
+      typeof input === "object" && input !== null && "url" in (input as object) ? (input as { url: string }).url : undefined;
+    if (typeof fallbackUrl === "string") return httpRequest({ ...(typeof input === "object" && input !== null ? (input as object) : {}), url: fallbackUrl });
   }
   const baseToolId = (mergedConfig as { baseToolId?: string })?.baseToolId ?? (tool.config as { baseToolId?: string })?.baseToolId ?? tool.id;
   const std = STD_IDS[baseToolId];
@@ -405,6 +470,8 @@ export type RunWorkflowOptions = {
   resumeUserResponse?: string;
   /** Called after each agent step so the run can be updated with partial trail/output for live UI updates. */
   onStepComplete?: (trail: ExecutionTraceStep[], lastOutput: unknown) => void | Promise<void>;
+  /** Called when run progress changes (workflow started, tool executing) so the UI can show current activity. */
+  onProgress?: (state: { message: string; toolId?: string }, currentTrail: ExecutionTraceStep[]) => void | Promise<void>;
   /** If provided, checked before each agent step; when it returns true, workflow throws so the run can be marked cancelled. */
   isCancelled?: () => Promise<boolean>;
   /** When provided, container (std-container-run) stdout/stderr are streamed here for live UI display. */
@@ -525,7 +592,11 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
     if (options.isCancelled && (await options.isCancelled())) {
       throw new Error(RUN_CANCELLED_MESSAGE);
     }
-    const agentId = config?.agentId as string | undefined;
+    let agentId = config?.agentId as string | undefined;
+    if (!agentId && config?.agentName != null) {
+      const byName = await db.select().from(agents).where(eq(agents.name, String(config.agentName)));
+      if (byName.length > 0) agentId = byName[0].id;
+    }
     if (!agentId) throw new Error(`Workflow node ${nodeId}: missing agentId in config`);
 
     const agentRows = await db.select().from(agents).where(eq(agents.id, agentId));
@@ -561,18 +632,6 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
       partnerMessage,
       precedingAgentName: precedingAgentName && String(precedingAgentName).trim() ? precedingAgentName : undefined,
     });
-    // When this is the first turn and the agent has Run Container (or session) + Request user input, require starting the container before pausing for user input
-    const hasContainerTool = agentToolIds.includes("std-container-run") || agentToolIds.includes("std-container-session");
-    if (
-      input === "Execute your task." &&
-      hasContainerTool &&
-      agentToolIds.includes("std-request-user-help") &&
-      (partnerMessage === FIRST_TURN_DEFAULT || partnerMessage.trim() === "")
-    ) {
-      input =
-        "CRITICAL: You MUST start the container first. If you have std-container-session, call it with action ensure and an image; if you have std-container-run, call it with image and command. You are FORBIDDEN to call request_user_help until the container has started. Then call request_user_help so the user can send commands. Do not call request_user_help before you have started the container.";
-    }
-
     currentAgentId = agentId;
 
     const round = sharedContext.get("__round") as number | undefined;
@@ -606,9 +665,24 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
         if (tag) return [ctx && `context: ${ctx}`, df && `file: ${df}`, `tag: ${tag}`].filter(Boolean).join(", ");
         return undefined;
       }
+      if (toolId === "std-write-file") {
+        const name = typeof o.name === "string" ? o.name : undefined;
+        const len = typeof o.content === "string" ? o.content.length : 0;
+        if (name) return `name: ${name}${len ? `, ${len} chars` : ""}`;
+        return undefined;
+      }
+      if (toolId === "std-browser-automation") {
+        const act = typeof o.action === "string" ? o.action : undefined;
+        const url = typeof o.url === "string" ? o.url : undefined;
+        const sel = typeof o.selector === "string" ? o.selector : undefined;
+        if (act) return [act, url && `url: ${url.slice(0, 40)}`, sel && `selector: ${sel.slice(0, 30)}`].filter(Boolean).join(", ");
+        return undefined;
+      }
       if (toolId === "request_user_help") {
         const q = typeof o.question === "string" ? o.question : typeof o.message === "string" ? o.message : undefined;
-        return q ? `question: ${q.slice(0, 60)}${q.length > 60 ? "…" : ""}` : undefined;
+        const opts = Array.isArray(o.options) ? o.options : Array.isArray(o.suggestions) ? o.suggestions : [];
+        const optsPart = opts.length > 0 ? `, ${opts.length} option(s)` : "";
+        return q ? `question: ${q}${optsPart}` : undefined;
       }
       return undefined;
     }
@@ -624,14 +698,15 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
       type: "function" as const,
       function: {
         name: "request_user_help",
-        description: "Pause the run so the user can provide input (confirmation, choice, credentials). Only call this when the agent genuinely needs the user to decide or respond before proceeding. The run stops until the user responds in Chat or the run page. If the current turn instruction says you are FORBIDDEN to call request_user_help until you have started the container: you MUST call std-container-run first and only then call this. Never call this before having called std-container-run when that instruction is present. If the result contains _selfFixContinue, the system is allowing an automatic retry; retry the failed tool with corrected arguments or use another tool as needed, and do not call request_user_help for this retry.",
+        description: "Pause the run so the user can provide input. The run stops until the user responds in Chat or the run page. You MUST pass a concrete, actionable question — never use generic text like 'Please confirm', 'How can I help?', or 'Need your input'. Follow the agent's system prompt: if it defines a template (e.g. 'Which saved searches should I analyze?' with a numbered list), use that template and substitute the actual data (e.g. the list you retrieved). Set 'question' to the full text shown to the user (include any list, instructions, and example reply format). Use 'options' or 'suggestions' for clickable choices (e.g. ['Yes', 'No'] or ['Analyze all', 'Select saved searches', 'Cancel']). If the result contains _selfFixContinue, retry the failed tool and do not call request_user_help again for that retry.",
         parameters: {
           type: "object" as const,
           properties: {
             type: { type: "string", enum: ["credentials", "two_fa", "confirmation", "choice", "other"], description: "Kind of help needed" },
-            message: { type: "string", description: "What you need (e.g. 'API key for X')" },
-            question: { type: "string", description: "Specific question to show the user" },
-            suggestions: { type: "array", items: { type: "string" }, description: "Optional example replies or commands (e.g. 'openclaw gateway', 'ollama run …')" },
+            message: { type: "string", description: "Short internal label for what you need (e.g. 'Vault login for LinkedIn'). Shown as fallback if question is empty." },
+            question: { type: "string", description: "REQUIRED: Full question/text shown to the user. Must be concrete and actionable (e.g. include a numbered list of items, how to reply, example format). Do not use generic phrases like 'Please confirm'." },
+            suggestions: { type: "array", items: { type: "string" }, description: "Choice strings shown as buttons (e.g. ['Yes', 'No'] or ['1,3', 'Analyze all', 'Cancel'])." },
+            options: { type: "array", items: { type: "string" }, description: "Same as suggestions: choice strings for the UI." },
           },
           required: ["message"] as string[],
         },
@@ -650,7 +725,15 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
       ...(toolIds.includes("std-request-user-help") ? [requestUserHelpTool] : []),
     ];
 
-    const toolInstructionsBlock = await buildToolInstructionsBlock(toolIds);
+    let toolInstructionsBlock = await buildToolInstructionsBlock(toolIds);
+    if (toolIds.includes("std-request-user-help")) {
+      const requestUserHelpNote = "When calling request_user_help you must set 'question' to a concrete, actionable message (e.g. include a numbered list of items and how to reply). Do not use generic text like 'Please confirm' or 'How can I help?'.";
+      toolInstructionsBlock = toolInstructionsBlock ? `${toolInstructionsBlock}\n${requestUserHelpNote}` : requestUserHelpNote;
+    }
+    if (toolIds.includes("std-browser-automation") && toolIds.includes("std-web-search")) {
+      const urlSearchNote = "If a URL does not load or is wrong (e.g. 404, timeout, unreachable), use web search to find the correct URL, then retry browser navigate.";
+      toolInstructionsBlock = toolInstructionsBlock ? `${toolInstructionsBlock}\n${urlSearchNote}` : urlSearchNote;
+    }
 
     const context = {
       sharedContext: shared,
@@ -693,9 +776,14 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
           const question = (typeof arg.question === "string" ? arg.question : "").trim() || message;
           const type = typeof arg.type === "string" ? arg.type : "other";
           const rawSuggestions = arg.suggestions;
-          const suggestions = Array.isArray(rawSuggestions)
-            ? rawSuggestions.filter((s): s is string => typeof s === "string").slice(0, 20)
-            : undefined;
+          const rawOptions = arg.options;
+          const suggestionsList = Array.isArray(rawSuggestions)
+            ? rawSuggestions.filter((s): s is string => typeof s === "string").slice(0, 50)
+            : [];
+          const optionsList = Array.isArray(rawOptions)
+            ? rawOptions.filter((s): s is string => typeof s === "string").slice(0, 50)
+            : [];
+          const combined = optionsList.length > 0 ? optionsList : suggestionsList;
           const lastToolFailed = lastToolId != null && isToolResultFailure(lastToolResult);
           const isRetryConfirmation = type === "confirmation" || type === "other";
           if (lastToolFailed && selfFixAttempts < maxSelfFixRetries && isRetryConfirmation) {
@@ -706,7 +794,14 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
                 "The last tool call failed. Proceed with your suggested fix: retry the tool with corrected arguments or use another tool as needed. Do not call request_user_help again for this retry.",
             };
           }
-          const payload = { question, type, message, reason: message, ...(suggestions?.length ? { suggestions } : {}) };
+          const payload: Record<string, unknown> = { question, type, message, reason: message };
+          if (combined.length > 0) {
+            payload.suggestions = combined;
+            payload.options = combined;
+          }
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'run-workflow.ts:request_user_help',message:'writing waiting_for_user payload',data:{runId,questionLen:question?.length??0,optionsLen:combined.length},hypothesisId:'H5',timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           await db.update(executions).set({
             status: "waiting_for_user",
             output: JSON.stringify(payload),
@@ -728,8 +823,39 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
           result = await runContainerSession(runId, merged, onChunk);
         } else if (toolId === "std-container-run" && options.onContainerStream) {
           result = await runContainer(merged, (chunk) => options.onContainerStream!(runId, chunk));
+        } else if (toolId === "std-write-file") {
+          result = await runWriteFile(merged, runId);
         } else {
-          result = await executeStudioTool(toolId, merged, override);
+          try {
+            result = await executeStudioTool(toolId, merged, override);
+          } catch (toolErr) {
+            const errMsg = toolErr instanceof Error ? toolErr.message : String(toolErr);
+            await db.insert(runLogs).values({
+              id: crypto.randomUUID(),
+              executionId: runId,
+              level: "stderr",
+              message: `Tool ${toolId} threw: ${errMsg}`,
+              payload: null,
+              createdAt: Date.now(),
+            }).run();
+            throw toolErr;
+          }
+        }
+        const toolErrorMsg =
+          result != null && typeof result === "object" && "error" in result && typeof (result as { error: unknown }).error === "string"
+            ? (result as { error: string }).error
+            : (result != null && typeof result === "object" && (result as { success?: boolean }).success === false && "error" in result && typeof (result as { error: unknown }).error === "string"
+              ? (result as { error: string }).error
+              : null);
+        if (toolErrorMsg) {
+          await db.insert(runLogs).values({
+            id: crypto.randomUUID(),
+            executionId: runId,
+            level: "stderr",
+            message: `Tool ${toolId}: ${toolErrorMsg}`,
+            payload: null,
+            createdAt: Date.now(),
+          }).run();
         }
         lastToolId = toolId;
         lastToolResult = result;
@@ -793,6 +919,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
   await ensureStandardTools();
   const engine = new WorkflowEngine();
   const initialContext: Record<string, unknown> = { __recent_turns: [], __summary: "" };
+  await options.onProgress?.({ message: "Starting workflow…" }, trail);
   const result = await engine.execute(workflowForEngine, handlers, initialContext);
 
   for (const entry of usageEntries) {
@@ -840,6 +967,10 @@ export async function runWorkflowForRun(
     const payload = executionOutputSuccess(lastOutput ?? undefined, trail);
     await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
   };
+  const onProgress = async (state: { message: string; toolId?: string }, currentTrail: ExecutionTraceStep[]) => {
+    const payload = executionOutputSuccess(undefined, currentTrail.length > 0 ? currentTrail : undefined, state.message);
+    await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
+  };
   const isCancelled = async () => {
     const r = await db.select({ status: executions.status }).from(executions).where(eq(executions.id, runId));
     return r[0]?.status === "cancelled";
@@ -884,6 +1015,7 @@ export async function runWorkflowForRun(
       branchId,
       resumeUserResponse: opts?.resumeUserResponse,
       onStepComplete,
+      onProgress,
       isCancelled,
       onContainerStream,
       maxSelfFixRetries: getWorkflowMaxSelfFixRetries(),

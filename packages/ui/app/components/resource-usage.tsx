@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Cpu, MemoryStick, HardDrive, Gauge } from "lucide-react";
 import { ResourceBar } from "./resource-bar";
-import { getSystemStatsIntervalMs, SYSTEM_STATS_INTERVAL_CHANGED_EVENT } from "../lib/system-stats-interval";
+import { getSystemStatsIntervalMs, SYSTEM_STATS_INTERVAL_CHANGED_EVENT, SYSTEM_STATS_INTERVAL_DEFAULT_MS } from "../lib/system-stats-interval";
 
 type SystemStats = {
   ts: number;
@@ -29,7 +29,7 @@ export function ResourceUsage() {
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [cpuPercent, setCpuPercent] = useState<number | null>(null);
   const [error, setError] = useState(false);
-  const [intervalMs, setIntervalMs] = useState(400);
+  const [intervalMs, setIntervalMs] = useState(SYSTEM_STATS_INTERVAL_DEFAULT_MS);
   const [tabHidden, setTabHidden] = useState(
     () => (typeof document !== "undefined" ? document.hidden : false)
   );

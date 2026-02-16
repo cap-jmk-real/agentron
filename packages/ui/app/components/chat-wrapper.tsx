@@ -7,19 +7,19 @@ import ChatModal from "./chat-modal";
 const OPEN_CHAT_EVENT = "agentron-open-chat";
 const CHAT_FAB_OPEN_KEY = "agentron-chat-fab-open";
 
-function getInitialChatFabOpen(): boolean {
-  if (typeof sessionStorage === "undefined") return false;
-  try {
-    return sessionStorage.getItem(CHAT_FAB_OPEN_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
 export default function ChatWrapper() {
   const pathname = usePathname();
   const isChatPage = pathname === "/chat";
-  const [open, setOpen] = useState(getInitialChatFabOpen);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (isChatPage) return;
+    try {
+      if (sessionStorage.getItem(CHAT_FAB_OPEN_KEY) === "1") setOpen(true);
+    } catch {
+      /* ignore */
+    }
+  }, [isChatPage]);
 
   useEffect(() => {
     if (isChatPage) return;

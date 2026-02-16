@@ -24,7 +24,7 @@ import {
 } from "../_lib/db";
 import { scheduleReminder, cancelReminderTimeout } from "../_lib/reminder-scheduler";
 import { registerScheduledTurnRunner } from "../_lib/run-scheduled-turn";
-import { runWorkflow, runWorkflowForRun, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE } from "../_lib/run-workflow";
+import { runWorkflow, runWorkflowForRun, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE, runWriteFile, runContainerBuild, runContainer, runContainerSession } from "../_lib/run-workflow";
 import { enqueueWorkflowRun } from "../_lib/workflow-queue";
 import { getDeploymentCollectionId, retrieveChunks } from "../_lib/rag";
 import type { RemoteServer } from "../_lib/db";
@@ -35,7 +35,7 @@ import { llmContextPrefix, normalizeChatError } from "../_lib/chat-helpers";
 import { openclawSend, openclawHistory, openclawAbort } from "../_lib/openclaw-client";
 import { eq, asc, desc, isNotNull, and, like, inArray } from "drizzle-orm";
 import type { LLMTraceCall, LLMConfig } from "@agentron-studio/core";
-import { runAssistant, buildFeedbackInjection, createDefaultLLMManager, resolveModelPricing, calculateCost, type StudioContext, searchWeb, fetchUrl } from "@agentron-studio/runtime";
+import { runAssistant, buildFeedbackInjection, createDefaultLLMManager, resolveModelPricing, calculateCost, type StudioContext, searchWeb, fetchUrl, refinePrompt } from "@agentron-studio/runtime";
 import { getContainerManager, withContainerInstallHint } from "../_lib/container-manager";
 import { getShellCommandAllowlist, updateAppSettings } from "../_lib/app-settings";
 import { getStoredCredential, setStoredCredential } from "../_lib/credential-store";
@@ -142,6 +142,15 @@ async function enrichAgentToolResult(result: unknown, args?: Record<string, unkn
   return { ...obj, tools: toolList };
 }
 
+/** Apply common grammar/spacing fixes when the rephrase model echoes the user message. */
+function applyRephraseFixes(text: string): string {
+  return text
+    .replace(/\bThenI\b/gi, "Then I")
+    .replace(/\bthenI\b/gi, "then I")
+    .replace(/\blinkedin\b/gi, "LinkedIn")
+    .replace(/\bsales navigator\b/gi, "Sales Navigator");
+}
+
 /** First step: rephrase the user message into a clear prompt and detect if they want to retry the last message. */
 async function rephraseAndClassify(
   userMessage: string,
@@ -154,8 +163,10 @@ async function rephraseAndClassify(
   const messages: LLMMessage[] = [
     {
       role: "system",
-      content: `You rephrase the user's message into one clear, explicit sentence that captures their intent (what they want you to do). You MUST fix any typos and small grammar errors in the rephrased sentence (e.g. "fo" -> "for", "converstion" -> "conversation", "teh" -> "the"). Keep it concise. Then say whether they are asking to RETRY or REDO their last message (i.e. run the previous user message again and give a new response). Output exactly:
-<rephrased>your rephrased prompt here</rephrased>
+      content: `You rephrase the user's message into a clear version that captures their intent. You MUST fix every typo and grammar error in your output (e.g. "ThenI" -> "Then I", "linkedin" -> "LinkedIn", "fo" -> "for"). Your rephrased text must be different from the user's message where errors exist — do not copy the user's message unchanged. Use 1-3 sentences if needed.
+CRITICAL: Preserve all IDs verbatim. Any UUID, hex id, or "id <value>" in the user message must be copied character-for-character — never abbreviate, shorten, or use ellipsis (e.g. never output "id 93f81c45-..." or "8394..."; output the full id).
+Then say whether they are asking to RETRY or REDO their last message. Output exactly:
+<rephrased>your corrected rephrased prompt here</rephrased>
 <wants_retry>yes</wants_retry> or <wants_retry>no</wants_retry>`,
     },
     { role: "user", content: trimmed },
@@ -163,7 +174,7 @@ async function rephraseAndClassify(
   try {
     const response = await manager.chat(llmConfig as LLMConfig, {
       messages,
-      maxTokens: 120,
+      maxTokens: 280,
       temperature: 0.2,
     });
     opts?.onLlmCall?.({
@@ -181,12 +192,16 @@ async function rephraseAndClassify(
     const rephrasedMatch = raw.match(/<rephrased>\s*([\s\S]*?)<\/rephrased>/i);
     let rephrasedPrompt: string;
     if (rephrasedMatch && rephrasedMatch[1].trim()) {
-      rephrasedPrompt = rephrasedMatch[1].trim().slice(0, 500);
+      rephrasedPrompt = rephrasedMatch[1].trim().slice(0, 800);
     } else if (raw) {
       const withoutWantsRetry = raw.replace(/\s*<wants_retry>[\s\S]*$/i, "").trim();
-      rephrasedPrompt = withoutWantsRetry.slice(0, 500) || trimmed;
+      rephrasedPrompt = withoutWantsRetry.slice(0, 800) || trimmed;
     } else {
       rephrasedPrompt = trimmed;
+    }
+    // If the model echoed the user message, apply common grammar/spacing fixes so "Rephrased" still shows corrections
+    if (rephrasedPrompt === trimmed || rephrasedPrompt.toLowerCase() === trimmed.toLowerCase()) {
+      rephrasedPrompt = applyRephraseFixes(trimmed);
     }
     return { rephrasedPrompt, wantsRetry };
   } catch {
@@ -353,6 +368,138 @@ function ensureToolNodesInGraph(
   }
 }
 
+const DEFAULT_MAX_DERIVED_GOOD = 20;
+const DEFAULT_MAX_DERIVED_BAD = 20;
+const DEFAULT_MIN_COMBINED_FEEDBACK = 1;
+const DEFAULT_RECENT_EXECUTIONS_LIMIT = 50;
+
+export type AgentLearningConfig = {
+  maxDerivedGood?: number;
+  maxDerivedBad?: number;
+  minCombinedFeedback?: number;
+  recentExecutionsLimit?: number;
+};
+
+function resolveLearningConfig(
+  agentDefinition: Record<string, unknown> | undefined,
+  toolArgs: { maxDerivedGood?: number; maxDerivedBad?: number; minCombinedFeedback?: number; recentExecutionsLimit?: number }
+): Required<AgentLearningConfig> {
+  const fromAgent = (agentDefinition?.learningConfig != null && typeof agentDefinition.learningConfig === "object" && !Array.isArray(agentDefinition.learningConfig))
+    ? (agentDefinition.learningConfig as AgentLearningConfig)
+    : {};
+  return {
+    maxDerivedGood: toolArgs.maxDerivedGood ?? fromAgent.maxDerivedGood ?? DEFAULT_MAX_DERIVED_GOOD,
+    maxDerivedBad: toolArgs.maxDerivedBad ?? fromAgent.maxDerivedBad ?? DEFAULT_MAX_DERIVED_BAD,
+    minCombinedFeedback: toolArgs.minCombinedFeedback ?? fromAgent.minCombinedFeedback ?? DEFAULT_MIN_COMBINED_FEEDBACK,
+    recentExecutionsLimit: toolArgs.recentExecutionsLimit ?? fromAgent.recentExecutionsLimit ?? DEFAULT_RECENT_EXECUTIONS_LIMIT,
+  };
+}
+
+type TrailStep = { agentId?: string; input?: unknown; output?: unknown; error?: string };
+
+/** Derive feedback-like items from workflow execution history for an agent. Used for self-learning from errors and successes in a loop. */
+async function deriveFeedbackFromExecutionHistory(
+  agentId: string,
+  options: { maxDerivedGood: number; maxDerivedBad: number; recentExecutionsLimit: number }
+): Promise<import("@agentron-studio/core").Feedback[]> {
+  const { maxDerivedGood, maxDerivedBad, recentExecutionsLimit } = options;
+  const wfRows = await db.select({ id: workflows.id, nodes: workflows.nodes }).from(workflows);
+  const workflowIds = new Set<string>();
+  for (const row of wfRows) {
+    let nodes: Array<{ config?: { agentId?: string } }> = [];
+    if (row.nodes != null) {
+      if (typeof row.nodes === "string") {
+        try {
+          nodes = JSON.parse(row.nodes) as Array<{ config?: { agentId?: string } }>;
+        } catch {
+          nodes = [];
+        }
+      } else if (Array.isArray(row.nodes)) {
+        nodes = row.nodes as Array<{ config?: { agentId?: string } }>;
+      }
+    }
+    for (const n of nodes) {
+      if (n?.config && (n.config as { agentId?: string }).agentId === agentId) {
+        workflowIds.add(row.id);
+        break;
+      }
+    }
+  }
+  if (workflowIds.size === 0) return [];
+
+  const execRows = await db
+    .select()
+    .from(executions)
+    .where(and(eq(executions.targetType, "workflow"), inArray(executions.targetId, [...workflowIds])))
+    .orderBy(desc(executions.startedAt))
+    .limit(recentExecutionsLimit);
+
+  const derived: import("@agentron-studio/core").Feedback[] = [];
+  let goodCount = 0;
+  let badCount = 0;
+
+  for (const row of execRows) {
+    const run = fromExecutionRow(row);
+    const out = run.output && typeof run.output === "object" && !Array.isArray(run.output) ? (run.output as Record<string, unknown>) : null;
+    const trail = Array.isArray(out?.trail) ? (out.trail as TrailStep[]) : [];
+
+    if (run.status === "failed" && out && (out.error || (out as { success?: boolean }).success === false)) {
+      const errMsg = typeof out.error === "string" ? out.error : "Run failed";
+      const lastStep = trail.filter((s) => s.agentId === agentId).pop();
+      if (badCount < maxDerivedBad) {
+        derived.push({
+          id: `derived-${run.id}-run`,
+          targetType: "agent",
+          targetId: agentId,
+          executionId: run.id,
+          input: lastStep?.input ?? run.targetId,
+          output: errMsg,
+          label: "bad",
+          notes: "From failed run",
+          createdAt: run.startedAt ?? Date.now(),
+        });
+        badCount++;
+      }
+    }
+
+    for (const step of trail) {
+      if (step.agentId !== agentId) continue;
+      if (step.error != null && String(step.error).trim()) {
+        if (badCount < maxDerivedBad) {
+          derived.push({
+            id: `derived-${run.id}-${step.input}-err`,
+            targetType: "agent",
+            targetId: agentId,
+            executionId: run.id,
+            input: step.input,
+            output: step.error,
+            label: "bad",
+            notes: "From step error",
+            createdAt: run.startedAt ?? Date.now(),
+          });
+          badCount++;
+        }
+      } else if (step.input !== undefined || step.output !== undefined) {
+        if (goodCount < maxDerivedGood) {
+          derived.push({
+            id: `derived-${run.id}-${goodCount}`,
+            targetType: "agent",
+            targetId: agentId,
+            executionId: run.id,
+            input: step.input,
+            output: step.output,
+            label: "good",
+            createdAt: run.startedAt ?? Date.now(),
+          });
+          goodCount++;
+        }
+      }
+    }
+  }
+
+  return derived;
+}
+
 /** When the assistant only called ask_user (no other text), use the question as the chat response. */
 /** When format_response was used, prefer its summary + needsInput as the stored content. */
 /** When answer_question was used and the assistant produced substantial content (e.g. full explanation), prefer that content so guidance is surfaced to the user. */
@@ -485,6 +632,20 @@ async function executeTool(
     const a = args != null && typeof args === "object" && !Array.isArray(args) ? args : {};
     const conversationId = ctx?.conversationId;
     const vaultKey = ctx?.vaultKey ?? null;
+
+    if (name === "std-write-file") {
+      return runWriteFile(args, conversationId ?? "chat");
+    }
+    if (name === "std-container-build") {
+      return runContainerBuild(args);
+    }
+    if (name === "std-container-run") {
+      return runContainer(args);
+    }
+    if (name === "std-container-session") {
+      return runContainerSession(conversationId ?? "chat", args);
+    }
+
     switch (name) {
     case "ask_user": {
       const question = typeof a.question === "string" ? a.question.trim() : "";
@@ -617,6 +778,19 @@ async function executeTool(
       if (a.systemPrompt !== undefined) def.systemPrompt = a.systemPrompt;
       if (Array.isArray(a.toolIds)) def.toolIds = (a.toolIds as string[]).filter((x) => typeof x === "string");
       if (a.llmConfigId) def.defaultLlmConfigId = a.llmConfigId as string;
+      if (a.learningConfig != null && typeof a.learningConfig === "object" && !Array.isArray(a.learningConfig)) {
+        const incoming = a.learningConfig as AgentLearningConfig;
+        const existing = (def.learningConfig != null && typeof def.learningConfig === "object" && !Array.isArray(def.learningConfig))
+          ? (def.learningConfig as AgentLearningConfig)
+          : {};
+        def.learningConfig = {
+          ...existing,
+          ...(incoming.maxDerivedGood !== undefined && { maxDerivedGood: incoming.maxDerivedGood }),
+          ...(incoming.maxDerivedBad !== undefined && { maxDerivedBad: incoming.maxDerivedBad }),
+          ...(incoming.minCombinedFeedback !== undefined && { minCombinedFeedback: incoming.minCombinedFeedback }),
+          ...(incoming.recentExecutionsLimit !== undefined && { recentExecutionsLimit: incoming.recentExecutionsLimit }),
+        };
+      }
       if (Array.isArray(a.graphNodes) || Array.isArray(a.graphEdges)) {
         const existingGraph = def.graph;
         const graphNodes = (existingGraph != null && typeof existingGraph === "object" && !Array.isArray(existingGraph) && Array.isArray((existingGraph as { nodes?: unknown[] }).nodes))
@@ -668,6 +842,91 @@ async function executeTool(
     case "delete_agent": {
       await db.delete(agents).where(eq(agents.id, a.id as string)).run();
       return { message: "Agent deleted" };
+    }
+    case "apply_agent_prompt_improvement": {
+      const agentId = a.agentId as string;
+      const autoApply = a.autoApply === true;
+      const includeExecutionHistory = a.includeExecutionHistory !== false;
+      const toolLearningArgs = {
+        maxDerivedGood: typeof a.maxDerivedGood === "number" ? a.maxDerivedGood : undefined,
+        maxDerivedBad: typeof a.maxDerivedBad === "number" ? a.maxDerivedBad : undefined,
+        minCombinedFeedback: typeof a.minCombinedFeedback === "number" ? a.minCombinedFeedback : undefined,
+        recentExecutionsLimit: typeof a.recentExecutionsLimit === "number" ? a.recentExecutionsLimit : undefined,
+      };
+
+      const agentRows = await db.select().from(agents).where(eq(agents.id, agentId));
+      if (agentRows.length === 0) return { error: "Agent not found" };
+      const agent = fromAgentRow(agentRows[0]);
+      const definition = (agent as { definition?: Record<string, unknown> }).definition ?? {};
+      const defObj = typeof definition === "object" && definition !== null && !Array.isArray(definition) ? (definition as Record<string, unknown>) : {};
+      const learningConfig = resolveLearningConfig(defObj, toolLearningArgs);
+      const currentSystemPrompt = (definition as { systemPrompt?: string }).systemPrompt ?? "";
+      const currentSteps = (definition as { steps?: { name: string; type: string; content: string }[] }).steps;
+
+      const explicitFbRows = await db
+        .select()
+        .from(feedback)
+        .where(and(eq(feedback.targetType, "agent"), eq(feedback.targetId, agentId)));
+      const explicitFeedback = explicitFbRows.map(fromFeedbackRow);
+
+      let fromRuns: import("@agentron-studio/core").Feedback[] = [];
+      if (includeExecutionHistory) {
+        fromRuns = await deriveFeedbackFromExecutionHistory(agentId, {
+          maxDerivedGood: learningConfig.maxDerivedGood,
+          maxDerivedBad: learningConfig.maxDerivedBad,
+          recentExecutionsLimit: learningConfig.recentExecutionsLimit,
+        });
+      }
+
+      const combined = [...explicitFeedback, ...fromRuns];
+      if (combined.length < learningConfig.minCombinedFeedback) {
+        return {
+          error: "No feedback or run history to refine from. Add labeled feedback for this agent or run workflows that use this agent.",
+        };
+      }
+
+      let llmConfig: import("@agentron-studio/core").LLMConfig;
+      if (agent.llmConfig && typeof agent.llmConfig === "object") {
+        llmConfig = agent.llmConfig as import("@agentron-studio/core").LLMConfig;
+      } else {
+        const configRows = await db.select().from(llmConfigs);
+        if (configRows.length === 0) return { error: "No LLM configured for this agent or globally" };
+        llmConfig = fromLlmConfigRowWithSecret(configRows[0]) as import("@agentron-studio/core").LLMConfig;
+      }
+
+      const manager = createDefaultLLMManager(async (ref) => (ref ? process.env[ref] : undefined));
+      const result = await refinePrompt(
+        {
+          currentSystemPrompt,
+          currentSteps,
+          feedback: combined,
+        },
+        (req) => manager.chat(llmConfig, req, { source: "agent", agentId })
+      );
+
+      if (autoApply && result.suggestedSystemPrompt) {
+        const def = (agent as { definition?: Record<string, unknown> }).definition ?? {};
+        const defObj = typeof def === "object" && def !== null && !Array.isArray(def) ? (def as Record<string, unknown>) : {};
+        const graph = defObj.graph;
+        const graphObj =
+          graph != null && typeof graph === "object" && !Array.isArray(graph) ? (graph as Record<string, unknown>) : {};
+        const graphNodes = Array.isArray(graphObj.nodes)
+          ? (graphObj.nodes as { id: string; type?: string; position: [number, number]; parameters?: Record<string, unknown> }[])
+          : [];
+        const graphEdges = Array.isArray(graphObj.edges) ? (graphObj.edges as { id: string; source: string; target: string }[]) : [];
+        const newDef: Record<string, unknown> = { ...defObj, systemPrompt: result.suggestedSystemPrompt };
+        ensureLlmNodesHaveSystemPrompt(graphNodes, result.suggestedSystemPrompt);
+        newDef.graph = { nodes: graphNodes.length > 0 ? graphNodes : (graphObj.nodes ?? []), edges: graphEdges };
+        const updated = { ...agent, definition: newDef };
+        await db.update(agents).set(toAgentRow(updated as import("@agentron-studio/core").Agent)).where(eq(agents.id, agentId)).run();
+      }
+
+      return {
+        suggestedSystemPrompt: result.suggestedSystemPrompt,
+        reasoning: result.reasoning,
+        applied: autoApply,
+        sources: { explicitFeedback: explicitFeedback.length, fromRuns: fromRuns.length },
+      };
     }
     case "list_tools": {
       await ensureStandardTools();
@@ -733,7 +992,8 @@ async function executeTool(
       if (rows.length === 0) return { error: "Workflow not found" };
       const existing = fromWorkflowRow(rows[0]);
       const existingNodes = Array.isArray(existing.nodes) ? (existing.nodes as { id: string; type: string; position: [number, number]; parameters?: Record<string, unknown> }[]) : [];
-      const existingEdges = Array.isArray(existing.edges) ? (existing.edges as { id: string; source: string; target: string }[]) : [];
+      type EdgeWithData = { id: string; source: string; target: string } & Record<string, unknown>;
+      const existingEdges = Array.isArray(existing.edges) ? (existing.edges as EdgeWithData[]) : [];
       const nodeIds = new Set(existingNodes.map((n) => n.id));
       const mergedNodes = [...existingNodes];
       for (const n of newNodes) {
@@ -743,17 +1003,17 @@ async function executeTool(
         }
       }
       const edgeIds = new Set(existingEdges.map((e) => e.id));
-      const mergedEdges = [...existingEdges];
+      const mergedEdges: EdgeWithData[] = [...existingEdges];
       for (const e of newEdges) {
         if (!e || typeof e !== "object") continue;
-        const edgeObj = e as { source?: string; target?: string; from?: string; to?: string; sourceId?: string; targetId?: string; id?: string };
-        const src = edgeObj.source ?? edgeObj.from ?? edgeObj.sourceId ?? "";
-        const tgt = edgeObj.target ?? edgeObj.to ?? edgeObj.targetId ?? "";
+        const edgeObj = e as Record<string, unknown>;
+        const src = String(edgeObj.source ?? edgeObj.from ?? edgeObj.sourceId ?? "");
+        const tgt = String(edgeObj.target ?? edgeObj.to ?? edgeObj.targetId ?? "");
         if (!src || !tgt) continue;
-        const id = edgeObj.id ?? `e-${src}-${tgt}`;
+        const id = String(edgeObj.id ?? `e-${src}-${tgt}`);
         if (!edgeIds.has(id)) {
           edgeIds.add(id);
-          mergedEdges.push({ id, source: src, target: tgt });
+          mergedEdges.push({ ...edgeObj, id, source: src, target: tgt } as EdgeWithData);
         }
       }
       const merged = { ...existing, nodes: mergedNodes, edges: mergedEdges };
@@ -789,13 +1049,19 @@ async function executeTool(
       if (a.maxRounds != null) updated.maxRounds = Number(a.maxRounds);
       if (a.turnInstruction !== undefined) updated.turnInstruction = a.turnInstruction === null ? null : String(a.turnInstruction);
       if (a.branches !== undefined) updated.branches = Array.isArray(a.branches) ? a.branches : undefined;
+      let updateWorkflowWarning: string | undefined;
       if (Array.isArray(a.nodes)) {
         const normalizedNodes: { id: string; type: string; position: [number, number]; parameters: Record<string, unknown> }[] = [];
+        let nonAgentCount = 0;
         for (let i = 0; i < a.nodes.length; i++) {
           const n = a.nodes[i];
           if (n == null || typeof n !== "object") continue;
           const id = String((n as { id?: unknown }).id ?? "");
           const type = String((n as { type?: unknown }).type ?? "agent");
+          if (type !== "agent") {
+            nonAgentCount++;
+            continue;
+          }
           const pos = (n as { position?: unknown }).position;
           const position: [number, number] = Array.isArray(pos) && pos.length >= 2 && typeof pos[0] === "number" && typeof pos[1] === "number" ? [pos[0], pos[1]] : [0, 0];
           const params = (n as { parameters?: unknown }).parameters;
@@ -807,12 +1073,23 @@ async function executeTool(
               parameters = {};
             }
           }
+          if (!parameters.agentId && parameters.agentName != null) {
+            const byName = await db.select().from(agents).where(eq(agents.name, String(parameters.agentName)));
+            if (byName.length > 0) parameters.agentId = byName[0].id;
+          }
           normalizedNodes.push({ id: id || `n-${i}`, type, position, parameters });
+        }
+        if (nonAgentCount > 0) {
+          updateWorkflowWarning = `Ignored ${nonAgentCount} node(s) with type other than 'agent'; workflow nodes must be type 'agent'.`;
+        }
+        const agentNodesWithoutId = normalizedNodes.filter((nd) => !(typeof nd.parameters?.agentId === "string" && nd.parameters.agentId.trim() !== ""));
+        if (agentNodesWithoutId.length > 0) {
+          return { error: "Workflow has agent node(s) without an agent selected. Set parameters.agentId (or parameters.agentName) for each agent node so the workflow can run." };
         }
         updated.nodes = normalizedNodes;
       }
       if (Array.isArray(a.edges)) {
-        const normalizedEdges: { id: string; source: string; target: string }[] = [];
+        const normalizedEdges: Array<{ id: string; source: string; target: string } & Record<string, unknown>> = [];
         for (let i = 0; i < a.edges.length; i++) {
           const e = a.edges[i];
           if (e == null || typeof e !== "object") continue;
@@ -821,7 +1098,7 @@ async function executeTool(
           const tgt = String(edgeObj.target ?? edgeObj.to ?? edgeObj.targetId ?? "");
           if (!src || !tgt) continue;
           const id = String(edgeObj.id ?? `e-${i}-${src}-${tgt}`);
-          normalizedEdges.push({ id, source: src, target: tgt });
+          normalizedEdges.push({ ...edgeObj, id, source: src, target: tgt });
         }
         updated.edges = normalizedEdges;
       }
@@ -829,7 +1106,9 @@ async function executeTool(
       await db.update(workflows).set(toWorkflowRow(workflowPayload as Parameters<typeof toWorkflowRow>[0])).where(eq(workflows.id, wfId)).run();
       const nodeList = Array.isArray(workflowPayload.nodes) ? workflowPayload.nodes : [];
       const edgeList = Array.isArray(workflowPayload.edges) ? workflowPayload.edges : [];
-      return { id: wfId, message: `Workflow "${updated.name}" updated`, nodes: nodeList.length, edges: edgeList.length };
+      const result: { id: string; message: string; nodes: number; edges: number; warning?: string } = { id: wfId, message: `Workflow "${updated.name}" updated`, nodes: nodeList.length, edges: edgeList.length };
+      if (updateWorkflowWarning) result.warning = updateWorkflowWarning;
+      return result;
     }
     case "delete_workflow": {
       const wfId = a.id as string;
@@ -930,6 +1209,52 @@ async function executeTool(
       const rows = await db.select().from(executions);
       return rows.slice(-20).map((r) => ({ id: r.id, targetType: r.targetType, targetId: r.targetId, status: r.status }));
     }
+    case "cancel_run": {
+      const runId = typeof a.runId === "string" ? (a.runId as string).trim() : "";
+      if (!runId) return { error: "runId is required" };
+      const runRows = await db.select().from(executions).where(eq(executions.id, runId));
+      if (runRows.length === 0) return { error: "Run not found" };
+      const run = runRows[0];
+      if (run.status !== "waiting_for_user" && run.status !== "running") {
+        return { error: `Run cannot be cancelled (status: ${run.status})`, runId };
+      }
+      await db.update(executions).set({ status: "cancelled", finishedAt: Date.now() }).where(eq(executions.id, runId)).run();
+      return { id: runId, status: "cancelled", message: "Run cancelled." };
+    }
+    case "respond_to_run": {
+      const runId = typeof a.runId === "string" ? (a.runId as string).trim() : "";
+      const response = typeof a.response === "string" ? (a.response as string).trim() : "(no text)";
+      if (!runId) return { error: "runId is required" };
+      const runRows = await db.select().from(executions).where(eq(executions.id, runId));
+      if (runRows.length === 0) return { error: "Run not found" };
+      const run = runRows[0];
+      if (run.status !== "waiting_for_user") {
+        return { error: `Run is not waiting for user input (status: ${run.status})`, runId };
+      }
+      const current = (() => {
+        try {
+          const raw = run.output;
+          return typeof raw === "string" ? JSON.parse(raw) : raw;
+        } catch {
+          return undefined;
+        }
+      })();
+      const existingOutput = current && typeof current === "object" && !Array.isArray(current) && current.output !== undefined ? current.output : undefined;
+      const existingTrail = Array.isArray(current?.trail) ? current.trail : [];
+      const mergedOutput = {
+        ...(existingOutput && typeof existingOutput === "object" && !Array.isArray(existingOutput) ? existingOutput : {}),
+        userResponded: true,
+        response,
+      };
+      const outPayload = executionOutputSuccess(mergedOutput, existingTrail.length > 0 ? existingTrail : undefined);
+      await db
+        .update(executions)
+        .set({ status: "running", finishedAt: null, output: JSON.stringify(outPayload) })
+        .where(eq(executions.id, runId))
+        .run();
+      enqueueWorkflowRun(() => runWorkflowForRun(runId, { resumeUserResponse: response }));
+      return { id: runId, status: "running", message: "Response sent to run. The workflow continues. [View run](/runs/" + runId + ") to see progress." };
+    }
     case "get_run": {
       const runId = a.id as string;
       const runRows = await db.select().from(executions).where(eq(executions.id, runId));
@@ -955,11 +1280,18 @@ async function executeTool(
           const payload = executionOutputSuccess(lastOutput ?? undefined, trail);
           await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
         };
+        const onProgress = async (
+          state: { message: string; toolId?: string },
+          currentTrail: Array<{ order: number; round?: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string }>
+        ) => {
+          const payload = executionOutputSuccess(undefined, currentTrail.length > 0 ? currentTrail : undefined, state.message);
+          await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
+        };
         const isCancelled = async () => {
           const rows = await db.select({ status: executions.status }).from(executions).where(eq(executions.id, runId));
           return rows[0]?.status === "cancelled";
         };
-        const { output, context, trail } = await runWorkflow({ workflowId, runId, branchId, onStepComplete, isCancelled });
+        const { output, context, trail } = await runWorkflow({ workflowId, runId, branchId, onStepComplete, onProgress, isCancelled });
         const payload = executionOutputSuccess(output ?? context, trail);
         await db.update(executions).set({ status: "completed", finishedAt: Date.now(), output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
         const updated = await db.select().from(executions).where(eq(executions.id, runId));
@@ -973,7 +1305,32 @@ async function executeTool(
           return { id: runId, workflowId, status: "cancelled", message: "Run was stopped by the user." };
         }
         if (rawMessage === WAITING_FOR_USER_MESSAGE) {
-          return { id: runId, workflowId, status: "waiting_for_user", message: "Run is waiting for user input. Respond from Chat or the run detail page." };
+          // Forward the run's question/options so the chat UI can show them without a separate run-waiting request
+          let question: string | undefined;
+          let options: string[] = [];
+          try {
+            const runRows = await db.select({ output: executions.output }).from(executions).where(eq(executions.id, runId));
+            const raw = runRows[0]?.output;
+            const out = raw == null ? undefined : (typeof raw === "string" ? (JSON.parse(raw) as Record<string, unknown>) : (raw as Record<string, unknown>));
+            if (out && typeof out === "object") {
+              const inner = out.output && typeof out.output === "object" && out.output !== null ? (out.output as Record<string, unknown>) : out;
+              const q = (typeof inner?.question === "string" ? inner.question : undefined)?.trim();
+              const msg = (typeof inner?.message === "string" ? inner.message : undefined)?.trim();
+              question = (q || msg) || undefined;
+              const opts = Array.isArray(inner?.suggestions) ? inner.suggestions : Array.isArray(inner?.options) ? inner.options : undefined;
+              options = opts?.map((o) => String(o)).filter(Boolean) ?? [];
+            }
+          } catch {
+            // ignore
+          }
+          return {
+            id: runId,
+            workflowId,
+            status: "waiting_for_user",
+            message: "Run is waiting for user input. Respond from Chat or the run detail page.",
+            ...(question && { question }),
+            ...(options.length > 0 && { options }),
+          };
         }
         const message = withContainerInstallHint(rawMessage);
         const payload = executionOutputFailure(message, { message, stack: err instanceof Error ? err.stack : undefined });
@@ -1017,7 +1374,7 @@ async function executeTool(
         tools: "Tools extend what agents can do. They can be native (built-in), MCP (Model Context Protocol), or HTTP (external APIs). Custom code functions also register as native tools automatically.",
         sandboxes: "Sandboxes are Podman or Docker containers that provide isolated execution environments. The user chooses the engine in Settings → Container Engine. They support any language or runtime — just specify a container image. You can execute commands, mount files, and even run databases inside them. If the user needs to install Podman or Docker, direct them to the installation guide: [Installing Podman](/podman-install).",
         functions: "Custom functions let you write code (JavaScript, Python, TypeScript) that becomes a tool agents can call. Functions run inside sandboxes for isolation.",
-        files: "You can upload context files that agents can access during execution. Files are stored locally and can be mounted into sandboxes.",
+        files: "You can upload context files that agents can access during execution. Files are stored locally and can be mounted into sandboxes. The assistant can also create files with std-write-file (name and content); use the returned contextDir with std-container-build to build images from a Containerfile, or pass dockerfileContent to std-container-build for a one-step build.",
         feedback: "The feedback system lets you rate agent outputs as good or bad. This feedback is used in two ways: runtime injection (few-shot examples added to prompts) and on-demand LLM-driven prompt refinement.",
       };
       const explanation = docs[topic] || docs.general;
@@ -1497,10 +1854,12 @@ export async function POST(request: Request) {
     await setStoredCredential(key, plaintext, true, vaultKey);
   }
 
-  // If there is a run waiting for user input and that run was started from this conversation, merge the response into its output and resume.
-  let respondedToRunId: string | null = null;
-  let runCompletionPromise: Promise<void> | null = null;
-  if (!isCredentialReply && (userMessage?.trim() || contentToStore?.trim())) {
+  const bypassRunResponse = payload.bypassRunResponse === true;
+
+  // Option 3: when a run is waiting for user input, inject runWaitingContext so the Chat assistant can decide
+  // to call respond_to_run or take another action. No auto-routing — messages always go to the assistant.
+  let runWaitingContext: string | undefined;
+  if (!bypassRunResponse && !isCredentialReply && conversationId) {
     const waitingRows = await db
       .select({ id: executions.id, targetId: executions.targetId, output: executions.output })
       .from(executions)
@@ -1509,30 +1868,39 @@ export async function POST(request: Request) {
       .limit(1);
     if (waitingRows.length > 0) {
       const runId = waitingRows[0].id;
-      const responseText = (userMessage ?? contentToStore ?? "").trim() || "(no text)";
-      const current = (() => {
-        try {
-          const raw = waitingRows[0].output;
-          return typeof raw === "string" ? JSON.parse(raw) : raw;
-        } catch {
-          return undefined;
-        }
-      })();
-      const existingOutput = current && typeof current === "object" && !Array.isArray(current) && current.output !== undefined ? current.output : undefined;
-      const existingTrail = Array.isArray(current?.trail) ? current.trail : [];
-      const mergedOutput = {
-        ...(existingOutput && typeof existingOutput === "object" && !Array.isArray(existingOutput) ? existingOutput : {}),
-        userResponded: true,
-        response: responseText,
-      };
-      const payload = executionOutputSuccess(mergedOutput, existingTrail.length > 0 ? existingTrail : undefined);
-      await db
-        .update(executions)
-        .set({ status: "running", finishedAt: null, output: JSON.stringify(payload) })
-        .where(eq(executions.id, runId))
-        .run();
-      respondedToRunId = runId;
-      runCompletionPromise = enqueueWorkflowRun(() => runWorkflowForRun(runId, { resumeUserResponse: responseText }));
+      let current: Record<string, unknown> | undefined;
+      try {
+        const raw = waitingRows[0].output;
+        current = typeof raw === "string" ? (JSON.parse(raw) as Record<string, unknown>) : (raw != null ? (raw as Record<string, unknown>) : undefined);
+      } catch {
+        current = undefined;
+      }
+      // Run output can be: (1) flat { question, message, suggestions } from request_user_help, or
+      // (2) wrapped { output: {...}, trail: [...] } from executionOutputSuccess
+      const inner = current && typeof current.output === "object" && current.output !== null
+        ? (current.output as Record<string, unknown>)
+        : current;
+      let question: string | undefined;
+      if (typeof current?.question === "string" && current.question.trim()) {
+        question = current.question.trim();
+      } else if (typeof current?.message === "string" && current.message.trim()) {
+        question = current.message.trim();
+      } else if (inner && typeof inner.question === "string" && inner.question.trim()) {
+        question = inner.question.trim();
+      } else if (inner && typeof inner.message === "string" && inner.message.trim()) {
+        question = inner.message.trim();
+      }
+      const suggestions = Array.isArray(inner?.suggestions) ? inner.suggestions : undefined;
+      const opts = Array.isArray(inner?.options) ? inner.options : suggestions;
+      const optionsList = opts?.map((o) => String(o)).filter(Boolean) ?? [];
+      const parts: string[] = [
+        `runId: ${runId}`,
+        `targetId: ${waitingRows[0].targetId ?? "unknown"}`,
+        question ? `question: ${question}` : "",
+        optionsList.length > 0 ? `options: ${optionsList.join(", ")}` : "",
+      ].filter(Boolean);
+      parts.push("raw output (JSON): " + JSON.stringify(inner ?? current ?? {}));
+      runWaitingContext = parts.join("\n");
     }
   }
 
@@ -1784,9 +2152,16 @@ export async function POST(request: Request) {
         let generatedTitle: string | null = null;
         const llmTraceEntries: LLMTraceCall[] = [];
         let rephraseTraceEntry: LLMTraceCall | null = null;
-        const enqueue = (data: object) => {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        /** Enqueue without throwing when the client disconnected (Controller is already closed). */
+        const safeEnqueue = (data: object) => {
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (!/already closed|Invalid state/i.test(msg)) throw e;
+          }
         };
+        const enqueue = safeEnqueue;
         const streamTrackingCallLLM = createTrackingCallLLM({
           pushTrace: (e) => llmTraceEntries.push(e),
           enqueueTraceStep: (step) => enqueue({ type: "trace_step", ...step }),
@@ -1795,83 +2170,45 @@ export async function POST(request: Request) {
         try {
           await db.insert(chatMessages).values(toChatMessageRow(userMsg)).run();
 
-          if (respondedToRunId && runCompletionPromise) {
-            const RUN_WAIT_TIMEOUT_MS = 90_000;
-            let replyContent: string;
-            try {
-              await Promise.race([
-                runCompletionPromise,
-                new Promise<void>((_, reject) => setTimeout(() => reject(new Error("RUN_TIMEOUT")), RUN_WAIT_TIMEOUT_MS)),
-              ]);
-              const [runRow] = await db.select().from(executions).where(eq(executions.id, respondedToRunId));
-              const logRows = await db.select({ level: runLogs.level, message: runLogs.message }).from(runLogs).where(eq(runLogs.executionId, respondedToRunId)).orderBy(asc(runLogs.createdAt));
-              const run = runRow ? { id: runRow.id, status: runRow.status, output: fromExecutionRow(runRow).output } : null;
-              replyContent = run
-                ? buildRunResponseForChat(run, logRows)
-                : `[View run](/runs/${respondedToRunId})`;
-            } catch (err) {
-              replyContent = err instanceof Error && err.message === "RUN_TIMEOUT"
-                ? `Run is still executing. [View run](/runs/${respondedToRunId}) to see progress.`
-                : `Your message was sent to the run. [View run](/runs/${respondedToRunId}) to see the result.`;
-            }
-            const assistantMsg = {
-              id: crypto.randomUUID(),
-              role: "assistant" as const,
-              content: replyContent,
-              toolCalls: undefined,
-              llmTrace: undefined,
-              createdAt: Date.now(),
-              conversationId: conversationId!,
-            };
-            await db.insert(chatMessages).values(toChatMessageRow(assistantMsg)).run();
-            doneSent = true;
-            try {
-              enqueue({
-                type: "done",
-                content: replyContent,
-                toolResults: [],
-                status: "completed",
-                messageId: assistantMsg.id,
-                userMessageId: userMsg.id,
-                conversationId: conversationId!,
-              });
-            } catch {
-              // client may have disconnected
-            }
-          } else if (existingRows.length === 0 && !isCredentialReply) {
+          if (existingRows.length === 0 && !isCredentialReply) {
             enqueue({ type: "trace_step", phase: "title", label: "Generating title…" });
             generatedTitle = await generateConversationTitle((userMessage || contentToStore).trim().slice(0, 2000), manager, llmConfig);
             await db.update(conversations).set({ ...(generatedTitle && { title: generatedTitle }) }).where(eq(conversations.id, conversationId!)).run();
             enqueue({ type: "trace_step", phase: "title_done", label: "Title set" });
           }
 
-          if (!respondedToRunId) {
           // High-level context preparation step (history, feedback, knowledge, studio resources)
           enqueue({ type: "trace_step", phase: "prepare", label: "Preparing context (history, knowledge, tools)…" });
 
           let effectiveMessage: string;
+          let rephrasedPrompt: string | undefined;
           if (isCredentialReply && credentialResponse?.value) {
             effectiveMessage = credentialResponse.value.trim();
+            rephrasedPrompt = undefined;
             enqueue({ type: "trace_step", phase: "rephrase_done", label: "Using provided credential" });
           } else if (hasContinueShellApproval && continueShellApproval) {
             effectiveMessage = buildContinueShellApprovalMessage({ ...continueShellApproval, command: continueShellApproval.command ?? "" });
+            rephrasedPrompt = undefined;
             enqueue({ type: "trace_step", phase: "rephrase_done", label: "Continue from shell approval" });
           } else if (confirmationPathMessage) {
             effectiveMessage = confirmationPathMessage;
+            rephrasedPrompt = undefined;
             enqueue({ type: "trace_step", phase: "rephrase_done", label: "Deletions done, continuing" });
           } else if (shouldSkipRephrase(contentToStore, payload)) {
             effectiveMessage = (userMessage || contentToStore).trim().slice(0, 2000);
+            rephrasedPrompt = undefined;
             enqueue({ type: "trace_step", phase: "rephrase_done", label: "Rephrase skipped" });
           } else {
             enqueue({ type: "trace_step", phase: "rephrase", label: "Rephrasing…" });
-            const { rephrasedPrompt, wantsRetry } = await rephraseAndClassify(userMessage || contentToStore, manager, llmConfig, { onLlmCall: (e) => { rephraseTraceEntry = e; } });
+            const rephraseResult = await rephraseAndClassify(userMessage || contentToStore, manager, llmConfig, { onLlmCall: (e) => { rephraseTraceEntry = e; } });
             enqueue({ type: "trace_step", phase: "rephrase_done", label: "Rephrase done" });
+            rephrasedPrompt = rephraseResult.rephrasedPrompt;
             if (rephrasedPrompt != null) {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "rephrased_prompt", rephrasedPrompt })}\n\n`));
+              safeEnqueue({ type: "rephrased_prompt", rephrasedPrompt });
             }
             const trimmed = (userMessage || contentToStore).trim().slice(0, 2000);
             effectiveMessage = rephrasedPrompt ?? trimmed;
-            if (wantsRetry) {
+            if (rephraseResult.wantsRetry) {
               const allRows = await db.select().from(chatMessages).where(eq(chatMessages.conversationId, conversationId!)).orderBy(asc(chatMessages.createdAt));
               const lastUserMsg = [...allRows].reverse().find((r) => r.role === "user")?.content ?? null;
               if (lastUserMsg) effectiveMessage = lastUserMsg;
@@ -1887,19 +2224,20 @@ export async function POST(request: Request) {
             attachedContext: attachedContext || undefined,
             studioContext,
             crossChatContext: crossChatContextTrimmed,
+            runWaitingContext: runWaitingContext,
             chatSelectedLlm: llmConfig ? { id: llmConfig.id, provider: llmConfig.provider, model: llmConfig.model } : undefined,
             systemPromptOverride,
             temperature: chatTemperature,
             maxTokens: CHAT_ASSISTANT_MAX_TOKENS,
             onProgress: {
               onPlan(reasoning, todos) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "plan", reasoning, todos })}\n\n`));
+                safeEnqueue({ type: "plan", reasoning, todos });
               },
               onStepStart(stepIndex, todoLabel, toolName, subStepLabel) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "step_start", stepIndex, todoLabel, toolName, ...(subStepLabel != null && { subStepLabel }) })}\n\n`));
+                safeEnqueue({ type: "step_start", stepIndex, todoLabel, toolName, ...(subStepLabel != null && { subStepLabel }) });
               },
               onToolDone(index) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "todo_done", index })}\n\n`));
+                safeEnqueue({ type: "todo_done", index });
               },
             },
           });
@@ -1937,36 +2275,29 @@ export async function POST(request: Request) {
             content: displayContent || getAskUserQuestionFromToolResults(result.toolResults) || "",
             toolCalls: assistantToolCalls,
             llmTrace: fullLlmTrace.length > 0 ? fullLlmTrace : undefined,
+            ...(rephrasedPrompt != null && rephrasedPrompt.trim() && { rephrasedPrompt }),
             createdAt: Date.now(),
             conversationId,
           };
           await db.insert(chatMessages).values(toChatMessageRow(assistantMsg)).run();
 
-          // Mark done BEFORE enqueue so we never send an error event if enqueue throws (e.g. client disconnected).
-          // controller.enqueue() can throw when the stream is closed or client disconnected; we must not
-          // send an error in that case — the turn succeeded and the message is in the DB.
+          // Mark done before sending so we don't send an error event if the client already disconnected (safeEnqueue no-ops).
           doneSent = true;
-          try {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              type: "done",
-              content: displayContent,
-              toolResults: result.toolResults,
-              status: turnStatus.status,
-              ...(turnStatus.interactivePrompt && { interactivePrompt: turnStatus.interactivePrompt }),
-              messageId: assistantMsg.id,
-              userMessageId: userMsg.id,
-              conversationId,
-              reasoning: result.reasoning,
-              todos: result.todos,
-              completedStepIndices: result.completedStepIndices,
-              rephrasedPrompt,
-              ...(generatedTitle && { conversationTitle: generatedTitle }),
-            })}\n\n`));
-          } catch (enqueueErr) {
-            // Client likely disconnected; message is in DB, no error event sent (doneSent=true)
-          }
-
-          } // end if (!respondedToRunId)
+          safeEnqueue({
+            type: "done",
+            content: displayContent,
+            toolResults: result.toolResults,
+            status: turnStatus.status,
+            ...(turnStatus.interactivePrompt && { interactivePrompt: turnStatus.interactivePrompt }),
+            messageId: assistantMsg.id,
+            userMessageId: userMsg.id,
+            conversationId,
+            reasoning: result.reasoning,
+            todos: result.todos,
+            completedStepIndices: result.completedStepIndices,
+            rephrasedPrompt,
+            ...(generatedTitle && { conversationTitle: generatedTitle }),
+          });
 
           // Post-processing after client has received the response (do not send error if these fail)
           const msgCount = existingRows.length + 2;
@@ -2006,13 +2337,17 @@ export async function POST(request: Request) {
                 conversationId,
               };
               await db.insert(chatMessages).values(toChatMessageRow(assistantErrorMsg)).run();
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", error: msg, messageId: assistantErrorMsg.id, userMessageId: userMsg.id })}\n\n`));
+              safeEnqueue({ type: "error", error: msg, messageId: assistantErrorMsg.id, userMessageId: userMsg.id });
             } catch (persistErr) {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", error: msg })}\n\n`));
+              safeEnqueue({ type: "error", error: msg });
             }
           }
         } finally {
-          controller.close();
+          try {
+            controller.close();
+          } catch {
+            // Stream may already be closed (e.g. client disconnected)
+          }
         }
       },
     });
@@ -2027,44 +2362,6 @@ export async function POST(request: Request) {
 
   const userMsg = { id: crypto.randomUUID(), role: "user" as const, content: contentToStore, createdAt: Date.now(), conversationId: conversationId! };
   await db.insert(chatMessages).values(toChatMessageRow(userMsg)).run();
-
-  if (respondedToRunId && runCompletionPromise) {
-    const RUN_WAIT_TIMEOUT_MS = 90_000;
-    let replyContent: string;
-    try {
-      await Promise.race([
-        runCompletionPromise,
-        new Promise<void>((_, reject) => setTimeout(() => reject(new Error("RUN_TIMEOUT")), RUN_WAIT_TIMEOUT_MS)),
-      ]);
-      const [runRow] = await db.select().from(executions).where(eq(executions.id, respondedToRunId));
-      const logRows = await db.select({ level: runLogs.level, message: runLogs.message }).from(runLogs).where(eq(runLogs.executionId, respondedToRunId)).orderBy(asc(runLogs.createdAt));
-      const run = runRow ? { id: runRow.id, status: runRow.status, output: fromExecutionRow(runRow).output } : null;
-      replyContent = run
-        ? buildRunResponseForChat(run, logRows)
-        : `[View run](/runs/${respondedToRunId})`;
-    } catch (err) {
-      replyContent = err instanceof Error && err.message === "RUN_TIMEOUT"
-        ? `Run is still executing. [View run](/runs/${respondedToRunId}) to see progress.`
-        : `Your message was sent to the run. [View run](/runs/${respondedToRunId}) to see the result.`;
-    }
-    const assistantMsg = {
-      id: crypto.randomUUID(),
-      role: "assistant" as const,
-      content: replyContent,
-      toolCalls: undefined,
-      llmTrace: undefined,
-      createdAt: Date.now(),
-      conversationId: conversationId!,
-    };
-    await db.insert(chatMessages).values(toChatMessageRow(assistantMsg)).run();
-    return json({
-      content: replyContent,
-      toolResults: [],
-      messageId: assistantMsg.id,
-      userMessageId: userMsg.id,
-      conversationId: conversationId!,
-    });
-  }
 
   let generatedTitle: string | null = null;
   if (existingRows.length === 0 && !isCredentialReply) {
@@ -2108,6 +2405,7 @@ export async function POST(request: Request) {
       attachedContext: attachedContext || undefined,
       studioContext,
       crossChatContext: crossChatContextTrimmed,
+      runWaitingContext: runWaitingContext,
       chatSelectedLlm: llmConfig ? { id: llmConfig.id, provider: llmConfig.provider, model: llmConfig.model } : undefined,
       systemPromptOverride,
       temperature: chatTemperature,
@@ -2147,6 +2445,7 @@ export async function POST(request: Request) {
       content: displayContent || getAskUserQuestionFromToolResults(result.toolResults) || "",
       toolCalls: assistantToolCalls,
       llmTrace: fullLlmTrace.length > 0 ? fullLlmTrace : undefined,
+      ...(rephrasedPrompt != null && rephrasedPrompt.trim() && { rephrasedPrompt }),
       createdAt: Date.now(),
       conversationId,
     };

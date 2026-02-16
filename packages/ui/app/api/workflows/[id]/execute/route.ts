@@ -42,6 +42,13 @@ export async function POST(request: Request, { params }: Params) {
         const payload = executionOutputSuccess(lastOutput ?? undefined, trail);
         await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
       };
+      const onProgress = async (
+        state: { message: string; toolId?: string },
+        currentTrail: Array<{ order: number; round?: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string }>
+      ) => {
+        const payload = executionOutputSuccess(undefined, currentTrail.length > 0 ? currentTrail : undefined, state.message);
+        await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
+      };
       const isCancelled = async () => {
         const rows = await db.select({ status: executions.status }).from(executions).where(eq(executions.id, runId));
         return rows[0]?.status === "cancelled";
@@ -78,7 +85,7 @@ export async function POST(request: Request, { params }: Params) {
           }).run();
         }
       };
-      const { output, context, trail } = await runWorkflow({ workflowId, runId, onStepComplete, isCancelled, onContainerStream, maxSelfFixRetries });
+      const { output, context, trail } = await runWorkflow({ workflowId, runId, onStepComplete, onProgress, isCancelled, onContainerStream, maxSelfFixRetries });
       const payload = executionOutputSuccess(output ?? context, trail);
       await db.update(executions).set({
         status: "completed",

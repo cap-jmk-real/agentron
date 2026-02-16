@@ -34,10 +34,20 @@ Agentron ships with standard tools such as:
 - `std-fetch-url` — fetch URL content
 - Others depending on installation
 
+## Import from OpenAPI
+
+You can create many HTTP tools at once from an OpenAPI 3.x (or Swagger) spec:
+
+1. **In chat** — Tell the assistant: “Add tools from this API: &lt;URL&gt;” or paste the spec. The assistant uses `create_tools_from_openapi` with `specUrl` or `spec` to create one tool per operation (path + method). Each tool gets a stable id (e.g. `get_users`, `post_users`), correct URL and method, and an `inputSchema` derived from parameters and request body.
+2. **Attach to agents** — After import, use `list_tools` to see the new tool ids, then `update_agent` with `toolIds` to attach them to agents.
+
+HTTP tools created from OpenAPI support path parameters (e.g. `/users/{id}`), query parameters (for GET), and request body (for POST/PUT/PATCH). The runtime substitutes path placeholders and sends the rest as query or body as appropriate.
+
 ## Suggested User Actions
 
 When a user wants to:
 - **"Add a tool to my agent"** — Use `list_tools`, then `update_agent` with `toolIds` including the chosen tool IDs
 - **"Create a custom HTTP tool"** — Use `create_tool` with `protocol: "http"` and `config: { url, method }`
+- **"Add tools from an API spec" / "Import OpenAPI"** — Use `create_tools_from_openapi` with `specUrl` or `spec` (JSON), then attach the created tools to agents via `update_agent` with `toolIds`
 - **"What tools are available?"** — Use `list_tools`
 - **"Fix a tool"** — Use `get_tool(id)` first to diagnose, then `update_tool`

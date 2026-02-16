@@ -9,8 +9,12 @@ export const openaiProvider: LLMProviderAdapter = {
       throw new Error("OpenAI API key is required.");
     }
 
-    return openAICompatibleChat(endpoint, config, request, {
-      Authorization: `Bearer ${config.apiKey}`
-    });
+    return openAICompatibleChat(
+      endpoint,
+      config,
+      request,
+      { Authorization: `Bearer ${config.apiKey}` },
+      { useMaxCompletionTokens: true }
+    );
   }
 };

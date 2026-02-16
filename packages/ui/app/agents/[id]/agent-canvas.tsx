@@ -22,14 +22,15 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useState } from "react";
-import { Brain, Wrench, BookOpen, Save, ArrowRightLeft, Settings2, Library, LogIn, LogOut, GitBranch, Search, LayoutGrid } from "lucide-react";
+import { Brain, Wrench, BookOpen, Save, ArrowRightLeft, Settings2, Library, LogIn, LogOut, GitBranch, Search, LayoutGrid, X } from "lucide-react";
 import { CanvasNodeCard } from "../../components/canvas-node-card";
+import { CanvasLabelEdge } from "../../components/canvas-label-edge";
 import { getGridPosition, getNextNodePosition, getAgentGridOptions, layoutNodesByGraph } from "../../lib/canvas-layout";
 
 type ToolDef = { id: string; name: string; protocol: string; config?: Record<string, unknown>; inputSchema?: unknown };
 
 type AgentNodeDef = { id: string; type: string; position: [number, number]; parameters?: Record<string, unknown> };
-type AgentEdgeDef = { id: string; source: string; target: string };
+type AgentEdgeDef = { id: string; source: string; target: string; data?: { label?: string } };
 
 type LlmConfig = { id: string; provider: string; model: string };
 
@@ -111,12 +112,12 @@ function LLMNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
         style={{ width: "100%", fontSize: "0.8rem", marginBottom: "0.35rem" }}
       />
       <textarea
-        className="nodrag nopan textarea"
+        className="nodrag nopan nowheel textarea"
         value={systemPrompt}
         onChange={(e) => data.onConfigChange?.(id, { ...data.config, systemPrompt: e.target.value })}
         placeholder="System prompt..."
         rows={3}
-        style={{ fontSize: "0.8rem", resize: "vertical", width: "100%", minHeight: 60 }}
+        style={{ fontSize: "0.8rem", resize: "vertical", width: "100%", minHeight: 60, maxHeight: 160, overflowY: "auto" }}
       />
     </CanvasNodeCard>
   );
@@ -215,7 +216,7 @@ function ToolNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
               )}
               {configKeys.length === 0 && (
                 <textarea
-                  className="nodrag nopan input textarea"
+                  className="nodrag nopan nowheel input textarea"
                   value={JSON.stringify(override.config ?? {}, null, 2)}
                   onChange={(e) => {
                     try {
@@ -312,7 +313,7 @@ function InputNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
       maxWidth={280}
     >
       <textarea
-        className="nodrag nopan textarea"
+        className="nodrag nopan nowheel textarea"
         value={expression}
         onChange={(e) => data.onConfigChange?.(id, { ...data.config, transform: { expression: e.target.value } })}
         placeholder='{{ $input }} or custom transform'
@@ -393,12 +394,12 @@ function DecisionNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
         </div>
       )}
       <textarea
-        className="nodrag nopan textarea"
+        className="nodrag nopan nowheel textarea"
         value={systemPrompt}
         onChange={(e) => data.onConfigChange?.(id, { ...data.config, systemPrompt: e.target.value })}
         placeholder="System prompt..."
         rows={3}
-        style={{ fontSize: "0.8rem", resize: "vertical", width: "100%", minHeight: 60 }}
+        style={{ fontSize: "0.8rem", resize: "vertical", width: "100%", minHeight: 60, maxHeight: 160, overflowY: "auto" }}
       />
     </CanvasNodeCard>
   );
@@ -419,7 +420,7 @@ function OutputNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
       maxWidth={280}
     >
       <textarea
-        className="nodrag nopan textarea"
+        className="nodrag nopan nowheel textarea"
         value={expression}
         onChange={(e) => data.onConfigChange?.(id, { ...data.config, transform: { expression: e.target.value } })}
         placeholder='{{ $input }} or custom transform'
@@ -500,6 +501,7 @@ function toFlowNode(
     position: pos,
     sourcePosition: Position.Right,
     targetPosition: Position.Left,
+    dragHandle: ".drag-handle",
     data: {
       nodeType: type,
       config,
@@ -515,7 +517,13 @@ function toFlowNode(
 }
 
 function toFlowEdges(edges: AgentEdgeDef[]): Edge[] {
-  return edges.map((e) => ({ id: e.id, source: e.source, target: e.target }));
+  return edges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    type: "labelEdge",
+    data: { label: e.data?.label ?? "" },
+  }));
 }
 
 function fromFlowToAgentGraph(nodes: Node<FlowNodeData>[], edges: Edge[]): { nodes: AgentNodeDef[]; edges: AgentEdgeDef[] } {
@@ -534,6 +542,9 @@ function fromFlowToAgentGraph(nodes: Node<FlowNodeData>[], edges: Edge[]): { nod
     id: e.id ?? `e-${e.source}-${e.target}`,
     source: e.source,
     target: e.target,
+    data: e.data && typeof e.data === "object" && "label" in e.data
+      ? { label: typeof (e.data as { label?: unknown }).label === "string" ? (e.data as { label: string }).label : undefined }
+      : undefined,
   }));
   return { nodes: agentNodes, edges: agentEdges };
 }
@@ -551,11 +562,173 @@ type Props = {
 
 function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesChange, onSaveToolToLibrary, onArrangeComplete }: Props) {
   const { screenToFlowPosition } = useReactFlow();
+  const canvasWrapRef = useRef<HTMLDivElement>(null);
+  const setFlowNodesRef = useRef<React.Dispatch<React.SetStateAction<Node<FlowNodeData>[]>>>(() => {});
+  const llmConfigsRef = useRef<LlmConfig[]>(llmConfigs);
+  const onSaveToolToLibraryRef = useRef(typeof onSaveToolToLibrary === "function" ? onSaveToolToLibrary : undefined);
+  const isDraggingRef = useRef(false);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  llmConfigsRef.current = llmConfigs;
+  onSaveToolToLibraryRef.current = typeof onSaveToolToLibrary === "function" ? onSaveToolToLibrary : undefined;
+
+  // #region agent log
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const portal = document.querySelector(".react-flow__viewport-portal");
+      const viewport = document.querySelector(".react-flow__viewport");
+      const nodesContainer = document.querySelector(".react-flow__nodes");
+      const firstNode = document.querySelector(".react-flow__node");
+      const getStyle = (el: Element | null) =>
+        el ? { pointerEvents: getComputedStyle(el).pointerEvents, zIndex: getComputedStyle(el).zIndex } : null;
+      fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          hypothesisId: "H1",
+          location: "agent-canvas.tsx:computed-styles",
+          message: "computed pointer-events and z-index for key elements",
+          data: {
+            viewportPortal: getStyle(portal),
+            viewport: getStyle(viewport),
+            nodesContainer: getStyle(nodesContainer),
+            firstNode: getStyle(firstNode),
+            timestamp: Date.now(),
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+
+      const nodeEl = document.querySelector(".react-flow__node");
+      const cardEl = nodeEl?.firstElementChild ?? null;
+      const handleLeft = document.querySelector(".react-flow__handle-left");
+      const handleRight = document.querySelector(".react-flow__handle-right");
+      const rect = (el: Element | null) =>
+        el ? { ...el.getBoundingClientRect() } : null;
+      const cs = (el: Element | null) => {
+        if (!el) return null;
+        const s = getComputedStyle(el);
+        return {
+          position: s.position,
+          top: s.top,
+          left: s.left,
+          right: s.right,
+          bottom: s.bottom,
+          transform: s.transform,
+          width: s.width,
+          height: s.height,
+        };
+      };
+      const data = {
+        nodeRect: rect(nodeEl ?? undefined),
+        cardRect: rect(cardEl ?? undefined),
+        handleLeftRect: rect(handleLeft ?? undefined),
+        handleRightRect: rect(handleRight ?? undefined),
+        nodeComputed: cs(nodeEl ?? null),
+        cardComputed: cs(cardEl ?? null),
+        handleLeftComputed: cs(handleLeft ?? null),
+        handleRightComputed: cs(handleRight ?? null),
+        cardIsPositionRelative: cardEl ? getComputedStyle(cardEl).position === "relative" : null,
+      };
+      fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          hypothesisId: "H6",
+          location: "agent-canvas.tsx:handle-position",
+          message: "handle and card rects + computed styles (root cause for wrong handle position)",
+          data,
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }, 1500);
+    return () => clearTimeout(t);
+  }, []);
+  // #endregion
+
+  // #region agent log
+  useEffect(() => {
+    const wrap = canvasWrapRef.current;
+    if (!wrap) return;
+    let lastMove = 0;
+    const throttleMs = 150;
+    const logPointer = (type: string, ev: PointerEvent) => {
+      const t = ev.target as HTMLElement;
+      const tag = t?.tagName ?? "";
+      const cls = (t?.className && String(t.className).slice(0, 120)) ?? "";
+      const computedCursor = t && typeof getComputedStyle !== "undefined" ? getComputedStyle(t).cursor : "";
+      const parentChain: string[] = [];
+      let p: HTMLElement | null = t?.parentElement ?? null;
+      for (let i = 0; i < 5 && p; i++) {
+        const c = (p.className && String(p.className).slice(0, 60)) || "";
+        parentChain.push(`${(p.tagName || "").toLowerCase()}${c ? "." + c.split(" ").filter(Boolean).slice(0, 2).join(".") : ""}`);
+        p = p.parentElement;
+      }
+      const data = {
+        type,
+        targetTag: tag,
+        targetClass: cls,
+        targetId: (t as HTMLElement)?.id ?? "",
+        computedCursor: computedCursor,
+        isSelect: tag === "SELECT" || !!(t && t.closest?.("select")),
+        isInput: tag === "INPUT" || tag === "TEXTAREA" || !!(t && t.closest?.('input, textarea')),
+        isNode: !!(t && t.closest?.(".react-flow__node")),
+        isViewport: !!(t && t.classList?.contains?.("react-flow__viewport")),
+        isNodesContainer: !!(t && t.classList?.contains?.("react-flow__nodes")),
+        isNopan: !!(t && t.closest?.(".nopan")),
+        isPortal: !!(t && t.closest?.(".react-flow__viewport-portal")),
+        isPane: !!(t && t.closest?.(".react-flow__pane")),
+        isCanvasWrap: !!(t && t.closest?.(".canvas-react-flow-wrap")),
+        isDragHandle: !!(t && t.closest?.(".drag-handle")),
+        parentChain: parentChain.slice(0, 4),
+      };
+      fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          hypothesisId: type === "pointerdown" ? "H3" : "H2",
+          location: "agent-canvas.tsx:pointer-target",
+          message: type === "pointerdown" ? "click target" : "hover target",
+          data,
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    };
+    const onMove = (ev: Event) => {
+      const now = Date.now();
+      if (now - lastMove < throttleMs) return;
+      lastMove = now;
+      logPointer("pointermove", ev as PointerEvent);
+    };
+    const onDown = (ev: Event) => logPointer("pointerdown", ev as PointerEvent);
+    wrap.addEventListener("pointermove", onMove, true);
+    wrap.addEventListener("pointerdown", onDown, true);
+    return () => {
+      wrap.removeEventListener("pointermove", onMove, true);
+      wrap.removeEventListener("pointerdown", onDown, true);
+    };
+  }, []);
+  // #endregion
 
   const onConfigChange = useCallback(
     (nodeId: string, config: Record<string, unknown>) => {
+      fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          hypothesisId: "H4",
+          location: "agent-canvas.tsx:onConfigChange",
+          message: "onConfigChange called (e.g. dropdown selection)",
+          data: { nodeId, keys: Object.keys(config || {}), nodesLength: nodes.length },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
       const next = nodes.map((n) => (n.id === nodeId ? { ...n, parameters: config } : n));
       onNodesEdgesChange(next, edges);
+      setFlowNodesRef.current((nds) =>
+        nds.map((n) =>
+          n.id === nodeId ? { ...n, data: { ...n.data, config } } : n
+        )
+      );
     },
     [nodes, edges, onNodesEdgesChange]
   );
@@ -600,11 +773,31 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
 
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(initialNodes);
   const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState(initialEdges);
+  setFlowNodesRef.current = setFlowNodes;
 
+  /* Sync props → flow state only when structure changes (add/remove/move), not when only config changes (e.g. dropdown). Refs for llmConfigs/onSaveToolToLibrary avoid effect loop from unstable parent refs. Skip sync while user is dragging to prevent flicker. */
   useEffect(() => {
-    setFlowNodes(nodes.map((n, i) => toFlowNode(n, i, tools, nodes, edges, onConfigChange, onRemove, onSaveToolToLibrary, llmConfigs)));
+    if (isDraggingRef.current) return;
+    const structKey = JSON.stringify(nodes.map((n) => [n.id, n.position]));
+    const edgesKey = JSON.stringify(edges);
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        hypothesisId: "H5",
+        location: "agent-canvas.tsx:sync-effect",
+        message: "sync effect ran: setFlowNodes/setFlowEdges (full replace)",
+        data: { nodesLength: nodes.length, edgesLength: edges.length, structKeyLen: structKey.length, edgesKeyLen: edgesKey.length },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+    const llm = llmConfigsRef.current;
+    const onSave = onSaveToolToLibraryRef.current;
+    setFlowNodes(nodes.map((n, i) => toFlowNode(n, i, tools, nodes, edges, onConfigChange, onRemove, onSave ?? (() => Promise.resolve(null)), llm)));
     setFlowEdges(toFlowEdges(edges));
-  }, [nodes.length, edges.length, JSON.stringify(nodes.map((n) => [n.id, n.type, n.parameters, n.position])), JSON.stringify(edges), llmConfigs, onSaveToolToLibrary]);
+  }, [nodes.length, edges.length, JSON.stringify(nodes.map((n) => [n.id, n.position])), JSON.stringify(edges)]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -613,6 +806,7 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
         id: `e-${connection.source}-${connection.target}`,
         source: connection.source ?? "",
         target: connection.target ?? "",
+        data: {},
       };
       onNodesEdgesChange(nodes, [...edges, newEdge]);
     },
@@ -680,11 +874,33 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
 
   const edgeOptions = useMemo(
     () => ({
-      type: "smoothstep" as const,
+      type: "labelEdge" as const,
       style: { stroke: "var(--primary)", strokeWidth: 2 },
       animated: true,
     }),
     []
+  );
+
+  const edgeTypes = useMemo(() => ({ labelEdge: CanvasLabelEdge }), []);
+
+  const selectedEdge = selectedEdgeId ? edges.find((e) => e.id === selectedEdgeId) : null;
+
+  const onEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
+    setSelectedEdgeId(edge.id);
+  }, []);
+
+  const onPaneClick = useCallback(() => {
+    setSelectedEdgeId(null);
+  }, []);
+
+  const onEdgeLabelChange = useCallback(
+    (edgeId: string, label: string) => {
+      const nextEdges = edges.map((e) =>
+        e.id === edgeId ? { ...e, data: { ...e.data, label: label.trim() || undefined } } : e
+      );
+      onNodesEdgesChange(nodes, nextEdges);
+    },
+    [nodes, edges, onNodesEdgesChange]
   );
 
   const dragStart = (type: FlowNodeData["nodeType"], toolId?: string) => (ev: React.DragEvent) => {
@@ -795,6 +1011,39 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
         >
           <LayoutGrid size={14} /> Arrange
         </button>
+        {selectedEdge && (
+          <div
+            style={{
+              marginTop: "0.5rem",
+              padding: "0.5rem",
+              border: "1px solid var(--border)",
+              borderRadius: 6,
+              background: "var(--background)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.35rem" }}>
+              <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>Edge</span>
+              <button
+                type="button"
+                className="nopan nodrag"
+                onClick={() => setSelectedEdgeId(null)}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+                title="Close"
+              >
+                <X size={14} style={{ color: "var(--text-muted)" }} />
+              </button>
+            </div>
+            <label style={{ fontSize: "0.75rem", display: "block", marginBottom: "0.25rem" }}>Label</label>
+            <input
+              type="text"
+              className="input nodrag nopan"
+              value={selectedEdge.data?.label ?? ""}
+              onChange={(e) => onEdgeLabelChange(selectedEdge.id, e.target.value)}
+              placeholder="Optional label"
+              style={{ width: "100%", fontSize: "0.8rem" }}
+            />
+          </div>
+        )}
       </div>
       {addNodeModalOpen && (
         <div
@@ -907,7 +1156,7 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
           </div>
         </div>
       )}
-      <div style={{ flex: 1, minWidth: 0, height: "100%" }}>
+      <div ref={canvasWrapRef} className="canvas-react-flow-wrap" style={{ flex: 1, minWidth: 0 }}>
         <ReactFlow
           nodes={flowNodes}
           edges={flowEdges}
@@ -922,10 +1171,18 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
           elementsSelectable
           noDragClassName="nodrag"
           noPanClassName="nopan"
+          noWheelClassName="nowheel"
+          minZoom={0.1}
+          maxZoom={2}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           defaultEdgeOptions={edgeOptions}
+          edgeTypes={edgeTypes}
           connectionLineStyle={{ stroke: "var(--primary)", strokeWidth: 2 }}
+          onEdgeClick={onEdgeClick}
+          onPaneClick={onPaneClick}
+          onNodeDragStart={() => { isDraggingRef.current = true; }}
+          onNodeDragStop={() => { isDraggingRef.current = false; }}
         >
           <Background />
           <Controls position="bottom-right" showZoom showFitView showInteractive />

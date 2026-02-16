@@ -37,7 +37,7 @@ export type UseChatStreamParams = {
   pathname: string | null;
   getUiContext: (pathname: string | null) => string;
   buildBody?: (base: Record<string, unknown>) => Record<string, unknown>;
-  onRunFinished?: (runId: string, status: string) => void;
+  onRunFinished?: (runId: string, status: string, details?: { question?: string; options?: string[] }) => void;
   randomId: () => string;
 };
 
@@ -52,7 +52,8 @@ export function processChatStreamEvent(
     setConversationId: (v: string | null) => void;
     setConversationList: React.Dispatch<React.SetStateAction<{ id: string; title: string | null; rating: number | null; note: string | null; createdAt: number }[]>>;
     doneReceived: { current: boolean };
-    onRunFinished?: (runId: string, status: string) => void;
+    onRunFinished?: (runId: string, status: string, details?: { question?: string; options?: string[] }) => void;
+    onDone?: () => void;
   }
 ): void {
   if (event.type === "trace_step") {
@@ -118,6 +119,9 @@ export function processChatStreamEvent(
     if (event.messageId) ctx.setMessages((prev) => prev.map((m) => (m.id === ctx.placeholderId ? { ...m, id: event.messageId! } : m)));
     if (event.userMessageId) ctx.setMessages((prev) => prev.map((m) => (m.id === ctx.userMsgId ? { ...m, id: event.userMessageId! } : m)));
     if (event.conversationId) {
+      // #region agent log
+      if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({location:"useChatStream:done_set_conversationId",message:"stream done sets conversationId",data:{newConversationId:event.conversationId},hypothesisId:"H1",timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       ctx.setConversationId(event.conversationId);
       const newTitle = event.conversationTitle ?? null;
       ctx.setConversationList((prev) => {
@@ -126,11 +130,17 @@ export function processChatStreamEvent(
         return [{ id: event.conversationId!, title: newTitle, rating: null, note: null, createdAt: Date.now() }, ...prev];
       });
     }
-    const execWf = event.toolResults?.find((r: { name: string; result?: unknown }) => r.name === "execute_workflow");
-    const wfResult = execWf?.result as { id?: string; status?: string } | undefined;
+    // Use the last execute_workflow result so we show the final run state (e.g. waiting_for_user after a retry), not the first (e.g. failed)
+    const execWfResults = event.toolResults?.filter((r: { name: string; result?: unknown }) => r.name === "execute_workflow") ?? [];
+    const lastExecWf = execWfResults.length > 0 ? execWfResults[execWfResults.length - 1] : undefined;
+    const wfResult = lastExecWf?.result as { id?: string; status?: string; question?: string; options?: string[] } | undefined;
     if (wfResult?.id && (wfResult.status === "completed" || wfResult.status === "waiting_for_user") && ctx.onRunFinished) {
-      ctx.onRunFinished(wfResult.id, wfResult.status);
+      const details = wfResult.status === "waiting_for_user" && (wfResult.question || (Array.isArray(wfResult.options) && wfResult.options.length > 0))
+        ? { question: wfResult.question, options: Array.isArray(wfResult.options) ? wfResult.options : undefined }
+        : undefined;
+      ctx.onRunFinished(wfResult.id, wfResult.status, details);
     }
+    ctx.onDone?.();
   } else if (event.type === "error") {
     if (!ctx.doneReceived.current) {
       const errorContent = `Error: ${event.error ?? "Unknown error"}`;
@@ -186,7 +196,8 @@ export type PerformChatStreamSendParams = {
   buildBody: (base: Record<string, unknown>) => Record<string, unknown>;
   /** Optional extra fields merged into the request body (e.g. continueShellApproval) */
   extraBody?: Record<string, unknown>;
-  onRunFinished?: (runId: string, status: string) => void;
+  onRunFinished?: (runId: string, status: string, details?: { question?: string; options?: string[] }) => void;
+  onDone?: () => void;
   onAbort?: () => void;
   onInputRestore?: (text: string) => void;
 };
@@ -210,6 +221,7 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
     buildBody,
     extraBody,
     onRunFinished,
+    onDone,
     onAbort,
     onInputRestore,
   } = params;
@@ -284,6 +296,7 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
               setConversationList,
               doneReceived: doneReceivedRef,
               onRunFinished,
+              onDone,
             });
           } catch {
             // skip malformed event
@@ -304,12 +317,16 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
           .then((data) => {
             if (!Array.isArray(data)) return;
             const apiMessages = mapApiMessagesToMessage(data, normalizeToolResults);
+            // #region agent log
+            if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({location:"useChatStream:fallback_fetch",message:"fallback fetch (no done)",data:{apiLen:apiMessages.length,conversationId},hypothesisId:"H2",timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
             setMessages((prev) => {
               const lastPrev = prev[prev.length - 1] as ChatStreamMessage | undefined;
               const lastApi = apiMessages[apiMessages.length - 1];
-              if (lastApi?.role === "assistant" && lastApi.content.trim() && lastPrev?.role === "assistant" && !lastPrev.content.trim()) {
-                return apiMessages;
-              }
+              const willReplace = lastApi?.role === "assistant" && lastApi.content.trim() && lastPrev?.role === "assistant" && !lastPrev.content.trim();
+              const useApi = willReplace || apiMessages.length > prev.length;
+              if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({location:"useChatStream:fallback_set",message:"fallback setMessages",data:{prevLen:prev.length,apiLen:apiMessages.length,willReplace,useApi},hypothesisId:"H2",timestamp:Date.now()})}).catch(()=>{});
+              if (willReplace) return apiMessages;
               return apiMessages.length > prev.length ? apiMessages : prev;
             });
           })
@@ -318,7 +335,7 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
     }
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
-      updatePlaceholder({ content: "Request stopped." });
+      setMessages((prev) => prev.filter((m) => m.id !== placeholderId));
       onAbort?.();
       if (onInputRestore) onInputRestore(text);
     } else {

@@ -95,6 +95,7 @@ export const chatMessages = sqliteTable("chat_messages", {
   content: text("content").notNull(),
   toolCalls: text("tool_calls"),
   llmTrace: text("llm_trace"),
+  rephrasedPrompt: text("rephrased_prompt"),
   createdAt: integer("created_at").notNull()
 });
 

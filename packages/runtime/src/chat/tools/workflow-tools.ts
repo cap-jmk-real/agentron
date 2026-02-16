@@ -7,6 +7,29 @@ export const WORKFLOW_TOOLS: AssistantToolDef[] = [
     parameters: { type: "object", properties: {}, required: [] },
   },
   {
+    name: "cancel_run",
+    description: "Cancel a workflow run that is waiting for user input. Use when the user says they want to stop, cancel, or abort the run.",
+    parameters: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "Run ID (from runWaitingContext)" },
+      },
+      required: ["runId"],
+    },
+  },
+  {
+    name: "respond_to_run",
+    description: "Send the user's response to a workflow run that is waiting for user input. Use when the user is directly answering the run's question (e.g. selecting an option, providing requested data). The run will resume with this response. Do NOT use when the user wants to stop the run, modify agents, or do something else.",
+    parameters: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "Run ID (from runWaitingContext)" },
+        response: { type: "string", description: "The user's response to send to the run (e.g. their answer, selected option)" },
+      },
+      required: ["runId", "response"],
+    },
+  },
+  {
     name: "get_run",
     description: "Get a run/execution by ID. Returns status, output (with output.output and output.trail), error. Use to inspect what agents actually said and did (trail = per-step input/output). Call after execute_workflow when you need to re-read a run, or when the user refers to a specific run.",
     parameters: {
@@ -48,6 +71,7 @@ export const WORKFLOW_TOOLS: AssistantToolDef[] = [
         "MANDATORY SAME-TURN WIRING:",
         "When you create both agents and a workflow in the same turn, you MUST call update_workflow in the SAME turn (in the same tool_call batch, after create_workflow and create_agent return) to attach agent nodes, edges, and maxRounds. A workflow with no nodes/edges runs no agents and is useless. Never defer wiring to a \"next message\" or \"next response\" — you already have the workflow id and agent ids from the same turn.",
         "",
+        "Workflow nodes are agent-only: pass only nodes with type 'agent'. Do not add type 'tool' to the workflow; tools are attached to agents via toolIds. For a single agent that uses tools, pass ONE node (that agent) and NO edges.",
         "Multi‑agent chat:",
         "After create_workflow and create_agent(s), call update_workflow with: nodes = one { id, type: 'agent', position, parameters: { agentId: '<exact-uuid>' } } per agent; edges = e.g. [{ id: 'e1', source: 'n1', target: 'n2' }, { id: 'e2', source: 'n2', target: 'n1' }] for a loop; maxRounds = number of full cycles (one cycle = each agent speaks once). For '3 rounds each' in a 2-agent chat use maxRounds: 3 (6 steps total). For longer runs use e.g. 6–10.",
         "ALWAYS set maxRounds when edges form a loop so execution does not run forever.",
@@ -69,8 +93,8 @@ export const WORKFLOW_TOOLS: AssistantToolDef[] = [
         "",
         "REQUIRED: id (workflow UUID from create_workflow).",
         "",
-        "Nodes: array of { id (e.g. 'n1'), type: 'agent', position: [x,y], parameters: { agentId: '<exact-agent-uuid>' } }. agentId MUST be the exact UUID returned by create_agent in this turn — no placeholders.",
-        "Edges: array of { id, source: nodeId, target: nodeId } (e.g. n1→n2 and n2→n1 for a two-agent chat loop).",
+        "Nodes: array of { id (e.g. 'n1'), type: 'agent', position: [x,y], parameters: { agentId: '<exact-agent-uuid>' } }. Each node MUST be type 'agent' with parameters.agentId. Do NOT pass nodes with type 'tool'; the runtime does not support workflow-level tool nodes. Tools are configured on the agent (toolIds), not as workflow nodes.",
+        "Edges: array of { id, source: nodeId, target: nodeId } (e.g. n1→n2 and n2→n1 for a two-agent chat loop). For a single agent, use no edges (empty array).",
         "maxRounds: REQUIRED when edges form a loop. Number of full cycles (one cycle = each agent runs once). For 2-agent chat, '3 rounds each' means maxRounds: 3 (6 steps). Use 6–10 only for longer conversations.",
         "",
         "Example (two-agent chat, 3 rounds each = 6 steps):",
@@ -85,7 +109,7 @@ export const WORKFLOW_TOOLS: AssistantToolDef[] = [
         maxRounds: { type: "number", description: "REQUIRED when edges form a loop. Number of full cycles (one cycle = each agent speaks once). E.g. 2-agent '3 rounds each' → maxRounds: 3." },
         turnInstruction: { type: "string", description: "Optional instruction shown at the start of each agent turn. Omit to leave unset." },
         schedule: { type: "string", description: "Optional top-level schedule: interval seconds (e.g. '60'), daily@HH:mm, or weekly@0,1,2. Used when workflow has no branches." },
-        nodes: { type: "array", description: "Each item: { id, type: 'agent', position: [x,y], parameters: { agentId: '<uuid-from-create_agent>' } }" },
+        nodes: { type: "array", description: "Each item: { id, type: 'agent', position: [x,y], parameters: { agentId: '<uuid-from-create_agent>' } }. Only agent nodes; do not add type 'tool' — tools are on the agent via toolIds." },
         edges: { type: "array", description: "Each item: { id, source: nodeId, target: nodeId }" },
         branches: {
           type: "array",

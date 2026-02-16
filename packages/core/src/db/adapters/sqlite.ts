@@ -487,6 +487,11 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         // Column already exists
       }
       try {
+        sqlite.exec("ALTER TABLE chat_messages ADD COLUMN rephrased_prompt text");
+      } catch {
+        // Column already exists
+      }
+      try {
         sqlite.exec("CREATE TABLE IF NOT EXISTS saved_credentials (key text primary key, value text not null, created_at integer not null)");
       } catch {
         // Already exists

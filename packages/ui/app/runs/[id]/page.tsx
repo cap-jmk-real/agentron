@@ -5,9 +5,35 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Copy, CheckCircle, XCircle, Clock, Loader2, MessageCircle, GitBranch, Square, ThumbsUp, ThumbsDown, Terminal, Eye, EyeOff } from "lucide-react";
 import { openChatWithContext } from "../../components/chat-wrapper";
+import { AgentRequestBlock } from "../../components/agent-request-block";
 
 /** When the agent calls request_user_help, the workflow throws this message; we treat it as "waiting for input", not a failure. */
 const WAITING_FOR_USER_MESSAGE = "WAITING_FOR_USER";
+
+/** Whether the agent's prompt is too vague for the user to know what to do (e.g. "Choose one:" with no list). */
+function isVagueWaitingPrompt(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (t.length < 30) return true;
+  const vague = ["choose one", "pick one", "select one", "need your input", "your input", "your response"];
+  return vague.some((v) => t === v || t === v + ":" || t === v + ".");
+}
+
+/** Extract the question/message to show when run is waiting_for_user (from run.output payload). */
+function getWaitingForUserMessage(out: unknown): string {
+  if (!out || typeof out !== "object") return "Waiting for your input.";
+  const o = out as Record<string, unknown>;
+  const q = typeof o.question === "string" && o.question.trim() ? o.question.trim() : "";
+  if (q && !isVagueWaitingPrompt(q)) return q;
+  const m = typeof o.message === "string" && o.message.trim() ? o.message.trim() : "";
+  if (m && !isVagueWaitingPrompt(m)) return m;
+  const r = typeof o.reason === "string" && o.reason.trim() ? o.reason.trim() : "";
+  if (r && !isVagueWaitingPrompt(r)) return r;
+  return "Waiting for your input.";
+}
+
+/** When the agent's prompt is vague, show this so the user knows what to do. */
+const WAITING_WHAT_TO_DO =
+  "The agent is waiting for your input. Reply in the box below (or in Chat) with your answer — for example, type the name or number of the item you want (e.g. which saved search to use), or describe your choice.";
 
 type ExecutionTraceStep = {
   nodeId: string;
@@ -131,6 +157,8 @@ function buildCopyForChatBlock(run: Run): string {
       if (Array.isArray(sug) && sug.length > 0) {
         lines.push("Suggestions: " + sug.filter((s): s is string => typeof s === "string").join(", "));
       }
+      lines.push("");
+      lines.push("→ Reply on the run page or in Chat so the agent can continue.");
     }
     const trailSteps = (out as { trail?: ExecutionTraceStep[] }).trail;
     if (Array.isArray(trailSteps) && trailSteps.length > 0) {
@@ -174,6 +202,14 @@ function isContainerLikeOutput(raw: unknown): raw is { stdout?: string; stderr?:
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return false;
   const o = raw as Record<string, unknown>;
   return "stdout" in o || "stderr" in o || ("exitCode" in o && typeof o.exitCode === "number");
+}
+
+/** Tool returned { error: string } or { success: false, error: string } (e.g. browser connection failure). */
+function getToolErrorFromOutput(output: unknown): string | null {
+  if (output == null || typeof output !== "object" || Array.isArray(output)) return null;
+  const o = output as Record<string, unknown>;
+  if (typeof o.error === "string" && o.error.trim()) return o.error.trim();
+  return null;
 }
 
 /** Extract shell/execution log lines from trail steps (stdout, stderr from tools). */
@@ -249,8 +285,9 @@ function TrailStepCard({
   const [expanded, setExpanded] = useState(true);
   const hasInput = !outputsOnly && step.input !== undefined && step.input !== null;
   const hasOutput = step.output !== undefined && step.output !== null;
+  const toolOutputError = hasOutput ? getToolErrorFromOutput(step.output) : null;
   const isWaitingForUser = step.error === WAITING_FOR_USER_MESSAGE;
-  const hasError = !!step.error && !isWaitingForUser;
+  const hasError = (!!step.error && !isWaitingForUser) || !!toolOutputError;
   const toolCalls = step.toolCalls ?? [];
   const containerWasInvoked = toolCalls.some((t) => t.name === "std-container-run" || t.name === "std-container-session");
   const showNoContainerWarning = isWaitingForUser && !containerWasInvoked && toolCalls.length > 0;
@@ -345,6 +382,21 @@ function TrailStepCard({
                   )}
                 </pre>
               </div>
+            </div>
+          )}
+          {hasOutput && toolOutputError && (
+            <div
+              style={{
+                marginBottom: "0.75rem",
+                padding: "0.75rem 1rem",
+                background: "var(--resource-red)",
+                color: "var(--bg)",
+                borderRadius: 8,
+                fontSize: "0.9rem",
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: "0.35rem" }}>Tool error</div>
+              <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "inherit", fontSize: "0.85rem" }}>{toolOutputError}</pre>
             </div>
           )}
           {hasOutput && !isContainerLikeOutput(step.output) && (
@@ -626,6 +678,11 @@ export default function RunDetailPage() {
   }
 
   const out = run.output;
+  const waitingForUserMessage = run.status === "waiting_for_user" && out && typeof out === "object" ? getWaitingForUserMessage(out) : "";
+  const rawQuestion = run.status === "waiting_for_user" && out && typeof out === "object"
+    ? (typeof (out as Record<string, unknown>).question === "string" ? (out as { question: string }).question.trim() : "") || (typeof (out as Record<string, unknown>).message === "string" ? (out as { message: string }).message.trim() : "")
+    : "";
+  const isVagueRequest = run.status === "waiting_for_user" && rawQuestion !== "" && isVagueWaitingPrompt(rawQuestion);
   const runLevelError = out && typeof out === "object" && ((out as { error?: string }).error ?? (out.errorDetails as { message?: string })?.message);
   const hasError =
     run.status !== "waiting_for_user" &&
@@ -637,6 +694,10 @@ export default function RunDetailPage() {
   const trail = (out && typeof out === "object" && Array.isArray((out as { trail?: ExecutionTraceStep[] }).trail))
     ? (out as { trail: ExecutionTraceStep[] }).trail
     : [];
+  const executingMessage =
+    run.status === "running" && out && typeof out === "object" && typeof (out as { executing?: string }).executing === "string"
+      ? (out as { executing: string }).executing
+      : undefined;
   const hasStack = hasError && out && typeof out === "object" && (out.errorDetails as { stack?: string })?.stack;
   const stackTrace = hasStack && out && typeof out === "object" ? (out.errorDetails as { stack: string }).stack : "";
   const shellLogFromTrail = buildShellLog(trail);
@@ -828,6 +889,24 @@ export default function RunDetailPage() {
         </div>
       </div>
 
+      {run.status === "waiting_for_user" && out != null && typeof out === "object" && (
+        <AgentRequestBlock
+          question={rawQuestion || waitingForUserMessage}
+          options={
+            Array.isArray((out as { suggestions?: string[] }).suggestions)
+              ? (out as { suggestions: string[] }).suggestions
+              : Array.isArray((out as { options?: string[] }).options)
+                ? (out as { options: string[] }).options
+                : undefined
+          }
+          onReplyOption={(value) => {
+            setReplyText((prev) => (prev ? prev + " " + value : value));
+            setTimeout(() => document.getElementById("run-detail-reply-input")?.focus(), 50);
+          }}
+          showVagueHint
+        />
+      )}
+
       {/* Live container output: show when we have logs, trail-derived output, or run is active */}
       {(run.targetType === "workflow" && (hasLiveLogs || run.status === "running" || run.status === "waiting_for_user" || (run.status === "completed" && hasShellHistory))) && (
         <div id="live-container-output" className="run-detail-card run-detail-shell-card" style={{ marginBottom: "1rem", scrollMarginTop: "1rem" }}>
@@ -896,9 +975,16 @@ export default function RunDetailPage() {
                         </span>
                       ))}
                       {run.status === "waiting_for_user" && (
-                        <span style={{ display: "block", marginTop: "0.75rem", color: "var(--resource-amber)", fontWeight: 500 }}>
-                          ▶ Waiting for your input (reply in Chat or on the run page).
-                        </span>
+                        <>
+                          <span style={{ display: "block", marginTop: "0.75rem", color: "var(--resource-amber)", fontWeight: 500 }}>
+                            ▶ Waiting for your input (reply in Chat or on the run page).
+                          </span>
+                          {waitingForUserMessage && (
+                            <span style={{ display: "block", marginTop: "0.35rem", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                              {waitingForUserMessage}
+                            </span>
+                          )}
+                        </>
                       )}
                     </>
                   )
@@ -907,14 +993,25 @@ export default function RunDetailPage() {
                       <>
                         <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{shellLogFromTrail}</span>
                         {run.status === "waiting_for_user" && (
-                          <span style={{ display: "block", marginTop: "0.75rem", color: "var(--resource-amber)", fontWeight: 500 }}>
-                            ▶ Waiting for your input (reply in Chat or on the run page).
-                          </span>
+                          <>
+                            <span style={{ display: "block", marginTop: "0.75rem", color: "var(--resource-amber)", fontWeight: 500 }}>
+                              ▶ Waiting for your input (reply in Chat or on the run page).
+                            </span>
+                            {waitingForUserMessage && (
+                              <span style={{ display: "block", marginTop: "0.35rem", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                {waitingForUserMessage}
+                              </span>
+                            )}
+                          </>
                         )}
                       </>
                     )
                   : run.status === "waiting_for_user"
-                    ? "Run is paused waiting for your input. No container has been started yet.\n\nAfter you reply in Chat, if the agent runs a container command, stdout and stderr will stream here in real time."
+                    ? (isVagueRequest
+                        ? `${WAITING_WHAT_TO_DO}\n\nRun is paused. Reply in the box under "Status" on this page, or in Chat.`
+                        : waitingForUserMessage
+                          ? `${waitingForUserMessage}\n\nRun is paused. No container has been started yet.\n\nAfter you reply in Chat, if the agent runs a container command, stdout and stderr will stream here in real time.`
+                          : "Run is paused waiting for your input. No container has been started yet.\n\nAfter you reply in Chat, if the agent runs a container command, stdout and stderr will stream here in real time.")
                     : run.status === "running"
                       ? "No container output yet. When the agent runs a container command, output will stream here in real time."
                       : "No container output for this run. When the agent runs a container command, stdout and stderr stream here."}
@@ -941,9 +1038,22 @@ export default function RunDetailPage() {
             <div className="run-detail-output-content">
               {run.status === "waiting_for_user" && !hasError ? (
                 <div className="run-detail-value">
-                  <p style={{ margin: "0 0 0.75rem 0", fontWeight: 500 }}>
-                    {(out as { question?: string }).question ?? (out as { message?: string }).message ?? "Waiting for your input."}
-                  </p>
+                  <div id="run-detail-request" style={{ marginBottom: "0.75rem" }}>
+                    <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.25rem", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                      Request
+                    </div>
+                    <p style={{ margin: 0, fontWeight: 500 }}>
+                      {waitingForUserMessage || "Waiting for your input."}
+                    </p>
+                  </div>
+                  <div style={{ marginBottom: "0.75rem", padding: "0.6rem 0.75rem", background: "var(--surface-muted)", borderRadius: 6, fontSize: "0.9rem" }}>
+                    <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.2rem", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                      What to do
+                    </div>
+                    <p style={{ margin: 0, color: "var(--text-primary)" }}>
+                      {isVagueRequest ? WAITING_WHAT_TO_DO : "Reply in the box below with your answer, or reply in Chat. Your response will be sent to the agent and the run will continue."}
+                    </p>
+                  </div>
                   {Array.isArray((out as { suggestions?: string[] }).suggestions) && ((out as { suggestions: string[] }).suggestions.length > 0) ? (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", marginBottom: "0.75rem" }}>
                       {((out as { suggestions: string[] }).suggestions as string[]).filter((s): s is string => typeof s === "string").map((s, i) => (
@@ -964,13 +1074,15 @@ export default function RunDetailPage() {
                     style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: "32rem" }}
                   >
                     <textarea
+                      id="run-detail-reply-input"
                       className="run-detail-value"
                       placeholder="Type your response…"
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
                       rows={3}
                       style={{ resize: "vertical", minHeight: "4rem" }}
-                      aria-label="Response to send to the workflow"
+                      aria-label="Your response to the request above"
+                      aria-describedby="run-detail-request"
                     />
                     <button
                       type="submit"
@@ -1058,7 +1170,7 @@ export default function RunDetailPage() {
         </div>
       )}
 
-      {trail.length > 0 && (
+      {(trail.length > 0 || (run.status === "running" && run.targetType === "workflow")) && (
         <div id="execution-trail" className="run-detail-card run-detail-trail-card run-detail-grid-card" style={{ scrollMarginTop: "1rem" }}>
           <div className="run-detail-section" style={{ marginBottom: "0.5rem" }}>
             <div className="run-detail-label" style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
@@ -1080,17 +1192,24 @@ export default function RunDetailPage() {
             </label>
           </div>
           <div className="run-detail-trail-list" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            {trail
-              .slice()
-              .sort((a, b) => a.order - b.order)
-              .map((step, i) => (
-                <TrailStepCard
-                  key={`${step.nodeId}-${step.order}`}
-                  step={step}
-                  index={i}
-                  outputsOnly={showOutputsOnly}
-                />
-              ))}
+            {trail.length === 0 && run.status === "running" ? (
+              <div className="run-trail-step run-trail-step-progress" style={{ padding: "0.75rem 1rem", background: "var(--surface-muted)", borderRadius: "var(--radius)", display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.9rem" }}>
+                <Loader2 size={18} className="spin" style={{ flexShrink: 0 }} />
+                <span>{executingMessage ?? "Workflow is running…"}</span>
+              </div>
+            ) : (
+              trail
+                .slice()
+                .sort((a, b) => a.order - b.order)
+                .map((step, i) => (
+                  <TrailStepCard
+                    key={`${step.nodeId}-${step.order}`}
+                    step={step}
+                    index={i}
+                    outputsOnly={showOutputsOnly}
+                  />
+                ))
+            )}
           </div>
         </div>
       )}

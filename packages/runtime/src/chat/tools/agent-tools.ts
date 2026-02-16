@@ -41,7 +41,7 @@ export const AGENT_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "update_agent",
-    description: "Update an existing agent. Set name, description, systemPrompt, llmConfigId, graphNodes, graphEdges. When the agent should use tools, always set toolIds (array of ids from list_tools). Omitting toolIds leaves the agent with no tools.",
+    description: "Update an existing agent. Set name, description, systemPrompt, llmConfigId, graphNodes, graphEdges. When the agent should use tools, always set toolIds (array of ids from list_tools). Omitting toolIds leaves the agent with no tools. Use learningConfig to set per-agent limits for apply_agent_prompt_improvement: maxDerivedGood, maxDerivedBad, minCombinedFeedback, recentExecutionsLimit.",
     parameters: {
       type: "object",
       properties: {
@@ -53,6 +53,16 @@ export const AGENT_TOOLS: AssistantToolDef[] = [
         toolIds: { type: "array", items: { type: "string" } },
         graphNodes: { type: "array", description: "Graph nodes: [{ id, type, position: [x,y], parameters? }]. decision node: llmConfigId, toolIds, systemPrompt." },
         graphEdges: { type: "array", description: "Graph edges: [{ id, source, target }]" },
+        learningConfig: {
+          type: "object",
+          description: "Per-agent limits for self-learning (apply_agent_prompt_improvement). Persisted on the agent.",
+          properties: {
+            maxDerivedGood: { type: "number", description: "Max good examples from runs (default 20)" },
+            maxDerivedBad: { type: "number", description: "Max bad examples from runs (default 20)" },
+            minCombinedFeedback: { type: "number", description: "Min combined feedback to refine (default 1)" },
+            recentExecutionsLimit: { type: "number", description: "Max recent runs to consider (default 50)" },
+          },
+        },
       },
       required: ["id"],
     },
@@ -64,6 +74,23 @@ export const AGENT_TOOLS: AssistantToolDef[] = [
       type: "object",
       properties: { id: { type: "string" } },
       required: ["id"],
+    },
+  },
+  {
+    name: "apply_agent_prompt_improvement",
+    description: "Improve an agent's system prompt from feedback and/or execution history (errors and successes from workflow runs). Returns a suggested prompt and optionally applies it. Use when the agent should self-learn without user input. Learning limits can be set per agent via update_agent(learningConfig: { maxDerivedGood, maxDerivedBad, minCombinedFeedback, recentExecutionsLimit }); or overridden for this call with the optional parameters below.",
+    parameters: {
+      type: "object",
+      properties: {
+        agentId: { type: "string", description: "Agent ID to improve" },
+        autoApply: { type: "boolean", description: "If true, persist the refined prompt to the agent; if false, only return the suggestion (default false)" },
+        includeExecutionHistory: { type: "boolean", description: "If true, derive good/bad examples from recent workflow runs where this agent participated (default true)" },
+        maxDerivedGood: { type: "number", description: "Max number of good examples to derive from runs (overrides agent learningConfig; default 20)" },
+        maxDerivedBad: { type: "number", description: "Max number of bad examples to derive from runs (overrides agent learningConfig; default 20)" },
+        minCombinedFeedback: { type: "number", description: "Minimum combined feedback items (explicit + from runs) required to refine (overrides agent learningConfig; default 1)" },
+        recentExecutionsLimit: { type: "number", description: "Max number of recent workflow runs to consider (overrides agent learningConfig; default 50)" },
+      },
+      required: ["agentId"],
     },
   },
 ];

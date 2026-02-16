@@ -21,6 +21,7 @@ type ChatMessage = {
   content: string;
   toolCalls?: Array<{ id?: string; name: string; arguments?: Record<string, unknown>; result?: unknown }>;
   llmTrace?: LLMTraceCall[];
+  rephrasedPrompt?: string | null;
   createdAt?: number;
 };
 
@@ -229,6 +230,9 @@ function messagesToTurns(messages: ChatMessage[]): Turn[] {
 
 function turnToTraceSection(turn: Turn, index: number): string {
   const lines: string[] = [`--- Turn #${index + 1} ---`, "User input:", (turn.user.content ?? "").trim(), "", "Model output:"];
+  if (turn.assistant?.rephrasedPrompt?.trim()) {
+    lines.push("Rephrased:", turn.assistant.rephrasedPrompt.trim(), "");
+  }
   if (turn.assistant?.content?.trim()) lines.push(turn.assistant.content.trim());
   const toolCalls = turn.assistant?.toolCalls;
   if (Array.isArray(toolCalls) && toolCalls.length > 0) {

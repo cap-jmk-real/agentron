@@ -32,6 +32,8 @@ export interface ChatMessage {
   toolCalls?: ChatToolCall[];
   /** LLM request/response trace for this message (assistant only). */
   llmTrace?: LLMTraceCall[];
+  /** Rephrased user intent for this turn (assistant only; shown in UI and trace). */
+  rephrasedPrompt?: string | null;
   createdAt: number;
   conversationId?: string;
 }
