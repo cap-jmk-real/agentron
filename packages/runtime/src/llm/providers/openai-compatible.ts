@@ -54,7 +54,7 @@ export const openAICompatibleChat = async (
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
+    let errorText = await response.text();
     if (response.status === 400) {
       try {
         const err = JSON.parse(errorText) as { error?: { param?: string; code?: string } };
@@ -65,18 +65,18 @@ export const openAICompatibleChat = async (
             headers: { "Content-Type": "application/json", ...headers },
             body: JSON.stringify(body),
           });
+          if (!response.ok) errorText = await response.text();
         }
       } catch {
         // ignore parse error, throw original below
       }
     }
     if (!response.ok) {
-      const retryErrorText = await response.text();
       let hint = "";
       if (response.status === 404) {
         hint = " For 404: check that the model name is supported by your provider and that the endpoint URL in Settings → LLM Providers is correct.";
       }
-      throw new Error(`LLM request failed (${response.status}): ${retryErrorText || errorText}${hint}`);
+      throw new Error(`LLM request failed (${response.status}): ${errorText}${hint}`);
     }
   }
 

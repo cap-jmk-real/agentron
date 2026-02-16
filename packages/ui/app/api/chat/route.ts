@@ -280,6 +280,8 @@ async function summarizeConversation(
 /** Compress long conversation history by summarizing older messages so context stays within limits while preserving what happened. */
 const DEFAULT_HISTORY_COMPRESS_AFTER = 24;
 const DEFAULT_HISTORY_KEEP_RECENT = 16;
+/** Max completion tokens for chat assistant so long tool calls (e.g. execute_code with large commands) are not truncated. */
+const CHAT_ASSISTANT_MAX_TOKENS = 16384;
 
 async function summarizeHistoryChunk(
   messages: { role: string; content: string }[],
@@ -1888,6 +1890,7 @@ export async function POST(request: Request) {
             chatSelectedLlm: llmConfig ? { id: llmConfig.id, provider: llmConfig.provider, model: llmConfig.model } : undefined,
             systemPromptOverride,
             temperature: chatTemperature,
+            maxTokens: CHAT_ASSISTANT_MAX_TOKENS,
             onProgress: {
               onPlan(reasoning, todos) {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "plan", reasoning, todos })}\n\n`));
@@ -2108,6 +2111,7 @@ export async function POST(request: Request) {
       chatSelectedLlm: llmConfig ? { id: llmConfig.id, provider: llmConfig.provider, model: llmConfig.model } : undefined,
       systemPromptOverride,
       temperature: chatTemperature,
+      maxTokens: CHAT_ASSISTANT_MAX_TOKENS,
     });
 
     // Save assistant message to DB (user message already saved above)
@@ -2312,6 +2316,7 @@ registerScheduledTurnRunner(async (conversationId, userMessageContent) => {
       studioContext,
       chatSelectedLlm: llmConfig ? { id: llmConfig.id, provider: llmConfig.provider, model: llmConfig.model } : undefined,
       temperature: chatTemperature,
+      maxTokens: CHAT_ASSISTANT_MAX_TOKENS,
     });
 
     const displayContent = getAssistantDisplayContent(result.content, result.toolResults);

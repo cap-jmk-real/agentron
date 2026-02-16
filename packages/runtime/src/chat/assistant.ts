@@ -43,6 +43,8 @@ export interface AssistantOptions {
   onProgress?: AssistantProgress;
   /** LLM temperature (0–2). If set, used for all callLLM requests in this turn. Defaults: 0.4 main, 0.2 nudge. */
   temperature?: number;
+  /** Max completion tokens for LLM responses. Use a generous value (e.g. 16384) so long tool calls (e.g. execute_code with large commands) are not truncated. */
+  maxTokens?: number;
   /** Max follow-up rounds when there are tool results (default 2). Use 0 for "continue from shell approval" to save LLM calls. */
   maxFollowUpRounds?: number;
 }
@@ -120,10 +122,11 @@ export async function runAssistant(
   const mainTemp = options.temperature ?? 0.4;
   const nudgeTemp = options.temperature ?? 0.2;
 
-  // First LLM call
+  // First LLM call (use generous maxTokens so long tool calls are not truncated)
   const response = await options.callLLM({
     messages,
     temperature: mainTemp,
+    ...(options.maxTokens != null ? { maxTokens: options.maxTokens } : {}),
   });
 
   const rawContent = response.content;
@@ -255,18 +258,19 @@ export async function runAssistant(
   const actionKeywords = /\b(create|add|fix|configure|set up|update|make|build|workflow|workflows|agents?|tools?|llm|graph|outputs?|produce)\b/;
   const looksLikeActionRequest = actionKeywords.test(userLower);
   if (toolResults.length === 0 && looksLikeActionRequest) {
+    const possibleTruncation = /<tool_call>\s*\{/i.test(rawContent) && rawContent.trim().length > 500;
+    const nudgeContent = possibleTruncation
+      ? "Your previous response may have been cut off before the tool_call JSON was complete. Output the required <tool_call> block(s) again. For execute_code: use SHORT commands — split long sequences into multiple execute_code calls (e.g. one for clone, one for apt-get install, one for make) so each call stays under ~1500 characters and is not truncated. Use this exact format: <tool_call>{\"name\": \"tool_name\", \"arguments\": {...}}</tool_call>. Output only the tool_call blocks."
+      : "You responded with text but did not output any <tool_call> blocks. The user asked you to perform actions (create/configure/fix agents, workflows, or tools). You MUST output the required <tool_call> blocks now so the system can execute them. Start by listing or getting current state if needed (e.g. list_workflows, get_workflow, list_agents, list_llm_providers, list_tools), then create or update as needed. Use this exact format for each call: <tool_call>{\"name\": \"tool_name\", \"arguments\": {...}}</tool_call>. When you have <todos>, include \"todoIndex\" and \"completeTodo\": true in each tool's arguments. Output only the tool_call blocks, one after another.";
     const nudgeMessages: LLMMessage[] = [
       ...messages,
       { role: "assistant", content: rawContent },
-      {
-        role: "user",
-        content:
-          "You responded with text but did not output any <tool_call> blocks. The user asked you to perform actions (create/configure/fix agents, workflows, or tools). You MUST output the required <tool_call> blocks now so the system can execute them. Start by listing or getting current state if needed (e.g. list_workflows, get_workflow, list_agents, list_llm_providers, list_tools), then create or update as needed. Use this exact format for each call: <tool_call>{\"name\": \"tool_name\", \"arguments\": {...}}</tool_call>. When you have <todos>, include \"todoIndex\" and \"completeTodo\": true in each tool's arguments. Output only the tool_call blocks, one after another.",
-      },
+      { role: "user", content: nudgeContent },
     ];
     const nudgeResponse = await options.callLLM({
       messages: nudgeMessages,
       temperature: nudgeTemp,
+      ...(options.maxTokens != null ? { maxTokens: options.maxTokens } : {}),
     });
     const nudgeResults = await extractAndRunToolCalls(nudgeResponse.content, {
       todos: todos ?? [],
@@ -308,6 +312,7 @@ export async function runAssistant(
     const nudgeResponse = await options.callLLM({
       messages: nudgeMessages,
       temperature: nudgeTemp,
+      ...(options.maxTokens != null ? { maxTokens: options.maxTokens } : {}),
     });
     const moreResults = await extractAndRunToolCalls(nudgeResponse.content, {
       startIndex: toolResults.length,

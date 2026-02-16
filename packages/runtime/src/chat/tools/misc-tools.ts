@@ -46,7 +46,7 @@ export const MISC_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "execute_code",
-    description: "Execute a command in an existing sandbox (use sandboxId from create_sandbox or list_sandboxes)",
+    description: "Execute a command in an existing sandbox (use sandboxId from create_sandbox or list_sandboxes). Prefer short commands; for long sequences (e.g. clone then install then build) use multiple execute_code calls so each stays under ~1500 characters.",
     parameters: {
       type: "object",
       properties: {

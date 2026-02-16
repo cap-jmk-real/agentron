@@ -17,6 +17,7 @@
     "@rollup/rollup-win32-x64-msvc": "^4.57.1"
   },
   "scripts": {
+    "postinstall": "patch-package",
     "dev:ui": "npx next dev packages/ui",
     "build:ui": "npm --workspace packages/ui run build",
     "lint:ui": "npm --workspace packages/ui run lint",
@@ -36,5 +37,8 @@
     "build:desktop": "npm run build:ui && npm run build --workspace apps/desktop",
     "start:desktop": "npm run build --workspace apps/desktop && npx electron apps/desktop",
     "dist:desktop": "npm run build:desktop && npm run dist --workspace apps/desktop"
+  },
+  "devDependencies": {
+    "patch-package": "^8.0.1"
   }
 }

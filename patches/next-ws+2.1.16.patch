@@ -1,0 +1,13 @@
+diff --git a/node_modules/next-ws/dist/server/index.cjs b/node_modules/next-ws/dist/server/index.cjs
+index 2dff141..a3e368c 100644
+--- a/node_modules/next-ws/dist/server/index.cjs
++++ b/node_modules/next-ws/dist/server/index.cjs
+@@ -219,7 +219,7 @@ function setupWebSocketServer(nextServer) {
+     return logger2.error("[next-ws] was not able to find the HTTP server");
+   const wsServer = (
+     //
+-    useWebSocketServer(() => new import_ws.WebSocketServer({ noServer: true }))
++    useWebSocketServer(() => new (import_ws.WebSocketServer || import_ws.Server)({ noServer: true }))
+   );
+   const requestStorage = (
+     //

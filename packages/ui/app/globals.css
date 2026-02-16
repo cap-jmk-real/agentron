@@ -1025,6 +1025,10 @@ html[data-theme="dark"] .agent-stats-call-output {
 }
 
 /* GitHub-style terminal block: raw stack traces + shell output */
+.sandbox-terminal-fill {
+  height: 100%;
+}
+
 .run-shell-terminal {
   border-radius: 8px;
   overflow: hidden;
