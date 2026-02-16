@@ -3,7 +3,7 @@ import type { AssistantToolDef } from "./types";
 export const TOOL_TOOLS: AssistantToolDef[] = [
   {
     name: "list_tools",
-    description: "List all tools available in the studio. Returns id, name, protocol for each tool. Call this before create_agent when agents need capabilities (e.g. weather → std-weather, HTTP fetch → corresponding tool). Use the returned ids in toolIds when creating/updating agents. Standard tools include std-weather for current weather data — required for agents that 'talk about the weather' or report weather.",
+    description: "List all tools available in the studio. Returns id, name, protocol for each tool. Call this before create_agent when agents need capabilities (e.g. weather → std-weather, search the web → std-web-search, fetch a URL → std-fetch-url, run container → std-container-run, HTTP fetch → corresponding tool). Use the returned ids in toolIds when creating/updating agents. Standard tools include std-weather, std-web-search, std-fetch-url, std-container-run, and std-request-user-help. Add std-request-user-help ONLY when a workflow agent must pause for user input (confirmation, choice, credentials) — the run stops until the user responds. Do not add it for agents that do not need to pause.",
     parameters: { type: "object", properties: {}, required: [] },
   },
   {

@@ -1,6 +1,6 @@
 import { json } from "../_lib/response";
 import { db, sandboxes, fromSandboxRow, toSandboxRow } from "../_lib/db";
-import { getContainerManager } from "../_lib/container-manager";
+import { getContainerManager, withContainerInstallHint } from "../_lib/container-manager";
 import { eq } from "drizzle-orm";
 
 export const runtime = "nodejs";
@@ -96,7 +96,7 @@ else:
     }
     return json({ output, stdout: result.stdout, stderr: result.stderr });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = withContainerInstallHint(err instanceof Error ? err.message : String(err));
     return json({ error: message }, { status: 500 });
   }
 }

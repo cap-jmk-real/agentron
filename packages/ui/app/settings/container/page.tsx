@@ -7,16 +7,20 @@ type ContainerEngine = "podman" | "docker";
 
 export default function ContainerEngineSettingsPage() {
   const [containerEngine, setContainerEngine] = useState<ContainerEngine>("podman");
+  const [engineOk, setEngineOk] = useState<boolean | null>(null);
+  const [engineError, setEngineError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetch("/api/settings/app")
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: { containerEngine?: ContainerEngine } | null) => {
+      .then((data: { containerEngine?: ContainerEngine; containerEngineOk?: boolean; containerEngineError?: string } | null) => {
         if (data?.containerEngine === "docker" || data?.containerEngine === "podman") {
           setContainerEngine(data.containerEngine);
         }
+        setEngineOk(data?.containerEngineOk ?? null);
+        setEngineError(data?.containerEngineError ?? null);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -33,6 +37,13 @@ export default function ContainerEngineSettingsPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.containerEngine) setContainerEngine(data.containerEngine);
+        // Refetch to get updated engine verification
+        const getRes = await fetch("/api/settings/app");
+        if (getRes.ok) {
+          const getData = await getRes.json();
+          setEngineOk(getData?.containerEngineOk ?? null);
+          setEngineError(getData?.containerEngineError ?? null);
+        }
       }
     } finally {
       setSaving(false);
@@ -78,6 +89,16 @@ export default function ContainerEngineSettingsPage() {
           >
             {saving ? "Saving…" : "Save"}
           </button>
+          {engineOk !== null && (
+            <span style={{ fontSize: "0.85rem", color: engineOk ? "var(--success, #22c55e)" : "var(--error, #ef4444)" }}>
+              {engineOk ? `✓ ${containerEngine} ready` : `✗ ${containerEngine} not available`}
+              {!engineOk && engineError && (
+                <span style={{ marginLeft: "0.5rem", color: "var(--text-muted)", fontWeight: 400 }} title={engineError}>
+                  (run &quot;{containerEngine} info&quot; to verify)
+                </span>
+              )}
+            </span>
+          )}
         </div>
       </div>
 

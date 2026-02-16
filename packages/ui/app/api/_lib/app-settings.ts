@@ -6,11 +6,19 @@ const DEFAULT_MAX_FILE_UPLOAD_BYTES = 50 * 1024 * 1024; // 50MB
 const MIN_MAX_BYTES = 1 * 1024 * 1024; // 1MB
 const MAX_MAX_BYTES = 500 * 1024 * 1024; // 500MB
 
+const DEFAULT_WORKFLOW_MAX_SELF_FIX_RETRIES = 3;
+const MIN_SELF_FIX_RETRIES = 0;
+const MAX_SELF_FIX_RETRIES = 10;
+
 export type ContainerEngine = "podman" | "docker";
 
 export type AppSettings = {
   maxFileUploadBytes: number;
   containerEngine: ContainerEngine;
+  /** Allowed shell commands (exact match). When the assistant runs run_shell_command, if the command is in this list, it executes without user approval. */
+  shellCommandAllowlist: string[];
+  /** Max automatic retries per workflow agent step when a tool fails and the agent would request_user_help. 0 = disabled. */
+  workflowMaxSelfFixRetries: number;
 };
 
 function getSettingsPath(): string {
@@ -60,6 +68,24 @@ export function getContainerEngine(): ContainerEngine {
 /**
  * Returns full app settings for the settings API (GET).
  */
+function normalizeShellCommandAllowlist(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim());
+}
+
+export function getShellCommandAllowlist(): string[] {
+  return normalizeShellCommandAllowlist(loadRaw().shellCommandAllowlist);
+}
+
+function normalizeWorkflowMaxSelfFixRetries(v: unknown): number {
+  const n = typeof v === "number" && !Number.isNaN(v) ? Math.floor(v) : DEFAULT_WORKFLOW_MAX_SELF_FIX_RETRIES;
+  return Math.min(MAX_SELF_FIX_RETRIES, Math.max(MIN_SELF_FIX_RETRIES, n));
+}
+
+export function getWorkflowMaxSelfFixRetries(): number {
+  return normalizeWorkflowMaxSelfFixRetries(loadRaw().workflowMaxSelfFixRetries);
+}
+
 export function getAppSettings(): AppSettings {
   const raw = loadRaw();
   const max = raw.maxFileUploadBytes;
@@ -68,7 +94,9 @@ export function getAppSettings(): AppSettings {
       ? Math.floor(max)
       : DEFAULT_MAX_FILE_UPLOAD_BYTES;
   const containerEngine = normalizeContainerEngine(raw.containerEngine);
-  return { maxFileUploadBytes, containerEngine };
+  const shellCommandAllowlist = normalizeShellCommandAllowlist(raw.shellCommandAllowlist);
+  const workflowMaxSelfFixRetries = normalizeWorkflowMaxSelfFixRetries(raw.workflowMaxSelfFixRetries);
+  return { maxFileUploadBytes, containerEngine, shellCommandAllowlist, workflowMaxSelfFixRetries };
 }
 
 /**
@@ -86,7 +114,11 @@ export function updateAppSettings(updates: Partial<AppSettings>): AppSettings {
   }
   const containerEngine =
     updates.containerEngine !== undefined ? normalizeContainerEngine(updates.containerEngine) : current.containerEngine;
-  const next: AppSettings = { maxFileUploadBytes, containerEngine };
+  const shellCommandAllowlist =
+    updates.shellCommandAllowlist !== undefined ? normalizeShellCommandAllowlist(updates.shellCommandAllowlist) : current.shellCommandAllowlist;
+  const workflowMaxSelfFixRetries =
+    updates.workflowMaxSelfFixRetries !== undefined ? normalizeWorkflowMaxSelfFixRetries(updates.workflowMaxSelfFixRetries) : current.workflowMaxSelfFixRetries;
+  const next: AppSettings = { maxFileUploadBytes, containerEngine, shellCommandAllowlist, workflowMaxSelfFixRetries };
   save(next);
   return next;
 }

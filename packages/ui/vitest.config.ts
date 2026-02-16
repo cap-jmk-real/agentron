@@ -8,7 +8,8 @@ export default defineConfig({
     setupFiles: [path.resolve(__dirname, "vitest.setup.ts")],
     include: ["__tests__/**/*.test.ts"],
     testTimeout: 10000,
-    maxWorkers: 1,
+    // Parallel workers; each worker has its own DB/data dir via vitest.setup.ts (VITEST_POOL_ID).
+    maxWorkers: process.env.CI ? 2 : undefined,
     coverage: {
       provider: "v8",
       reporter: ["text", "text-summary", "html", "lcov"],
@@ -39,6 +40,21 @@ export default defineConfig({
         "**/api/run-code/**",
         "**/api/runs/**/respond/**",
         "**/app/lib/system-stats-interval.ts",
+        // Browser-only hooks (DOM, React context); unit-test with jsdom if needed. See __tests__/README.md.
+        "**/app/hooks/**",
+        // Setup flow; env/onboarding. See __tests__/README.md.
+        "**/api/setup/**",
+        // LLM/external or heavy; covered by integration or manual. See __tests__/README.md.
+        "**/api/chat/refine-prompt/**",
+        "**/api/chat/types.ts",
+        "**/api/debug/**",
+        "**/api/home/**",
+        "**/api/llm/models/**",
+        "**/api/llm/providers/**/openrouter-key/**",
+        "**/api/llm/providers/**/test/**",
+        "**/api/remote-servers/test/**",
+        // _lib: browser-only or long-running. See __tests__/README.md.
+        "**/api/_lib/telegram-polling.ts",
       ],
     },
   },

@@ -17,7 +17,7 @@ export const WORKFLOW_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "get_workflow",
-    description: "Get a workflow by ID including its nodes and edges. Use this when you need to read the current workflow graph before adding edges or updating it.",
+    description: "Get a workflow by ID including its nodes, edges, and optional branches. Branches are disconnected graphs with their own schedule (interval, daily@HH:mm, weekly@0,1,2). Use when you need to read the current workflow graph or branches before updating.",
     parameters: {
       type: "object",
       properties: { id: { type: "string", description: "Workflow ID" } },
@@ -83,19 +83,36 @@ export const WORKFLOW_TOOLS: AssistantToolDef[] = [
         name: { type: "string" },
         executionMode: { type: "string", enum: ["one_time", "continuous", "interval"] },
         maxRounds: { type: "number", description: "REQUIRED when edges form a loop. Number of full cycles (one cycle = each agent speaks once). E.g. 2-agent '3 rounds each' → maxRounds: 3." },
-        turnInstruction: { type: "string", description: "Optional instruction shown at the start of each agent turn (e.g. 'Reply directly to what the partner just said; do not monologue.') to make the conversation feel like a real back-and-forth. Omit to leave unset." },
+        turnInstruction: { type: "string", description: "Optional instruction shown at the start of each agent turn. Omit to leave unset." },
+        schedule: { type: "string", description: "Optional top-level schedule: interval seconds (e.g. '60'), daily@HH:mm, or weekly@0,1,2. Used when workflow has no branches." },
         nodes: { type: "array", description: "Each item: { id, type: 'agent', position: [x,y], parameters: { agentId: '<uuid-from-create_agent>' } }" },
         edges: { type: "array", description: "Each item: { id, source: nodeId, target: nodeId }" },
+        branches: {
+          type: "array",
+          description: "Optional array of disconnected graphs. Each branch: { id, name?, nodes, edges, maxRounds?, schedule?, executionMode? }. executionMode: one_time = run only when user triggers; interval = fixed schedule (schedule required: seconds, daily@HH:mm, weekly@0,1,2); continuous = re-run after each run completes (schedule optional = delay in seconds between runs). Branches run in parallel; mix modes freely.",
+        },
       },
       required: ["id"],
     },
   },
   {
-    name: "execute_workflow",
-    description: "Run a workflow so its agents execute and produce output. Call after create_workflow and update_workflow when the user wants to run. Returns run id, status, and output (output.output = final text, output.trail = array of { nodeId, agentName, round, input, output } per step). You MUST inspect output.trail to see what the agents actually said; if it does not match the user's goal (e.g. agents should discuss weather but trail shows other topics), use update_agent (e.g. add toolIds like std-weather, tighten systemPrompt) and call execute_workflow again. Do at most 2–3 improvement rounds, then report to the user.",
+    name: "delete_workflow",
+    description: "Delete a workflow by ID. Use when the user asks to delete or remove a workflow. Get workflow ids from list_workflows.",
     parameters: {
       type: "object",
-      properties: { id: { type: "string", description: "Workflow ID to run (from create_workflow or get_workflow)" } },
+      properties: { id: { type: "string", description: "Workflow ID to delete" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "execute_workflow",
+    description: "Run a workflow so its agents execute and produce output. Call this when the user says 'Run it now', 'Execute', 'Run the workflow', or selects that option from your format_response. Get the workflow id from list_workflows (use the only one, or the one you just created). Call after create_workflow and update_workflow when the user wants to run. Returns run id, status, and output (output.output = final text, output.trail = array of { nodeId, agentName, round, input, output } per step). You MUST inspect output.trail to see what the agents actually said; if it does not match the user's goal, use update_agent or update_workflow and call execute_workflow again. Do at most 2–3 improvement rounds, then report to the user.",
+    parameters: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Workflow ID to run (from create_workflow or get_workflow)" },
+        branchId: { type: "string", description: "Optional. When workflow has branches, run only this branch's graph. Use branch id from get_workflow.branches[].id." },
+      },
       required: ["id"],
     },
   },

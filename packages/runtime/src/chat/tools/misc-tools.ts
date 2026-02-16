@@ -67,6 +67,29 @@ export const MISC_TOOLS: AssistantToolDef[] = [
     parameters: { type: "object", properties: {}, required: [] },
   },
   {
+    name: "web_search",
+    description: "Search the web for current information, recent events, or facts. Use this when the user asks for up-to-date info, 'look it up', news, or anything that may have changed since your knowledge cutoff. Returns titles, URLs, and snippets you can cite or summarize.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query" },
+        maxResults: { type: "number", description: "Max number of results (default 8, max 20)" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "fetch_url",
+    description: "Fetch the full content of a specific URL (e.g. a documentation page, article, or link). Use this when the user asks you to visit a page, read documentation, open a link, or when you need the full content of a URL (e.g. from web_search results) to answer accurately. For research: use web_search first, then optionally fetch_url for the most relevant URLs to get full text.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "The URL to fetch (e.g. https://example.com/docs)" },
+      },
+      required: ["url"],
+    },
+  },
+  {
     name: "answer_question",
     description: "Answer a general knowledge question, coding question, or any conversational query the user asks — just like ChatGPT or Claude would. Use this tool whenever the user is NOT asking you to create, edit, list, or manage studio resources, but instead wants information, explanations, advice, brainstorming, writing help, or any other general-purpose response.",
     parameters: {
@@ -86,6 +109,17 @@ export const MISC_TOOLS: AssistantToolDef[] = [
         topic: { type: "string", description: "The specific topic or feature to explain (e.g. 'agents', 'workflows', 'sandboxes', 'general')" },
       },
       required: ["topic"],
+    },
+  },
+  {
+    name: "run_shell_command",
+    description: "Run a shell command on the host machine when you need to accomplish something via the CLI. The system context tells you the OS (Windows/macOS/Linux) — use platform-appropriate commands: on Windows use PowerShell (where.exe to find executables, e.g. where.exe podman); on Unix use sh style (which, ls). The command must be approved by the user unless it is on their allowlist. Returns stdout/stderr or needsApproval if approval is required.",
+    parameters: {
+      type: "object",
+      properties: {
+        command: { type: "string", description: "The shell command to run (e.g. docker ps, podman --version)" },
+      },
+      required: ["command"],
     },
   },
 ];

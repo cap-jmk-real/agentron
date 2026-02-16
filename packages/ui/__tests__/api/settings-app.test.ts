@@ -2,13 +2,16 @@ import { describe, it, expect } from "vitest";
 import { GET, PATCH } from "../../app/api/settings/app/route";
 
 describe("Settings app API", () => {
-  it("GET /api/settings/app returns default maxFileUploadBytes", async () => {
+  it("GET /api/settings/app returns default maxFileUploadBytes and workflowMaxSelfFixRetries", async () => {
     const res = await GET();
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(typeof data.maxFileUploadBytes).toBe("number");
     expect(data.maxFileUploadBytes).toBeGreaterThanOrEqual(1024 * 1024);
     expect(data.maxFileUploadBytes).toBeLessThanOrEqual(500 * 1024 * 1024);
+    expect(typeof data.workflowMaxSelfFixRetries).toBe("number");
+    expect(data.workflowMaxSelfFixRetries).toBeGreaterThanOrEqual(0);
+    expect(data.workflowMaxSelfFixRetries).toBeLessThanOrEqual(10);
   });
 
   it("PATCH /api/settings/app updates maxFileUploadBytes", async () => {
@@ -65,6 +68,28 @@ describe("Settings app API", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ maxFileUploadBytes: 50 * 1024 * 1024 }),
+      })
+    );
+  });
+
+  it("PATCH /api/settings/app updates workflowMaxSelfFixRetries", async () => {
+    const getRes = await GET();
+    const before = await getRes.json();
+    const patchRes = await PATCH(
+      new Request("http://localhost/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workflowMaxSelfFixRetries: 5 }),
+      })
+    );
+    expect(patchRes.status).toBe(200);
+    const patched = await patchRes.json();
+    expect(patched.workflowMaxSelfFixRetries).toBe(5);
+    await PATCH(
+      new Request("http://localhost/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workflowMaxSelfFixRetries: before.workflowMaxSelfFixRetries }),
       })
     );
   });

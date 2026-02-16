@@ -1,7 +1,7 @@
-/** System stats polling interval: 0.01s to 2s. Stored in ms. */
-export const SYSTEM_STATS_INTERVAL_MIN_MS = 10;
-export const SYSTEM_STATS_INTERVAL_MAX_MS = 2000;
-export const SYSTEM_STATS_INTERVAL_DEFAULT_MS = 400;
+/** System stats polling interval: 0.2s to 5s. Stored in ms. */
+export const SYSTEM_STATS_INTERVAL_MIN_MS = 200;
+export const SYSTEM_STATS_INTERVAL_MAX_MS = 5000;
+export const SYSTEM_STATS_INTERVAL_DEFAULT_MS = 1000;
 
 const STORAGE_KEY = "agentron-studio/system-stats-interval-ms";
 export const SYSTEM_STATS_INTERVAL_CHANGED_EVENT = "system-stats-interval-changed";

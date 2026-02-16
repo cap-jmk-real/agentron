@@ -3,16 +3,23 @@
  * Uses WorkflowScheduler for interval (seconds); uses setTimeout for daily@ / weekly@ and reschedules after each run.
  */
 import { WorkflowScheduler } from "@agentron-studio/runtime";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db, workflows, executions } from "./db";
 import { fromWorkflowRow, toExecutionRow } from "./db";
 import { executionOutputSuccess, executionOutputFailure } from "./db";
 import { runWorkflow, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE } from "./run-workflow";
+import { getWorkflowMaxSelfFixRetries } from "./app-settings";
+import { withContainerInstallHint } from "./container-manager";
 import { enqueueWorkflowRun } from "./workflow-queue";
 import type { Workflow } from "@agentron-studio/core";
 
 const intervalScheduler = new WorkflowScheduler();
 const calendarTimeouts = new Map<string, NodeJS.Timeout>();
+/** Timeouts for "continuous" mode: re-run after each run completes. Key = scheduleKey(workflowId, branchId). */
+const continuousTimeouts = new Map<string, NodeJS.Timeout>();
+
+/** Default delay (ms) between consecutive runs when executionMode is continuous and no schedule is set. */
+const CONTINUOUS_DEFAULT_DELAY_MS = 1000;
 
 /** Exported for tests. */
 export function parseScheduleSeconds(schedule: string): number | null {
@@ -72,11 +79,19 @@ export function nextWeeklyMs(days: number[]): number {
   return next.getTime() - now.getTime();
 }
 
-async function runOneScheduledWorkflow(workflowId: string): Promise<void> {
+async function runOneScheduledWorkflow(workflowId: string, branchId?: string): Promise<void> {
   const runId = crypto.randomUUID();
   await db
     .insert(executions)
-    .values(toExecutionRow({ id: runId, targetType: "workflow", targetId: workflowId, status: "running" }))
+    .values(
+      toExecutionRow({
+        id: runId,
+        targetType: "workflow",
+        targetId: workflowId,
+        targetBranchId: branchId ?? null,
+        status: "running",
+      })
+    )
     .run();
 
   try {
@@ -88,7 +103,14 @@ async function runOneScheduledWorkflow(workflowId: string): Promise<void> {
       const rows = await db.select({ status: executions.status }).from(executions).where(eq(executions.id, runId));
       return rows[0]?.status === "cancelled";
     };
-    const { output, context, trail } = await runWorkflow({ workflowId, runId, onStepComplete, isCancelled });
+    const { output, context, trail } = await runWorkflow({
+      workflowId,
+      runId,
+      branchId,
+      onStepComplete,
+      isCancelled,
+      maxSelfFixRetries: getWorkflowMaxSelfFixRetries(),
+    });
     const payload = executionOutputSuccess(output ?? context, trail);
     await db
       .update(executions)
@@ -96,14 +118,15 @@ async function runOneScheduledWorkflow(workflowId: string): Promise<void> {
       .where(eq(executions.id, runId))
       .run();
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message === WAITING_FOR_USER_MESSAGE) {
+    const rawMessage = err instanceof Error ? err.message : String(err);
+    if (rawMessage === WAITING_FOR_USER_MESSAGE) {
       return;
     }
-    if (message === RUN_CANCELLED_MESSAGE) {
+    if (rawMessage === RUN_CANCELLED_MESSAGE) {
       await db.update(executions).set({ status: "cancelled", finishedAt: Date.now() }).where(eq(executions.id, runId)).run();
       return;
     }
+    const message = withContainerInstallHint(rawMessage);
     const payload = executionOutputFailure(message, { message, stack: err instanceof Error ? err.stack : undefined });
     await db
       .update(executions)
@@ -113,37 +136,66 @@ async function runOneScheduledWorkflow(workflowId: string): Promise<void> {
   }
 }
 
-function scheduleCalendarWorkflow(workflow: Workflow): void {
-  const schedule = workflow.schedule?.trim();
+/** Key for calendar timeout map: workflow-only or workflow:branchId for branch schedules. */
+function scheduleKey(workflowId: string, branchId?: string): string {
+  return branchId ? `${workflowId}:${branchId}` : workflowId;
+}
+
+/**
+ * Start a continuous loop for a workflow or branch: run once, then when the run completes (not when it pauses for user),
+ * wait delayMs and run again. Repeats until refreshScheduledWorkflows clears it.
+ */
+function runContinuousLoop(workflowId: string, branchId: string | undefined, delayMs: number): void {
+  const key = scheduleKey(workflowId, branchId);
+  const run = () => {
+    enqueueWorkflowRun(() => runOneScheduledWorkflow(workflowId, branchId))
+      .then(() => {
+        const t = setTimeout(() => runContinuousLoop(workflowId, branchId, delayMs), delayMs);
+        continuousTimeouts.set(key, t);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof Error && err.message === WAITING_FOR_USER_MESSAGE) return;
+        if (err instanceof Error && err.message === RUN_CANCELLED_MESSAGE) return;
+        const t = setTimeout(() => runContinuousLoop(workflowId, branchId, delayMs), delayMs);
+        continuousTimeouts.set(key, t);
+      });
+  };
+  run();
+}
+
+function scheduleCalendarWorkflow(workflow: Workflow, branchId?: string): void {
+  const schedule = branchId
+    ? (workflow.branches?.find((b) => b.id === branchId)?.schedule?.trim())
+    : workflow.schedule?.trim();
   if (!schedule) return;
 
   const daily = parseDaily(schedule);
   if (daily) {
     const run = () => {
-      void enqueueWorkflowRun(() => runOneScheduledWorkflow(workflow.id)).then(() => {
+      void enqueueWorkflowRun(() => runOneScheduledWorkflow(workflow.id, branchId)).then(() => {
         const ms = nextDailyMs(daily.hour, daily.minute);
-        const t = setTimeout(() => scheduleCalendarWorkflow(workflow), ms);
-        calendarTimeouts.set(workflow.id, t);
+        const t = setTimeout(() => scheduleCalendarWorkflow(workflow, branchId), ms);
+        calendarTimeouts.set(scheduleKey(workflow.id, branchId), t);
       });
     };
     const ms = nextDailyMs(daily.hour, daily.minute);
     const t = setTimeout(run, ms);
-    calendarTimeouts.set(workflow.id, t);
+    calendarTimeouts.set(scheduleKey(workflow.id, branchId), t);
     return;
   }
 
   const weeklyDays = parseWeekly(schedule);
   if (weeklyDays) {
     const run = () => {
-      void enqueueWorkflowRun(() => runOneScheduledWorkflow(workflow.id)).then(() => {
+      void enqueueWorkflowRun(() => runOneScheduledWorkflow(workflow.id, branchId)).then(() => {
         const ms = nextWeeklyMs(weeklyDays);
-        const t = setTimeout(() => scheduleCalendarWorkflow(workflow), ms);
-        calendarTimeouts.set(workflow.id, t);
+        const t = setTimeout(() => scheduleCalendarWorkflow(workflow, branchId), ms);
+        calendarTimeouts.set(scheduleKey(workflow.id, branchId), t);
       });
     };
     const ms = nextWeeklyMs(weeklyDays);
     const t = setTimeout(run, ms);
-    calendarTimeouts.set(workflow.id, t);
+    calendarTimeouts.set(scheduleKey(workflow.id, branchId), t);
   }
 }
 
@@ -153,38 +205,92 @@ function clearCalendarWorkflow(workflowId: string): void {
     clearTimeout(t);
     calendarTimeouts.delete(workflowId);
   }
+  for (const key of calendarTimeouts.keys()) {
+    if (key.startsWith(`${workflowId}:`)) {
+      clearTimeout(calendarTimeouts.get(key)!);
+      calendarTimeouts.delete(key);
+    }
+  }
 }
 
 /**
- * Load workflows with executionMode interval/continuous and schedule set; register them with the scheduler.
+ * Load workflows with executionMode interval/continuous and schedule set, or with branches that have their own schedules; register with the scheduler.
  * Call on server start and after workflow create/update/delete.
  */
 export function refreshScheduledWorkflows(): void {
   intervalScheduler.clearAll();
   for (const t of calendarTimeouts.values()) clearTimeout(t);
   calendarTimeouts.clear();
+  for (const t of continuousTimeouts.values()) clearTimeout(t);
+  continuousTimeouts.clear();
 
   void (async () => {
-    const rows = await db
-      .select()
-      .from(workflows)
-      .where(inArray(workflows.executionMode, ["interval", "continuous"]));
-    const withSchedule = rows.filter((r) => r.schedule?.trim());
-    for (const row of withSchedule) {
+    const rows = await db.select().from(workflows);
+    for (const row of rows) {
       const workflow = fromWorkflowRow(row) as Workflow;
-      const schedule = workflow.schedule!.trim();
+      const hasBranches = Array.isArray(workflow.branches) && workflow.branches.length > 0;
 
-      const seconds = parseScheduleSeconds(schedule);
-      if (seconds != null) {
-        const intervalMs = seconds * 1000;
-        intervalScheduler.scheduleInterval(workflow, intervalMs, () =>
-          enqueueWorkflowRun(() => runOneScheduledWorkflow(workflow.id))
-        );
+      if (hasBranches) {
+        for (const branch of workflow.branches!) {
+          const mode = branch.executionMode ?? workflow.executionMode;
+          if (mode === "one_time") continue;
+
+          const schedule = branch.schedule?.trim();
+
+          if (mode === "continuous") {
+            const delayMs =
+              schedule != null && parseScheduleSeconds(schedule) != null
+                ? parseScheduleSeconds(schedule)! * 1000
+                : CONTINUOUS_DEFAULT_DELAY_MS;
+            runContinuousLoop(workflow.id, branch.id, delayMs);
+            continue;
+          }
+
+          if (mode === "interval" && schedule) {
+            const seconds = parseScheduleSeconds(schedule);
+            if (seconds != null) {
+              const intervalMs = seconds * 1000;
+              intervalScheduler.scheduleInterval(
+                { ...workflow, id: `${workflow.id}:${branch.id}` },
+                intervalMs,
+                () => enqueueWorkflowRun(() => runOneScheduledWorkflow(workflow.id, branch.id))
+              );
+              continue;
+            }
+            if (schedule.startsWith("daily@") || schedule.startsWith("weekly@")) {
+              scheduleCalendarWorkflow(workflow, branch.id);
+            }
+          }
+        }
         continue;
       }
 
-      if (schedule.startsWith("daily@") || schedule.startsWith("weekly@")) {
-        scheduleCalendarWorkflow(workflow);
+      const mode = workflow.executionMode;
+      if (mode === "one_time") continue;
+
+      const schedule = workflow.schedule?.trim();
+
+      if (mode === "continuous") {
+        const delayMs =
+          schedule != null && parseScheduleSeconds(schedule) != null
+            ? parseScheduleSeconds(schedule)! * 1000
+            : CONTINUOUS_DEFAULT_DELAY_MS;
+        runContinuousLoop(workflow.id, undefined, delayMs);
+        continue;
+      }
+
+      if (mode === "interval" && schedule) {
+        const seconds = parseScheduleSeconds(schedule);
+        if (seconds != null) {
+          const intervalMs = seconds * 1000;
+          intervalScheduler.scheduleInterval(workflow, intervalMs, () =>
+            enqueueWorkflowRun(() => runOneScheduledWorkflow(workflow.id))
+          );
+          continue;
+        }
+        if (schedule.startsWith("daily@") || schedule.startsWith("weekly@")) {
+          scheduleCalendarWorkflow(workflow);
+        }
       }
     }
   })();

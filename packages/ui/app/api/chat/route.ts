@@ -17,8 +17,15 @@ import {
   guardrails,
   agentStoreEntries,
   trainingRuns,
+  runLogs,
+  reminders,
+  fromReminderRow,
+  toReminderRow,
 } from "../_lib/db";
-import { runWorkflow, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE } from "../_lib/run-workflow";
+import { scheduleReminder, cancelReminderTimeout } from "../_lib/reminder-scheduler";
+import { registerScheduledTurnRunner } from "../_lib/run-scheduled-turn";
+import { runWorkflow, runWorkflowForRun, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE } from "../_lib/run-workflow";
+import { enqueueWorkflowRun } from "../_lib/workflow-queue";
 import { getDeploymentCollectionId, retrieveChunks } from "../_lib/rag";
 import type { RemoteServer } from "../_lib/db";
 import { testRemoteConnection } from "../_lib/remote-test";
@@ -26,15 +33,114 @@ import { randomAgentName, randomWorkflowName } from "../_lib/naming";
 import { runSerializedByConversation } from "../_lib/chat-queue";
 import { llmContextPrefix, normalizeChatError } from "../_lib/chat-helpers";
 import { openclawSend, openclawHistory, openclawAbort } from "../_lib/openclaw-client";
-import { eq, asc, desc, isNotNull, and, like } from "drizzle-orm";
+import { eq, asc, desc, isNotNull, and, like, inArray } from "drizzle-orm";
 import type { LLMTraceCall, LLMConfig } from "@agentron-studio/core";
-import { runAssistant, buildFeedbackInjection, createDefaultLLMManager, resolveModelPricing, calculateCost, type StudioContext } from "@agentron-studio/runtime";
-import { getContainerManager } from "../_lib/container-manager";
+import { runAssistant, buildFeedbackInjection, createDefaultLLMManager, resolveModelPricing, calculateCost, type StudioContext, searchWeb, fetchUrl } from "@agentron-studio/runtime";
+import { getContainerManager, withContainerInstallHint } from "../_lib/container-manager";
+import { getShellCommandAllowlist, updateAppSettings } from "../_lib/app-settings";
 import { getStoredCredential, setStoredCredential } from "../_lib/credential-store";
 import { getVaultKeyFromRequest } from "../_lib/vault";
-import type { LLMMessage, LLMResponse } from "@agentron-studio/runtime";
+import type { LLMMessage, LLMRequest, LLMResponse } from "@agentron-studio/runtime";
+import { layoutNodesByGraph } from "../../lib/canvas-layout";
+import { runShellCommand } from "../_lib/shell-exec";
+import { platform } from "node:os";
 
 export const runtime = "nodejs";
+
+/** Build system context so the assistant generates platform-appropriate shell commands. */
+function getSystemContext(): string {
+  const p = platform();
+  if (p === "win32") {
+    return "System: Windows. Shell commands run via PowerShell — use where.exe to find executables (e.g. where.exe podman, where.exe docker). Paths use backslashes.";
+  }
+  if (p === "darwin") {
+    return "System: macOS. Shell commands run via sh — use Unix commands (e.g. which, ls, docker, podman).";
+  }
+  if (p === "linux") {
+    return "System: Linux. Shell commands run via sh — use Unix commands (e.g. which, ls, docker, podman).";
+  }
+  return `System: ${p}. Shell commands run via sh (Unix-style) unless Windows.`;
+}
+
+/** Build a chat-friendly message from a run's output and logs. Surfaces agent narrative, errors, and next steps. */
+function buildRunResponseForChat(
+  run: { id: string; status: string; output?: unknown },
+  logEntries: Array<{ level: string; message: string }>
+): string {
+  const lines: string[] = [];
+  const out = run.output && typeof run.output === "object" && !Array.isArray(run.output) ? (run.output as Record<string, unknown>) : null;
+  const runError = out?.error ?? (out?.errorDetails as { message?: string } | undefined)?.message;
+  const agentOutput = out?.output;
+
+  if (run.status === "failed" && runError) {
+    lines.push(`**Run failed:** ${runError}`);
+    if (out?.errorDetails && typeof out.errorDetails === "object" && (out.errorDetails as { stack?: string }).stack) {
+      lines.push("");
+      lines.push("```");
+      lines.push((out.errorDetails as { stack: string }).stack);
+      lines.push("```");
+    }
+  } else if (run.status === "cancelled") {
+    lines.push("Run was cancelled.");
+  } else if (agentOutput !== undefined) {
+    const text = typeof agentOutput === "string" ? agentOutput : JSON.stringify(agentOutput, null, 2);
+    lines.push(text);
+  }
+
+  const stderrEntries = logEntries.filter((e) => e.level === "stderr" && e.message.trim());
+  const uniqueStderr = [...new Set(stderrEntries.map((e) => e.message.trim()))].filter((m) => /error|fail|invalid|improper/i.test(m));
+  if (uniqueStderr.length > 0) {
+    lines.push("");
+    lines.push("**Container/execution errors:**");
+    for (const msg of uniqueStderr.slice(0, 5)) {
+      lines.push(`- ${msg}`);
+    }
+  }
+
+  if (run.status === "waiting_for_user") {
+    lines.push("");
+    lines.push("▶ **The agent is waiting for your input.** Reply above to continue.");
+  }
+
+  lines.push("");
+  lines.push(`[View full run](/runs/${run.id})`);
+  return lines.join("\n");
+}
+
+type GraphNode = { id: string; type?: string; position: [number, number]; parameters?: Record<string, unknown> };
+type GraphEdge = { id: string; source: string; target: string };
+
+/** Apply layered graph layout to nodes so chat-created agents have a nice arrangement (same as the Arrange button on the canvas). */
+function applyAgentGraphLayout(graphNodes: GraphNode[], graphEdges: GraphEdge[]): GraphNode[] {
+  if (graphNodes.length === 0) return graphNodes;
+  return layoutNodesByGraph({
+    items: graphNodes,
+    getNodeId: (n) => n.id,
+    edges: graphEdges,
+    setPosition: (n, x, y) => ({ ...n, position: [x, y] }),
+  });
+}
+
+/** Enrich agent tool results with tool names (id + name) so stack traces show which tools an agent has. */
+async function enrichAgentToolResult(result: unknown, args?: Record<string, unknown>): Promise<unknown> {
+  if (result == null || typeof result !== "object" || Array.isArray(result)) return result;
+  const obj = result as Record<string, unknown>;
+  if (obj.error != null) return result;
+  let ids: string[] = [];
+  if (Array.isArray(obj.toolIds)) ids = (obj.toolIds as unknown[]).filter((x): x is string => typeof x === "string");
+  const def = obj.definition;
+  if (def != null && typeof def === "object" && !Array.isArray(def)) {
+    const defObj = def as Record<string, unknown>;
+    if (Array.isArray(defObj.toolIds)) ids = [...ids, ...(defObj.toolIds as unknown[]).filter((x): x is string => typeof x === "string")];
+  }
+  if (Array.isArray(args?.toolIds)) ids = [...ids, ...(args.toolIds as unknown[]).filter((x): x is string => typeof x === "string")];
+  ids = [...new Set(ids)];
+  if (ids.length === 0) return result;
+  await ensureStandardTools();
+  const rows = await db.select({ id: tools.id, name: tools.name }).from(tools).where(inArray(tools.id, ids));
+  const toolList = rows.map((r) => ({ id: r.id, name: r.name }));
+  return { ...obj, tools: toolList };
+}
 
 /** First step: rephrase the user message into a clear prompt and detect if they want to retry the last message. */
 async function rephraseAndClassify(
@@ -87,6 +193,34 @@ async function rephraseAndClassify(
     // LLM unreachable: do not show user's message as "rephrased"
     return { rephrasedPrompt: undefined, wantsRetry: false };
   }
+}
+
+/** Max length for "short message" skip-rephrase (avoid rephrase for "ok", "yes", "3", etc.). */
+const SHORT_MESSAGE_SKIP_REPHRASE_LEN = 100;
+
+/** Max chars for stdout/stderr in continueShellApproval effectiveMessage to keep context small. */
+const CONTINUE_SHELL_OUTPUT_MAX_LEN = 500;
+
+function buildContinueShellApprovalMessage(data: { command: string; stdout?: string; stderr?: string; exitCode?: number }): string {
+  const trunc = (s: string) =>
+    s.length <= CONTINUE_SHELL_OUTPUT_MAX_LEN ? s : s.slice(0, CONTINUE_SHELL_OUTPUT_MAX_LEN) + "…";
+  const stdout = trunc((data.stdout ?? "").trim());
+  const stderr = trunc((data.stderr ?? "").trim());
+  const exitCode = data.exitCode ?? "";
+  return `The user approved the shell command: \`${(data.command ?? "").trim()}\`. Result: exitCode=${exitCode}${stdout ? `, stdout: ${stdout}` : ""}${stderr ? `, stderr: ${stderr}` : ""}.`;
+}
+
+/** Whether to skip rephrase (synthetic messages, explicit flag, or short non-question) to save one LLM call. */
+function shouldSkipRephrase(
+  content: string,
+  payload?: { skipRephrase?: boolean }
+): boolean {
+  if (payload?.skipRephrase === true) return true;
+  const trimmed = content.trim();
+  if (trimmed.startsWith("The user approved and ran:")) return true;
+  if (trimmed.startsWith("Added ") && trimmed.includes("allowlist")) return true;
+  if (trimmed.length > 0 && trimmed.length < SHORT_MESSAGE_SKIP_REPHRASE_LEN && !trimmed.endsWith("?")) return true;
+  return false;
 }
 
 const TITLE_FALLBACK_MAX_LEN = 40;
@@ -182,14 +316,101 @@ function ensureLlmNodesHaveSystemPrompt(
   }
 }
 
+/** When toolIds are provided but graphNodes lack tool nodes, add tool nodes and edges from each llm node to each tool. */
+function ensureToolNodesInGraph(
+  graphNodes: { id: string; type?: string; position: [number, number]; parameters?: Record<string, unknown> }[],
+  graphEdges: { id: string; source: string; target: string }[],
+  toolIds: string[]
+): void {
+  if (!Array.isArray(toolIds) || toolIds.length === 0) return;
+  const existingToolIds = new Set(
+    graphNodes
+      .filter((n) => n.type === "tool" && n.parameters && typeof (n.parameters as { toolId?: string }).toolId === "string")
+      .map((n) => (n.parameters as { toolId: string }).toolId)
+  );
+  const missingIds = toolIds.filter((id) => !existingToolIds.has(id));
+  if (missingIds.length === 0) return;
+
+  const llmNodes = graphNodes.filter((n) => n.type === "llm");
+  const baseX = Math.max(...graphNodes.map((n) => n.position[0] ?? 0), 100) + 180;
+  const edgeSet = new Set(graphEdges.map((e) => `${e.source}->${e.target}`));
+
+  for (let i = 0; i < missingIds.length; i++) {
+    const toolId = missingIds[i];
+    const nodeId = `t-${toolId.slice(0, 8)}`;
+    const pos: [number, number] = [baseX + i * 180, 100];
+    graphNodes.push({ id: nodeId, type: "tool", position: pos, parameters: { toolId } });
+
+    for (const llm of llmNodes) {
+      const key = `${llm.id}->${nodeId}`;
+      if (!edgeSet.has(key)) {
+        edgeSet.add(key);
+        graphEdges.push({ id: `e-${llm.id}-${nodeId}`, source: llm.id, target: nodeId });
+      }
+    }
+  }
+}
+
 /** When the assistant only called ask_user (no other text), use the question as the chat response. */
+/** When format_response was used, prefer its summary + needsInput as the stored content. */
+/** When answer_question was used and the assistant produced substantial content (e.g. full explanation), prefer that content so guidance is surfaced to the user. */
 function getAssistantDisplayContent(
   content: string,
   toolResults: { name: string; args: Record<string, unknown>; result: unknown }[]
 ): string {
-  if (content.trim()) return content;
+  const formatResp = toolResults.find((r) => r.name === "format_response");
+  const res = formatResp?.result;
+  const usedAnswerQuestion = toolResults.some((r) => r.name === "answer_question");
+  const contentTrimmed = content.trim();
+
+  if (res && typeof res === "object" && res !== null && "formatted" in res && (res as { formatted?: boolean }).formatted === true) {
+    const obj = res as { summary?: string; needsInput?: string };
+    const summary = typeof obj.summary === "string" ? obj.summary.trim() : "";
+    const needsInput = typeof obj.needsInput === "string" ? obj.needsInput.trim() : "";
+    // If the user asked for explanation/advice (answer_question) and the assistant produced substantial text, show that so the full guidance is visible.
+    if (usedAnswerQuestion && contentTrimmed.length > 150 && contentTrimmed.length > summary.length) {
+      return needsInput ? `${contentTrimmed}\n\n${needsInput}` : contentTrimmed;
+    }
+    if (summary) return needsInput ? `${summary}\n\n${needsInput}` : summary;
+  }
+  if (contentTrimmed) return content;
   const q = getAskUserQuestionFromToolResults(toolResults);
   return q ?? content;
+}
+
+/** Derive turn status and interactive prompt from tool results for done event. */
+function getTurnStatusFromToolResults(
+  toolResults: { name: string; args: Record<string, unknown>; result: unknown }[]
+): { status: "completed" | "waiting_for_input"; interactivePrompt?: { question: string; options?: string[] } } {
+  const askUser = toolResults.find((r) => r.name === "ask_user" || r.name === "ask_credentials");
+  const askRes = askUser?.result;
+  if (askRes && typeof askRes === "object" && askRes !== null) {
+    const obj = askRes as { waitingForUser?: boolean; question?: string; options?: unknown[] };
+    if (obj.waitingForUser === true) {
+      const question = typeof obj.question === "string" ? obj.question.trim() : "Please provide the information or confirmation.";
+      const options = Array.isArray(obj.options)
+        ? obj.options.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim())
+        : undefined;
+      return { status: "waiting_for_input", interactivePrompt: { question, options } };
+    }
+  }
+  const formatResp = toolResults.find((r) => r.name === "format_response");
+  const fmtRes = formatResp?.result;
+  if (fmtRes && typeof fmtRes === "object" && fmtRes !== null) {
+    const obj = fmtRes as { formatted?: boolean; summary?: string; needsInput?: string; options?: unknown[] };
+    if (obj.formatted === true) {
+      const hasOptions = Array.isArray(obj.options) && obj.options.length > 0;
+      const hasNeedsInput = typeof obj.needsInput === "string" && obj.needsInput.trim().length > 0;
+      if (hasOptions || hasNeedsInput) {
+        const options = hasOptions
+          ? (obj.options as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim())
+          : [];
+        const question = [obj.summary, obj.needsInput].filter(Boolean).join("\n\n").trim() || "Choose an option:";
+        return { status: "waiting_for_input", interactivePrompt: { question, options } };
+      }
+    }
+  }
+  return { status: "completed" };
 }
 
 /** Extract ask_user question from tool results or persisted toolCalls so history retains context. */
@@ -206,6 +427,53 @@ function getAskUserQuestionFromToolResults(
   return undefined;
 }
 
+type LastAssistantDeleteConfirmContext = {
+  agentIds: string[];
+  workflowIds: string[];
+  firstOption: string;
+};
+
+/**
+ * If the last message in the conversation is an assistant message whose tool results include
+ * list_agents, list_workflows, and ask_user (with options), return the ids and first option
+ * so we can run deletions server-side when the user confirms with the first option.
+ */
+function getLastAssistantDeleteConfirmContext(
+  lastRow: { role: string; toolCalls?: string | null } | undefined
+): LastAssistantDeleteConfirmContext | null {
+  if (!lastRow || lastRow.role !== "assistant" || !lastRow.toolCalls) return null;
+  let parsed: unknown;
+  try {
+    parsed = typeof lastRow.toolCalls === "string" ? JSON.parse(lastRow.toolCalls) : null;
+  } catch {
+    return null;
+  }
+  const toolResults = Array.isArray(parsed) ? (parsed as { name: string; result?: unknown }[]) : [];
+  const listAgents = toolResults.find((r) => r.name === "list_agents");
+  const listWorkflows = toolResults.find((r) => r.name === "list_workflows");
+  const askUser = toolResults.find((r) => r.name === "ask_user");
+  const agentIds = Array.isArray(listAgents?.result)
+    ? (listAgents.result as { id?: string }[]).map((x) => x.id).filter((id): id is string => typeof id === "string")
+    : [];
+  const workflowIds = Array.isArray(listWorkflows?.result)
+    ? (listWorkflows.result as { id?: string }[]).map((x) => x.id).filter((id): id is string => typeof id === "string")
+    : [];
+  const options =
+    askUser?.result && typeof askUser.result === "object" && askUser.result !== null && "options" in askUser.result
+      ? Array.isArray((askUser.result as { options?: unknown }).options)
+        ? ((askUser.result as { options: unknown[] }).options.filter((o): o is string => typeof o === "string") as string[])
+        : []
+      : [];
+  const firstOption = options[0]?.trim();
+  if (!firstOption || (agentIds.length === 0 && workflowIds.length === 0)) return null;
+  return { agentIds, workflowIds, firstOption };
+}
+
+/** True if the user message matches the first (affirmative) option, so we can run the confirmation path. */
+function userMessageMatchesFirstOption(userTrim: string, firstOption: string): boolean {
+  return userTrim === firstOption || userTrim.toLowerCase() === firstOption.toLowerCase();
+}
+
 async function executeTool(
   name: string,
   args: Record<string, unknown>,
@@ -219,7 +487,15 @@ async function executeTool(
     case "ask_user": {
       const question = typeof a.question === "string" ? a.question.trim() : "";
       const reason = typeof a.reason === "string" ? (a.reason as string).trim() : undefined;
-      return { waitingForUser: true, question: question || "Please provide the information or confirmation.", ...(reason ? { reason } : {}) };
+      const options = Array.isArray(a.options)
+        ? (a.options as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim())
+        : undefined;
+      return {
+        waitingForUser: true,
+        question: question || "Please provide the information or confirmation.",
+        ...(options && options.length > 0 ? { options } : {}),
+        ...(reason ? { reason } : {}),
+      };
     }
     case "ask_credentials": {
       const question = typeof a.question === "string" ? a.question.trim() : "Please enter the requested credential.";
@@ -230,6 +506,16 @@ async function executeTool(
         return { credentialProvided: true, value: plaintext };
       }
       return { waitingForUser: true, credentialRequest: true, question: question || "Please enter the requested credential.", credentialKey };
+    }
+    case "format_response": {
+      const summary = typeof a.summary === "string" ? (a.summary as string).trim() : "";
+      const needsInput = typeof a.needsInput === "string" && (a.needsInput as string).trim()
+        ? (a.needsInput as string).trim()
+        : undefined;
+      const options = Array.isArray(a.options)
+        ? (a.options as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim())
+        : undefined;
+      return { formatted: true, summary: summary || "", needsInput, options };
     }
     case "retry_last_message": {
       if (!conversationId) return { lastUserMessage: null, message: "No conversation context." };
@@ -257,16 +543,22 @@ async function executeTool(
         const graphNodes = a.graphNodes as { id: string; type?: string; position: [number, number]; parameters?: Record<string, unknown> }[];
         const graphEdges = (Array.isArray(a.graphEdges) ? a.graphEdges : []) as { id: string; source: string; target: string }[];
         ensureLlmNodesHaveSystemPrompt(graphNodes, topLevelSystemPrompt ?? (def.systemPrompt as string | undefined));
-        def.graph = { nodes: graphNodes, edges: graphEdges };
         if (!toolIds || toolIds.length === 0) {
           const fromGraph = graphNodes
             .filter((n) => n.type === "tool" && n.parameters && typeof (n.parameters as { toolId?: string }).toolId === "string")
             .map((n) => (n.parameters as { toolId: string }).toolId);
           if (fromGraph.length > 0) toolIds = [...new Set(fromGraph)];
         }
+        ensureToolNodesInGraph(graphNodes, graphEdges, toolIds ?? []);
+        def.graph = { nodes: applyAgentGraphLayout(graphNodes, graphEdges), edges: graphEdges };
       } else if (topLevelSystemPrompt && (a.kind as string) !== "code") {
         const nid = `n-${crypto.randomUUID().slice(0, 8)}`;
-        def.graph = { nodes: [{ id: nid, type: "llm", position: [100, 100], parameters: { systemPrompt: topLevelSystemPrompt } }], edges: [] };
+        const graphNodes: { id: string; type?: string; position: [number, number]; parameters?: Record<string, unknown> }[] = [
+          { id: nid, type: "llm", position: [100, 100], parameters: { systemPrompt: topLevelSystemPrompt } },
+        ];
+        const graphEdges: { id: string; source: string; target: string }[] = [];
+        ensureToolNodesInGraph(graphNodes, graphEdges, toolIds ?? []);
+        def.graph = { nodes: applyAgentGraphLayout(graphNodes, graphEdges), edges: graphEdges };
       }
       if (toolIds && toolIds.length > 0) def.toolIds = toolIds;
       const llmConfigId = a.llmConfigId as string | undefined;
@@ -325,23 +617,46 @@ async function executeTool(
       if (a.llmConfigId) def.defaultLlmConfigId = a.llmConfigId as string;
       if (Array.isArray(a.graphNodes) || Array.isArray(a.graphEdges)) {
         const existingGraph = def.graph;
-        const graph: { nodes: unknown[]; edges: unknown[] } =
-          existingGraph != null && typeof existingGraph === "object" && !Array.isArray(existingGraph)
-            ? { nodes: Array.isArray((existingGraph as { nodes?: unknown[] }).nodes) ? (existingGraph as { nodes: unknown[] }).nodes : [], edges: Array.isArray((existingGraph as { edges?: unknown[] }).edges) ? (existingGraph as { edges: unknown[] }).edges : [] }
-            : { nodes: [], edges: [] };
+        const graphNodes = (existingGraph != null && typeof existingGraph === "object" && !Array.isArray(existingGraph) && Array.isArray((existingGraph as { nodes?: unknown[] }).nodes))
+          ? (existingGraph as { nodes: { id: string; type?: string; position: [number, number]; parameters?: Record<string, unknown> }[] }).nodes
+          : [];
+        const graphEdges = (existingGraph != null && typeof existingGraph === "object" && !Array.isArray(existingGraph) && Array.isArray((existingGraph as { edges?: unknown[] }).edges))
+          ? (existingGraph as { edges: { id: string; source: string; target: string }[] }).edges
+          : [];
         if (Array.isArray(a.graphNodes)) {
           const nodes = a.graphNodes as { id: string; type?: string; position: [number, number]; parameters?: Record<string, unknown> }[];
           const fallback = typeof a.systemPrompt === "string" && a.systemPrompt.trim() ? (a.systemPrompt as string).trim() : (def.systemPrompt as string | undefined);
           ensureLlmNodesHaveSystemPrompt(nodes, fallback);
-          graph.nodes = nodes;
+          graphNodes.length = 0;
+          graphNodes.push(...nodes);
         }
-        if (Array.isArray(a.graphEdges)) graph.edges = a.graphEdges as { id: string; source: string; target: string }[];
-        def.graph = graph;
-        if (!Array.isArray(a.toolIds) && Array.isArray(graph.nodes)) {
-          const fromGraph = (graph.nodes as { type?: string; parameters?: { toolId?: string } }[])
-            .filter((n) => n && typeof n === "object" && n.type === "tool" && n.parameters && typeof (n.parameters as { toolId?: string }).toolId === "string")
+        if (Array.isArray(a.graphEdges)) {
+          graphEdges.length = 0;
+          graphEdges.push(...(a.graphEdges as { id: string; source: string; target: string }[]));
+        }
+        let updateToolIds = Array.isArray(a.toolIds) ? (a.toolIds as string[]).filter((x) => typeof x === "string") : (def.toolIds as string[] | undefined);
+        if (!updateToolIds || updateToolIds.length === 0) {
+          const fromGraph = graphNodes
+            .filter((n) => n.type === "tool" && n.parameters && typeof (n.parameters as { toolId?: string }).toolId === "string")
             .map((n) => (n.parameters as { toolId: string }).toolId);
-          if (fromGraph.length > 0) def.toolIds = [...new Set(fromGraph)];
+          if (fromGraph.length > 0) updateToolIds = [...new Set(fromGraph)];
+        }
+        if (updateToolIds && updateToolIds.length > 0) ensureToolNodesInGraph(graphNodes, graphEdges, updateToolIds);
+        def.graph = { nodes: applyAgentGraphLayout(graphNodes, graphEdges), edges: graphEdges };
+      } else if (Array.isArray(a.toolIds) && a.toolIds.length > 0) {
+        const existingGraph = def.graph;
+        if (existingGraph != null && typeof existingGraph === "object" && !Array.isArray(existingGraph)) {
+          const graphNodes = Array.isArray((existingGraph as { nodes?: unknown[] }).nodes)
+            ? (existingGraph as { nodes: { id: string; type?: string; position: [number, number]; parameters?: Record<string, unknown> }[] }).nodes
+            : [];
+          const graphEdges = Array.isArray((existingGraph as { edges?: unknown[] }).edges)
+            ? (existingGraph as { edges: { id: string; source: string; target: string }[] }).edges
+            : [];
+          if (graphNodes.length > 0) {
+            const toolIds = (a.toolIds as string[]).filter((x) => typeof x === "string");
+            ensureToolNodesInGraph(graphNodes, graphEdges, toolIds);
+            def.graph = { nodes: applyAgentGraphLayout(graphNodes, graphEdges), edges: graphEdges };
+          }
         }
       }
       (updated as { definition?: unknown }).definition = def;
@@ -406,7 +721,7 @@ async function executeTool(
       const w = fromWorkflowRow(rows[0]);
       const wNodes = Array.isArray(w.nodes) ? w.nodes : [];
       const wEdges = Array.isArray(w.edges) ? w.edges : [];
-      return { id: w.id, name: w.name, executionMode: w.executionMode, nodes: wNodes, edges: wEdges, maxRounds: w.maxRounds, turnInstruction: (w as { turnInstruction?: string | null }).turnInstruction };
+      return { id: w.id, name: w.name, executionMode: w.executionMode, nodes: wNodes, edges: wEdges, maxRounds: w.maxRounds, turnInstruction: (w as { turnInstruction?: string | null }).turnInstruction, branches: (w as { branches?: unknown }).branches };
     }
     case "add_workflow_edges": {
       const wfId = a.id as string;
@@ -468,8 +783,10 @@ async function executeTool(
       const updated: Record<string, unknown> = { ...base };
       if (a.name != null) updated.name = String(a.name);
       if (a.executionMode != null) updated.executionMode = a.executionMode as "one_time" | "continuous" | "interval";
+      if (a.schedule !== undefined) updated.schedule = a.schedule === null ? undefined : String(a.schedule);
       if (a.maxRounds != null) updated.maxRounds = Number(a.maxRounds);
       if (a.turnInstruction !== undefined) updated.turnInstruction = a.turnInstruction === null ? null : String(a.turnInstruction);
+      if (a.branches !== undefined) updated.branches = Array.isArray(a.branches) ? a.branches : undefined;
       if (Array.isArray(a.nodes)) {
         const normalizedNodes: { id: string; type: string; position: [number, number]; parameters: Record<string, unknown> }[] = [];
         for (let i = 0; i < a.nodes.length; i++) {
@@ -506,11 +823,18 @@ async function executeTool(
         }
         updated.edges = normalizedEdges;
       }
-      const workflowPayload = { id: updated.id, name: updated.name, description: updated.description, nodes: updated.nodes ?? [], edges: updated.edges ?? [], executionMode: updated.executionMode, schedule: updated.schedule, maxRounds: updated.maxRounds, turnInstruction: updated.turnInstruction };
+      const workflowPayload = { id: updated.id, name: updated.name, description: updated.description, nodes: updated.nodes ?? [], edges: updated.edges ?? [], executionMode: updated.executionMode, schedule: updated.schedule, maxRounds: updated.maxRounds, turnInstruction: updated.turnInstruction, branches: updated.branches };
       await db.update(workflows).set(toWorkflowRow(workflowPayload as Parameters<typeof toWorkflowRow>[0])).where(eq(workflows.id, wfId)).run();
       const nodeList = Array.isArray(workflowPayload.nodes) ? workflowPayload.nodes : [];
       const edgeList = Array.isArray(workflowPayload.edges) ? workflowPayload.edges : [];
       return { id: wfId, message: `Workflow "${updated.name}" updated`, nodes: nodeList.length, edges: edgeList.length };
+    }
+    case "delete_workflow": {
+      const wfId = a.id as string;
+      const wfRows = await db.select({ id: workflows.id, name: workflows.name }).from(workflows).where(eq(workflows.id, wfId));
+      if (wfRows.length === 0) return { error: "Workflow not found" };
+      await db.delete(workflows).where(eq(workflows.id, wfId)).run();
+      return { id: wfId, message: `Workflow "${wfRows[0].name}" deleted` };
     }
     case "create_custom_function": {
       const id = crypto.randomUUID();
@@ -535,8 +859,12 @@ async function executeTool(
       try {
         containerId = await podman.create(image, name, {});
         status = "running";
-      } catch {
+      } catch (err) {
         status = "stopped";
+        const msg = err instanceof Error ? err.message : String(err);
+        if (withContainerInstallHint(msg) !== msg) {
+          return { id, name, status: "stopped", message: withContainerInstallHint(msg) };
+        }
       }
       await db.insert(sandboxes).values(toSandboxRow({
         id, name, image, status: status as "running", containerId, config: {}, createdAt: Date.now()
@@ -553,22 +881,39 @@ async function executeTool(
     }
     case "run_container_command": {
       const image = (a.image as string)?.trim();
-      const command = (a.command as string)?.trim();
+      const rawCmd = a.command;
+      const command = typeof rawCmd === "string" ? rawCmd.trim() : Array.isArray(rawCmd) ? rawCmd.map(String).join(" ") : "";
       if (!image || !command) return { error: "image and command are required" };
       const name = `chat-one-shot-${Date.now()}`;
-      const podman = getContainerManager();
+      const mgr = getContainerManager();
+      const isImageNotFound = (m: string) => {
+        const s = m.toLowerCase();
+        return s.includes("no such image") || s.includes("manifest unknown") || s.includes("not found") || s.includes("pull access denied") || s.includes("unable to find image");
+      };
       let containerId: string;
       try {
-        containerId = await podman.create(image, name, {});
+        containerId = await mgr.create(image, name, {});
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        return { error: `Failed to create container: ${msg}`, stdout: "", stderr: msg, exitCode: -1 };
+        if (isImageNotFound(msg)) {
+          try {
+            await mgr.pull(image);
+            containerId = await mgr.create(image, name, {});
+          } catch (pullErr) {
+            const pullMsg = pullErr instanceof Error ? pullErr.message : String(pullErr);
+            const enhanced = withContainerInstallHint(pullMsg);
+            return { error: enhanced !== pullMsg ? enhanced : `Failed to pull/create: ${pullMsg}`, stdout: "", stderr: pullMsg, exitCode: -1 };
+          }
+        } else {
+          const enhanced = withContainerInstallHint(msg);
+          return { error: enhanced !== msg ? enhanced : `Failed to create container: ${msg}`, stdout: "", stderr: msg, exitCode: -1 };
+        }
       }
       try {
-        const result = await podman.exec(containerId, command);
+        const result = await mgr.exec(containerId, command);
         return result;
       } finally {
-        try { await podman.destroy(containerId); } catch { /* ignore */ }
+        try { await mgr.destroy(containerId); } catch { /* ignore */ }
       }
     }
     case "list_sandboxes": {
@@ -592,12 +937,16 @@ async function executeTool(
       return { id: run.id, targetType: run.targetType, targetId: run.targetId, status: run.status, startedAt: run.startedAt, finishedAt: run.finishedAt, output };
     }
     case "execute_workflow": {
-      const workflowId = a.id as string;
-      if (!workflowId) return { error: "Workflow id is required" };
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/af7dcd5d-c72d-47cc-bc97-a16719175ca2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:execute_workflow',message:'execute_workflow args',data:{hasId:!!(a as Record<string,unknown>).id,hasWorkflowId:!!(a as Record<string,unknown>).workflowId,idVal:(a as Record<string,unknown>).id,workflowIdVal:(a as Record<string,unknown>).workflowId},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      const workflowId = ((a as Record<string, unknown>).workflowId ?? (a as Record<string, unknown>).id) as string;
+      if (!workflowId || typeof workflowId !== "string" || !workflowId.trim()) return { error: "Workflow id is required" };
+      const branchId = typeof a.branchId === "string" && a.branchId.trim() ? (a.branchId as string) : undefined;
       const wfRows = await db.select().from(workflows).where(eq(workflows.id, workflowId));
       if (wfRows.length === 0) return { error: "Workflow not found" };
       const runId = crypto.randomUUID();
-      const run = { id: runId, targetType: "workflow", targetId: workflowId, status: "running" };
+      const run = { id: runId, targetType: "workflow", targetId: workflowId, targetBranchId: branchId ?? null, conversationId: conversationId ?? null, status: "running" };
       await db.insert(executions).values(toExecutionRow(run)).run();
       try {
         const onStepComplete = async (trail: Array<{ order: number; round?: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string }>, lastOutput: unknown) => {
@@ -608,25 +957,48 @@ async function executeTool(
           const rows = await db.select({ status: executions.status }).from(executions).where(eq(executions.id, runId));
           return rows[0]?.status === "cancelled";
         };
-        const { output, context, trail } = await runWorkflow({ workflowId, runId, onStepComplete, isCancelled });
+        const { output, context, trail } = await runWorkflow({ workflowId, runId, branchId, onStepComplete, isCancelled });
         const payload = executionOutputSuccess(output ?? context, trail);
         await db.update(executions).set({ status: "completed", finishedAt: Date.now(), output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
         const updated = await db.select().from(executions).where(eq(executions.id, runId));
         const runResult = fromExecutionRow(updated[0]);
         return { id: runId, workflowId, status: "completed", message: "Workflow run completed. Check Runs in the sidebar for full output and execution trail.", output: runResult.output };
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        const cancelled = message === RUN_CANCELLED_MESSAGE;
+        const rawMessage = err instanceof Error ? err.message : String(err);
+        const cancelled = rawMessage === RUN_CANCELLED_MESSAGE;
         if (cancelled) {
           await db.update(executions).set({ status: "cancelled", finishedAt: Date.now() }).where(eq(executions.id, runId)).run();
           return { id: runId, workflowId, status: "cancelled", message: "Run was stopped by the user." };
         }
-        if (message === WAITING_FOR_USER_MESSAGE) {
+        if (rawMessage === WAITING_FOR_USER_MESSAGE) {
           return { id: runId, workflowId, status: "waiting_for_user", message: "Run is waiting for user input. Respond from Chat or the run detail page." };
         }
+        const message = withContainerInstallHint(rawMessage);
         const payload = executionOutputFailure(message, { message, stack: err instanceof Error ? err.stack : undefined });
         await db.update(executions).set({ status: "failed", finishedAt: Date.now(), output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
         return { id: runId, workflowId, status: "failed", error: message, message: `Workflow run failed: ${message}` };
+      }
+    }
+    case "web_search": {
+      const query = typeof a.query === "string" ? (a.query as string).trim() : "";
+      if (!query) return { error: "query is required", results: [] };
+      const maxResults = typeof a.maxResults === "number" && a.maxResults > 0 ? Math.min(a.maxResults, 20) : undefined;
+      try {
+        const out = await searchWeb(query, { maxResults });
+        return out;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: "Web search failed", message, results: [] };
+      }
+    }
+    case "fetch_url": {
+      const url = typeof a.url === "string" ? (a.url as string).trim() : "";
+      if (!url) return { error: "url is required" };
+      try {
+        return await fetchUrl({ url });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: "Fetch failed", message };
       }
     }
     case "answer_question": {
@@ -648,6 +1020,22 @@ async function executeTool(
       };
       const explanation = docs[topic] || docs.general;
       return { message: explanation, topic };
+    }
+    case "run_shell_command": {
+      const command = typeof a.command === "string" ? (a.command as string).trim() : "";
+      if (!command) return { error: "command is required", needsApproval: false };
+      const allowlist = getShellCommandAllowlist();
+      const isAllowed = allowlist.some((entry) => entry === command);
+      if (!isAllowed) {
+        return { needsApproval: true, command, message: "Command requires user approval. The user can approve it in the chat UI or add it to the allowlist in Settings." };
+      }
+      try {
+        const { stdout, stderr, exitCode } = await runShellCommand(command);
+        return { command, stdout, stderr, exitCode, message: stderr ? `stdout:\n${stdout}\nstderr:\n${stderr}` : stdout || "(no output)" };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: "Shell command failed", message, exitCode: -1 };
+      }
     }
     case "list_remote_servers": {
       const rows = await db.select().from(remoteServers);
@@ -992,6 +1380,61 @@ async function executeTool(
         return { error: `OpenClaw: ${msg}` };
       }
     }
+    case "create_reminder": {
+      const msg = typeof a.message === "string" ? (a.message as string).trim() : "";
+      if (!msg) return { error: "message is required" };
+      const asTask = a.taskType === "assistant_task";
+      if (asTask && !conversationId) return { error: "Cannot schedule an assistant task without a conversation (use in chat)." };
+      let runAt: number;
+      if (typeof a.at === "string" && (a.at as string).trim()) {
+        const t = Date.parse((a.at as string).trim());
+        if (Number.isNaN(t)) return { error: "at must be a valid ISO 8601 date string" };
+        runAt = t;
+      } else if (typeof a.inMinutes === "number" && (a.inMinutes as number) > 0) {
+        runAt = Date.now() + Math.min((a.inMinutes as number), 60 * 24 * 365) * 60 * 1000;
+      } else {
+        return { error: "Either at (ISO date) or inMinutes (number) is required" };
+      }
+      if (runAt <= Date.now()) return { error: "Reminder time must be in the future" };
+      const id = crypto.randomUUID();
+      const taskType = asTask ? ("assistant_task" as const) : ("message" as const);
+      const reminder = {
+        id,
+        runAt,
+        message: msg,
+        conversationId: conversationId ?? null,
+        taskType,
+        status: "pending" as const,
+        createdAt: Date.now(),
+        firedAt: null,
+      };
+      await db.insert(reminders).values(toReminderRow(reminder)).run();
+      scheduleReminder(id);
+      return {
+        id,
+        runAt,
+        reminderMessage: msg,
+        taskType,
+        status: "pending",
+        createdAt: reminder.createdAt,
+        message: asTask ? "Scheduled task set. The assistant will run this in the chat when it's time." : "Reminder set. You'll see it in this chat when it fires.",
+      };
+    }
+    case "list_reminders": {
+      const status = (a.status === "fired" || a.status === "cancelled" ? a.status : "pending") as "pending" | "fired" | "cancelled";
+      const rows = await db.select().from(reminders).where(eq(reminders.status, status)).orderBy(desc(reminders.runAt));
+      return { reminders: rows.map(fromReminderRow), message: `${rows.length} reminder(s).` };
+    }
+    case "cancel_reminder": {
+      const rid = typeof a.id === "string" ? (a.id as string).trim() : "";
+      if (!rid) return { error: "id is required" };
+      const rRows = await db.select().from(reminders).where(eq(reminders.id, rid));
+      if (rRows.length === 0) return { error: "Reminder not found" };
+      if (rRows[0].status !== "pending") return { error: "Reminder is not pending (already fired or cancelled)" };
+      await db.update(reminders).set({ status: "cancelled" }).where(eq(reminders.id, rid)).run();
+      cancelReminderTimeout(rid);
+      return { message: "Reminder cancelled." };
+    }
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -1018,10 +1461,18 @@ export async function POST(request: Request) {
   const credentialResponse = payload.credentialResponse as { credentialKey?: string; value?: string; save?: boolean } | undefined;
   const isCredentialReply = credentialResponse && typeof credentialResponse.value === "string" && credentialResponse.value.trim() !== "";
 
-  if (!userMessage && !isCredentialReply) return json({ error: "message required" }, { status: 400 });
+  const continueShellApproval = payload.continueShellApproval as { command?: string; stdout?: string; stderr?: string; exitCode?: number } | undefined;
+  const hasContinueShellApproval =
+    continueShellApproval != null &&
+    typeof continueShellApproval === "object" &&
+    typeof (continueShellApproval.command ?? "") === "string" &&
+    (continueShellApproval.command ?? "").trim() !== "";
+
+  if (!userMessage && !isCredentialReply && !hasContinueShellApproval) return json({ error: "message required" }, { status: 400 });
+  if (hasContinueShellApproval && !conversationId) return json({ error: "conversationId required when using continueShellApproval" }, { status: 400 });
 
   const vaultKey = getVaultKeyFromRequest(request);
-  const contentToStore = isCredentialReply ? "Credentials provided." : (userMessage || "");
+  const contentToStore = isCredentialReply ? "Credentials provided." : hasContinueShellApproval ? "Command approved and run." : (userMessage || "");
   if (!conversationId) {
     conversationId = crypto.randomUUID();
     await db.insert(conversations).values(toConversationRow({
@@ -1042,6 +1493,45 @@ export async function POST(request: Request) {
     const key = String(credentialResponse.credentialKey).trim().toLowerCase().replace(/\s+/g, "_") || "credential";
     const plaintext = credentialResponse.value!.trim();
     await setStoredCredential(key, plaintext, true, vaultKey);
+  }
+
+  // If there is a run waiting for user input and that run was started from this conversation, merge the response into its output and resume.
+  let respondedToRunId: string | null = null;
+  let runCompletionPromise: Promise<void> | null = null;
+  if (!isCredentialReply && (userMessage?.trim() || contentToStore?.trim())) {
+    const waitingRows = await db
+      .select({ id: executions.id, targetId: executions.targetId, output: executions.output })
+      .from(executions)
+      .where(and(eq(executions.status, "waiting_for_user"), eq(executions.conversationId, conversationId)))
+      .orderBy(desc(executions.startedAt))
+      .limit(1);
+    if (waitingRows.length > 0) {
+      const runId = waitingRows[0].id;
+      const responseText = (userMessage ?? contentToStore ?? "").trim() || "(no text)";
+      const current = (() => {
+        try {
+          const raw = waitingRows[0].output;
+          return typeof raw === "string" ? JSON.parse(raw) : raw;
+        } catch {
+          return undefined;
+        }
+      })();
+      const existingOutput = current && typeof current === "object" && !Array.isArray(current) && current.output !== undefined ? current.output : undefined;
+      const existingTrail = Array.isArray(current?.trail) ? current.trail : [];
+      const mergedOutput = {
+        ...(existingOutput && typeof existingOutput === "object" && !Array.isArray(existingOutput) ? existingOutput : {}),
+        userResponded: true,
+        response: responseText,
+      };
+      const payload = executionOutputSuccess(mergedOutput, existingTrail.length > 0 ? existingTrail : undefined);
+      await db
+        .update(executions)
+        .set({ status: "running", finishedAt: null, output: JSON.stringify(payload) })
+        .where(eq(executions.id, runId))
+        .run();
+      respondedToRunId = runId;
+      runCompletionPromise = enqueueWorkflowRun(() => runWorkflowForRun(runId, { resumeUserResponse: responseText }));
+    }
   }
 
   // Use server-side history when we have an existing conversation so context is reliable (single source of truth, works across tabs).
@@ -1071,6 +1561,31 @@ export async function POST(request: Request) {
       }
       return { role, content };
     });
+  }
+
+  // When the user confirms the first option of an ask_user that listed agents/workflows to delete,
+  // run deletions server-side and inject a single follow-up message so the LLM only does creation (saves LLM calls).
+  let confirmationPathMessage: string | null = null;
+  if (
+    !isCredentialReply &&
+    !hasContinueShellApproval &&
+    conversationId &&
+    (userMessage ?? contentToStore ?? "").trim()
+  ) {
+    const lastRow = existingRows.length > 0 ? existingRows[existingRows.length - 1] : undefined;
+    const ctx = getLastAssistantDeleteConfirmContext(lastRow);
+    if (ctx) {
+      const userTrim = (userMessage ?? contentToStore ?? "").trim();
+      if (userMessageMatchesFirstOption(userTrim, ctx.firstOption)) {
+        for (const id of ctx.agentIds) {
+          await executeTool("delete_agent", { id }, { conversationId, vaultKey });
+        }
+        for (const id of ctx.workflowIds) {
+          await executeTool("delete_workflow", { id }, { conversationId, vaultKey });
+        }
+        confirmationPathMessage = `The user confirmed: "${userTrim}". I have already deleted all listed agents and workflows. Deleted agent ids: ${ctx.agentIds.join(", ")}. Deleted workflow ids: ${ctx.workflowIds.join(", ")}. Now create the new container-backed agent and workflow as you planned: use std-container-run for the agent, create the workflow, update_workflow to wire the agent to the workflow, then offer to run it.`;
+      }
+    }
   }
 
   const configRows = await db.select().from(llmConfigs);
@@ -1209,7 +1724,7 @@ export async function POST(request: Request) {
     enqueueTraceStep?: (step: { phase: string; label?: string; messageCount?: number; contentPreview?: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }) => void;
   }) {
     return async (req: Parameters<typeof manager.chat>[1]) => {
-      opts.enqueueTraceStep?.({ phase: "llm_request", label: "Calling assistant LLM (main step)…", messageCount: req.messages.length });
+      opts.enqueueTraceStep?.({ phase: "llm_request", label: "Calling LLM…", messageCount: req.messages.length });
       const response = await manager.chat(llmConfig as LLMConfig, req, { source: "chat" });
       usageEntries.push({ response });
       const lastUser = [...req.messages].reverse().find((m) => m.role === "user");
@@ -1274,15 +1789,61 @@ export async function POST(request: Request) {
           pushTrace: (e) => llmTraceEntries.push(e),
           enqueueTraceStep: (step) => enqueue({ type: "trace_step", ...step }),
         });
+        let doneSent = false;
         try {
           await db.insert(chatMessages).values(toChatMessageRow(userMsg)).run();
-          if (existingRows.length === 0 && !isCredentialReply) {
+
+          if (respondedToRunId && runCompletionPromise) {
+            const RUN_WAIT_TIMEOUT_MS = 90_000;
+            let replyContent: string;
+            try {
+              await Promise.race([
+                runCompletionPromise,
+                new Promise<void>((_, reject) => setTimeout(() => reject(new Error("RUN_TIMEOUT")), RUN_WAIT_TIMEOUT_MS)),
+              ]);
+              const [runRow] = await db.select().from(executions).where(eq(executions.id, respondedToRunId));
+              const logRows = await db.select({ level: runLogs.level, message: runLogs.message }).from(runLogs).where(eq(runLogs.executionId, respondedToRunId)).orderBy(asc(runLogs.createdAt));
+              const run = runRow ? { id: runRow.id, status: runRow.status, output: fromExecutionRow(runRow).output } : null;
+              replyContent = run
+                ? buildRunResponseForChat(run, logRows)
+                : `[View run](/runs/${respondedToRunId})`;
+            } catch (err) {
+              replyContent = err instanceof Error && err.message === "RUN_TIMEOUT"
+                ? `Run is still executing. [View run](/runs/${respondedToRunId}) to see progress.`
+                : `Your message was sent to the run. [View run](/runs/${respondedToRunId}) to see the result.`;
+            }
+            const assistantMsg = {
+              id: crypto.randomUUID(),
+              role: "assistant" as const,
+              content: replyContent,
+              toolCalls: undefined,
+              llmTrace: undefined,
+              createdAt: Date.now(),
+              conversationId: conversationId!,
+            };
+            await db.insert(chatMessages).values(toChatMessageRow(assistantMsg)).run();
+            doneSent = true;
+            try {
+              enqueue({
+                type: "done",
+                content: replyContent,
+                toolResults: [],
+                status: "completed",
+                messageId: assistantMsg.id,
+                userMessageId: userMsg.id,
+                conversationId: conversationId!,
+              });
+            } catch {
+              // client may have disconnected
+            }
+          } else if (existingRows.length === 0 && !isCredentialReply) {
             enqueue({ type: "trace_step", phase: "title", label: "Generating title…" });
             generatedTitle = await generateConversationTitle((userMessage || contentToStore).trim().slice(0, 2000), manager, llmConfig);
             await db.update(conversations).set({ ...(generatedTitle && { title: generatedTitle }) }).where(eq(conversations.id, conversationId!)).run();
             enqueue({ type: "trace_step", phase: "title_done", label: "Title set" });
           }
 
+          if (!respondedToRunId) {
           // High-level context preparation step (history, feedback, knowledge, studio resources)
           enqueue({ type: "trace_step", phase: "prepare", label: "Preparing context (history, knowledge, tools)…" });
 
@@ -1290,6 +1851,15 @@ export async function POST(request: Request) {
           if (isCredentialReply && credentialResponse?.value) {
             effectiveMessage = credentialResponse.value.trim();
             enqueue({ type: "trace_step", phase: "rephrase_done", label: "Using provided credential" });
+          } else if (hasContinueShellApproval && continueShellApproval) {
+            effectiveMessage = buildContinueShellApprovalMessage({ ...continueShellApproval, command: continueShellApproval.command ?? "" });
+            enqueue({ type: "trace_step", phase: "rephrase_done", label: "Continue from shell approval" });
+          } else if (confirmationPathMessage) {
+            effectiveMessage = confirmationPathMessage;
+            enqueue({ type: "trace_step", phase: "rephrase_done", label: "Deletions done, continuing" });
+          } else if (shouldSkipRephrase(contentToStore, payload)) {
+            effectiveMessage = (userMessage || contentToStore).trim().slice(0, 2000);
+            enqueue({ type: "trace_step", phase: "rephrase_done", label: "Rephrase skipped" });
           } else {
             enqueue({ type: "trace_step", phase: "rephrase", label: "Rephrasing…" });
             const { rephrasedPrompt, wantsRetry } = await rephraseAndClassify(userMessage || contentToStore, manager, llmConfig, { onLlmCall: (e) => { rephraseTraceEntry = e; } });
@@ -1311,7 +1881,7 @@ export async function POST(request: Request) {
             executeTool: (toolName: string, toolArgs: Record<string, unknown>) => executeTool(toolName, toolArgs, { conversationId, vaultKey }),
             feedbackInjection: feedbackInjection || undefined,
             ragContext,
-            uiContext: uiContext || undefined,
+            uiContext: [uiContext, getSystemContext()].filter(Boolean).join("\n\n"),
             attachedContext: attachedContext || undefined,
             studioContext,
             crossChatContext: crossChatContextTrimmed,
@@ -1342,20 +1912,22 @@ export async function POST(request: Request) {
                 },
               }
             : undefined;
+          const enrichedToolResults = await Promise.all(
+            result.toolResults.map(async (r) => {
+              let res = r.result;
+              if (r.name === "get_agent" || r.name === "create_agent" || r.name === "update_agent") {
+                res = await enrichAgentToolResult(r.result, r.args);
+              }
+              return { id: crypto.randomUUID(), name: r.name, arguments: r.args, result: res };
+            })
+          );
           const assistantToolCalls =
             result.toolResults.length > 0 || planToolCall
-              ? [
-                  ...result.toolResults.map((r) => ({
-                    id: crypto.randomUUID(),
-                    name: r.name,
-                    arguments: r.args,
-                    result: r.result,
-                  })),
-                  ...(planToolCall ? [planToolCall] : []),
-                ]
+              ? [...enrichedToolResults, ...(planToolCall ? [planToolCall] : [])]
               : undefined;
           const fullLlmTrace = rephraseTraceEntry ? [rephraseTraceEntry, ...llmTraceEntries] : llmTraceEntries;
           const displayContent = getAssistantDisplayContent(result.content, result.toolResults);
+          const turnStatus = getTurnStatusFromToolResults(result.toolResults);
           const assistantMsg = {
             id: crypto.randomUUID(),
             role: "assistant" as const,
@@ -1366,6 +1938,34 @@ export async function POST(request: Request) {
             conversationId,
           };
           await db.insert(chatMessages).values(toChatMessageRow(assistantMsg)).run();
+
+          // Mark done BEFORE enqueue so we never send an error event if enqueue throws (e.g. client disconnected).
+          // controller.enqueue() can throw when the stream is closed or client disconnected; we must not
+          // send an error in that case — the turn succeeded and the message is in the DB.
+          doneSent = true;
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              type: "done",
+              content: displayContent,
+              toolResults: result.toolResults,
+              status: turnStatus.status,
+              ...(turnStatus.interactivePrompt && { interactivePrompt: turnStatus.interactivePrompt }),
+              messageId: assistantMsg.id,
+              userMessageId: userMsg.id,
+              conversationId,
+              reasoning: result.reasoning,
+              todos: result.todos,
+              completedStepIndices: result.completedStepIndices,
+              rephrasedPrompt,
+              ...(generatedTitle && { conversationTitle: generatedTitle }),
+            })}\n\n`));
+          } catch (enqueueErr) {
+            // Client likely disconnected; message is in DB, no error event sent (doneSent=true)
+          }
+
+          } // end if (!respondedToRunId)
+
+          // Post-processing after client has received the response (do not send error if these fail)
           const msgCount = existingRows.length + 2;
           const convRows = await db.select({ summary: conversations.summary }).from(conversations).where(eq(conversations.id, conversationId!));
           if (msgCount >= 6 && convRows.length > 0 && (convRows[0].summary == null || convRows[0].summary === "")) {
@@ -1386,39 +1986,27 @@ export async function POST(request: Request) {
               })).run();
             }
           }
-
           await db.update(conversations).set({
             lastUsedProvider: llmConfig.provider,
             lastUsedModel: llmConfig.model,
           }).where(eq(conversations.id, conversationId!)).run();
-
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-            type: "done",
-            content: displayContent,
-            toolResults: result.toolResults,
-            messageId: assistantMsg.id,
-            userMessageId: userMsg.id,
-            conversationId,
-            reasoning: result.reasoning,
-            todos: result.todos,
-            completedStepIndices: result.completedStepIndices,
-            rephrasedPrompt,
-            ...(generatedTitle && { conversationTitle: generatedTitle }),
-          })}\n\n`));
         } catch (err: unknown) {
           const msg = normalizeChatError(err, llmConfig ? { provider: llmConfig.provider, model: llmConfig.model, endpoint: llmConfig.endpoint } : undefined);
-          try {
-            const assistantErrorMsg = {
-              id: crypto.randomUUID(),
-              role: "assistant" as const,
-              content: `Error: ${msg}`,
-              createdAt: Date.now(),
-              conversationId,
-            };
-            await db.insert(chatMessages).values(toChatMessageRow(assistantErrorMsg)).run();
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", error: msg, messageId: assistantErrorMsg.id, userMessageId: userMsg.id })}\n\n`));
-          } catch (persistErr) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", error: msg })}\n\n`));
+          // Do not send error event if we already sent done — the client has the response; overwriting with error would be wrong.
+          if (!doneSent) {
+            try {
+              const assistantErrorMsg = {
+                id: crypto.randomUUID(),
+                role: "assistant" as const,
+                content: `Error: ${msg}`,
+                createdAt: Date.now(),
+                conversationId,
+              };
+              await db.insert(chatMessages).values(toChatMessageRow(assistantErrorMsg)).run();
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", error: msg, messageId: assistantErrorMsg.id, userMessageId: userMsg.id })}\n\n`));
+            } catch (persistErr) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", error: msg })}\n\n`));
+            }
           }
         } finally {
           controller.close();
@@ -1436,6 +2024,45 @@ export async function POST(request: Request) {
 
   const userMsg = { id: crypto.randomUUID(), role: "user" as const, content: contentToStore, createdAt: Date.now(), conversationId: conversationId! };
   await db.insert(chatMessages).values(toChatMessageRow(userMsg)).run();
+
+  if (respondedToRunId && runCompletionPromise) {
+    const RUN_WAIT_TIMEOUT_MS = 90_000;
+    let replyContent: string;
+    try {
+      await Promise.race([
+        runCompletionPromise,
+        new Promise<void>((_, reject) => setTimeout(() => reject(new Error("RUN_TIMEOUT")), RUN_WAIT_TIMEOUT_MS)),
+      ]);
+      const [runRow] = await db.select().from(executions).where(eq(executions.id, respondedToRunId));
+      const logRows = await db.select({ level: runLogs.level, message: runLogs.message }).from(runLogs).where(eq(runLogs.executionId, respondedToRunId)).orderBy(asc(runLogs.createdAt));
+      const run = runRow ? { id: runRow.id, status: runRow.status, output: fromExecutionRow(runRow).output } : null;
+      replyContent = run
+        ? buildRunResponseForChat(run, logRows)
+        : `[View run](/runs/${respondedToRunId})`;
+    } catch (err) {
+      replyContent = err instanceof Error && err.message === "RUN_TIMEOUT"
+        ? `Run is still executing. [View run](/runs/${respondedToRunId}) to see progress.`
+        : `Your message was sent to the run. [View run](/runs/${respondedToRunId}) to see the result.`;
+    }
+    const assistantMsg = {
+      id: crypto.randomUUID(),
+      role: "assistant" as const,
+      content: replyContent,
+      toolCalls: undefined,
+      llmTrace: undefined,
+      createdAt: Date.now(),
+      conversationId: conversationId!,
+    };
+    await db.insert(chatMessages).values(toChatMessageRow(assistantMsg)).run();
+    return json({
+      content: replyContent,
+      toolResults: [],
+      messageId: assistantMsg.id,
+      userMessageId: userMsg.id,
+      conversationId: conversationId!,
+    });
+  }
+
   let generatedTitle: string | null = null;
   if (existingRows.length === 0 && !isCredentialReply) {
     generatedTitle = await generateConversationTitle((userMessage || contentToStore).trim().slice(0, 2000), manager, llmConfig);
@@ -1452,6 +2079,12 @@ export async function POST(request: Request) {
   try {
     if (isCredentialReply && credentialResponse?.value) {
       effectiveMessage = credentialResponse.value.trim();
+    } else if (hasContinueShellApproval && continueShellApproval) {
+      effectiveMessage = buildContinueShellApprovalMessage({ ...continueShellApproval, command: continueShellApproval.command ?? "" });
+    } else if (confirmationPathMessage) {
+      effectiveMessage = confirmationPathMessage;
+    } else if (shouldSkipRephrase(contentToStore, payload)) {
+      effectiveMessage = trimmedForFallback;
     } else {
       const rephraseResult = await rephraseAndClassify(userMessage || contentToStore, manager, llmConfig, { onLlmCall: (e) => { rephraseTraceEntry = e; } });
       rephrasedPrompt = rephraseResult.rephrasedPrompt;
@@ -1468,7 +2101,7 @@ export async function POST(request: Request) {
       executeTool: (toolName: string, toolArgs: Record<string, unknown>) => executeTool(toolName, toolArgs, { conversationId, vaultKey }),
       feedbackInjection: feedbackInjection || undefined,
       ragContext,
-      uiContext: uiContext || undefined,
+      uiContext: [uiContext, getSystemContext()].filter(Boolean).join("\n\n"),
       attachedContext: attachedContext || undefined,
       studioContext,
       crossChatContext: crossChatContextTrimmed,
@@ -1489,17 +2122,18 @@ export async function POST(request: Request) {
           },
         }
       : undefined;
+    const enrichedToolResults = await Promise.all(
+      result.toolResults.map(async (r) => {
+        let res = r.result;
+        if (r.name === "get_agent" || r.name === "create_agent" || r.name === "update_agent") {
+          res = await enrichAgentToolResult(r.result, r.args);
+        }
+        return { id: crypto.randomUUID(), name: r.name, arguments: r.args, result: res };
+      })
+    );
     const assistantToolCalls =
       result.toolResults.length > 0 || planToolCall
-        ? [
-            ...result.toolResults.map((r) => ({
-              id: crypto.randomUUID(),
-              name: r.name,
-              arguments: r.args,
-              result: r.result,
-            })),
-            ...(planToolCall ? [planToolCall] : []),
-          ]
+        ? [...enrichedToolResults, ...(planToolCall ? [planToolCall] : [])]
         : undefined;
     const fullLlmTrace = rephraseTraceEntry ? [rephraseTraceEntry, ...llmTraceEntries] : llmTraceEntries;
     const displayContent = getAssistantDisplayContent(result.content, result.toolResults);
@@ -1569,7 +2203,25 @@ export async function GET(request: Request) {
       ? db.select().from(chatMessages).where(eq(chatMessages.conversationId, conversationId))
       : db.select().from(chatMessages);
     const rows = await query;
-    const messages = rows.map((r) => fromChatMessageRow(r));
+    const messages = rows.map((r) => {
+      const msg = fromChatMessageRow(r);
+      if (msg.role !== "assistant" || !msg.toolCalls) return msg;
+      const toolResults = msg.toolCalls.map((t) => ({ name: t.name, args: t.arguments, result: t.result }));
+      const turnStatus = getTurnStatusFromToolResults(toolResults);
+      const planCall = msg.toolCalls.find((t) => t.name === "__plan__");
+      const planArgs = (planCall?.arguments ?? {}) as { todos?: unknown; completedStepIndices?: unknown };
+      const todos = Array.isArray(planArgs.todos) ? planArgs.todos.filter((x): x is string => typeof x === "string") : undefined;
+      const completedStepIndices = Array.isArray(planArgs.completedStepIndices)
+        ? planArgs.completedStepIndices.filter((x): x is number => typeof x === "number")
+        : undefined;
+      return {
+        ...msg,
+        status: turnStatus.status,
+        ...(turnStatus.interactivePrompt && { interactivePrompt: turnStatus.interactivePrompt }),
+        ...(todos != null && { todos }),
+        ...(completedStepIndices != null && { completedStepIndices }),
+      };
+    });
     return json(messages);
   } catch (err) {
     logApiError("/api/chat", "GET", err);
@@ -1577,3 +2229,123 @@ export async function GET(request: Request) {
     return json({ error: message }, { status: 500 });
   }
 }
+
+/** Register runner for scheduled assistant tasks (e.g. reminder with taskType "assistant_task"). Runs one full turn with the given user message. */
+registerScheduledTurnRunner(async (conversationId, userMessageContent) => {
+  await runSerializedByConversation(conversationId, async () => {
+    const MAX_HISTORY_MESSAGES = 50;
+    const existingRows = await db
+      .select({ role: chatMessages.role, content: chatMessages.content, toolCalls: chatMessages.toolCalls })
+      .from(chatMessages)
+      .where(eq(chatMessages.conversationId, conversationId))
+      .orderBy(asc(chatMessages.createdAt));
+    let history: LLMMessage[] = existingRows.map((r) => {
+      const role = r.role as "user" | "assistant" | "system";
+      let content = r.content ?? "";
+      if (role === "assistant" && !content.trim() && r.toolCalls) {
+        try {
+          const parsed = typeof r.toolCalls === "string" ? (JSON.parse(r.toolCalls) as { name: string; result?: unknown }[]) : undefined;
+          const q = getAskUserQuestionFromToolResults(parsed);
+          if (q) content = q;
+        } catch {
+          // ignore
+        }
+      }
+      return { role, content };
+    });
+    if (history.length > MAX_HISTORY_MESSAGES) history = history.slice(-MAX_HISTORY_MESSAGES);
+
+    const configRows = await db.select().from(llmConfigs);
+    if (configRows.length === 0) throw new Error("No LLM provider configured.");
+    const configsWithSecret = configRows.map(fromLlmConfigRowWithSecret);
+    const convRows = await db.select({ lastUsedProvider: conversations.lastUsedProvider, lastUsedModel: conversations.lastUsedModel }).from(conversations).where(eq(conversations.id, conversationId));
+    const conv = convRows[0];
+    let llmConfig = conv?.lastUsedProvider ? configsWithSecret.find((c) => c.id === conv.lastUsedProvider) : undefined;
+    if (!llmConfig) llmConfig = configsWithSecret[0];
+
+    let chatSettings: { contextAgentIds: string[] | null; contextWorkflowIds: string[] | null; contextToolIds: string[] | null; temperature: number | null } | null = null;
+    try {
+      const settingsRows = await db.select().from(chatAssistantSettings).where(eq(chatAssistantSettings.id, "default"));
+      chatSettings = settingsRows.length > 0 ? fromChatAssistantSettingsRow(settingsRows[0]) : null;
+    } catch {
+      // ignore
+    }
+    const chatTemperature = chatSettings?.temperature ?? 0.7;
+
+    await ensureStandardTools();
+    const [agentRows, workflowRows, toolRows, llmRows] = await Promise.all([
+      db.select().from(agents),
+      db.select().from(workflows),
+      db.select().from(tools),
+      db.select().from(llmConfigs),
+    ]);
+    const agentIds = chatSettings?.contextAgentIds;
+    const workflowIds = chatSettings?.contextWorkflowIds;
+    const toolIdsFilter = chatSettings?.contextToolIds;
+    const studioContext: StudioContext = {
+      tools: (toolIdsFilter == null || toolIdsFilter.length === 0 ? toolRows.map(fromToolRow) : toolRows.map(fromToolRow).filter((t) => toolIdsFilter!.includes(t.id))).map((t) => ({ id: t.id, name: t.name, protocol: t.protocol })),
+      agents: (agentIds == null || agentIds.length === 0 ? agentRows.map(fromAgentRow) : agentRows.map(fromAgentRow).filter((a) => agentIds!.includes(a.id))).map((a) => ({ id: a.id, name: a.name, kind: a.kind })),
+      workflows: (workflowIds == null || workflowIds.length === 0 ? workflowRows.map(fromWorkflowRow) : workflowRows.map(fromWorkflowRow).filter((w) => workflowIds!.includes(w.id))).map((w) => ({ id: w.id, name: w.name, executionMode: w.executionMode })),
+      llmProviders: llmRows.map(fromLlmConfigRow).map((c) => ({ id: c.id, provider: c.provider, model: c.model })),
+    };
+
+    const fbRows = await db.select().from(feedback).where(eq(feedback.targetType, "chat"));
+    const feedbackInjection = buildFeedbackInjection(fbRows.map(fromFeedbackRow).slice(-10));
+    const studioCollectionId = await getDeploymentCollectionId();
+    const ragChunks = studioCollectionId ? await retrieveChunks(studioCollectionId, userMessageContent, 5) : [];
+    const ragContext = ragChunks.length > 0 ? ragChunks.map((c) => c.text).join("\n\n") : undefined;
+
+    const manager = createDefaultLLMManager(async (ref) => ref ? process.env[ref] : undefined);
+    const usageEntries: { response: LLMResponse }[] = [];
+    const trackingCallLLM = async (req: LLMRequest): Promise<LLMResponse> => {
+      const response = await manager.chat(llmConfig as LLMConfig, req, { source: "chat" });
+      usageEntries.push({ response });
+      return response;
+    };
+
+    const result = await runAssistant(history, userMessageContent.trim().slice(0, 2000), {
+      callLLM: trackingCallLLM,
+      executeTool: (name: string, args: Record<string, unknown>) => executeTool(name, args, { conversationId, vaultKey: null }),
+      feedbackInjection: feedbackInjection || undefined,
+      ragContext,
+      uiContext: getSystemContext(),
+      studioContext,
+      chatSelectedLlm: llmConfig ? { id: llmConfig.id, provider: llmConfig.provider, model: llmConfig.model } : undefined,
+      temperature: chatTemperature,
+    });
+
+    const displayContent = getAssistantDisplayContent(result.content, result.toolResults);
+    const assistantMsg = {
+      id: crypto.randomUUID(),
+      role: "assistant" as const,
+      content: displayContent || getAskUserQuestionFromToolResults(result.toolResults) || "",
+      toolCalls: result.toolResults.length > 0 ? result.toolResults.map((r) => ({ id: crypto.randomUUID(), name: r.name, arguments: r.args, result: r.result })) : undefined,
+      llmTrace: undefined,
+      createdAt: Date.now(),
+      conversationId,
+    };
+    await db.insert(chatMessages).values(toChatMessageRow(assistantMsg)).run();
+    await db.update(conversations).set({ lastUsedProvider: llmConfig.provider, lastUsedModel: llmConfig.model }).where(eq(conversations.id, conversationId)).run();
+    for (const entry of usageEntries) {
+      const usage = entry.response.usage;
+      if (usage && usage.totalTokens > 0) {
+        const pricingRows = await db.select().from(modelPricing);
+        const customPricing: Record<string, { input: number; output: number }> = {};
+        for (const r of pricingRows) {
+          const p = fromModelPricingRow(r);
+          customPricing[p.modelPattern] = { input: Number(p.inputCostPerM), output: Number(p.outputCostPerM) };
+        }
+        const pricing = resolveModelPricing(llmConfig.model, customPricing);
+        const cost = calculateCost(usage.promptTokens, usage.completionTokens, pricing);
+        await db.insert(tokenUsage).values(toTokenUsageRow({
+          id: crypto.randomUUID(),
+          provider: llmConfig.provider,
+          model: llmConfig.model,
+          promptTokens: usage.promptTokens,
+          completionTokens: usage.completionTokens,
+          estimatedCost: cost != null ? String(cost) : null,
+        })).run();
+      }
+    }
+  });
+});

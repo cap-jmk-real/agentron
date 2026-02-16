@@ -206,6 +206,52 @@ After modifying code, **always run the relevant build(s)** to catch and fix pote
 
 - **CI:** PRs to `main` run the desktop build (to verify the app builds). Merging to `main` creates the GitHub Release with installers and deploys docs.
 
+---
+
+## Chat assistant & tools: reduce LLM usage
+
+When **adding or changing chat assistant tools** (e.g. in `packages/ui/app/api/chat/route.ts` executeTool, or runtime tools used by the assistant), **evaluate whether a server-side or “skip-LLM” path makes sense** and implement it when it does.
+
+### Why
+
+- Every rephrase and every assistant turn costs tokens and latency.
+- User actions that are **deterministic** (e.g. “run this command”, “yes delete these”, “add to allowlist”) do not need the LLM to “decide” again; the server can execute and then hand a single, clear message to the LLM for the next step.
+
+### Patterns already in use
+
+1. **Shell approval**  
+   User clicks “Approve & Run” → server runs the command via `/api/shell-command/execute`; client sends `continueShellApproval: { command, stdout, stderr, exitCode }` → chat route skips rephrase and builds a short effective message; one assistant call continues the conversation.
+
+2. **Delete confirmation**  
+   Last assistant turn had `list_agents` + `list_workflows` + `ask_user` with options; user sends the first (affirmative) option → server runs `delete_agent` / `delete_workflow` for the listed ids, then injects a single message (“User confirmed. Deletions done. Now create …”) → one assistant call does creation/wiring only.
+
+3. **Synthetic messages**  
+   Messages that are system-generated (e.g. “The user approved and ran: …”, “Added … to the allowlist”) or short non-questions skip rephrase via `shouldSkipRephrase()`.
+
+### Rule for new or changed tools
+
+When you **create or significantly change** a chat assistant tool:
+
+1. **Evaluate**
+   - Does this tool sometimes require **user confirmation** (e.g. approval, “Yes/No” choice)?
+   - After the user confirms, is the **next step deterministic** (e.g. “run X”, “delete these”, “add to list”)?
+   - If yes: consider a **confirmation path**: server detects the confirmation (e.g. from last assistant tool results + user message), runs the deterministic actions (same tool executor), then calls the assistant once with a single injected message so the LLM only does the *next* logical step (e.g. create, summarize, offer options).
+
+2. **Implement when it makes sense**
+   - Add detection (e.g. last assistant message’s tool results + user message matching an option).
+   - Run the tool(s) server-side in the chat route (reuse `executeTool` or the same logic).
+   - Build a short, explicit `effectiveMessage` and set a flag (e.g. `confirmationPathMessage`) so the route skips rephrase and uses this message for one assistant call.
+   - Document the pattern in this section or in code comments so future tools can follow it.
+
+3. **Do not** add server-side paths for actions that are **not** deterministic (e.g. “interpret what the user meant” or “choose from many valid next steps”). Those remain LLM-driven.
+
+### Where to wire this
+
+- **Chat route:** `packages/ui/app/api/chat/route.ts` — payload handling, `effectiveMessage` branches, and any “confirmation path” logic (e.g. `continueShellApproval`, delete-confirm).
+- **Runtime tools:** `packages/runtime/src/chat/tools/` — tool definitions and prompts; keep tool contracts stable so the route can rely on result shapes (e.g. `list_agents` / `list_workflows` + `ask_user` with `options`) for detection.
+
+---
+
 ## Promopt Generation
 
 *

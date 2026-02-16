@@ -4,6 +4,7 @@ import Sidebar from "./components/sidebar";
 import Topbar from "./components/topbar";
 import ChatWrapper from "./components/chat-wrapper";
 import ActionRequiredBanner from "./components/action-required-banner";
+import UpdateNotification from "./components/update-notification";
 
 export const metadata = {
   title: "Agentron Studio",
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
         <ChatWrapper />
+        <UpdateNotification />
       </body>
     </html>
   );

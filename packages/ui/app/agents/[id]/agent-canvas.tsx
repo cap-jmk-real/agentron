@@ -12,6 +12,7 @@ import {
   addEdge,
   applyNodeChanges,
   applyEdgeChanges,
+  Position,
   type Connection,
   type Node,
   type Edge,
@@ -21,8 +22,9 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useState } from "react";
-import { Brain, Wrench, BookOpen, Save, ArrowRightLeft, Settings2, Library, LogIn, LogOut, GitBranch, Search } from "lucide-react";
+import { Brain, Wrench, BookOpen, Save, ArrowRightLeft, Settings2, Library, LogIn, LogOut, GitBranch, Search, LayoutGrid } from "lucide-react";
 import { CanvasNodeCard } from "../../components/canvas-node-card";
+import { getGridPosition, getNextNodePosition, getAgentGridOptions, layoutNodesByGraph } from "../../lib/canvas-layout";
 
 type ToolDef = { id: string; name: string; protocol: string; config?: Record<string, unknown>; inputSchema?: unknown };
 
@@ -40,6 +42,8 @@ type FlowNodeData = {
   tools: ToolDef[];
   /** Tools that exist as tool nodes on the canvas; used by Decision node. */
   canvasTools?: CanvasToolRef[];
+  /** For LLM nodes: tools connected from this node (llm→tool edges) — what this LLM can call. */
+  connectedTools?: CanvasToolRef[];
   llmConfigs?: LlmConfig[];
   onConfigChange: (nodeId: string, config: Record<string, unknown>) => void;
   onRemove: (nodeId: string) => void;
@@ -61,15 +65,23 @@ function LLMNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
   const llmConfigId = String(data.config?.llmConfigId ?? "");
   const temperature = typeof data.config?.temperature === "number" ? data.config.temperature : undefined;
   const llmConfigs = data.llmConfigs ?? [];
+  const connectedTools = data.connectedTools ?? [];
   return (
     <CanvasNodeCard
       icon={<Brain size={14} style={{ color: "var(--primary)" }} />}
       label="LLM"
       selected={selected}
       onRemove={() => data.onRemove?.(id)}
+      handleLeft={true}
+      handleRight={true}
       minWidth={200}
       maxWidth={320}
     >
+      {connectedTools.length > 0 && (
+        <div className="nodrag nopan" style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginBottom: "0.35rem" }}>
+          <span style={{ fontWeight: 600 }}>Tools:</span> {connectedTools.map((ct) => ct.name).join(", ")}
+        </div>
+      )}
       {llmConfigs.length > 0 && (
         <select
           className="nodrag nopan select"
@@ -152,6 +164,8 @@ function ToolNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
       label={baseTool?.name ?? "Tool"}
       selected={selected}
       onRemove={() => data.onRemove?.(id)}
+      handleLeft={true}
+      handleRight={true}
       minWidth={180}
       maxWidth={320}
     >
@@ -245,6 +259,8 @@ function ContextReadNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) 
       label="Read"
       selected={selected}
       onRemove={() => data.onRemove?.(id)}
+      handleLeft={true}
+      handleRight={true}
       minWidth={140}
     >
       <input
@@ -266,6 +282,8 @@ function ContextWriteNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>)
       label="Write"
       selected={selected}
       onRemove={() => data.onRemove?.(id)}
+      handleLeft={true}
+      handleRight={true}
       minWidth={140}
     >
       <input
@@ -288,7 +306,8 @@ function InputNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
       label="Input"
       selected={selected}
       onRemove={() => data.onRemove?.(id)}
-      handleTop={false}
+      handleLeft={false}
+      handleRight={true}
       minWidth={180}
       maxWidth={280}
     >
@@ -317,6 +336,8 @@ function DecisionNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
       label="Decision"
       selected={selected}
       onRemove={() => data.onRemove?.(id)}
+      handleLeft={true}
+      handleRight={true}
       minWidth={220}
       maxWidth={340}
     >
@@ -392,7 +413,8 @@ function OutputNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
       label="Output"
       selected={selected}
       onRemove={() => data.onRemove?.(id)}
-      handleBottom={false}
+      handleLeft={true}
+      handleRight={false}
       minWidth={180}
       maxWidth={280}
     >
@@ -431,30 +453,59 @@ function getCanvasTools(nodes: AgentNodeDef[], tools: ToolDef[]): CanvasToolRef[
   return refs;
 }
 
+/** For a given node (typically LLM), return tools connected from it via edges (source=nodeId → target=tool node). */
+function getConnectedToolsForNode(
+  nodeId: string,
+  nodes: AgentNodeDef[],
+  edges: AgentEdgeDef[],
+  tools: ToolDef[]
+): CanvasToolRef[] {
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  const refs: CanvasToolRef[] = [];
+  for (const e of edges) {
+    if (e.source !== nodeId) continue;
+    const target = nodeMap.get(e.target);
+    if (target?.type !== "tool") continue;
+    const toolId = String((target.parameters as { toolId?: string })?.toolId ?? "").trim();
+    if (!toolId) continue;
+    const tool = tools.find((t) => t.id === toolId);
+    refs.push({ nodeId: target.id, toolId, name: tool?.name ?? toolId });
+  }
+  return refs;
+}
+
 function toFlowNode(
   n: AgentNodeDef,
   i: number,
   tools: ToolDef[],
   allNodes: AgentNodeDef[],
+  allEdges: AgentEdgeDef[],
   onConfigChange: (nodeId: string, config: Record<string, unknown>) => void,
   onRemove: (nodeId: string) => void,
   onSaveToolToLibrary?: FlowNodeData["onSaveToolToLibrary"],
   llmConfigs?: LlmConfig[]
 ): Node<FlowNodeData> {
-  const pos = Array.isArray(n.position) ? { x: n.position[0], y: n.position[1] } : { x: 80 + (i % 2) * 260, y: 80 + Math.floor(i / 2) * 160 };
+  const gridOpts = getAgentGridOptions();
+  const pos = Array.isArray(n.position) && n.position.length >= 2 && Number.isFinite(n.position[0]) && Number.isFinite(n.position[1])
+    ? { x: n.position[0], y: n.position[1] }
+    : getGridPosition(i, gridOpts);
   const config = n.parameters ?? {};
   const validTypes = ["llm", "decision", "tool", "context_read", "context_write", "input", "output"] as const;
   const type = (validTypes.includes(n.type as typeof validTypes[number]) ? n.type : "llm") as FlowNodeData["nodeType"];
   const canvasTools = getCanvasTools(allNodes, tools);
+  const connectedTools = (type === "llm" || type === "decision") ? getConnectedToolsForNode(n.id, allNodes, allEdges, tools) : undefined;
   return {
     id: n.id,
     type,
     position: pos,
+    sourcePosition: Position.Right,
+    targetPosition: Position.Left,
     data: {
       nodeType: type,
       config,
       tools,
       canvasTools,
+      connectedTools,
       llmConfigs,
       onConfigChange,
       onRemove,
@@ -469,9 +520,9 @@ function toFlowEdges(edges: AgentEdgeDef[]): Edge[] {
 
 function fromFlowToAgentGraph(nodes: Node<FlowNodeData>[], edges: Edge[]): { nodes: AgentNodeDef[]; edges: AgentEdgeDef[] } {
   const sorted = [...nodes].sort((a, b) => {
-    const ay = a.position?.y ?? 0, by = b.position?.y ?? 0;
-    if (Math.abs(ay - by) > 20) return ay - by;
-    return (a.position?.x ?? 0) - (b.position?.x ?? 0);
+    const ax = a.position?.x ?? 0, bx = b.position?.x ?? 0;
+    if (Math.abs(ax - bx) > 20) return ax - bx;
+    return (a.position?.y ?? 0) - (b.position?.y ?? 0);
   });
   const agentNodes: AgentNodeDef[] = sorted.map((n) => ({
     id: n.id,
@@ -494,9 +545,11 @@ type Props = {
   llmConfigs?: LlmConfig[];
   onNodesEdgesChange: (nodes: AgentNodeDef[], edges: AgentEdgeDef[]) => void;
   onSaveToolToLibrary?: (nodeId: string, baseToolId: string, override: { config?: Record<string, unknown>; inputSchema?: unknown; name?: string }) => Promise<string | null>;
+  /** Called after Arrange is applied with the new nodes/edges so the page can auto-save. */
+  onArrangeComplete?: (nodes: AgentNodeDef[], edges: AgentEdgeDef[]) => void;
 };
 
-function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesChange, onSaveToolToLibrary }: Props) {
+function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesChange, onSaveToolToLibrary, onArrangeComplete }: Props) {
   const { screenToFlowPosition } = useReactFlow();
 
   const onConfigChange = useCallback(
@@ -519,7 +572,8 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
   const addNode = useCallback(
     (type: FlowNodeData["nodeType"], position?: { x: number; y: number }, toolId?: string) => {
       const id = `n-${randomNodeId()}`;
-      const pos = position ?? { x: 100 + nodes.length * 30, y: 100 + nodes.length * 30 };
+      const existingPositions = nodes.map((n) => ({ x: n.position[0], y: n.position[1] }));
+      const pos = position ?? getNextNodePosition(existingPositions, getAgentGridOptions());
       const baseParams =
         type === "llm" ? { systemPrompt: "" }
         : type === "decision" ? { systemPrompt: "", llmConfigId: "", toolIds: [] as string[] }
@@ -539,8 +593,8 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
   );
 
   const initialNodes = useMemo(
-    () => nodes.map((n, i) => toFlowNode(n, i, tools, nodes, onConfigChange, onRemove, onSaveToolToLibrary, llmConfigs)),
-    [nodes, tools, llmConfigs, onConfigChange, onRemove, onSaveToolToLibrary]
+    () => nodes.map((n, i) => toFlowNode(n, i, tools, nodes, edges, onConfigChange, onRemove, onSaveToolToLibrary, llmConfigs)),
+    [nodes, edges, tools, llmConfigs, onConfigChange, onRemove, onSaveToolToLibrary]
   );
   const initialEdges = useMemo(() => toFlowEdges(edges), [edges]);
 
@@ -548,9 +602,9 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
   const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState(initialEdges);
 
   useEffect(() => {
-    setFlowNodes(nodes.map((n, i) => toFlowNode(n, i, tools, nodes, onConfigChange, onRemove, onSaveToolToLibrary, llmConfigs)));
+    setFlowNodes(nodes.map((n, i) => toFlowNode(n, i, tools, nodes, edges, onConfigChange, onRemove, onSaveToolToLibrary, llmConfigs)));
     setFlowEdges(toFlowEdges(edges));
-  }, [nodes.length, edges.length, JSON.stringify(nodes.map((n) => [n.id, n.type, n.parameters])), JSON.stringify(edges), llmConfigs, onSaveToolToLibrary]);
+  }, [nodes.length, edges.length, JSON.stringify(nodes.map((n) => [n.id, n.type, n.parameters, n.position])), JSON.stringify(edges), llmConfigs, onSaveToolToLibrary]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -718,6 +772,28 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
           style={{ fontSize: "0.82rem", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}
         >
           <Wrench size={14} /> Add tool
+        </button>
+        <button
+          type="button"
+          className="button button-secondary"
+          onClick={() => {
+            const opts = getAgentGridOptions();
+            const arranged = layoutNodesByGraph({
+              items: nodes,
+              getNodeId: (n) => n.id,
+              edges: edges.map((e) => ({ source: e.source, target: e.target })),
+              setPosition: (n, x, y) => ({ ...n, position: [x, y] as [number, number] }),
+              options: { startX: opts.startX, startY: opts.startY, stepX: opts.stepX, stepY: opts.stepY },
+            });
+            onNodesEdgesChange(arranged, edges);
+            if (onArrangeComplete) {
+              setTimeout(() => onArrangeComplete(arranged, edges), 0);
+            }
+          }}
+          style={{ fontSize: "0.82rem", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}
+          title="Arrange nodes by flow (left to right; fan-outs stacked vertically)"
+        >
+          <LayoutGrid size={14} /> Arrange
         </button>
       </div>
       {addNodeModalOpen && (

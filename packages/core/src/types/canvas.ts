@@ -25,6 +25,9 @@ export type CanvasEdge = {
   id: string;
   source: string;
   target: string;
+  /** Optional aliases for source/target (e.g. React Flow style). */
+  from?: string;
+  to?: string;
 };
 
 /** Unified canvas structure - single source of truth for agent/workflow graphs. */

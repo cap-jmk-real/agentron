@@ -26,6 +26,7 @@ export const workflows = sqliteTable("workflows", {
   schedule: text("schedule"),
   maxRounds: integer("max_rounds"),
   turnInstruction: text("turn_instruction"),
+  branches: text("branches"),
   createdAt: integer("created_at").notNull()
 });
 
@@ -59,6 +60,8 @@ export const executions = sqliteTable("executions", {
   id: text("id").primaryKey(),
   targetType: text("target_type").notNull(),
   targetId: text("target_id").notNull(),
+  targetBranchId: text("target_branch_id"),
+  conversationId: text("conversation_id"),
   status: text("status").notNull(),
   startedAt: integer("started_at").notNull(),
   finishedAt: integer("finished_at"),
@@ -404,4 +407,16 @@ export const trainingRuns = sqliteTable("training_runs", {
   config: text("config"),
   createdAt: integer("created_at").notNull(),
   finishedAt: integer("finished_at")
+});
+
+/** One-shot reminders. taskType: "message" = post static text to chat; "assistant_task" = insert user message and run one assistant turn. */
+export const reminders = sqliteTable("reminders", {
+  id: text("id").primaryKey(),
+  runAt: integer("run_at").notNull(),
+  message: text("message").notNull(),
+  conversationId: text("conversation_id"),
+  taskType: text("task_type").notNull(),
+  status: text("status").notNull(),
+  createdAt: integer("created_at").notNull(),
+  firedAt: integer("fired_at")
 });

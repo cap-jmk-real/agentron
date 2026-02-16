@@ -16,11 +16,40 @@ function getDisk(): { total: number; free: number; path: string } {
   try {
     if (platform === "win32") {
       const drive = checkPath.slice(0, 2);
+      // WMIC is deprecated and unavailable on Windows 10/11; use PowerShell Get-CimInstance
+      // $ProgressPreference = 'SilentlyContinue' prevents "Preparing modules for first use" progress
+      // from being serialized as CLIXML to stdout, which would pollute the captured output.
+      try {
+        const psScript = `$ProgressPreference = 'SilentlyContinue'; $d = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='${drive}'"; if ($d) { "$($d.FreeSpace),$($d.Size)" }`;
+        const encoded = Buffer.from(psScript, "utf16le").toString("base64");
+        const output = execSync(`powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`, {
+          timeout: 5000,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+        })
+          .trim()
+          .split("\n")
+          .map((s) => s.trim())
+          .find((line) => /^\d+,\d+$/.test(line));
+        if (output) {
+          const [freeStr, totalStr] = output.split(",");
+          const free = parseInt(freeStr!, 10);
+          const total = parseInt(totalStr!, 10);
+          if (!Number.isNaN(free) && !Number.isNaN(total)) {
+            return { total, free, path: drive };
+          }
+        }
+      } catch {
+        // Fallback to WMIC for older Windows
+      }
       const output = execSync(`wmic logicaldisk where "DeviceID='${drive}'" get Size,FreeSpace /format:csv`, { timeout: 3000, encoding: "utf8" }).trim();
       const lines = output.split("\n").filter(Boolean);
       const lastLine = lines[lines.length - 1];
       const parts = lastLine.split(",");
-      return { total: parseInt(parts[2] || "0", 10), free: parseInt(parts[1] || "0", 10), path: drive };
+      // CSV order: NodeName,DeviceID,FreeSpace,Size (alphabetical)
+      const free = parseInt(parts[2] || "0", 10);
+      const total = parseInt(parts[3] || "0", 10);
+      return { total, free, path: drive };
     }
     const output = execSync(`df -k "${checkPath}" | tail -1`, { timeout: 3000, encoding: "utf8" }).trim();
     const parts = output.split(/\s+/);
@@ -102,6 +131,25 @@ export function collectSystemStats(): SystemStatsSnapshot {
   };
 }
 
+/** TTL for server-side cache so multiple tabs / rapid polls don't each run PowerShell + nvidia-smi. */
+const STATS_CACHE_TTL_MS = 1200;
+
+let statsCache: SystemStatsSnapshot | null = null;
+let statsCacheTs = 0;
+
+/** Returns current stats, reusing a recent snapshot if still valid. Use this from API route to avoid N-tab load. */
+export function getCachedSystemStats(): SystemStatsSnapshot {
+  const now = Date.now();
+  if (statsCache != null && now - statsCacheTs < STATS_CACHE_TTL_MS) {
+    return statsCache;
+  }
+  const snapshot = collectSystemStats();
+  statsCache = snapshot;
+  statsCacheTs = now;
+  pushHistory(snapshot);
+  return snapshot;
+}
+
 const MAX_HISTORY = 300; // 0.5s * 300 = 2.5 min
 const history: SystemStatsSnapshot[] = [];
 
@@ -147,8 +195,17 @@ function flushHistoryToDisk(): void {
   }
 }
 
+let flushIntervalId: ReturnType<typeof setInterval> | undefined;
 if (shouldPersistHistory() && typeof setInterval !== "undefined") {
-  setInterval(flushHistoryToDisk, FLUSH_INTERVAL_MS);
+  flushIntervalId = setInterval(flushHistoryToDisk, FLUSH_INTERVAL_MS);
+  if (typeof process !== "undefined" && process.on) {
+    process.on("beforeExit", () => {
+      if (flushIntervalId != null) {
+        clearInterval(flushIntervalId);
+        flushIntervalId = undefined;
+      }
+    });
+  }
 }
 
 export function pushHistory(snapshot: SystemStatsSnapshot): void {

@@ -38,3 +38,29 @@ jobs:
         with:
           files: packages/ui/coverage/lcov.info
           fail_ci_if_error: false
+
+  update-loc-badge:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Count LOC and write badge
+        run: node scripts/count-loc.js --write-badge
+
+      - name: Commit and push if badge changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add badges/loc.json
+          git diff --staged --quiet || (git commit -m "chore: update LOC badge" && git push)

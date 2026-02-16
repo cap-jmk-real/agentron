@@ -151,7 +151,8 @@ describe("rag", () => {
             documentId: "doc1",
             chunkIndex: 1,
             text: "second chunk",
-            embedding: JSON.stringify([0.2, 0.2, 0.2]),
+            // Different direction so cosine similarity with query [0.1,0.1,0.1] is lower than "first chunk".
+            embedding: JSON.stringify([0.5, 0, 0]),
             createdAt: now,
           },
         ])

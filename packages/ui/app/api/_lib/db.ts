@@ -31,6 +31,7 @@ import {
   agentStoreEntries,
   trainingRuns,
   runLogs,
+  reminders,
 } from "@agentron-studio/core";
 import type {
   Agent,
@@ -127,7 +128,43 @@ export {
   agentStoreEntries,
   trainingRuns,
   runLogs,
+  reminders,
 };
+
+export type ReminderTaskType = "message" | "assistant_task";
+
+export type Reminder = {
+  id: string;
+  runAt: number;
+  message: string;
+  conversationId?: string | null;
+  taskType: ReminderTaskType;
+  status: "pending" | "fired" | "cancelled";
+  createdAt: number;
+  firedAt?: number | null;
+};
+
+export const toReminderRow = (r: Reminder) => ({
+  id: r.id,
+  runAt: r.runAt,
+  message: r.message,
+  conversationId: r.conversationId ?? null,
+  taskType: r.taskType,
+  status: r.status,
+  createdAt: r.createdAt,
+  firedAt: r.firedAt ?? null,
+});
+
+export const fromReminderRow = (row: typeof reminders.$inferSelect): Reminder => ({
+  id: row.id,
+  runAt: row.runAt,
+  message: row.message,
+  conversationId: row.conversationId ?? undefined,
+  taskType: (row.taskType ?? "message") as Reminder["taskType"],
+  status: row.status as Reminder["status"],
+  createdAt: row.createdAt,
+  firedAt: row.firedAt ?? undefined,
+});
 
 const parseJson = <T>(value?: string | null, fallback?: T): T | undefined => {
   if (!value) {
@@ -188,6 +225,7 @@ export const toWorkflowRow = (workflow: Workflow) => ({
   schedule: workflow.schedule ?? null,
   maxRounds: (workflow as Workflow & { maxRounds?: number | null }).maxRounds ?? null,
   turnInstruction: (workflow as Workflow & { turnInstruction?: string | null }).turnInstruction ?? null,
+  branches: workflow.branches != null ? JSON.stringify(workflow.branches) : null,
   createdAt: Date.now()
 });
 
@@ -200,7 +238,8 @@ export const fromWorkflowRow = (row: typeof workflows.$inferSelect): Workflow =>
   executionMode: row.executionMode as Workflow["executionMode"],
   schedule: row.schedule ?? undefined,
   maxRounds: row.maxRounds ?? undefined,
-  turnInstruction: row.turnInstruction ?? undefined
+  turnInstruction: row.turnInstruction ?? undefined,
+  branches: parseJson((row as { branches?: string | null }).branches) ?? undefined
 } as Workflow);
 
 export const toToolRow = (tool: ToolDefinition) => ({
@@ -245,12 +284,16 @@ export const toExecutionRow = (entry: {
   id: string;
   targetType: string;
   targetId: string;
+  targetBranchId?: string | null;
+  conversationId?: string | null;
   status: string;
   output?: unknown;
 }) => ({
   id: entry.id,
   targetType: entry.targetType,
   targetId: entry.targetId,
+  targetBranchId: entry.targetBranchId ?? null,
+  conversationId: entry.conversationId ?? null,
   status: entry.status,
   startedAt: Date.now(),
   finishedAt: null,
@@ -261,6 +304,7 @@ export const fromExecutionRow = (row: typeof executions.$inferSelect) => ({
   id: row.id,
   targetType: row.targetType,
   targetId: row.targetId,
+  targetBranchId: (row as { targetBranchId?: string | null }).targetBranchId ?? undefined,
   status: row.status,
   startedAt: row.startedAt,
   finishedAt: row.finishedAt,
@@ -268,7 +312,7 @@ export const fromExecutionRow = (row: typeof executions.$inferSelect) => ({
 });
 
 /** Payload for execution output on success (workflow/agent run). */
-function executionOutputSuccess(
+export function executionOutputSuccess(
   output: unknown,
   trail?: Array<{ order: number; round?: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string }>
 ): { output: unknown; trail?: typeof trail } {
@@ -363,13 +407,32 @@ export const toChatMessageRow = (m: ChatMessage) => ({
   createdAt: m.createdAt
 });
 
+/** Normalize toolCalls from DB so client always receives consistent shape (name, args, result). */
+function normalizeToolCalls(raw: unknown): ChatMessage["toolCalls"] {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const normalized = raw.map((item: unknown) => {
+    const t = item as { name?: string; args?: Record<string, unknown>; arguments?: Record<string, unknown>; result?: unknown };
+    const name = typeof t.name === "string" ? t.name : "";
+    const args = t.args ?? t.arguments ?? {};
+    const result = t.result;
+    return {
+      id: typeof (t as { id?: string }).id === "string" ? (t as { id: string }).id : crypto.randomUUID(),
+      name,
+      arguments: typeof args === "object" && args !== null ? args : {},
+      result,
+    };
+  }).filter((t) => t.name);
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 export const fromChatMessageRow = (row: typeof chatMessages.$inferSelect): ChatMessage => {
   const r = row as typeof row & { llmTrace?: string | null };
+  const parsed = parseJson<unknown[]>(row.toolCalls);
   return {
     id: row.id,
     role: row.role as ChatMessage["role"],
     content: row.content,
-    toolCalls: parseJson(row.toolCalls),
+    toolCalls: parsed ? normalizeToolCalls(parsed) : undefined,
     llmTrace: parseJson(r.llmTrace),
     createdAt: row.createdAt,
     conversationId: row.conversationId ?? undefined
@@ -635,14 +698,69 @@ export const STANDARD_TOOLS: { id: string; name: string }[] = [
   { id: "std-http-request", name: "HTTP Request" },
   { id: "std-webhook", name: "Webhook" },
   { id: "std-weather", name: "Weather" },
+  { id: "std-web-search", name: "Web Search" },
+  { id: "std-container-run", name: "Run Container" },
+  { id: "std-container-session", name: "Container session (create once, exec many)" },
+  { id: "std-container-build", name: "Build image from Containerfile" },
+  { id: "std-request-user-help", name: "Request user input (workflow pause)" },
 ];
 
 /** Ensures default/built-in tools exist in the DB so they appear in the Tools list. */
 export async function ensureStandardTools(): Promise<void> {
   const existing = await db.select({ id: tools.id }).from(tools);
   const existingIds = new Set(existing.map((r) => r.id));
+  const stdContainerRunInputSchema = {
+    type: "object",
+    properties: {
+      image: { type: "string", description: "Container image (e.g. alpine, busybox)" },
+      command: { type: "string", description: "Shell command to run inside the container (e.g. echo hello world)" },
+    },
+    required: ["image", "command"],
+  };
+  const stdWebSearchInputSchema = {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "Search query" },
+      maxResults: { type: "number", description: "Max number of results (default 8, max 20)" },
+    },
+    required: ["query"],
+  };
+  const stdRequestUserHelpInputSchema = {
+    type: "object",
+    properties: {
+      question: { type: "string", description: "Question to show the user (e.g. confirm before proceeding)" },
+      message: { type: "string", description: "What you need (e.g. API key, confirmation)" },
+      type: { type: "string", enum: ["credentials", "two_fa", "confirmation", "choice", "other"], description: "Kind of help needed" },
+      suggestions: { type: "array", items: { type: "string" }, description: "Optional example replies or commands to show the user (e.g. openclaw gateway, ollama run …)" },
+    },
+    required: ["message"],
+  };
+  const stdContainerSessionInputSchema = {
+    type: "object",
+    properties: {
+      action: { type: "string", enum: ["ensure", "exec", "destroy"], description: "ensure: create or attach to run-scoped container; exec: run command in it; destroy: stop and remove" },
+      image: { type: "string", description: "Container image (required for ensure, e.g. alpine, busybox)" },
+      command: { type: "string", description: "Shell command to run inside the container (required for exec)" },
+    },
+    required: ["action"],
+  };
+  const stdContainerBuildInputSchema = {
+    type: "object",
+    properties: {
+      contextPath: { type: "string", description: "Path to build context directory (e.g. . or absolute path)" },
+      dockerfilePath: { type: "string", description: "Path to Containerfile or Dockerfile (relative to context or absolute)" },
+      imageTag: { type: "string", description: "Tag for the built image (e.g. myapp:latest)" },
+    },
+    required: ["contextPath", "dockerfilePath", "imageTag"],
+  };
+
   for (const t of STANDARD_TOOLS) {
     if (existingIds.has(t.id)) continue;
+    const isContainerRun = t.id === "std-container-run";
+    const isWebSearch = t.id === "std-web-search";
+    const isRequestUserHelp = t.id === "std-request-user-help";
+    const isContainerSession = t.id === "std-container-session";
+    const isContainerBuild = t.id === "std-container-build";
     await db
       .insert(tools)
       .values({
@@ -650,7 +768,7 @@ export async function ensureStandardTools(): Promise<void> {
         name: t.name,
         protocol: "native",
         config: "{}",
-        inputSchema: null,
+        inputSchema: isContainerRun ? JSON.stringify(stdContainerRunInputSchema) : isWebSearch ? JSON.stringify(stdWebSearchInputSchema) : isRequestUserHelp ? JSON.stringify(stdRequestUserHelpInputSchema) : isContainerSession ? JSON.stringify(stdContainerSessionInputSchema) : isContainerBuild ? JSON.stringify(stdContainerBuildInputSchema) : null,
         outputSchema: null,
       })
       .run();
@@ -658,4 +776,4 @@ export async function ensureStandardTools(): Promise<void> {
   }
 }
 
-export { executionOutputSuccess, executionOutputFailure };
+export { executionOutputFailure };

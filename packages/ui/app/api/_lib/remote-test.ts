@@ -53,8 +53,19 @@ export async function testRemoteConnection(params: {
     const proc = spawn("ssh", args, { stdio: ["ignore", "pipe", "pipe"] });
     let stderr = "";
     let done = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      proc.kill("SIGTERM");
+      finish({ ok: false, message: "Connection timed out after 15s.", guidance: REMOTE_CONNECTION_GUIDANCE });
+    }, 15000);
     const finish = (r: TestRemoteResult) => {
-      if (!done) { done = true; resolve(r); }
+      if (!done) {
+        done = true;
+        if (timeoutId != null) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        resolve(r);
+      }
     };
     proc.stderr?.on("data", (d) => { stderr += d; });
     proc.on("close", (code) => {
@@ -62,10 +73,6 @@ export async function testRemoteConnection(params: {
       else finish({ ok: false, message: "SSH connection failed. " + (stderr || `Exit code ${code}`).trim(), guidance: REMOTE_CONNECTION_GUIDANCE });
     });
     proc.on("error", (err) => finish({ ok: false, message: "Failed to run ssh: " + err.message, guidance: REMOTE_CONNECTION_GUIDANCE }));
-    setTimeout(() => {
-      proc.kill("SIGTERM");
-      finish({ ok: false, message: "Connection timed out after 15s.", guidance: REMOTE_CONNECTION_GUIDANCE });
-    }, 15000);
   });
   return result;
 }

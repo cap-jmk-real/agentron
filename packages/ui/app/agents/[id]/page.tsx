@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Workflow, MessageSquare, Wrench, ShieldCheck, Save, Trash2, BarChart3, BookOpen, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowLeft, Workflow, MessageSquare, Wrench, ShieldCheck, Save, Trash2, BarChart3, BookOpen, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import Link from "next/link";
 import ConfirmModal from "../../components/confirm-modal";
 import AgentCanvas from "./agent-canvas";
@@ -87,6 +87,7 @@ export default function AgentDetailPage() {
   const [showGraphJson, setShowGraphJson] = useState(false);
   const [graphNodesStr, setGraphNodesStr] = useState("[]");
   const [graphEdgesStr, setGraphEdgesStr] = useState("[]");
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
 
   useEffect(() => {
     if (!agentId) {
@@ -138,24 +139,41 @@ export default function AgentDetailPage() {
       .catch(() => setTools([]));
   }, []);
 
-  const save = async () => {
+  const save = async (overrideGraph?: { nodes: unknown[]; edges: unknown[] }) => {
     setSaving(true);
     let defToSave = definition;
-    try {
-      const parsedNodes = JSON.parse(graphNodesStr);
-      const parsedEdges = JSON.parse(graphEdgesStr);
-      if (Array.isArray(parsedNodes) && Array.isArray(parsedEdges)) {
-        defToSave = { ...definition, graph: { nodes: parsedNodes, edges: parsedEdges } };
-        const firstLlmNode = (parsedNodes as { parameters?: { llmConfigId?: string } }[]).find(
-          (n) => n.parameters?.llmConfigId
-        );
-        const firstLlmId = firstLlmNode?.parameters?.llmConfigId;
-        if (firstLlmId) {
-          (defToSave as { defaultLlmConfigId?: string }).defaultLlmConfigId = firstLlmId;
+    if (overrideGraph) {
+      defToSave = { ...definition, graph: { nodes: overrideGraph.nodes, edges: overrideGraph.edges } };
+    } else {
+      const graph = definition.graph as { nodes?: unknown[]; edges?: unknown[] } | undefined;
+      const hasGraphInMemory = Array.isArray(graph?.nodes) && Array.isArray(graph?.edges) && (graph.nodes.length > 0 || graph.edges.length > 0);
+      const nodesToSave = hasGraphInMemory ? graph!.nodes : null;
+      const edgesToSave = hasGraphInMemory ? graph!.edges : null;
+
+      if (nodesToSave != null && edgesToSave != null) {
+        defToSave = { ...definition, graph: { nodes: nodesToSave, edges: edgesToSave } };
+      } else {
+        try {
+          const parsedNodes = JSON.parse(graphNodesStr);
+          const parsedEdges = JSON.parse(graphEdgesStr);
+          if (Array.isArray(parsedNodes) && Array.isArray(parsedEdges)) {
+            defToSave = { ...definition, graph: { nodes: parsedNodes, edges: parsedEdges } };
+          }
+        } catch {
+          // Keep definition as is if JSON is invalid
         }
       }
-    } catch {
-      // Keep definition as is if JSON is invalid
+    }
+
+    const finalNodes = (defToSave.graph as { nodes?: unknown[] } | undefined)?.nodes;
+    if (Array.isArray(finalNodes)) {
+      const firstLlmNode = (finalNodes as { parameters?: { llmConfigId?: string } }[]).find(
+        (n) => n.parameters?.llmConfigId
+      );
+      const firstLlmId = firstLlmNode?.parameters?.llmConfigId;
+      if (firstLlmId) {
+        (defToSave as { defaultLlmConfigId?: string }).defaultLlmConfigId = firstLlmId;
+      }
     }
     const res = await fetch(`/api/agents/${agentId}`, {
       method: "PUT",
@@ -212,6 +230,26 @@ export default function AgentDetailPage() {
     }
   };
 
+  const copyDefinition = async () => {
+    const payload = {
+      id: agentId,
+      name: name || agent?.name,
+      description: description || agent?.description,
+      kind,
+      protocol,
+      definition,
+    };
+    const json = JSON.stringify(payload, null, 2);
+    try {
+      await navigator.clipboard.writeText(json);
+      setCopyFeedback("Copied");
+      setTimeout(() => setCopyFeedback(null), 2000);
+    } catch {
+      setCopyFeedback("Failed");
+      setTimeout(() => setCopyFeedback(null), 2000);
+    }
+  };
+
   if (loading) return <p className="loading-muted">Loading...</p>;
   if (!agentId || !agent) {
     return (
@@ -237,7 +275,15 @@ export default function AgentDetailPage() {
           <h1 className="page-title">{name || "Untitled Agent"}</h1>
           <div className="title-row">
             {saved && <span className="saved-badge">Saved</span>}
-            <button className="button" onClick={save} disabled={saving}>
+            <button
+              type="button"
+              className="button button-small"
+              onClick={copyDefinition}
+              title="Copy agent definition as JSON for sharing or debugging"
+            >
+              <Copy size={13} /> {copyFeedback ?? "Copy definition"}
+            </button>
+            <button className="button" onClick={() => void save()} disabled={saving}>
               <Save size={13} /> {saving ? "Saving..." : "Save"}
             </button>
             <button type="button" className="button button-danger" onClick={() => setShowDeleteModal(true)}>
@@ -294,8 +340,8 @@ export default function AgentDetailPage() {
       </div>
 
       <div className="tab-content">
-        {activeTab === "prompts" && <PromptsEditor agentId={agentId} definition={definition} onDefinitionChange={setDefinition} />}
-        {activeTab === "tools" && <ToolsEditor agentId={agentId} definition={definition} onDefinitionChange={setDefinition} />}
+        {activeTab === "prompts" && <PromptsEditor definition={definition} onDefinitionChange={(def) => setDefinition(def as AgentDefinition)} />}
+        {activeTab === "tools" && <ToolsEditor agentId={agentId} definition={definition} onDefinitionChange={(def) => setDefinition(def as AgentDefinition)} />}
         {activeTab === "knowledge" && (
           <div className="card">
             <h3 style={{ margin: "0 0 0.5rem" }}>RAG / Knowledge</h3>
@@ -323,18 +369,8 @@ export default function AgentDetailPage() {
         {activeTab === "feedback" && (
           <FeedbackPanel
             agentId={agentId}
-            onApplyRefinement={(systemPrompt, steps) => {
-              const updated = { ...definition, systemPrompt };
-              if (steps) {
-                const stepTypes: Step["type"][] = ["prompt", "tool_call", "condition", "context_read", "context_write"];
-                updated.steps = steps.map((s) => ({
-                  id: crypto.randomUUID(),
-                  name: s.name,
-                  type: (stepTypes.includes(s.type as Step["type"]) ? s.type : "prompt") as Step["type"],
-                  content: s.content,
-                }));
-              }
-              setDefinition(updated);
+            onApplyRefinement={(systemPrompt) => {
+              setDefinition({ ...definition, systemPrompt });
             }}
           />
         )}
@@ -375,6 +411,7 @@ export default function AgentDetailPage() {
                   setGraphNodesStr(JSON.stringify(nodes, null, 2));
                   setGraphEdgesStr(JSON.stringify(edges, null, 2));
                 }}
+                onArrangeComplete={(nodes, edges) => save({ nodes, edges })}
                 onSaveToolToLibrary={async (nodeId, baseToolId, override) => {
                   const base = tools.find((t) => t.id === baseToolId);
                   if (!base) return null;
@@ -424,6 +461,17 @@ export default function AgentDetailPage() {
                     rows={8}
                     value={graphNodesStr}
                     onChange={(e) => setGraphNodesStr(e.target.value)}
+                    onBlur={() => {
+                      try {
+                        const parsed = JSON.parse(graphNodesStr);
+                        const edges = (definition.graph as { edges?: unknown[] } | undefined)?.edges ?? [];
+                        if (Array.isArray(parsed)) {
+                          setDefinition({ ...definition, graph: { nodes: parsed, edges: Array.isArray(edges) ? edges : [] } });
+                        }
+                      } catch {
+                        /* ignore invalid JSON */
+                      }
+                    }}
                     placeholder='[{"id":"n1","type":"llm","position":[100,50],"parameters":{"systemPrompt":"..."}}]'
                   />
                 </div>
@@ -434,6 +482,17 @@ export default function AgentDetailPage() {
                     rows={4}
                     value={graphEdgesStr}
                     onChange={(e) => setGraphEdgesStr(e.target.value)}
+                    onBlur={() => {
+                      try {
+                        const parsed = JSON.parse(graphEdgesStr);
+                        const nodes = (definition.graph as { nodes?: unknown[] } | undefined)?.nodes ?? [];
+                        if (Array.isArray(parsed)) {
+                          setDefinition({ ...definition, graph: { nodes: Array.isArray(nodes) ? nodes : [], edges: parsed } });
+                        }
+                      } catch {
+                        /* ignore invalid JSON */
+                      }
+                    }}
                     placeholder='[{"id":"e1","source":"n1","target":"n2"}]'
                   />
                 </div>

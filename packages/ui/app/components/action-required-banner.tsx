@@ -8,31 +8,56 @@ type PendingRequest = {
   runId: string;
   question: string;
   reason?: string;
+  suggestions?: string[];
   targetName: string;
   targetType: string;
 };
 
+type ChatPending = {
+  count: number;
+  conversations: { conversationId: string; title: string | null }[];
+};
+
 export default function ActionRequiredBanner() {
-  const [data, setData] = useState<{ count: number; requests: PendingRequest[] }>({ count: 0, requests: [] });
+  const [runs, setRuns] = useState<{ count: number; requests: PendingRequest[] }>({ count: 0, requests: [] });
+  const [chat, setChat] = useState<ChatPending>({ count: 0, conversations: [] });
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    const fetchPendingHelp = () => {
-      fetch("/api/runs/pending-help")
-        .then((r) => r.json())
-        .then((d) => {
-          const count = typeof d.count === "number" ? d.count : 0;
-          const requests = Array.isArray(d.requests) ? (d.requests as PendingRequest[]) : [];
-          setData({ count, requests });
+    const fetchPending = () => {
+      Promise.all([
+        fetch("/api/runs/pending-help").then((r) => r.json()),
+        fetch("/api/chat/pending-input").then((r) => r.json()),
+      ])
+        .then(([runsData, chatData]) => {
+          setRuns({
+            count: typeof runsData.count === "number" ? runsData.count : 0,
+            requests: Array.isArray(runsData.requests) ? (runsData.requests as PendingRequest[]) : [],
+          });
+          setChat({
+            count: typeof chatData.count === "number" ? chatData.count : 0,
+            conversations: Array.isArray(chatData.conversations) ? chatData.conversations : [],
+          });
         })
-        .catch(() => setData({ count: 0, requests: [] }));
+        .catch(() => {
+          setRuns({ count: 0, requests: [] });
+          setChat({ count: 0, conversations: [] });
+        });
     };
-    fetchPendingHelp();
-    const interval = setInterval(fetchPendingHelp, 10_000);
+    fetchPending();
+    const interval = setInterval(fetchPending, 10_000);
     return () => clearInterval(interval);
   }, []);
 
-  if (data.count === 0 || dismissed) return null;
+  const totalCount = runs.count + chat.count;
+  if (totalCount === 0 || dismissed) return null;
+
+  const runLabel = runs.count === 1 ? "1 run" : `${runs.count} runs`;
+  const chatLabel = chat.count === 1 ? "1 chat" : `${chat.count} chats`;
+  const parts = [
+    runs.count > 0 ? `${runLabel} waiting for your input` : null,
+    chat.count > 0 ? `${chatLabel} need your decision` : null,
+  ].filter(Boolean);
 
   return (
     <div className="action-required-banner" role="alert">
@@ -40,18 +65,14 @@ export default function ActionRequiredBanner() {
         <MessageCircle size={18} className="action-required-banner-icon" aria-hidden />
         <div className="action-required-banner-text">
           <strong>Action required</strong>
-          <span>
-            {data.count === 1
-              ? "An agent is waiting for your input."
-              : `${data.count} runs are waiting for your input.`}
-          </span>
+          <span>{parts.join("; ")}.</span>
         </div>
         <Link href="/chat" className="action-required-banner-cta">
           Open Chat to respond
         </Link>
-        {data.requests.length > 0 && (
+        {runs.requests.length > 0 && (
           <span className="action-required-banner-links">
-            {data.requests.slice(0, 3).map((r) => (
+            {runs.requests.slice(0, 3).map((r) => (
               <Link key={r.runId} href={`/runs/${r.runId}`} className="action-required-banner-run-link">
                 {r.targetName || r.targetType || "Run"}
               </Link>

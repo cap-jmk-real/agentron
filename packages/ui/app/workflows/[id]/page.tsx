@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft, Trash2, GitBranch, ChevronDown, ChevronRight, Play, FileEdit, ListChecks } from "lucide-react";
 import ConfirmModal from "../../components/confirm-modal";
 import WorkflowCanvas from "./workflow-canvas";
+import { getNextNodePosition, getWorkflowGridOptions } from "../../lib/canvas-layout";
 import WorkflowStackTracesView from "./workflow-stack-traces-view";
 
 type Workflow = {
@@ -141,7 +142,9 @@ export default function WorkflowDetailPage() {
   const addAgentNode = useCallback(() => {
     const id = `agent-${Date.now()}`;
     const agentId = agents[0]?.id ?? "";
-    const parsed = [...parsedNodes, { id, type: "agent", position: [100, 100], parameters: { agentId } }];
+    const existingPositions = parsedNodes.map((n) => ({ x: n.position[0], y: n.position[1] }));
+    const pos = getNextNodePosition(existingPositions, getWorkflowGridOptions());
+    const parsed = [...parsedNodes, { id, type: "agent", position: [pos.x, pos.y], parameters: { agentId } }];
     setNodes(JSON.stringify(parsed, null, 2));
   }, [parsedNodes, agents]);
 

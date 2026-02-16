@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/cap-jmk-real/agentron/actions/workflows/ci.yml/badge.svg)](https://github.com/cap-jmk-real/agentron/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/cap-jmk-real/agentron/graph/badge.svg)](https://codecov.io/gh/cap-jmk-real/agentron)
+[![Lines of code](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cap-jmk-real/agentron/main/badges/loc.json)](https://github.com/cap-jmk-real/agentron)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
 [![Local-first](https://img.shields.io/badge/local--first-sqlite%20%2B%20Electron-8B5CF6)](INSTALL.md)

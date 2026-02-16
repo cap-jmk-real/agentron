@@ -46,7 +46,7 @@ function StatusBadge({ status }: { status: string }) {
   }
   if (status === "waiting_for_user") {
     return (
-      <span className="run-status" style={{ background: "var(--resource-amber)", color: "var(--bg)" }}>
+      <span className="run-status run-status-waiting">
         <Clock size={14} /> Needs your input
       </span>
     );
@@ -62,6 +62,24 @@ export default function RunsPage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterTargetType, setFilterTargetType] = useState<string>("");
+  const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
+
+  const handleStopRun = useCallback(async (runId: string) => {
+    setStoppingRunId(runId);
+    try {
+      const res = await fetch(`/api/runs/${encodeURIComponent(runId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "cancelled", finishedAt: Date.now() }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRuns((prev) => prev.map((r) => (r.id === runId ? { ...r, status: data.status ?? "cancelled", finishedAt: data.finishedAt ?? Date.now() } : r)));
+      }
+    } finally {
+      setStoppingRunId(null);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -129,6 +147,23 @@ export default function RunsPage() {
                       : `${run.targetType}:${run.targetId}`}
                 </span>
                 <span className="run-time">{formatTime(run.startedAt)}</span>
+                {(run.status === "running" || run.status === "waiting_for_user") && (
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    style={{ marginLeft: "auto", padding: "0.25rem 0.5rem", fontSize: "0.85rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void handleStopRun(run.id);
+                    }}
+                    disabled={stoppingRunId === run.id}
+                    title={run.status === "waiting_for_user" ? "Cancel run" : "Stop run"}
+                  >
+                    {stoppingRunId === run.id ? <Loader2 size={14} className="spin" /> : <Square size={14} />}
+                    {stoppingRunId === run.id ? "Stopping…" : run.status === "waiting_for_user" ? "Cancel" : "Stop"}
+                  </button>
+                )}
                 <ChevronRight size={18} className="run-chevron" />
               </Link>
             </li>

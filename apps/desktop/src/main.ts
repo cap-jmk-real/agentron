@@ -1,8 +1,9 @@
-import { app, BrowserWindow, dialog, shell } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
+import { autoUpdater, type UpdateInfo } from "electron-updater";
 import { initializeLocalRuntime } from "./runtime";
 
 /** Port for dev fallback (e.g. AGENTRON_STUDIO_URL or localhost). Leave 3000 free for `npm run dev:ui`. */
@@ -47,9 +48,11 @@ function errorPageDataUrl(logPath: string): string {
   return "data:text/html;charset=utf-8," + encodeURIComponent(html);
 }
 
-const createWindow = (url: string) => {
+let mainWindow: BrowserWindow | null = null;
+
+function createWindow(url: string): void {
   logLine(`Creating window with URL: ${url}`);
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     show: false,
@@ -59,13 +62,17 @@ const createWindow = (url: string) => {
   });
 
   mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
+    mainWindow?.show();
     logLine("Window ready-to-show");
+  });
+
+  mainWindow.on("closed", () => {
+    mainWindow = null;
   });
 
   // If page never loads (e.g. server not ready), show window after 8s so user sees something
   setTimeout(() => {
-    if (!mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
       mainWindow.show();
       logLine("Window shown after timeout (page may still be loading)");
     }
@@ -76,7 +83,40 @@ const createWindow = (url: string) => {
   });
 
   void mainWindow.loadURL(url);
-};
+}
+
+function setupAutoUpdater(): void {
+  if (!app.isPackaged) return;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = false;
+
+  autoUpdater.on("update-available", (info: UpdateInfo) => {
+    const releaseNotes = typeof info.releaseNotes === "string" ? info.releaseNotes : undefined;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("agentron:update-available", { version: info.version, releaseNotes });
+    }
+  });
+
+  autoUpdater.on("update-downloaded", (info: UpdateInfo) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("agentron:update-downloaded", { version: info.version });
+    }
+  });
+
+  autoUpdater.on("error", (err: Error) => {
+    logLine(`Auto-updater error: ${err.message}`);
+  });
+
+  ipcMain.handle("agentron:install-update", () => {
+    autoUpdater.quitAndInstall(false, true);
+  });
+
+  ipcMain.on("agentron:check-for-updates", () => {
+    void autoUpdater.checkForUpdates();
+  });
+
+  void autoUpdater.checkForUpdates();
+}
 
 let runtimeClose: (() => void) | null = null;
 
@@ -163,6 +203,7 @@ app.whenReady().then(async () => {
   }
 
   createWindow(url);
+  setupAutoUpdater();
 }).catch((err) => {
   logLine(`whenReady failed: ${err}`);
 });

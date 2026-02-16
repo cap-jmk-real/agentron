@@ -1,6 +1,6 @@
 import { json } from "../../_lib/response";
-import { db, executions, workflows, agents, fromExecutionRow } from "../../_lib/db";
-import { eq } from "drizzle-orm";
+import { db, executions, runLogs, workflows, agents, fromExecutionRow } from "../../_lib/db";
+import { eq, asc } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -21,7 +21,9 @@ export async function GET(_: Request, { params }: Params) {
     const ag = await db.select({ name: agents.name }).from(agents).where(eq(agents.id, run.targetId));
     targetName = ag[0]?.name;
   }
-  return json({ ...run, targetName });
+  const logRows = await db.select({ level: runLogs.level, message: runLogs.message, createdAt: runLogs.createdAt }).from(runLogs).where(eq(runLogs.executionId, id)).orderBy(asc(runLogs.createdAt));
+  const logs = logRows.map((r) => ({ level: r.level, message: r.message, createdAt: r.createdAt }));
+  return json({ ...run, targetName, logs });
 }
 
 /** Update run status and output (e.g. after execution completes or fails). */

@@ -6,6 +6,8 @@
 - **Run with coverage:** `npm run test:coverage` (from `packages/ui`) or `npm run test:coverage --workspace packages/ui` (from repo root).
 - **Coverage report:** After `test:coverage`, open `packages/ui/coverage/index.html` for a line-by-line report.
 
+Tests run in **parallel** (multiple Vitest workers). Each worker gets its own SQLite DB and data dir via `vitest.setup.ts` (using `VITEST_POOL_ID`), so tests that mutate or reset the DB don’t affect other workers.
+
 ## Test layout
 
 - **`api/_lib/*.test.ts`** — Unit tests for shared API helpers (rag, embeddings, vector-store-query, chat-helpers). Use mocks for DB and `fetch` where appropriate.
@@ -32,5 +34,14 @@ These areas are **not** covered by unit tests by design; they are either integra
 | **Chat route (bulk of `api/chat/route.ts`)** | LLM and runtime calls; pure helpers are in `_lib/chat-helpers` and unit-tested. Main handler covered by integration/E2E or manual. |
 | **`api/_lib/run-workflow.ts`** | Heavy runtime/DB; testable units are limited; execution paths covered by workflow execute API test. |
 | **`app/lib/system-stats-interval.ts`** | Browser-only (`window`, `localStorage`); Node test env doesn’t provide them; logic is simple. |
+| **`app/hooks/*`** | Browser/React hooks (DOM, context); unit-test with jsdom if needed. |
+| **`api/setup/*`** | Setup/onboarding flow; env-specific; integration or manual. |
+| **`api/chat/refine-prompt`**, **`api/chat/types.ts`** | LLM/refine or type-only; integration or manual. |
+| **`api/debug/*`**, **`api/home/*`** | Debug/info or home route; low-risk; integration or manual. |
+| **`api/llm/models/*`**, **`api/llm/providers/*/openrouter-key`**, **`api/llm/providers/*/test`** | External/LLM; integration or manual. |
+| **`api/remote-servers/test`** | Remote server connectivity test; integration or manual. |
+| **`api/_lib/telegram-polling.ts`** | Telegram long-running polling; browser/timers; integration or manual. |
+
+**Mission-critical and tested:** Vault crypto and create/status (`_lib/vault`, `api/vault/create`, `api/vault/status`), credential storage (`_lib/credential-store`), RAG ingest/upload (with mocks where needed), functions execute (404/400 paths), and RAG connectors by id are in scope and have dedicated tests. Only non-critical or truly external paths remain excluded.
 
 **Coverage target:** >70% statements/lines for in-scope code (see exclusions in `vitest.config.ts`). A 70% threshold is enforced so CI fails if coverage drops below target. **Before pushing:** run the check routine (`npm run check` from repo root) to run typecheck, lint, and tests with coverage; or run `npm run pre-push` for the full pre-push pipeline including builds and desktop dist.

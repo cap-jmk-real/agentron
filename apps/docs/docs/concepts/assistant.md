@@ -34,10 +34,12 @@ So the chat is not just Q&A — it can change your agents, workflows, and tools 
 | **Tools** | list_tools, get_tool, create_tool, update_tool |
 | **LLM** | list_llm_providers |
 | **Runs** | list_runs, get_run |
+| **Reminders** | create_reminder, list_reminders, cancel_reminder |
 | **Other** | create_custom_function, create_sandbox, execute_code, list_files, answer_question, explain_software |
 | **Remote** | list_remote_servers, test_remote_connection, save_remote_server |
 
 - **“Create”, “edit”, “list”, “delete”** studio resources → The assistant uses the matching tools (create_agent, update_workflow, etc.).
+- **“Remind me in 20 minutes to …”, “remind me at 3pm”** → It uses `create_reminder` (message + `at` or `inMinutes`). The reminder appears in the same chat when it fires. Use `list_reminders` / `cancel_reminder` to manage reminders.
 - **“Fix”, “configure”, “populate”** → It uses get_* first to see the current state, then update_*.
 - **General or coding questions** → It uses `answer_question`.
 - **Questions about Agentron** (e.g. “What is a workflow?”) → It uses `explain_software`.
@@ -48,6 +50,10 @@ So the chat is not just Q&A — it can change your agents, workflows, and tools 
 - **Restore standard prompt** — Revert to the built-in prompt.
 - **Context selection** — Choose which agents, workflows, and tools are included in the assistant’s context so it only suggests or edits what you care about.
 - **Improve from feedback** — Use conversation ratings so the system can suggest prompt improvements over time.
+
+## Reminders
+
+You can ask the assistant to set **one-shot reminders** (e.g. “Remind me in 20 minutes to call John” or “Remind me at 3pm to submit the report”). The assistant uses `create_reminder`; when the time comes, the reminder text is posted into the same chat. See [Reminders](../reminders.md) for details.
 
 ## Summary
 

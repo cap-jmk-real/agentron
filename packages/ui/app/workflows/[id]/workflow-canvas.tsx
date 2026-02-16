@@ -20,8 +20,9 @@ import {
   type EdgeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { User } from "lucide-react";
+import { User, LayoutGrid } from "lucide-react";
 import { CanvasNodeCard } from "../../components/canvas-node-card";
+import { getGridPosition, getWorkflowGridOptions, layoutNodesWithoutOverlap } from "../../lib/canvas-layout";
 
 type Agent = { id: string; name: string };
 
@@ -75,8 +76,11 @@ function toFlowNodes(
   onAgentChange: (nodeId: string, agentId: string) => void,
   onRemove: (nodeId: string) => void
 ): Node<FlowNodeData>[] {
+  const gridOpts = getWorkflowGridOptions();
   return wfNodes.map((n, i) => {
-    const pos = Array.isArray(n.position) ? { x: n.position[0], y: n.position[1] } : { x: 80 + (i % 3) * 220, y: 60 + Math.floor(i / 3) * 120 };
+    const pos = Array.isArray(n.position) && n.position.length >= 2 && Number.isFinite(n.position[0]) && Number.isFinite(n.position[1])
+      ? { x: n.position[0], y: n.position[1] }
+      : getGridPosition(i, gridOpts);
     const params = n.parameters ?? {};
     const agentId = (params.agentId as string) ?? "";
     const agent = agents.find((a) => a.id === agentId);
@@ -274,6 +278,23 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
         )}
         <button type="button" className="button" onClick={onAddNode} style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
           + Add agent
+        </button>
+        <button
+          type="button"
+          className="button button-secondary"
+          onClick={() => {
+            const arranged = layoutNodesWithoutOverlap(
+              wfNodes,
+              (n) => n.position,
+              (n, x, y) => ({ ...n, position: [x, y] as [number, number] }),
+              getWorkflowGridOptions()
+            );
+            onNodesEdgesChange(arranged, wfEdges);
+          }}
+          style={{ fontSize: "0.82rem", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem", marginTop: "0.25rem" }}
+          title="Arrange nodes in a grid"
+        >
+          <LayoutGrid size={14} /> Arrange
         </button>
         <p style={{ margin: "0.5rem 0 0", fontSize: "0.72rem", color: "var(--text-muted)" }}>
           Use tools on each agent to handle input and output.

@@ -13,7 +13,7 @@ export const AGENT_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "create_agent",
-    description: "Create a new agent. REQUIRED for proper behavior: name, description, llmConfigId, and graphNodes with at least one 'llm' node where parameters.systemPrompt is a concrete, non-empty string describing the agent's role and how it should behave (e.g. 'You are a research assistant. Summarize documents and suggest follow-up questions.'). Never omit or use a placeholder for systemPrompt — without it the agent will not behave properly. When the agent must use tools, also pass toolIds (array of ids from list_tools). For workflows, give every participating agent the toolIds it needs. Example llm node: { id: \"n1\", type: \"llm\", position: [100,100], parameters: { systemPrompt: \"You are [role]. [Concrete behavior.]\" } }. All changes are persisted. Create as many agents as the user requested (one create_agent call per agent).",
+    description: "Create a new agent. REQUIRED: name, description, llmConfigId, graphNodes with at least one 'llm' node (parameters.systemPrompt = concrete role/behavior). When the agent uses tools: pass toolIds AND add tool nodes plus graphEdges from each llm node to each tool node — so users see which tools each LLM can call. The system auto-injects missing tool nodes when toolIds are provided. Node agents need an LLM to decide when/how to call tools — even 'agent that runs container' requires an LLM. All changes are persisted.",
     parameters: {
       type: "object",
       properties: {
@@ -24,8 +24,8 @@ export const AGENT_TOOLS: AssistantToolDef[] = [
         systemPrompt: { type: "string", description: "REQUIRED for node agents. Concrete system prompt defining the agent's role and behavior. Also set this in each llm node's parameters.systemPrompt in graphNodes. Example: 'You are a helpful assistant that answers questions concisely.'" },
         llmConfigId: { type: "string", description: "ID of LLM provider from list_llm_providers. Required for node agents." },
         toolIds: { type: "array", items: { type: "string" }, description: "REQUIRED when agent uses tools. IDs from list_tools." },
-        graphNodes: { type: "array", description: "Agent graph nodes. Each llm node MUST have parameters.systemPrompt (concrete string). Format: { id, type: 'llm', position: [x,y], parameters: { systemPrompt: \"...\" } }." },
-        graphEdges: { type: "array", description: "Agent graph edges: [{ id, source: nodeId, target: nodeId }]." },
+        graphNodes: { type: "array", description: "Agent graph nodes. Each llm: { id, type: 'llm', position: [x,y], parameters: { systemPrompt } }. Each tool: { id, type: 'tool', position: [x,y], parameters: { toolId } }. Add tool nodes when toolIds are provided so users see which tools each LLM uses." },
+        graphEdges: { type: "array", description: "Edges between nodes: [{ id, source: nodeId, target: nodeId }]. Connect each llm node to each tool node (source: llm id, target: tool id) to show decision flow." },
       },
       required: ["name", "description"],
     },

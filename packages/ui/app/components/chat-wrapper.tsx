@@ -3,18 +3,35 @@
 import { useState, useEffect, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import ChatModal from "./chat-modal";
-import { Sparkles, ChevronDown } from "lucide-react";
 
 const OPEN_CHAT_EVENT = "agentron-open-chat";
+const CHAT_FAB_OPEN_KEY = "agentron-chat-fab-open";
+
+function getInitialChatFabOpen(): boolean {
+  if (typeof sessionStorage === "undefined") return false;
+  try {
+    return sessionStorage.getItem(CHAT_FAB_OPEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 export default function ChatWrapper() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const isChatPage = pathname === "/chat";
+  const [open, setOpen] = useState(getInitialChatFabOpen);
+
+  useEffect(() => {
+    if (isChatPage) return;
+    try {
+      sessionStorage.setItem(CHAT_FAB_OPEN_KEY, open ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [isChatPage, open]);
   const [attachedContext, setAttachedContext] = useState<string | null>(null);
   /** When user opens chat with run output, we create a new conversation and pass its id so the first message uses it. */
   const [newConversationId, setNewConversationId] = useState<string | null>(null);
-
-  const isChatPage = pathname === "/chat";
 
   useEffect(() => {
     const handler = async (e: Event) => {
@@ -50,8 +67,19 @@ export default function ChatWrapper() {
           className={`chat-fab ${open ? "chat-fab-active" : ""}`}
           onClick={() => setOpen((o) => !o)}
           title={open ? "Minimize" : "Open assistant"}
+          aria-label={open ? "Minimize assistant" : "Open assistant"}
         >
-          {open ? <ChevronDown size={18} /> : <Sparkles size={17} />}
+          <span className="chat-fab-icon-wrap">
+            <img src="/icon-circle.svg" alt="" className="chat-fab-icon-circle" width={28} height={28} />
+            <span className={`chat-fab-icon-flip ${open ? "chat-fab-icon-flip-open" : ""}`}>
+              <span className="chat-fab-icon-face chat-fab-icon-a">
+                <img src="/icon-a-letter.svg" alt="" width={28} height={28} />
+              </span>
+              <span className="chat-fab-icon-face chat-fab-icon-t">
+                <img src="/icon-t-letter-fab.svg" alt="" width={28} height={28} />
+              </span>
+            </span>
+          </span>
         </button>
       )}
       <ChatModal
@@ -64,6 +92,11 @@ export default function ChatWrapper() {
       />
     </>
   );
+}
+
+/** Open the chat panel (FAB modal). Call from topbar or anywhere to show the assistant. */
+export function openChat() {
+  window.dispatchEvent(new CustomEvent(OPEN_CHAT_EVENT));
 }
 
 /** Call from any page to open the chat with run output (or other text) attached for the assistant. */

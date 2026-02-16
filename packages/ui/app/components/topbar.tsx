@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Search, Sun, Moon, User } from "lucide-react";
+import { Search, Sun, Moon, User, MessageCircle } from "lucide-react";
+import { openChat } from "./chat-wrapper";
 
 export default function Topbar() {
   const [theme, setTheme] = useState("light");
@@ -29,6 +30,9 @@ export default function Topbar() {
           <Search size={14} />
           <input placeholder="Search..." />
         </div>
+        <button type="button" className="icon-button" onClick={() => openChat()} title="Open chat" aria-label="Open chat">
+          <MessageCircle size={14} />
+        </button>
         <button className="icon-button" onClick={toggleTheme} title="Toggle theme">
           {theme === "light" ? <Moon size={14} /> : <Sun size={14} />}
         </button>

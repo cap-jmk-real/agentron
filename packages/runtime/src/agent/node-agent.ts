@@ -64,18 +64,85 @@ function applyTransform(config: Record<string, unknown> | undefined, value: unkn
   }
 }
 
+/** Topological sort by graph edges. Returns node ids in execution order. Entry nodes (no incoming edges) first. Falls back to array order when no edges. */
+function topologicalOrder(
+  nodes: { id: string }[],
+  edges: { source?: string; target?: string; from?: string; to?: string }[]
+): string[] {
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const inDegree = new Map<string, number>();
+  const outEdges = new Map<string, string[]>();
+  for (const id of nodeIds) {
+    inDegree.set(id, 0);
+    outEdges.set(id, []);
+  }
+  for (const e of edges) {
+    const from = e.source ?? e.from ?? "";
+    const to = e.target ?? e.to ?? "";
+    if (!from || !to || !nodeIds.has(from) || !nodeIds.has(to)) continue;
+    outEdges.get(from)!.push(to);
+    inDegree.set(to, (inDegree.get(to) ?? 0) + 1);
+  }
+  const queue: string[] = [];
+  for (const [id, d] of inDegree) {
+    if (d === 0) queue.push(id);
+  }
+  const order: string[] = [];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    order.push(id);
+    for (const to of outEdges.get(id) ?? []) {
+      const d = (inDegree.get(to) ?? 1) - 1;
+      inDegree.set(to, d);
+      if (d === 0) queue.push(to);
+    }
+  }
+  if (order.length < nodeIds.size) {
+    const missing = [...nodeIds].filter((id) => !order.includes(id));
+    order.push(...missing);
+  }
+  return order;
+}
+
+/** Resolve input for a node: from predecessor(s) or agent input. With multiple predecessors, use the last one by topological order. */
+function resolveNodeInput(
+  nodeId: string,
+  order: string[],
+  outputs: Map<string, unknown>,
+  edges: { source?: string; target?: string; from?: string; to?: string }[],
+  agentInput: unknown
+): unknown {
+  const predecessors: string[] = [];
+  for (const e of edges) {
+    const from = e.source ?? e.from ?? "";
+    const to = e.target ?? e.to ?? "";
+    if (to === nodeId && from) predecessors.push(from);
+  }
+  if (predecessors.length === 0) return agentInput;
+  const lastPred = predecessors.sort((a, b) => order.indexOf(a) - order.indexOf(b)).pop();
+  return lastPred != null && outputs.has(lastPred) ? outputs.get(lastPred) : agentInput;
+}
+
 export class NodeAgentExecutor {
   async execute(
     definition: NodeAgentDefinition,
     input: unknown,
     context: NodeExecutionContext
   ): Promise<unknown> {
-    let lastOutput: unknown = input;
     const shared = context.sharedContext ?? {};
-
     const nodes = definition.graph?.nodes ?? [];
-    for (const node of nodes) {
+    const edges = Array.isArray(definition.graph?.edges) ? definition.graph.edges : [];
+    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+    const outputs = new Map<string, unknown>();
+
+    const order = edges.length > 0 ? topologicalOrder(nodes, edges) : nodes.map((n) => n.id);
+
+    for (const nodeId of order) {
+      const node = nodeMap.get(nodeId);
+      if (!node) continue;
+      const lastOutput = resolveNodeInput(nodeId, order, outputs, edges, input);
       const p = node.parameters ?? {};
+      let out: unknown;
       switch (node.type) {
         case "prompt": {
           const promptId = String(p.promptId ?? "");
@@ -88,7 +155,7 @@ export class NodeAgentExecutor {
           const rendered = renderPromptTemplate(prompt, { input: lastOutput, context: shared, args });
           const llmConfigId = (p.llmConfigId as string) ?? definition.defaultLlmConfigId;
           const raw = await context.callLLM({ llmConfigId, messages: [{ role: "user", content: rendered }] });
-          lastOutput = (raw && typeof raw === "object" && "content" in (raw as object)) ? (raw as { content: string }).content : raw;
+          out = (raw && typeof raw === "object" && "content" in (raw as object)) ? (raw as { content: string }).content : raw;
           break;
         }
         case "llm": {
@@ -101,7 +168,7 @@ export class NodeAgentExecutor {
             userContent = [ragBlock, toolInstructionsBlock].filter(Boolean).join("\n\n") + (userContent ? "\n\n" + userContent : "");
           }
           const tools = (definition.toolIds ?? []).length > 0 ? context.availableTools : undefined;
-          lastOutput = await runLLMWithDecisionLayer(context, {
+          out = await runLLMWithDecisionLayer(context, {
             llmConfigId,
             messages: [
               ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
@@ -125,7 +192,7 @@ export class NodeAgentExecutor {
           if (ragBlock || toolInstructionsBlock) {
             userContent = [ragBlock, toolInstructionsBlock].filter(Boolean).join("\n\n") + (userContent ? "\n\n" + userContent : "");
           }
-          lastOutput = await runLLMWithDecisionLayer(context, {
+          out = await runLLMWithDecisionLayer(context, {
             llmConfigId,
             messages: [
               ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
@@ -136,34 +203,56 @@ export class NodeAgentExecutor {
           break;
         }
         case "tool": {
-          const toolId = String(p.toolId ?? "");
+          const toolId = String((p as { toolId?: string }).toolId ?? p.toolId ?? "");
           const override = p.override as ToolOverride | undefined;
-          lastOutput = await context.callTool(toolId, p.input ?? lastOutput, override);
+          const toolIds = (definition.toolIds ?? []) as string[];
+          // Tool nodes connected from LLM/decision represent "this node can call these tools".
+          // The LLM/decision already invokes them; do not re-invoke with LLM text output.
+          const predecessors: string[] = [];
+          for (const e of edges) {
+            const from = e.source ?? e.from ?? "";
+            const to = e.target ?? e.to ?? "";
+            if (to === nodeId && from) predecessors.push(from);
+          }
+          const predId = predecessors.sort((a, b) => order.indexOf(a) - order.indexOf(b)).pop();
+          const predNode = predId ? nodeMap.get(predId) : undefined;
+          const predIsLlmOrDecision = predNode?.type === "llm" || predNode?.type === "decision";
+          const toolIsLlmDeclared = toolIds.includes(toolId) && predIsLlmOrDecision;
+          if (toolIsLlmDeclared) {
+            // Pass through: the LLM/decision already called this tool; its output is the final result
+            out = lastOutput;
+          } else {
+            out = await context.callTool(toolId, p.input ?? lastOutput, override);
+          }
           break;
         }
         case "context_read": {
           const key = String(p.key ?? "");
-          lastOutput = shared[key];
+          out = shared[key];
           break;
         }
         case "context_write": {
           const key = String(p.key ?? "");
           shared[key] = p.value ?? lastOutput;
+          out = lastOutput;
           break;
         }
         case "input": {
-          lastOutput = applyTransform(p, input);
+          out = applyTransform(p, input);
           break;
         }
         case "output": {
-          lastOutput = applyTransform(p, lastOutput);
+          out = applyTransform(p, lastOutput);
           break;
         }
         default:
-          lastOutput = lastOutput;
+          out = lastOutput;
       }
+      outputs.set(nodeId, out);
     }
 
-    return lastOutput;
+    return order.length > 0 && outputs.has(order[order.length - 1]!)
+      ? outputs.get(order[order.length - 1]!)
+      : input;
   }
 }

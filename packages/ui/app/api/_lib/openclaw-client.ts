@@ -43,9 +43,14 @@ export async function openclawRpc<T = unknown>(
     const reqId = `agentron-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const connectId = `agentron-connect-${Date.now()}`;
     let resolved = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const cleanup = () => {
       try {
+        if (timeoutId != null) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
         ws.removeAllListeners();
         if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.terminate();
       } catch {
@@ -67,7 +72,7 @@ export async function openclawRpc<T = unknown>(
       reject(err);
     };
 
-    const timeout = setTimeout(() => {
+    timeoutId = setTimeout(() => {
       fail(new Error(`OpenClaw RPC timeout after ${timeoutMs}ms`));
     }, timeoutMs);
 
@@ -126,7 +131,10 @@ export async function openclawRpc<T = unknown>(
             return;
           }
           if (res.id === reqId) {
-            clearTimeout(timeout);
+            if (timeoutId != null) {
+              clearTimeout(timeoutId);
+              timeoutId = null;
+            }
             if (!res.ok) {
               fail(new Error(res.error?.message ?? "RPC error"));
               return;

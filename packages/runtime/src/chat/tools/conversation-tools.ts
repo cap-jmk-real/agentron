@@ -8,7 +8,8 @@ export const CONVERSATION_TOOLS: AssistantToolDef[] = [
     parameters: {
       type: "object",
       properties: {
-        question: { type: "string", description: "Clear question to show the user (e.g. 'Which LLM should I use for these agents — 1. OpenAI gpt-4, 2. Ollama llama3?' or 'Confirm: create 3 agents and 2 workflows?')" },
+        question: { type: "string", description: "Clear question to show the user (e.g. 'Which LLM should I use?' or 'Confirm: create 3 agents?')" },
+        options: { type: "array", items: { type: "string" }, description: "Optional list of choices the user can click (e.g. ['OpenAI gpt-4', 'Ollama llama3'] or ['Yes', 'No']). Use when asking the user to pick one option." },
         reason: { type: "string", description: "Optional one-line reason (e.g. 'Need to pick LLM before creating agents')" },
       },
       required: ["question"],
@@ -25,6 +26,20 @@ export const CONVERSATION_TOOLS: AssistantToolDef[] = [
         credentialKey: { type: "string", description: "Stable key for this credential so it can be saved and reused (e.g. 'openai_api_key', 'github_token'). Use lowercase with underscores." },
       },
       required: ["question", "credentialKey"],
+    },
+  },
+  {
+    name: "format_response",
+    description:
+      "Format your response for clear display. REQUIRED after create_agent or create_workflow: you MUST call format_response with summary (what you did), needsInput (e.g. 'What would you like to do next?'), and options (clickable choices). Include 'Run it now' or 'Run workflow' when the created resource can be executed — e.g. options: ['Run it now', 'Modify agent', 'Not now']. The UI shows clickable options ONLY when you call format_response with the options array; plain text does not work. Also use format_response when the user needs to provide inputs (URLs, choices, credentials) before you can continue.",
+    parameters: {
+      type: "object",
+      properties: {
+        summary: { type: "string", description: "Main body: what you did, current status, context. Use markdown for readability: ## or ### headings for sections, **bold** for emphasis, - or 1. lists for options or steps. Shown first." },
+        needsInput: { type: "string", description: "What the user must provide to proceed (URLs, choices, auth preference, filters, etc.). Shown in a highlighted block at the end." },
+        options: { type: "array", items: { type: "string" }, description: "Optional clickable options the user can select (e.g. ['Run workflow X', 'Provide URLs', 'Use credentials'])" },
+      },
+      required: ["summary"],
     },
   },
   {

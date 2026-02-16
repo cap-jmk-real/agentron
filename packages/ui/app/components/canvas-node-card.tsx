@@ -15,10 +15,14 @@ type Props = {
   onRemove?: () => void;
   /** Main body content below the header */
   children: ReactNode;
-  /** Whether to render a target handle at the top. Default true. */
+  /** Whether to render a target handle at the top. Default true when flow is vertical. */
   handleTop?: boolean;
-  /** Whether to render a source handle at the bottom. Default true. */
+  /** Whether to render a source handle at the bottom. Default true when flow is vertical. */
   handleBottom?: boolean;
+  /** For horizontal (left-to-right) flow: target handle on the left. When set, top/bottom handles are not used. */
+  handleLeft?: boolean;
+  /** For horizontal flow: source handle on the right. When set with handleLeft, uses LTR flow. */
+  handleRight?: boolean;
   /** Minimum width of the card (CSS value) */
   minWidth?: number | string;
   /** Maximum width of the card (CSS value) */
@@ -60,9 +64,17 @@ export function CanvasNodeCard({
   children,
   handleTop = true,
   handleBottom = true,
+  handleLeft,
+  handleRight,
   minWidth,
   maxWidth,
 }: Props) {
+  const horizontal = handleLeft !== undefined || handleRight !== undefined;
+  const showTargetLeft = horizontal && (handleLeft !== false);
+  const showSourceRight = horizontal && (handleRight !== false);
+  const showTargetTop = !horizontal && handleTop;
+  const showSourceBottom = !horizontal && handleBottom;
+
   const style: React.CSSProperties = {
     ...cardStyle,
     border: `2px solid ${selected ? "var(--primary)" : "var(--border)"}`,
@@ -72,11 +84,14 @@ export function CanvasNodeCard({
 
   return (
     <div style={style}>
-      {handleTop && (
+      {showTargetLeft && (
+        <Handle type="target" position={Position.Left} style={{ left: 0, width: 10, height: 10 }} />
+      )}
+      {showTargetTop && (
         <Handle type="target" position={Position.Top} style={{ top: 0, width: 10, height: 10 }} />
       )}
-      {/* Wrapper with nopan so the whole node body does not trigger canvas pan; cursor over controls is set by .nopan in CSS */}
-      <div className="nopan" style={{ cursor: "default" }}>
+      {/* Wrapper with nopan so the whole node body does not trigger canvas pan; cursor over controls is set by .nopan in CSS; node shows move for drag */}
+      <div className="nopan">
         <div style={headerStyle}>
           {icon}
           <span style={labelStyle}>{label}</span>
@@ -100,7 +115,10 @@ export function CanvasNodeCard({
         </div>
         {children}
       </div>
-      {handleBottom && (
+      {showSourceRight && (
+        <Handle type="source" position={Position.Right} style={{ right: 0, width: 10, height: 10 }} />
+      )}
+      {showSourceBottom && (
         <Handle type="source" position={Position.Bottom} style={{ bottom: 0, width: 10, height: 10 }} />
       )}
     </div>

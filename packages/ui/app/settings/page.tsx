@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Download, Upload, Database, RotateCcw, FileJson, HardDrive } from "lucide-react";
+import { Download, Upload, Database, RotateCcw, FileJson, HardDrive, Terminal, Trash2, Plus } from "lucide-react";
 import ConfirmModal from "../components/confirm-modal";
 import CopyDebugInfoButton from "../components/copy-debug-info-button";
 import {
@@ -30,12 +30,20 @@ export default function SettingsPage() {
   const [defImportError, setDefImportError] = useState<string | null>(null);
   const [maxFileUploadMb, setMaxFileUploadMb] = useState<number>(50);
   const [maxFileUploadSaving, setMaxFileUploadSaving] = useState(false);
+  const [shellAllowlist, setShellAllowlist] = useState<string[]>([]);
+  const [shellAllowlistNewCommand, setShellAllowlistNewCommand] = useState("");
+  const [shellAllowlistSaving, setShellAllowlistSaving] = useState(false);
+  const [workflowMaxSelfFixRetries, setWorkflowMaxSelfFixRetries] = useState<number>(3);
+  const [workflowMaxSelfFixSaving, setWorkflowMaxSelfFixSaving] = useState(false);
 
   useEffect(() => {
     fetch("/api/settings/app")
       .then((r) => r.ok ? r.json() : null)
-      .then((data: { maxFileUploadBytes?: number } | null) => {
-        if (data?.maxFileUploadBytes) setMaxFileUploadMb(Math.round(data.maxFileUploadBytes / (1024 * 1024)));
+      .then((data: { maxFileUploadBytes?: number; shellCommandAllowlist?: string[]; workflowMaxSelfFixRetries?: number } | null) => {
+        if (!data) return;
+        if (data.maxFileUploadBytes) setMaxFileUploadMb(Math.round(data.maxFileUploadBytes / (1024 * 1024)));
+        if (Array.isArray(data.shellCommandAllowlist)) setShellAllowlist(data.shellCommandAllowlist);
+        if (typeof data.workflowMaxSelfFixRetries === "number") setWorkflowMaxSelfFixRetries(data.workflowMaxSelfFixRetries);
       })
       .catch(() => {});
   }, []);
@@ -57,7 +65,7 @@ export default function SettingsPage() {
       <div className="card" style={{ padding: "1rem" }}>
         <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>System stats refresh</div>
         <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
-          How often CPU, RAM, disk and GPU are polled (sidebar and Statistics → Resources). 0.01 s – 2 s.
+          How often CPU, RAM, disk and GPU are polled (sidebar and Statistics → Resources). Background tabs poll every 5 s. 0.2 s – 5 s.
         </p>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
           <input
@@ -116,6 +124,141 @@ export default function SettingsPage() {
             }}
           >
             {maxFileUploadSaving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
+        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          <Terminal size={16} /> Shell command allowlist
+        </div>
+        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.75rem", lineHeight: 1.5 }}>
+          Commands the chat assistant can run without user approval. Useful for trusted commands like <code style={{ fontSize: "0.8em", background: "var(--surface-muted)", padding: "0.1em 0.3em", borderRadius: 4 }}>docker ps</code> or <code style={{ fontSize: "0.8em", background: "var(--surface-muted)", padding: "0.1em 0.3em", borderRadius: 4 }}>podman --version</code>. Add commands that you trust; others will require approval in the chat UI.
+        </p>
+        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
+          <input
+            type="text"
+            value={shellAllowlistNewCommand}
+            onChange={(e) => setShellAllowlistNewCommand(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), document.getElementById("shell-allowlist-add")?.click())}
+            placeholder="e.g. docker ps"
+            className="input"
+            style={{ flex: "1 1 180px", minWidth: 120 }}
+          />
+          <button
+            id="shell-allowlist-add"
+            type="button"
+            className="button button-ghost button-small"
+            disabled={shellAllowlistSaving || !shellAllowlistNewCommand.trim()}
+            onClick={async () => {
+              const cmd = shellAllowlistNewCommand.trim();
+              if (!cmd || shellAllowlist.includes(cmd)) return;
+              setShellAllowlistSaving(true);
+              try {
+                const res = await fetch("/api/settings/app", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ shellCommandAllowlist: [...shellAllowlist, cmd] }),
+                });
+                if (res.ok) {
+                  setShellAllowlist((prev) => [...prev, cmd]);
+                  setShellAllowlistNewCommand("");
+                }
+              } finally {
+                setShellAllowlistSaving(false);
+              }
+            }}
+          >
+            <Plus size={14} /> Add
+          </button>
+        </div>
+        {shellAllowlist.length > 0 ? (
+          <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+            {shellAllowlist.map((cmd) => (
+              <li
+                key={cmd}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "0.4rem 0.5rem",
+                  background: "var(--surface-muted)",
+                  borderRadius: 6,
+                  marginBottom: "0.35rem",
+                  fontFamily: "ui-monospace, monospace",
+                  fontSize: "0.85rem",
+                }}
+              >
+                <code style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cmd}</code>
+                <button
+                  type="button"
+                  className="button button-ghost button-small"
+                  disabled={shellAllowlistSaving}
+                  onClick={async () => {
+                    const next = shellAllowlist.filter((c) => c !== cmd);
+                    setShellAllowlistSaving(true);
+                    try {
+                      const res = await fetch("/api/settings/app", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ shellCommandAllowlist: next }),
+                      });
+                      if (res.ok) setShellAllowlist(next);
+                    } finally {
+                      setShellAllowlistSaving(false);
+                    }
+                  }}
+                  title="Remove from allowlist"
+                  aria-label={`Remove ${cmd}`}
+                >
+                  <Trash2 size={12} style={{ color: "var(--text-muted)" }} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: 0 }}>
+            No commands in allowlist. Commands proposed by the chat will require approval.
+          </p>
+        )}
+      </div>
+
+      <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
+        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>Workflow self-fix attempts</div>
+        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.75rem", lineHeight: 1.5 }}>
+          When a workflow agent tool fails and would ask for confirmation to retry, the system can let the agent retry automatically. 0 = off (always pause). 1–10 = max automatic retries before pausing for user input.
+        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+          <input
+            type="number"
+            min={0}
+            max={10}
+            value={workflowMaxSelfFixRetries}
+            onChange={(e) => setWorkflowMaxSelfFixRetries(Math.min(10, Math.max(0, Number(e.target.value) || 0)))}
+            style={{ width: 64, padding: "0.35rem 0.5rem", fontSize: "0.9rem" }}
+          />
+          <button
+            type="button"
+            className="button button-ghost button-small"
+            disabled={workflowMaxSelfFixSaving}
+            onClick={async () => {
+              setWorkflowMaxSelfFixSaving(true);
+              try {
+                const res = await fetch("/api/settings/app", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ workflowMaxSelfFixRetries }),
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  if (typeof data.workflowMaxSelfFixRetries === "number") setWorkflowMaxSelfFixRetries(data.workflowMaxSelfFixRetries);
+                }
+              } finally {
+                setWorkflowMaxSelfFixSaving(false);
+              }
+            }}
+          >
+            {workflowMaxSelfFixSaving ? "Saving…" : "Save"}
           </button>
         </div>
       </div>
@@ -367,6 +510,9 @@ export default function SettingsPage() {
       <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
         <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>Quick Links</div>
         <div style={{ display: "grid", gap: "0.4rem" }}>
+          <a href="/settings/vault" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+            Vault &rarr;
+          </a>
           <a href="/settings/llm" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
             LLM Providers &rarr;
           </a>

@@ -43,6 +43,8 @@ export interface AssistantOptions {
   onProgress?: AssistantProgress;
   /** LLM temperature (0–2). If set, used for all callLLM requests in this turn. Defaults: 0.4 main, 0.2 nudge. */
   temperature?: number;
+  /** Max follow-up rounds when there are tool results (default 2). Use 0 for "continue from shell approval" to save LLM calls. */
+  maxFollowUpRounds?: number;
 }
 
 export interface AssistantResponse {
@@ -321,13 +323,13 @@ export async function runAssistant(
 
   // Multi-round: if we got tool results, do one follow-up to allow e.g. update_workflow after create_agent; avoid re-running creation.
   let content = effectiveAssistantContent;
-  const maxRounds = 2;
+  const maxRounds = options.maxFollowUpRounds ?? 2;
   let round = 0;
   let lastAssistantContent = effectiveAssistantContent;
   let allToolResults = [...toolResults];
 
   const followUpReminderText =
-    "[System reminder: You already ran tool calls this turn. If your results above include create_workflow and create_agent ids, you MUST call update_workflow now for each such workflow: pass id (workflow id from results), nodes (one per agent with parameters.agentId = exact agent id from results), edges (e.g. n1→n2 and n2→n1 for a chat loop), and maxRounds. maxRounds = number of full cycles (one cycle = each agent speaks once): for a 2-agent chat, '3 rounds each' means maxRounds: 3 (6 steps total), NOT 6. Do NOT run create_agent or create_workflow again. After update_workflow you may call execute_workflow if the user wanted to run. If an execute_workflow result is in the results above, inspect its output.trail: if the agents' conversation does not match the user's goal (e.g. should discuss weather but did not), call update_agent (e.g. add toolIds like std-weather, tighten systemPrompt) and execute_workflow again — at most 2–3 improvement rounds total. You MUST also respond to the user in this message: briefly summarize what was done and either ask for their input or state what they can do next.]";
+    "[System reminder: You already ran tool calls this turn. If your results above include create_workflow and create_agent ids, you MUST call update_workflow now for each such workflow: pass id (workflow id from results), nodes (one per agent with parameters.agentId = exact agent id from results), edges (e.g. n1→n2 and n2→n1 for a chat loop), and maxRounds. maxRounds = number of full cycles (one cycle = each agent speaks once): for a 2-agent chat, '3 rounds each' means maxRounds: 3 (6 steps total), NOT 6. Do NOT run create_agent or create_workflow again. After update_workflow you may call execute_workflow if the user wanted to run. You MUST also call format_response with summary, needsInput, and options (e.g. ['Run it now', 'Modify agent', 'Not now']) so the user gets clickable choices — do not end with prose only. If an execute_workflow result is in the results above, inspect its output.trail: if the agents' conversation does not match the user's goal (e.g. should discuss weather but did not), call update_agent (e.g. add toolIds like std-weather, tighten systemPrompt) and execute_workflow again — at most 2–3 improvement rounds total. You MUST respond to the user in this message.]";
 
   const followUpSummaryInstruction =
     "You MUST respond to the user in this turn: give a short summary of what was done and either (a) ask for their input (e.g. run the workflow now? need more information?) or (b) state what they can do next. Do not end the turn without a clear message to the user.";

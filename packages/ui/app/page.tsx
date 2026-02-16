@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { UserCheck, Check, X } from "lucide-react";
 import LogoLoading from "./components/logo-loading";
 
@@ -32,28 +33,35 @@ function fmtTokens(n: number) {
 }
 
 export default function HomePage() {
+  const router = useRouter();
   const [workflows, setWorkflows] = useState<WorkflowOverview[]>([]);
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
   const [agentsMap, setAgentsMap] = useState<Record<string, { name: string }>>({});
   const [workflowsMap, setWorkflowsMap] = useState<Record<string, { name: string }>>({});
   const [loading, setLoading] = useState(true);
 
-  const loadWorkflows = () =>
-    fetch("/api/stats/workflows")
+  useEffect(() => {
+    fetch("/api/setup/status")
       .then((r) => r.json())
-      .then((data) => setWorkflows(data.workflows ?? []));
+      .then((data: { vaultExists?: boolean }) => {
+        if (data.vaultExists === false) router.replace("/setup");
+      })
+      .catch(() => {});
+  }, [router]);
 
-  const loadPendingTasks = () =>
-    fetch("/api/tasks?status=pending_approval")
+  const loadHome = () =>
+    fetch("/api/home")
       .then((r) => r.json())
-      .then((data) => {
+      .then((data: { workflows?: WorkflowOverview[]; tasks?: PendingTask[]; agents?: Record<string, { name: string }>; workflowsMap?: Record<string, { name: string }> }) => {
+        setWorkflows(data.workflows ?? []);
         setPendingTasks(data.tasks ?? []);
         setAgentsMap(data.agents ?? {});
-        setWorkflowsMap(data.workflows ?? {});
-      });
+        setWorkflowsMap(data.workflowsMap ?? {});
+      })
+      .finally(() => setLoading(false));
 
   useEffect(() => {
-    Promise.all([loadWorkflows(), loadPendingTasks()]).finally(() => setLoading(false));
+    loadHome();
   }, []);
 
   const resolveTask = async (taskId: string, status: "approved" | "rejected") => {
@@ -62,7 +70,7 @@ export default function HomePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    await loadPendingTasks();
+    loadHome();
   };
 
   return (

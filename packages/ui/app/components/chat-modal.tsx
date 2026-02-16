@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { flushSync } from "react-dom";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Send, ThumbsUp, ThumbsDown, Loader, Minus, Copy, Check, Circle, Square, MessageSquarePlus, List, Star, Trash2, ExternalLink, GitBranch, Settings2, KeyRound, Lock, Unlock } from "lucide-react";
-import { ChatMessageContent, ChatToolResults, getAssistantMessageDisplayContent, ReasoningContent } from "./chat-message-content";
+import { Send, ThumbsUp, ThumbsDown, Loader, Minus, Copy, Check, Circle, CircleDot, Square, MessageSquarePlus, List, Star, Trash2, ExternalLink, GitBranch, Settings2, KeyRound, Lock, Unlock, RotateCw } from "lucide-react";
+import { ChatMessageContent, ChatMessageResourceLinks, ChatToolResults, getAssistantMessageDisplayContent, getLoadingStatus, getMessageDisplayState, getSuggestedOptions, getSuggestedOptionsFromToolResults, hasAskUserWaitingForInput, messageContentIndicatesSuccess, messageHasSuccessfulToolResults, normalizeToolResults, ReasoningContent } from "./chat-message-content";
+import { performChatStreamSend } from "../hooks/useChatStream";
+import { useMinimumStepsDisplayTime, MIN_STEPS_DISPLAY_MS } from "../hooks/useMinimumStepsDisplayTime";
 import ChatFeedbackModal from "./chat-feedback-modal";
 import LogoLoading from "./logo-loading";
 import BrandIcon from "./brand-icon";
@@ -59,11 +60,17 @@ type ToolResult = { name: string; args: Record<string, unknown>; result: unknown
 
 type TraceStep = { phase: string; label?: string; contentPreview?: string };
 
+type InteractivePrompt = { question: string; options?: string[] };
+
 type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
   toolResults?: ToolResult[];
+  /** Explicit turn status from done event; avoids inferring from toolResults. */
+  status?: "completed" | "waiting_for_input";
+  /** Interactive prompt from done event when status === "waiting_for_input". */
+  interactivePrompt?: InteractivePrompt;
   reasoning?: string;
   todos?: string[];
   completedStepIndices?: number[];
@@ -115,7 +122,37 @@ function getToolResultCopyLine(result: unknown): string {
   return "done";
 }
 
-const CHAT_FAB_DRAFT_KEY = "agentron-chat-fab-draft";
+const CHAT_DRAFTS_KEY = "agentron-chat-drafts";
+
+function loadDrafts(): Record<string, string> {
+  if (typeof sessionStorage === "undefined") return {};
+  try {
+    const raw = sessionStorage.getItem(CHAT_DRAFTS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return typeof parsed === "object" && parsed !== null
+      ? (Object.fromEntries(Object.entries(parsed).filter(([, v]) => typeof v === "string")) as Record<string, string>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function getDraft(conversationId: string): string {
+  return loadDrafts()[conversationId] ?? "";
+}
+
+function setDraft(conversationId: string, text: string) {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    const drafts = loadDrafts();
+    if (text.trim()) drafts[conversationId] = text;
+    else delete drafts[conversationId];
+    sessionStorage.setItem(CHAT_DRAFTS_KEY, JSON.stringify(drafts));
+  } catch {
+    /* ignore */
+  }
+}
 
 function getMessageCopyText(msg: Message): string {
   const parts: string[] = [];
@@ -133,6 +170,221 @@ function getMessageCopyText(msg: Message): string {
 type LlmProvider = { id: string; provider: string; model: string; endpoint?: string };
 
 type ConversationItem = { id: string; title: string | null; rating: number | null; note: string | null; createdAt: number };
+
+type ChatModalMessageRowProps = {
+  msg: Message;
+  index: number;
+  messages: Message[];
+  loading: boolean;
+  copiedMsgId: string | null;
+  setCopiedMsgId: (id: string | null) => void;
+  rateFeedback: (msg: Message, rating: "good" | "bad") => void;
+  send: (payload?: unknown, optionValue?: string) => void | Promise<void>;
+  providerId: string;
+  conversationId: string | null;
+  getMessageCopyText: (msg: Message) => string;
+  onShellCommandApprove?: (command: string) => void;
+  onShellCommandAddToAllowlist?: (command: string) => void;
+  shellCommandLoading?: boolean;
+};
+
+function ChatModalMessageRow({
+  msg,
+  index,
+  messages,
+  loading,
+  copiedMsgId,
+  setCopiedMsgId,
+  rateFeedback,
+  send,
+  providerId,
+  conversationId,
+  getMessageCopyText,
+  onShellCommandApprove,
+  onShellCommandAddToAllowlist,
+  shellCommandLoading = false,
+}: ChatModalMessageRowProps) {
+  const isLastMessage = index === messages.length - 1;
+  const hideActionsWhileThinking = loading && isLastMessage && msg.role === "assistant";
+  const list = msg.toolResults ?? [];
+  const displayState = getMessageDisplayState(msg, { isLast: isLastMessage, loading });
+  const effectiveHasFinalResponseContent = useMinimumStepsDisplayTime(
+    msg.id,
+    displayState.hasFinalResponseContent,
+    MIN_STEPS_DISPLAY_MS
+  );
+  if (displayState.isEmptyPlaceholder) return null;
+  const FeedbackActions = msg.role === "assistant" && !hideActionsWhileThinking ? (
+    <div className="chat-msg-actions">
+      <button
+        className="chat-rate-btn"
+        type="button"
+        onClick={async () => {
+          const ok = await copyToClipboard(getMessageCopyText(msg));
+          if (ok) {
+            setCopiedMsgId(msg.id);
+            setTimeout(() => setCopiedMsgId(null), 1500);
+          }
+        }}
+        title="Copy message and tool results"
+      >
+        {copiedMsgId === msg.id ? <Check size={11} /> : <Copy size={11} />}
+      </button>
+      <button className="chat-rate-btn" onClick={() => rateFeedback(msg, "good")} title="Good"><ThumbsUp size={11} /></button>
+      <button className="chat-rate-btn" onClick={() => rateFeedback(msg, "bad")} title="Bad"><ThumbsDown size={11} /></button>
+    </div>
+  ) : null;
+  return (
+    <div className={`chat-msg chat-msg-${msg.role}`}>
+      {msg.role === "assistant" && isLastMessage && (msg.todos?.length ?? 0) > 0 && !effectiveHasFinalResponseContent && (
+        <div className="chat-steps-panel" aria-label="Current steps">
+          <span className="chat-steps-panel-title">Steps</span>
+          <ul className="chat-steps-list">
+            {msg.todos!.map((todo, i) => {
+              const done = msg.completedStepIndices?.includes(i) === true;
+              const executing = msg.executingStepIndex === i;
+              return (
+                <li
+                  key={i}
+                  className={`chat-steps-item ${done ? "chat-steps-item-done" : ""} ${executing ? "chat-steps-item-executing" : ""}`}
+                >
+                  {done ? (
+                    <Check size={14} className="chat-steps-icon chat-steps-icon-done" aria-hidden />
+                  ) : executing ? (
+                    <Loader size={14} className="chat-steps-icon chat-steps-icon-spin" aria-hidden />
+                  ) : (
+                    <Circle size={14} className="chat-steps-icon chat-steps-icon-open" aria-hidden />
+                  )}
+                  <span className="chat-steps-label">{todo}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+      {msg.role === "assistant" && msg.rephrasedPrompt != null && msg.rephrasedPrompt.trim() !== "" && (
+        <div className="chat-rephrased-prompt">
+          <span className="chat-rephrased-label">Rephrased prompt</span>
+          <p className="chat-rephrased-text">{msg.rephrasedPrompt}</p>
+        </div>
+      )}
+      {msg.role === "assistant" && (msg.traceSteps?.length ?? 0) > 0 && !effectiveHasFinalResponseContent && (
+        <div className="chat-trace-steps" aria-label="Current step">
+          <span className="chat-trace-step" title={msg.traceSteps![msg.traceSteps!.length - 1].contentPreview ?? undefined}>
+            {msg.traceSteps![msg.traceSteps!.length - 1].label ?? msg.traceSteps![msg.traceSteps!.length - 1].phase}
+          </span>
+        </div>
+      )}
+      {msg.role === "assistant" && msg.reasoning && isLastMessage && !effectiveHasFinalResponseContent && (
+        <div className="chat-plan">
+          <div className="chat-plan-reasoning">
+            <span className="chat-plan-label">Reasoning</span>
+            <ReasoningContent text={msg.reasoning} />
+          </div>
+        </div>
+      )}
+      {(() => {
+        const hasAnyToolResults = Array.isArray(list) && list.length > 0;
+        const lastAssistantIndex = messages.map((m, i) => (m.role === "assistant" ? i : -1)).filter((i) => i >= 0).pop() ?? -1;
+        const isLastAssistantMessage = msg.role === "assistant" && index === lastAssistantIndex;
+        const showError = isLastAssistantMessage && msg.content.startsWith("Error: ") && !displayState.hasAskUserWaiting && !hasAnyToolResults && !messageHasSuccessfulToolResults(list) && !messageContentIndicatesSuccess(msg.content);
+        const lastUserMessage = index > 0 && messages[index - 1]?.role === "user" ? messages[index - 1]!.content : "";
+        return (
+          <>
+            {showError ? (
+              <div className="chat-msg-error-placeholder">
+                <p>An error occurred.</p>
+                <div className="chat-msg-error-actions">
+                  {lastUserMessage.trim() ? (
+                    <button
+                      type="button"
+                      className="chat-view-traces-btn chat-msg-error-retry"
+                      onClick={() => send(undefined, lastUserMessage)}
+                      disabled={loading || !providerId}
+                      title={!providerId ? "Select an LLM provider first" : "Retry the last message"}
+                    >
+                      <RotateCw size={12} />
+                      Retry
+                    </button>
+                  ) : null}
+                  <a
+                    href={conversationId ? `/chat/traces?conversationId=${encodeURIComponent(conversationId)}` : "/chat/traces"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="chat-view-traces-link"
+                  >
+                    View stack trace for details <ExternalLink size={12} />
+                  </a>
+                </div>
+              </div>
+            ) : (displayState.displayContent.trim() !== "" || displayState.structuredContent) ? (
+              <>
+                <ChatMessageContent content={displayState.displayContent} structuredContent={displayState.structuredContent} />
+                {displayState.hasAskUserWaiting && isLastMessage && !loading && (() => {
+                  const opts = msg.interactivePrompt?.options && msg.interactivePrompt.options.length > 0
+                    ? msg.interactivePrompt.options.map((s) => ({ value: s, label: s }))
+                    : getSuggestedOptionsFromToolResults(list, displayState.displayContent || "");
+                  if (opts.length === 0) return null;
+                  return (
+                    <div className="chat-inline-options" role="group" aria-label="Choose an option">
+                      <span className="chat-inline-options-label">Choose an option:</span>
+                      <ul className="chat-inline-options-list">
+                        {opts.map((opt) => (
+                          <li key={opt.value}>
+                            <button type="button" className="chat-inline-option-btn" onClick={() => send(undefined, opt.value)} disabled={!providerId} title={opt.label !== opt.value ? `Send "${opt.value}"` : undefined}>
+                              {opt.label}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })()}
+              </>
+            ) : null}
+          </>
+        );
+      })()}
+      {msg.role === "assistant" && list.length > 0 && (
+        <ChatMessageResourceLinks results={list} />
+      )}
+      {msg.role === "assistant" && (() => {
+        const filtered = list.filter((r) => r.name !== "ask_user" && r.name !== "ask_credentials" && r.name !== "format_response");
+        if (filtered.length === 0) return null;
+        return (
+          <div className="chat-tool-results-wrap">
+            <ChatToolResults
+              results={filtered}
+              onShellCommandApprove={onShellCommandApprove}
+              onShellCommandAddToAllowlist={onShellCommandAddToAllowlist}
+              shellCommandLoading={shellCommandLoading}
+            />
+          </div>
+        );
+      })()}
+      {msg.role === "assistant" && msg.todos && msg.todos.length > 0 && !isLastMessage && (
+        <div className="chat-plan chat-plan-todos-only">
+          <div className="chat-plan-todos">
+            <span className="chat-plan-label">Steps</span>
+            <ul className="chat-plan-todo-list">
+              {msg.todos.map((todo, i) => {
+                const done = msg.completedStepIndices?.includes(i);
+                const executing = msg.executingStepIndex === i;
+                return (
+                  <li key={i} className={`chat-plan-todo-item ${done ? "chat-plan-todo-done" : ""} ${executing ? "chat-plan-todo-executing" : ""}`}>
+                    {done ? <Check size={12} className="chat-plan-todo-icon" /> : executing ? <Loader size={12} className="chat-plan-todo-icon chat-plan-todo-icon-spin" /> : <Circle size={12} className="chat-plan-todo-icon" />}
+                    <span>{todo}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      )}
+      {FeedbackActions}
+    </div>
+  );
+}
 
 type Props = {
   open: boolean;
@@ -175,10 +427,22 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
   const [vaultError, setVaultError] = useState<string | null>(null);
   const [vaultLoading, setVaultLoading] = useState(false);
   const [showVaultForm, setShowVaultForm] = useState(false);
+  const [shellCommandLoading, setShellCommandLoading] = useState(false);
+  const [pendingInputIds, setPendingInputIds] = useState<Set<string>>(new Set());
   const CHAT_DEFAULT_PROVIDER_KEY = "chat-default-provider-id";
   const scrollRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const prevConversationIdRef = useRef<string | null>(null);
+  const lockVaultBtnRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const resizeInput = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, []);
 
   // When opened with a new conversation (e.g. run output), use it and don't load messages
   useEffect(() => {
@@ -190,28 +454,26 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
     }
   }, [open, initialConversationId, clearInitialConversationId]);
 
-  // Persist FAB input draft so it survives close/reopen (only when using FAB, not embedded chat page)
+  // Per-conversation input drafts: save when switching away, load when switching to a conversation
   useEffect(() => {
-    if (embedded) return;
-    try {
-      if (input) sessionStorage.setItem(CHAT_FAB_DRAFT_KEY, input);
-      else sessionStorage.removeItem(CHAT_FAB_DRAFT_KEY);
-    } catch {
-      // ignore
-    }
-  }, [input, embedded]);
+    const prev = prevConversationIdRef.current;
+    if (prev) setDraft(prev, input);
+    prevConversationIdRef.current = conversationId;
+    if (conversationId) setInput(getDraft(conversationId));
+  }, [conversationId]);
 
-  // Restore FAB draft when reopening the popover
+  // Save draft on page unload so refresh/navigation preserves it
   useEffect(() => {
-    if (open && !embedded && typeof sessionStorage !== "undefined") {
-      try {
-        const draft = sessionStorage.getItem(CHAT_FAB_DRAFT_KEY);
-        if (draft != null && draft !== "") setInput(draft);
-      } catch {
-        // ignore
-      }
-    }
-  }, [open, embedded]);
+    const onBeforeUnload = () => {
+      if (conversationId && input.trim()) setDraft(conversationId, input);
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [conversationId, input]);
+
+  useEffect(() => {
+    resizeInput();
+  }, [input, resizeInput]);
 
   const startNewChat = useCallback(() => {
     fetch("/api/chat/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) })
@@ -249,6 +511,22 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
     }
   }, [conversationId, conversationList, startNewChat]);
 
+  useEffect(() => {
+    if (!open) return;
+    const fetchPending = () => {
+      fetch("/api/chat/pending-input")
+        .then((r) => r.json())
+        .then((d) => {
+          const list = Array.isArray(d.conversations) ? d.conversations : [];
+          setPendingInputIds(new Set(list.map((c: { conversationId: string }) => c.conversationId)));
+        })
+        .catch(() => setPendingInputIds(new Set()));
+    };
+    fetchPending();
+    const interval = setInterval(fetchPending, 5000);
+    return () => clearInterval(interval);
+  }, [open]);
+
   // Fetch conversation list when opening; if no conversation selected, pick first or mark loaded
   useEffect(() => {
     if (open) {
@@ -278,12 +556,18 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
-          setMessages(data.map((m: Record<string, unknown>) => ({
-            id: m.id as string,
-            role: m.role as "user" | "assistant",
-            content: m.content as string,
-            toolResults: m.toolCalls as ToolResult[] | undefined,
-          })));
+          setMessages(data.map((m: Record<string, unknown>) => {
+            const raw = m.toolCalls;
+            const toolResults = (Array.isArray(raw) ? normalizeToolResults(raw) : undefined) as ToolResult[] | undefined;
+            return {
+              id: m.id as string,
+              role: m.role as "user" | "assistant",
+              content: m.content as string,
+              toolResults,
+              ...(m.status !== undefined && { status: m.status as "completed" | "waiting_for_input" }),
+              ...(m.interactivePrompt != null && { interactivePrompt: m.interactivePrompt as InteractivePrompt }),
+            } as Message;
+          }));
         }
       })
       .catch(() => {})
@@ -361,6 +645,16 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
       setVaultExists(true);
       setVaultPassword("");
       setShowVaultForm(false);
+      // Move focus to the Lock vault button so no text input shows a blinking cursor (defer until after React has re-rendered)
+      setTimeout(() => {
+        requestAnimationFrame(() => {
+          lockVaultBtnRef.current?.focus();
+          const active = typeof document !== "undefined" ? document.activeElement : null;
+          if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+            active.blur();
+          }
+        });
+      }, 0);
     } catch {
       setVaultError("Request failed");
     } finally {
@@ -437,196 +731,110 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
     abortRef.current?.abort();
   }, []);
 
-  const send = async (credentialPayload?: { credentialKey: string; value: string; save: boolean }) => {
+  const send = async (payload?: unknown, optionValue?: string, extraBody?: Record<string, unknown>) => {
+    const credentialPayload = payload != null && typeof payload === "object" && "credentialKey" in payload && "value" in payload && "save" in payload
+      ? (payload as { credentialKey: string; value: string; save: boolean })
+      : undefined;
     const isCredentialReply = credentialPayload != null;
-    const text = isCredentialReply ? "Credentials provided." : input.trim();
+    const text = isCredentialReply ? "Credentials provided." : (optionValue !== undefined ? optionValue : input.trim());
     if (!text || loading) return;
-    if (!isCredentialReply) setInput("");
+    if (!isCredentialReply && optionValue === undefined && !extraBody?.continueShellApproval) {
+      setInput("");
+      if (conversationId) setDraft(conversationId, "");
+    }
 
     const userMsg: Message = { id: randomId(), role: "user", content: text };
     const placeholderId = randomId();
-    const placeholderMsg: Message = { id: placeholderId, role: "assistant", content: "" };
-    setMessages((prev) => [...prev, userMsg, placeholderMsg]);
+    setMessages((prev) => [...prev, userMsg, { id: placeholderId, role: "assistant", content: "" }]);
     setLoading(true);
     abortRef.current = new AbortController();
 
-    const updatePlaceholder = (updates: Partial<Message>, flush = false) => {
-      const updater = () =>
-        setMessages((prev) =>
-          prev.map((m) => (m.id === placeholderId ? { ...m, ...updates } : m))
-        );
-      if (flush) flushSync(updater);
-      else updater();
-    };
-
-    try {
-      const history = messages.map((m) => ({ role: m.role, content: m.content }));
-      const body: { message: string; history: { role: string; content: string }[]; providerId?: string; uiContext?: string; attachedContext?: string; conversationId?: string; credentialResponse?: { credentialKey: string; value: string; save: boolean } } = { message: text, history };
-      if (providerId) body.providerId = providerId;
+    const buildBody = (base: Record<string, unknown>) => {
+      const body = { ...base };
       if (isCredentialReply && credentialPayload) body.credentialResponse = credentialPayload;
-      const uiContext = getUiContext(pathname);
-      if (uiContext) body.uiContext = uiContext;
       if (attachedContext) {
         body.attachedContext = attachedContext;
         clearAttachedContext?.();
       }
-      if (conversationId) body.conversationId = conversationId;
-      const res = await fetch("/api/chat?stream=1", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify(body),
-        signal: abortRef.current.signal,
-      });
+      return body;
+    };
 
-      if (!res.ok) {
-        const raw = await res.text();
-        let errMsg = "Request failed";
-        try {
-          const data = raw ? JSON.parse(raw) : {};
-          const e = data.error?.trim().replace(/^\.\s*/, "") || "";
-          if (e && e !== ".") errMsg = e;
-        } catch {}
-        updatePlaceholder({ content: `Error: ${errMsg}` });
-        setLoading(false);
-        abortRef.current = null;
-        return;
-      }
-
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      if (!reader) {
-        updatePlaceholder({ content: "Error: No response body." });
-        setLoading(false);
-        abortRef.current = null;
-        return;
-      }
-
-      try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n\n");
-          buffer = lines.pop() ?? "";
-          for (const line of lines) {
-            const dataMatch = line.match(/^data:\s*(.+)$/m);
-            if (!dataMatch) continue;
-            try {
-              const event = JSON.parse(dataMatch[1].trim()) as { type: string; reasoning?: string; todos?: string[]; index?: number; stepIndex?: number; todoLabel?: string; toolName?: string; content?: string; toolResults?: ToolResult[]; messageId?: string; userMessageId?: string; conversationId?: string; conversationTitle?: string; rephrasedPrompt?: string; completedStepIndices?: number[]; error?: string; phase?: string; label?: string; contentPreview?: string };
-              if (event.type === "trace_step") {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === placeholderId
-                      ? { ...m, traceSteps: [...(m.traceSteps ?? []), { phase: event.phase ?? "", label: event.label, contentPreview: event.contentPreview }] }
-                      : m
-                  )
-                );
-              } else if (event.type === "rephrased_prompt" && event.rephrasedPrompt != null) {
-                updatePlaceholder({ rephrasedPrompt: event.rephrasedPrompt });
-              } else if (event.type === "plan") {
-                updatePlaceholder({
-                  reasoning: event.reasoning ?? "",
-                  todos: event.todos ?? [],
-                  completedStepIndices: [],
-                  executingStepIndex: undefined,
-                  executingToolName: undefined,
-                  executingTodoLabel: undefined,
-                  executingSubStepLabel: undefined,
-                }, true);
-              } else if (event.type === "step_start" && event.stepIndex !== undefined) {
-                updatePlaceholder({
-                  executingStepIndex: event.stepIndex,
-                  executingToolName: (event as { toolName?: string }).toolName,
-                  executingTodoLabel: (event as { todoLabel?: string }).todoLabel,
-                  executingSubStepLabel: (event as { subStepLabel?: string }).subStepLabel,
-                }, true);
-              } else if (event.type === "todo_done" && event.index !== undefined) {
-                flushSync(() =>
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === placeholderId
-                        ? {
-                            ...m,
-                            completedStepIndices: [...(m.completedStepIndices ?? []), event.index!],
-                            executingStepIndex: undefined,
-                            executingToolName: undefined,
-                            executingTodoLabel: undefined,
-                            executingSubStepLabel: undefined,
-                          }
-                        : m
-                    )
-                  )
-                );
-              } else if (event.type === "done") {
-                updatePlaceholder({
-                  content: event.content ?? "",
-                  toolResults: event.toolResults,
-                  ...(event.reasoning !== undefined && { reasoning: event.reasoning }),
-                  ...(event.todos !== undefined && { todos: event.todos }),
-                  completedStepIndices: event.completedStepIndices,
-                  executingStepIndex: undefined,
-                  executingToolName: undefined,
-                  executingTodoLabel: undefined,
-                  executingSubStepLabel: undefined,
-                  ...(event.rephrasedPrompt !== undefined && { rephrasedPrompt: event.rephrasedPrompt }),
-                }, true);
-                if (event.messageId) {
-                  setMessages((prev) =>
-                    prev.map((m) => (m.id === placeholderId ? { ...m, id: event.messageId! } : m))
-                  );
-                }
-                if (event.userMessageId) {
-                  setMessages((prev) =>
-                    prev.map((m) => (m.id === userMsg.id ? { ...m, id: event.userMessageId! } : m))
-                  );
-                }
-                if (event.conversationId) {
-                  setConversationId(event.conversationId);
-                  const newTitle = event.conversationTitle ?? null;
-                  setConversationList((prev) => {
-                    const has = prev.some((c) => c.id === event.conversationId);
-                    if (has) {
-                      return prev.map((c) => (c.id === event.conversationId ? { ...c, title: newTitle ?? c.title } : c));
-                    }
-                    return [{ id: event.conversationId!, title: newTitle, rating: null, note: null, createdAt: Date.now() }, ...prev];
-                  });
-                }
-              } else if (event.type === "error") {
-                const errorContent = `Error: ${event.error ?? "Unknown error"}`;
-                if (event.messageId) {
-                  setMessages((prev) =>
-                    prev.map((m) => (m.id === placeholderId ? { ...m, id: event.messageId!, content: errorContent } : m))
-                  );
-                } else {
-                  updatePlaceholder({ content: errorContent });
-                }
-                if (event.userMessageId) {
-                  setMessages((prev) =>
-                    prev.map((m) => (m.id === userMsg.id ? { ...m, id: event.userMessageId! } : m))
-                  );
-                }
-              }
-            } catch {
-              // skip malformed event
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
-        updatePlaceholder({ content: "Request stopped." });
-        if (!isCredentialReply) setInput(text);
-      } else {
-        updatePlaceholder({ content: "Failed to reach assistant." });
-      }
-    } finally {
-      setLoading(false);
-      abortRef.current = null;
-    }
+    await performChatStreamSend({
+      text,
+      messages,
+      placeholderId,
+      userMsgId: userMsg.id,
+      conversationId,
+      providerId,
+      uiContext: getUiContext(pathname),
+      setMessages,
+      setConversationId,
+      setConversationList,
+      setLoading,
+      abortSignal: abortRef.current?.signal,
+      randomId,
+      normalizeToolResults,
+      buildBody,
+      extraBody,
+      onAbort: () => { abortRef.current = null; },
+      onInputRestore: !isCredentialReply ? (t) => setInput(t) : undefined,
+    });
+    abortRef.current = null;
   };
+
+  const handleShellCommandApprove = useCallback(async (command: string) => {
+    if (shellCommandLoading || loading) return;
+    setShellCommandLoading(true);
+    try {
+      const res = await fetch("/api/shell-command/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = data.error || "Command failed";
+        send(undefined, `The shell command failed: ${err}`);
+        return;
+      }
+      const stdout = (data.stdout ?? "").trim();
+      const stderr = (data.stderr ?? "").trim();
+      const exitCode = data.exitCode;
+      send(undefined, "Command approved and run.", {
+        continueShellApproval: { command, stdout, stderr, exitCode },
+      });
+    } catch {
+      send(undefined, "Failed to execute the shell command.");
+    } finally {
+      setShellCommandLoading(false);
+    }
+  }, [shellCommandLoading, loading, send]);
+
+  const handleShellCommandAddToAllowlist = useCallback(async (command: string) => {
+    if (shellCommandLoading) return;
+    setShellCommandLoading(true);
+    try {
+      const res = await fetch("/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ addShellCommand: command }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const added = (data.addedCommands as string[] | undefined) ?? [command];
+        const msg = added.length > 1
+          ? `Added ${added.length} commands to the allowlist. You can run them again; they will execute without approval next time.`
+          : `Added "${added[0] ?? command}" to the allowlist. You can run it again; it will execute without approval next time.`;
+        send(undefined, msg);
+      } else {
+        send(undefined, `Failed to add to allowlist: ${data.error || "Unknown error"}`);
+      }
+    } catch {
+      send(undefined, "Failed to add command to allowlist.");
+    } finally {
+      setShellCommandLoading(false);
+    }
+  }, [shellCommandLoading, send]);
 
   const rateFeedback = async (msg: Message, label: "good" | "bad") => {
     const prevUser = messages[messages.indexOf(msg) - 1];
@@ -656,16 +864,37 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
         <span>New chat</span>
       </button>
       <ul className={`chat-conversations-list ${!embedded ? "chat-conversations-modal-list" : ""}`}>
-        {conversationList.map((c) => (
+        {conversationList.map((c) => {
+          const isCurrent = c.id === conversationId;
+          const status = isCurrent
+            ? loading
+              ? "running"
+              : messages.length === 0
+                ? null
+                : (() => {
+                    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+                    return lastAssistant && hasAskUserWaitingForInput(lastAssistant.toolResults) ? "waiting" : "finished";
+                  })()
+            : pendingInputIds.has(c.id)
+              ? "waiting"
+              : null;
+          return (
           <li key={c.id} className="chat-conversation-li">
             <button
               type="button"
-              className={`chat-conversation-item ${c.id === conversationId ? "active" : ""}`}
+              className={`chat-conversation-item ${isCurrent ? "active" : ""}`}
               onClick={() => {
                 setConversationId(c.id);
                 if (!embedded) setShowConversationList(false);
               }}
             >
+              {status && (
+                <span className={`chat-conversation-status chat-conversation-status-${status}`} title={status === "running" ? "Running" : status === "waiting" ? "Waiting for input" : "Finished"}>
+                  {status === "finished" && <Check size={12} />}
+                  {status === "running" && <Loader size={12} className="chat-conv-status-loader" />}
+                  {status === "waiting" && <CircleDot size={12} />}
+                </span>
+              )}
               <span className="chat-conversation-item-title">
                 {(c.title && c.title.trim()) ? c.title.trim() : "New chat"}
               </span>
@@ -680,7 +909,8 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
               <Trash2 size={12} />
             </button>
           </li>
-        ))}
+          );
+        })}
       </ul>
       <div className="chat-sidebar-actions">
         <a
@@ -726,6 +956,25 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
           >
             <List size={14} />
           </button>
+          <button
+            type="button"
+            className="chat-header-btn"
+            onClick={startNewChat}
+            title="New chat"
+            aria-label="New chat"
+          >
+            <MessageSquarePlus size={14} />
+          </button>
+          <a
+            href={conversationId ? `/chat/traces?conversationId=${encodeURIComponent(conversationId)}` : "/chat/traces"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="chat-header-btn"
+            title="Open stack trace for this chat"
+            aria-label="Open stack trace"
+          >
+            <GitBranch size={14} />
+          </a>
           <div className="chat-header-title">
             <div className="chat-header-dot" />
             <span>Agentron</span>
@@ -791,38 +1040,10 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
             <>
               <Unlock size={14} className="chat-vault-icon chat-vault-icon-unlocked" aria-hidden />
               <span className="chat-vault-label">Vault unlocked</span>
-              <button type="button" className="chat-vault-btn" onClick={handleVaultLock} disabled={vaultLoading}>Lock vault</button>
+              <button type="button" ref={lockVaultBtnRef} className="chat-vault-btn" onClick={handleVaultLock} disabled={vaultLoading}>Lock vault</button>
             </>
           )}
         </div>
-
-        {/* Steps panel: current turn's todo list (open/done), visible as soon as plan exists, including while loading */}
-        {lastMsg?.role === "assistant" && (lastMsg.todos?.length ?? 0) > 0 && (
-          <div className="chat-steps-panel" aria-label="Current steps">
-            <span className="chat-steps-panel-title">Steps</span>
-            <ul className="chat-steps-list">
-              {lastMsg.todos!.map((todo, i) => {
-                const done = lastMsg.completedStepIndices?.includes(i) === true;
-                const executing = lastMsg.executingStepIndex === i;
-                return (
-                  <li
-                    key={i}
-                    className={`chat-steps-item ${done ? "chat-steps-item-done" : ""} ${executing ? "chat-steps-item-executing" : ""}`}
-                  >
-                    {done ? (
-                      <Check size={14} className="chat-steps-icon chat-steps-icon-done" aria-hidden />
-                    ) : executing ? (
-                      <Loader size={14} className="chat-steps-icon chat-steps-icon-spin" aria-hidden />
-                    ) : (
-                      <Circle size={14} className="chat-steps-icon chat-steps-icon-open" aria-hidden />
-                    )}
-                    <span className="chat-steps-label">{todo}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
 
         {/* Messages */}
         <div className="chat-messages" ref={scrollRef}>
@@ -843,100 +1064,25 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
               )}
             </div>
           )}
-          {messages.map((msg, index) => {
-            const isLastMessage = index === messages.length - 1;
-            const hideActionsWhileThinking = loading && isLastMessage && msg.role === "assistant";
-            return (
-            <div key={msg.id} className={`chat-msg chat-msg-${msg.role}`}>
-              {msg.role === "assistant" && msg.rephrasedPrompt != null && msg.rephrasedPrompt.trim() !== "" && (
-                <div className="chat-rephrased-prompt">
-                  <span className="chat-rephrased-label">Rephrased prompt</span>
-                  <p className="chat-rephrased-text">{msg.rephrasedPrompt}</p>
-                </div>
-              )}
-              {msg.role === "assistant" && (msg.traceSteps?.length ?? 0) > 0 && !(loading && isLastMessage) && (
-                <div className="chat-trace-steps">
-                  <span className="chat-trace-step" title={msg.traceSteps![msg.traceSteps!.length - 1].contentPreview ?? undefined}>
-                    {msg.traceSteps![msg.traceSteps!.length - 1].label ?? msg.traceSteps![msg.traceSteps!.length - 1].phase}
-                  </span>
-                </div>
-              )}
-              {msg.role === "assistant" && msg.reasoning && isLastMessage && !(loading && isLastMessage) && (
-                <div className="chat-plan">
-                  <div className="chat-plan-reasoning">
-                    <span className="chat-plan-label">Reasoning</span>
-                    <ReasoningContent text={msg.reasoning} />
-                  </div>
-                </div>
-              )}
-              {/* Inline steps only for past messages; current turn uses the separate Steps panel above */}
-              {msg.role === "assistant" && msg.todos && msg.todos.length > 0 && !isLastMessage && (
-                <div className="chat-plan chat-plan-todos-only">
-                  <div className="chat-plan-todos">
-                    <span className="chat-plan-label">Steps</span>
-                    <ul className="chat-plan-todo-list">
-                      {msg.todos.map((todo, i) => {
-                        const done = msg.completedStepIndices?.includes(i);
-                        const executing = msg.executingStepIndex === i;
-                        return (
-                          <li key={i} className={`chat-plan-todo-item ${done ? "chat-plan-todo-done" : ""} ${executing ? "chat-plan-todo-executing" : ""}`}>
-                            {done ? <Check size={12} className="chat-plan-todo-icon" /> : executing ? <Loader size={12} className="chat-plan-todo-icon chat-plan-todo-icon-spin" /> : <Circle size={12} className="chat-plan-todo-icon" />}
-                            <span>{todo}</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                </div>
-              )}
-              {(() => {
-                const list = msg.toolResults ?? [];
-                const filtered = list.filter((r) => r.name !== "ask_user" && r.name !== "ask_credentials");
-                const displayContent = msg.role === "assistant" ? getAssistantMessageDisplayContent(msg.content, list) : msg.content;
-                return (
-                  <>
-                    {filtered.length > 0 ? <ChatToolResults results={filtered} /> : null}
-                    {msg.role === "assistant" && msg.content.startsWith("Error: ") ? (
-                      <div className="chat-msg-error-placeholder">
-                        <p>An error occurred.</p>
-                        <a
-                          href={conversationId ? `/chat/traces?conversationId=${encodeURIComponent(conversationId)}` : "/chat/traces"}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="chat-view-traces-link"
-                        >
-                          View stack trace for details <ExternalLink size={12} />
-                        </a>
-                      </div>
-                    ) : displayContent.trim() !== "" ? (
-                      <ChatMessageContent content={displayContent} />
-                    ) : null}
-                  </>
-                );
-              })()}
-              {msg.role === "assistant" && !hideActionsWhileThinking && (
-                <div className="chat-msg-actions">
-                  <button
-                    className="chat-rate-btn"
-                    type="button"
-                    onClick={async () => {
-                      const ok = await copyToClipboard(getMessageCopyText(msg));
-                      if (ok) {
-                        setCopiedMsgId(msg.id);
-                        setTimeout(() => setCopiedMsgId(null), 1500);
-                      }
-                    }}
-                    title="Copy message and tool results"
-                  >
-                    {copiedMsgId === msg.id ? <Check size={11} /> : <Copy size={11} />}
-                  </button>
-                  <button className="chat-rate-btn" onClick={() => rateFeedback(msg, "good")} title="Good"><ThumbsUp size={11} /></button>
-                  <button className="chat-rate-btn" onClick={() => rateFeedback(msg, "bad")} title="Bad"><ThumbsDown size={11} /></button>
-                </div>
-              )}
-            </div>
-          );
-          })}
+          {messages.map((msg, index) => (
+            <ChatModalMessageRow
+              key={msg.id}
+              msg={msg}
+              index={index}
+              messages={messages}
+              loading={loading}
+              copiedMsgId={copiedMsgId}
+              setCopiedMsgId={setCopiedMsgId}
+              rateFeedback={rateFeedback}
+              send={send}
+              providerId={providerId}
+              conversationId={conversationId}
+              getMessageCopyText={getMessageCopyText}
+              onShellCommandApprove={handleShellCommandApprove}
+              onShellCommandAddToAllowlist={handleShellCommandAddToAllowlist}
+              shellCommandLoading={shellCommandLoading}
+            />
+          ))}
           </div>
           {(() => {
             const askCreds = lastMsg?.role === "assistant" && lastMsg.toolResults
@@ -988,34 +1134,17 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
               </div>
             );
           })()}
-          {loading && lastMsg?.role === "assistant" && (() => {
-            const msg = lastMsg as Message & { executingToolName?: string; executingSubStepLabel?: string };
-            const stepIndex = msg.executingStepIndex;
-            const todos = msg.todos ?? [];
-            const total = todos.length;
-            const allDone = total > 0 && (msg.completedStepIndices?.length ?? 0) === total;
-            const toolName = msg.executingToolName;
-            let status: string;
-            if (allDone) status = "Completing…";
-            else if (toolName) {
-              const subStep = msg.executingSubStepLabel;
-              const toolLabel = toolName === "execute_workflow" ? "workflow" : toolName;
-              status = subStep ? `${subStep} (${toolLabel})…` : toolName === "execute_workflow" ? "Running workflow…" : `Running ${toolName}…`;
-            } else if (stepIndex !== undefined && total > 0 && todos[stepIndex] != null) {
-              status = total > 1 ? `Step ${stepIndex + 1} of ${total}: ${todos[stepIndex]}` : String(todos[stepIndex]);
-            } else if ((msg.traceSteps?.length ?? 0) > 0) {
-              status = msg.traceSteps![msg.traceSteps!.length - 1].label ?? msg.traceSteps![msg.traceSteps!.length - 1].phase ?? "Thinking…";
-            } else if (todos.length > 0 || (msg.reasoning != null && String(msg.reasoning).trim() !== "")) {
-              status = "Planning…";
-            } else status = "Thinking…";
-            return (
-              <div className="chat-status-bar" aria-live="polite">
-                <LogoLoading size={18} className="chat-status-bar-logo" />
-                <span>{status}</span>
-              </div>
-            );
-          })()}
         </div>
+
+        {loading && lastMsg?.role === "assistant" && (() => {
+          const status = getLoadingStatus(lastMsg as Message & { traceSteps?: { phase: string; label?: string }[]; todos?: string[]; completedStepIndices?: number[]; executingStepIndex?: number; executingToolName?: string; executingSubStepLabel?: string; reasoning?: string });
+          return (
+            <div className="chat-status-bar" aria-live="polite">
+              <LogoLoading size={18} className="chat-status-bar-logo" />
+              <span>{status}</span>
+            </div>
+          );
+        })()}
 
         {providers.length === 0 && (
           <div className="chat-no-model-banner">
@@ -1024,12 +1153,20 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
         )}
         {/* Input */}
         <div className="chat-input-bar">
-          <input
-            className="chat-input"
-            placeholder="Message assistant..."
+          <textarea
+            ref={inputRef}
+            className="chat-input chat-input-textarea"
+            placeholder="Message assistant... (Shift+Enter for new line)"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            onInput={resizeInput}
+            rows={1}
             disabled={loading}
           />
           {loading ? (
@@ -1039,7 +1176,7 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
           ) : (
             <button
               className="chat-send-btn"
-              onClick={send}
+              onClick={() => send()}
               disabled={!input.trim() || !providerId}
               title={!providerId ? "Select an LLM provider first" : undefined}
             >

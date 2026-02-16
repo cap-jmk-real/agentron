@@ -1,4 +1,5 @@
 import type { NativeToolAdapter } from "./adapters/native-tool";
+import { searchWeb } from "./search";
 
 const STD_FETCH_URL = "std-fetch-url";
 const STD_BROWSER = "std-browser";
@@ -6,6 +7,7 @@ const STD_RUN_CODE = "std-run-code";
 const STD_HTTP_REQUEST = "std-http-request";
 const STD_WEBHOOK = "std-webhook";
 const STD_WEATHER = "std-weather";
+const STD_WEB_SEARCH = "std-web-search";
 
 function getUrl(input: unknown): string | null {
   if (input === null || typeof input !== "object") return null;
@@ -223,6 +225,29 @@ export async function weather(input: unknown): Promise<unknown> {
   }
 }
 
+/**
+ * Web search: query the web and return titles, URLs, and snippets.
+ * Uses DuckDuckGo by default (no API key); Brave/Google when env vars are set.
+ * Input: { query: string, maxResults?: number }
+ */
+export async function webSearch(input: unknown): Promise<unknown> {
+  if (input === null || typeof input !== "object") {
+    return { error: "Input must be an object with query", results: [] };
+  }
+  const o = input as Record<string, unknown>;
+  const query = typeof o.query === "string" ? o.query.trim() : "";
+  if (!query) {
+    return { error: "query is required", results: [] };
+  }
+  const maxResults = typeof o.maxResults === "number" && o.maxResults > 0 ? Math.min(o.maxResults, 20) : undefined;
+  try {
+    return await searchWeb(query, { maxResults });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { error: "Web search failed", message, results: [] };
+  }
+}
+
 export type BuiltinOptions = { baseUrl?: string };
 
 /**
@@ -237,4 +262,5 @@ export function registerBuiltinHandlers(adapter: NativeToolAdapter, options?: Bu
   adapter.register(STD_HTTP_REQUEST, httpRequest);
   adapter.register(STD_WEBHOOK, webhook);
   adapter.register(STD_WEATHER, weather);
+  adapter.register(STD_WEB_SEARCH, webSearch);
 }

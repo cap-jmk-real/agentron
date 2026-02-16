@@ -22,11 +22,17 @@ function gb(bytes: number) {
   return (bytes / (1024 * 1024 * 1024)).toFixed(1);
 }
 
+/** When tab is hidden, poll much less often so multiple tabs don't multiply server load. */
+const BACKGROUND_POLL_MS = 5000;
+
 export function ResourceUsage() {
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [cpuPercent, setCpuPercent] = useState<number | null>(null);
   const [error, setError] = useState(false);
   const [intervalMs, setIntervalMs] = useState(400);
+  const [tabHidden, setTabHidden] = useState(
+    () => (typeof document !== "undefined" ? document.hidden : false)
+  );
   const prevCpuRef = useRef<{ user: number; system: number; ts: number } | null>(null);
 
   useEffect(() => {
@@ -35,6 +41,14 @@ export function ResourceUsage() {
     window.addEventListener(SYSTEM_STATS_INTERVAL_CHANGED_EVENT, handler);
     return () => window.removeEventListener(SYSTEM_STATS_INTERVAL_CHANGED_EVENT, handler);
   }, []);
+
+  useEffect(() => {
+    const onVisibility = () => setTabHidden(document.hidden);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  const pollIntervalMs = tabHidden ? BACKGROUND_POLL_MS : intervalMs;
 
   useEffect(() => {
     let cancelled = false;
@@ -64,12 +78,12 @@ export function ResourceUsage() {
         });
     };
     poll();
-    const id = setInterval(poll, intervalMs);
+    const id = setInterval(poll, pollIntervalMs);
     return () => {
       cancelled = true;
       clearInterval(id);
     };
-  }, [intervalMs]);
+  }, [pollIntervalMs]);
 
   if (error || !stats) {
     return (

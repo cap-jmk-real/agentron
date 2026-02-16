@@ -116,6 +116,25 @@ const icons = {
       <path d="M12 22.08V12" />
     </svg>
   ),
+  vault: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0110 0v4" />
+    </svg>
+  ),
+  github: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden>
+      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+    </svg>
+  ),
+  docs: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+      <path d="M8 7h8" />
+      <path d="M8 11h8" />
+    </svg>
+  ),
 };
 
 const sections: NavSection[] = [
@@ -136,6 +155,7 @@ const sections: NavSection[] = [
   {
     title: "Settings",
     items: [
+      { label: "Vault", href: "/settings/vault", icon: icons.vault },
       { label: "LLM Providers", href: "/settings/llm", icon: icons.llm },
       { label: "Local Models", href: "/settings/local", icon: icons.localModels },
       { label: "Telegram", href: "/settings/telegram", icon: icons.telegram },
@@ -151,7 +171,25 @@ export default function Sidebar() {
     () => new Set(sections.map((s) => s.title))
   );
   const [pendingCount, setPendingCount] = useState(0);
-  const [agentHelpCount, setAgentHelpCount] = useState(0);
+  const [runsNeedingInput, setRunsNeedingInput] = useState(0);
+  const [chatNeedingInput, setChatNeedingInput] = useState(0);
+  const [vaultExists, setVaultExists] = useState<boolean | null>(null);
+  useEffect(() => {
+    const fetchVaultStatus = async () => {
+      try {
+        const res = await fetch("/api/vault/status", { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          setVaultExists(data.vaultExists === true);
+        }
+      } catch {
+        setVaultExists(null);
+      }
+    };
+    fetchVaultStatus();
+    const interval = setInterval(fetchVaultStatus, 10000);
+    return () => clearInterval(interval);
+  }, []);
   useEffect(() => {
     const fetchQueue = async () => {
       try {
@@ -169,19 +207,26 @@ export default function Sidebar() {
     return () => clearInterval(interval);
   }, []);
   useEffect(() => {
-    const fetchPendingHelp = async () => {
+    const fetchPending = async () => {
       try {
-        const res = await fetch("/api/runs/pending-help");
-        if (res.ok) {
-          const data = await res.json();
-          setAgentHelpCount(typeof data.count === "number" ? data.count : 0);
+        const [runsRes, chatRes] = await Promise.all([
+          fetch("/api/runs/pending-help"),
+          fetch("/api/chat/pending-input"),
+        ]);
+        if (runsRes.ok) {
+          const data = await runsRes.json();
+          setRunsNeedingInput(typeof data.count === "number" ? data.count : 0);
+        }
+        if (chatRes.ok) {
+          const data = await chatRes.json();
+          setChatNeedingInput(typeof data.count === "number" ? data.count : 0);
         }
       } catch {
         // ignore
       }
     };
-    fetchPendingHelp();
-    const interval = setInterval(fetchPendingHelp, 5000);
+    fetchPending();
+    const interval = setInterval(fetchPending, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -236,33 +281,38 @@ export default function Sidebar() {
                       >
                         <span className="nav-icon">{item.icon}</span>
                         <span className="nav-label">{item.label}</span>
-                        {item.href === "/chat" && agentHelpCount > 0 && (
+                        {item.href === "/chat" && (runsNeedingInput + chatNeedingInput) > 0 && (
                           <span
                             className="nav-badge nav-badge-help"
                             title={
-                              agentHelpCount === 1
-                                ? "Agent needs your input – open Chat to respond"
-                                : `${agentHelpCount} requests waiting – open Chat to help the agent`
+                              runsNeedingInput + chatNeedingInput === 1
+                                ? "Needs your input – open Chat to respond"
+                                : `${runsNeedingInput + chatNeedingInput} requests need your input – open Chat`
                             }
                           >
-                            {agentHelpCount}
+                            {runsNeedingInput + chatNeedingInput}
                           </span>
                         )}
-                        {item.href === "/runs" && agentHelpCount > 0 && (
+                        {item.href === "/runs" && runsNeedingInput > 0 && (
                           <span
                             className="nav-badge nav-badge-help"
                             title={
-                              agentHelpCount === 1
+                              runsNeedingInput === 1
                                 ? "1 run waiting for your input"
-                                : `${agentHelpCount} runs waiting for your input`
+                                : `${runsNeedingInput} runs waiting for your input`
                             }
                           >
-                            {agentHelpCount}
+                            {runsNeedingInput}
                           </span>
                         )}
                         {item.href === "/requests" && pendingCount > 0 && (
                           <span className="nav-badge" title={`${pendingCount} request(s) waiting`}>
                             {pendingCount}
+                          </span>
+                        )}
+                        {item.href === "/settings/vault" && vaultExists === false && (
+                          <span className="nav-badge nav-badge-help" title="Vault not set up – create a master password">
+                            !
                           </span>
                         )}
                       </Link>
@@ -276,6 +326,30 @@ export default function Sidebar() {
       </nav>
       </div>
       <div className="sidebar-footer">
+        <div className="sidebar-external-links" style={{ display: "flex", gap: "0.75rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
+          <a
+            href="https://github.com/cap-jmk-real/agentron"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="nav-link"
+            style={{ fontSize: "0.85rem", color: "var(--text-muted)", textDecoration: "none" }}
+            title="GitHub repository"
+          >
+            <span className="nav-icon">{icons.github}</span>
+            <span className="nav-label">GitHub</span>
+          </a>
+          <a
+            href="https://cap-jmk-real.github.io/agentron/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="nav-link"
+            style={{ fontSize: "0.85rem", color: "var(--text-muted)", textDecoration: "none" }}
+            title="Documentation"
+          >
+            <span className="nav-icon">{icons.docs}</span>
+            <span className="nav-label">Docs</span>
+          </a>
+        </div>
         <div className="sidebar-resource-monitor">
           <ResourceUsage />
         </div>

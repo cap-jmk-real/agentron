@@ -25,17 +25,21 @@ export async function GET(_request?: Request) {
   const requests = rows.map((r) => {
     let question = "Needs your input";
     let reason: string | undefined;
+    let suggestions: string[] | undefined;
     if (r.output) {
       try {
-        const out = JSON.parse(r.output) as { question?: string; reason?: string };
+        const out = JSON.parse(r.output) as { question?: string; reason?: string; message?: string; suggestions?: string[] };
         if (typeof out.question === "string" && out.question.trim()) question = out.question.trim();
-        if (typeof out.reason === "string" && out.reason.trim()) reason = out.reason.trim();
+        reason = typeof out.reason === "string" && out.reason.trim() ? out.reason.trim() : (typeof out.message === "string" && out.message.trim() ? out.message.trim() : undefined);
+        if (Array.isArray(out.suggestions)) {
+          suggestions = out.suggestions.filter((s): s is string => typeof s === "string").slice(0, 20);
+        }
       } catch {
         // ignore
       }
     }
     const targetName = r.targetType === "workflow" ? workflowNames[r.targetId] : r.targetType === "agent" ? agentNames[r.targetId] : "";
-    return { runId: r.id, question, reason, targetName: targetName || r.targetId, targetType: r.targetType };
+    return { runId: r.id, question, reason, suggestions, targetName: targetName || r.targetId, targetType: r.targetType };
   });
 
   return json({ count: rows.length, requests });

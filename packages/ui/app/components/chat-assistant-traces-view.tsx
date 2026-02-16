@@ -254,6 +254,11 @@ function turnToTraceSection(turn: Turn, index: number): string {
           lines.push("  Arguments: " + JSON.stringify(tc.arguments));
         }
         if (tc.result !== undefined) {
+          const res = tc.result;
+          if (res != null && typeof res === "object" && !Array.isArray(res) && Array.isArray((res as Record<string, unknown>).tools)) {
+            const tools = (res as { tools: Array<{ id: string; name: string }> }).tools;
+            lines.push("  Tools (agent has): " + tools.map((t) => `${t.name} (${t.id})`).join(", "));
+          }
           lines.push("  Result: " + (typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result)));
         }
       });

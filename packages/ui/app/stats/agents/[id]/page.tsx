@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 type Run = { id: string; provider: string; model: string; promptTokens: number; completionTokens: number; estimatedCost: number; createdAt: number };
 type DayData = { date: string; promptTokens: number; completionTokens: number; cost: number; count: number };
@@ -48,18 +49,18 @@ export default function AgentStatsPage() {
         ))}
       </div>
 
-      {/* Daily chart */}
+      {/* Daily chart – higher contrast input (blue) vs output (teal), taller bars */}
       {timeSeries.length > 0 && (
         <div style={{ marginBottom: "1.5rem" }}>
           <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.6rem" }}>Daily Usage</h2>
           <div className="card" style={{ padding: "0.75rem 0.85rem" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
               {timeSeries.slice(-14).map((d) => (
                 <div key={d.date} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                   <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", width: 70, flexShrink: 0 }}>{d.date.slice(5)}</span>
-                  <div style={{ flex: 1, display: "flex", height: 10, borderRadius: 3, overflow: "hidden", background: "var(--border)" }}>
-                    <div style={{ width: `${(d.promptTokens / maxDay) * 100}%`, background: "var(--primary)", height: "100%" }} />
-                    <div style={{ width: `${(d.completionTokens / maxDay) * 100}%`, background: "var(--primary-strong)", height: "100%" }} />
+                  <div style={{ flex: 1, display: "flex", height: 16, borderRadius: 4, overflow: "hidden", background: "var(--surface-muted)" }}>
+                    <div className="agent-stats-bar-segment-in" style={{ width: `${(d.promptTokens / maxDay) * 100}%` }} />
+                    <div className="agent-stats-bar-segment-out" style={{ width: `${(d.completionTokens / maxDay) * 100}%` }} />
                   </div>
                   <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", width: 55, textAlign: "right", flexShrink: 0 }}>
                     {fmt(d.promptTokens + d.completionTokens)}
@@ -67,28 +68,28 @@ export default function AgentStatsPage() {
                 </div>
               ))}
             </div>
-            <div style={{ display: "flex", gap: "1rem", marginTop: "0.5rem", fontSize: "0.7rem", color: "var(--text-muted)" }}>
-              <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: "var(--primary)" }} /> Input
+            <div style={{ display: "flex", gap: "1.25rem", marginTop: "0.6rem", fontSize: "0.72rem", color: "var(--text-muted)" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                <span className="agent-stats-bar-segment-in" style={{ width: 10, height: 10, borderRadius: 2, flexShrink: 0 }} /> Input
               </span>
-              <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: "var(--primary-strong)" }} /> Output
+              <span style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                <span className="agent-stats-bar-segment-out" style={{ width: 10, height: 10, borderRadius: 2, flexShrink: 0 }} /> Output
               </span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Recent runs */}
+      {/* Recent runs with collapsible input/output */}
       <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.6rem" }}>Recent Calls</h2>
       {runs.length === 0 ? (
         <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>No calls recorded.</p>
       ) : (
-        <div style={{ display: "grid", gap: "0.3rem" }}>
+        <div style={{ display: "grid", gap: "0.4rem" }}>
           {runs.map((r) => (
-            <div key={r.id} className="card" style={{ padding: "0.5rem 0.75rem", fontSize: "0.8rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", gap: "0.75rem" }}>
+            <div key={r.id} className="card" style={{ padding: 0, fontSize: "0.8rem", overflow: "hidden" }}>
+              <div style={{ padding: "0.5rem 0.75rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
                   <span style={{ fontWeight: 500 }}>{r.model}</span>
                   <span style={{ color: "var(--text-muted)" }}>{fmt(r.promptTokens)} in / {fmt(r.completionTokens)} out</span>
                 </div>
@@ -97,6 +98,23 @@ export default function AgentStatsPage() {
                   <span>{new Date(r.createdAt).toLocaleString()}</span>
                 </div>
               </div>
+              <details className="agent-stats-call-details">
+                <summary className="agent-stats-call-details-summary">
+                  <ChevronRight size={14} className="agent-stats-chevron-closed" aria-hidden />
+                  <ChevronDown size={14} className="agent-stats-chevron-open" aria-hidden />
+                  Input &amp; output
+                </summary>
+                <div className="agent-stats-call-io">
+                  <div className="agent-stats-call-io-block agent-stats-call-input">
+                    <span className="agent-stats-call-io-label">Input</span>
+                    <span className="agent-stats-call-io-value">{fmt(r.promptTokens)} tokens</span>
+                  </div>
+                  <div className="agent-stats-call-io-block agent-stats-call-output">
+                    <span className="agent-stats-call-io-label">Output</span>
+                    <span className="agent-stats-call-io-value">{fmt(r.completionTokens)} tokens</span>
+                  </div>
+                </div>
+              </details>
             </div>
           ))}
         </div>
