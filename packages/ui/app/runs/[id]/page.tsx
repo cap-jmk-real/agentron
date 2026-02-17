@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Copy, CheckCircle, XCircle, Clock, Loader2, MessageCircle, GitBranch, Square, ThumbsUp, ThumbsDown, Terminal, Eye, EyeOff } from "lucide-react";
 import { openChatWithContext } from "../../components/chat-wrapper";
-import { AgentRequestBlock } from "../../components/agent-request-block";
 
 /** When the agent calls request_user_help, the workflow throws this message; we treat it as "waiting for input", not a failure. */
 const WAITING_FOR_USER_MESSAGE = "WAITING_FOR_USER";
@@ -44,7 +43,9 @@ type ExecutionTraceStep = {
   input?: unknown;
   output?: unknown;
   error?: string;
-  toolCalls?: Array<{ name: string; argsSummary?: string }>;
+  toolCalls?: Array<{ name: string; argsSummary?: string; resultSummary?: string }>;
+  /** When true, this step's input is the user's reply to request_user_help (agent received it). */
+  inputIsUserReply?: boolean;
 };
 
 type RunLogEntry = { level: string; message: string; createdAt: number };
@@ -147,6 +148,11 @@ function buildCopyForChatBlock(run: Run): string {
       lines.push("");
       lines.push("Output: " + (typeof out.output === "string" ? out.output : JSON.stringify(out.output, null, 2)));
     }
+    const payloadOut = out && typeof out === "object" && (out as { output?: { userResponded?: boolean; response?: string } }).output;
+    if (payloadOut?.userResponded && typeof payloadOut?.response === "string" && payloadOut.response !== "") {
+      lines.push("");
+      lines.push("User replied: " + payloadOut.response);
+    }
     if (run.status === "waiting_for_user") {
       const q = (out as { question?: string }).question ?? (out as { message?: string }).message;
       if (typeof q === "string" && q.trim()) {
@@ -158,18 +164,43 @@ function buildCopyForChatBlock(run: Run): string {
         lines.push("Suggestions: " + sug.filter((s): s is string => typeof s === "string").join(", "));
       }
       lines.push("");
-      lines.push("→ Reply on the run page or in Chat so the agent can continue.");
+      lines.push(`→ Reply on the run page or in Chat (open /chat?runId=${run.id}) so the agent can continue.`);
     }
     const trailSteps = (out as { trail?: ExecutionTraceStep[] }).trail;
     if (Array.isArray(trailSteps) && trailSteps.length > 0) {
+      const sorted = trailSteps.slice().sort((a, b) => a.order - b.order);
       lines.push("");
-      lines.push("Execution trail:");
-      for (const s of trailSteps.sort((a, b) => a.order - b.order)) {
-        lines.push(`  #${s.order + 1} ${s.agentName} (${s.nodeId})`);
-        if (s.toolCalls && s.toolCalls.length > 0) {
-          lines.push("    Tools invoked: " + s.toolCalls.map((t) => t.argsSummary ? `${t.name} (${t.argsSummary})` : t.name).join(", "));
+      lines.push("What happened (chronological: oldest at top, newest at bottom):");
+      for (const s of sorted) {
+        if (s.inputIsUserReply && s.input != null) {
+          const reply = extractUserReplyFromPartnerMessage(s.input);
+          if (reply != null) lines.push(`  • You replied: ${reply}`);
         }
-        if (s.input !== undefined) lines.push("    Input: " + JSON.stringify(s.input));
+        for (const t of s.toolCalls ?? []) {
+          const part = t.argsSummary ? `${t.name} (${t.argsSummary})` : t.name;
+          const result = t.resultSummary != null ? ` → ${t.resultSummary}` : "";
+          lines.push(`  • ${part}${result}`);
+        }
+      }
+      lines.push("");
+      lines.push("Execution trail (step details):");
+      for (const s of sorted) {
+        lines.push(`  #${s.order + 1} ${s.agentName} (${s.nodeId})`);
+        if (s.input !== undefined) {
+          if (s.inputIsUserReply) {
+            const yourReply = extractUserReplyFromPartnerMessage(s.input);
+            if (yourReply != null) lines.push("    Your reply: " + yourReply);
+            lines.push("    User reply (agent received): " + (typeof s.input === "string" ? s.input : JSON.stringify(s.input)));
+          } else {
+            lines.push("    Input: " + (typeof s.input === "string" ? s.input : JSON.stringify(s.input)));
+          }
+        }
+        if (s.toolCalls && s.toolCalls.length > 0) {
+          lines.push("    Tools invoked: " + s.toolCalls.map((t) => {
+            const part = t.argsSummary ? `${t.name} (${t.argsSummary})` : t.name;
+            return t.resultSummary != null ? `${part} → ${t.resultSummary}` : part;
+          }).join("; "));
+        }
         if (s.output !== undefined) lines.push("    Output: " + (typeof s.output === "string" ? s.output : JSON.stringify(s.output)));
         if (s.error) lines.push(s.error === WAITING_FOR_USER_MESSAGE ? "    Waiting for user input" : "    Error: " + s.error);
       }
@@ -210,6 +241,13 @@ function getToolErrorFromOutput(output: unknown): string | null {
   const o = output as Record<string, unknown>;
   if (typeof o.error === "string" && o.error.trim()) return o.error.trim();
   return null;
+}
+
+/** Extract the user's actual reply from the partner message (e.g. "The user has replied: \"Approve vault\". ..."). */
+function extractUserReplyFromPartnerMessage(input: unknown): string | null {
+  if (typeof input !== "string" || !input.trim()) return null;
+  const m = input.match(/(?:replied|reply):\s*["']([^"']*)["']/i) ?? input.match(/"([^"]+)"/);
+  return m?.[1]?.trim() ?? null;
 }
 
 /** Extract shell/execution log lines from trail steps (stdout, stderr from tools). */
@@ -277,10 +315,12 @@ function buildShellLog(trail: ExecutionTraceStep[]): string {
 function TrailStepCard({
   step,
   outputsOnly,
+  runId,
 }: {
   step: ExecutionTraceStep;
   index: number;
   outputsOnly: boolean;
+  runId?: string;
 }) {
   const [expanded, setExpanded] = useState(true);
   const hasInput = !outputsOnly && step.input !== undefined && step.input !== null;
@@ -310,6 +350,37 @@ function TrailStepCard({
       </button>
       {expanded && (
         <div className="run-trail-step-body">
+          {/* Chronological order: input (e.g. your reply) first, then tool calls, then results */}
+          {hasInput && (
+            <div style={{ marginBottom: "0.75rem" }}>
+              {step.inputIsUserReply ? (
+                <>
+                  {(() => {
+                    const yourReply = extractUserReplyFromPartnerMessage(step.input);
+                    return yourReply != null ? (
+                      <div style={{ marginBottom: "0.5rem" }}>
+                        <div className="run-trail-step-field-label">Your reply</div>
+                        <pre className="run-trail-step-pre" style={{ background: "var(--surface-muted)", padding: "0.5rem 0.75rem", borderRadius: 6, fontWeight: 500 }}>
+                          {yourReply}
+                        </pre>
+                      </div>
+                    ) : null;
+                  })()}
+                  <div>
+                    <div className="run-trail-step-field-label" style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+                      What the agent was told (instructions + your reply)
+                    </div>
+                    <pre className="run-trail-step-pre" style={{ fontSize: "0.85rem", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{formatValue(step.input)}</pre>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="run-trail-step-field-label">Input</div>
+                  <pre className="run-trail-step-pre">{formatValue(step.input)}</pre>
+                </>
+              )}
+            </div>
+          )}
           {toolCalls.length > 0 && (
             <div style={{ marginBottom: "0.75rem" }}>
               <div className="run-trail-step-field-label">Tools invoked</div>
@@ -319,6 +390,11 @@ function TrailStepCard({
                     <code style={{ fontSize: "0.85em" }}>{t.name}</code>
                     {t.argsSummary != null && (
                       <span style={{ color: "var(--text-muted)", marginLeft: "0.35rem" }}> — {t.argsSummary}</span>
+                    )}
+                    {t.resultSummary != null && (
+                      <span style={{ marginLeft: "0.35rem", color: t.resultSummary === "ok" ? "var(--text-muted)" : t.resultSummary === "waiting for user" ? "var(--primary)" : "var(--resource-red)" }}>
+                        → {t.resultSummary}
+                      </span>
                     )}
                   </li>
                 ))}
@@ -337,13 +413,7 @@ function TrailStepCard({
                 fontWeight: 500,
               }}
             >
-              No Podman/container command was run in this step. The agent requested your input without calling Run Container or Container session first.
-            </div>
-          )}
-          {hasInput && (
-            <div>
-              <div className="run-trail-step-field-label">Input</div>
-              <pre className="run-trail-step-pre">{formatValue(step.input)}</pre>
+              No container command was run in this step. The agent requested your input without calling Run Container or Container session first.
             </div>
           )}
           {hasOutput && isContainerLikeOutput(step.output) && (
@@ -405,9 +475,10 @@ function TrailStepCard({
               <pre className="run-trail-step-pre">{formatValue(step.output)}</pre>
             </div>
           )}
-          {isWaitingForUser && (
+          {isWaitingForUser && runId && (
             <div style={{ padding: "0.5rem 0", color: "var(--text-muted)", fontSize: "0.9rem" }}>
-              Reply in Chat or on this run page to continue.
+              <a href={`/chat?runId=${encodeURIComponent(runId)}`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--primary)", textDecoration: "underline" }}>Reply in Chat</a>
+              {" or on this run page to continue."}
             </div>
           )}
           {hasError && (
@@ -482,6 +553,10 @@ export default function RunDetailPage() {
   const [shellTraceCopied, setShellTraceCopied] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [submittingReply, setSubmittingReply] = useState(false);
+  /** When an option button is clicked, its value while the request is in flight (for loading state). */
+  const [submittingOption, setSubmittingOption] = useState<string | null>(null);
+  /** Error from last respond attempt (e.g. run no longer waiting); cleared on next load or submit. */
+  const [replyError, setReplyError] = useState<string | null>(null);
   const liveLogEndRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async (silent?: boolean) => {
@@ -500,6 +575,7 @@ export default function RunDetailPage() {
       }
       const data = await res.json();
       setRun(data);
+      setReplyError(null);
     } catch {
       if (!silent) {
         setError("Failed to load run.");
@@ -518,6 +594,13 @@ export default function RunDetailPage() {
   useEffect(() => {
     if (run?.status !== "running") return;
     const interval = setInterval(() => void load(true), 800);
+    return () => clearInterval(interval);
+  }, [run?.status, load]);
+
+  // When run is waiting_for_user, still poll occasionally so if the user replied from Chat we pick up the update
+  useEffect(() => {
+    if (run?.status !== "waiting_for_user") return;
+    const interval = setInterval(() => void load(true), 500);
     return () => clearInterval(interval);
   }, [run?.status, load]);
 
@@ -612,22 +695,42 @@ export default function RunDetailPage() {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  const handleSubmitReply = useCallback(async () => {
+  /** Submit response to the run. Pass a string to send that value (e.g. from an option click); otherwise uses replyText. */
+  const handleSubmitReply = useCallback(async (overrideResponse?: string) => {
     if (!id || !run || run.status !== "waiting_for_user") return;
-    const text = replyText.trim() || "(no text)";
+    const text = (overrideResponse != null ? overrideResponse : replyText.trim()) || "(no text)";
     setSubmittingReply(true);
+    setReplyError(null);
+    if (overrideResponse != null) setSubmittingOption(overrideResponse);
     try {
       const res = await fetch(`/api/runs/${encodeURIComponent(id)}/respond`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ response: text }),
+        credentials: "same-origin",
       });
       if (res.ok) {
         setReplyText("");
+        const data = await res.json();
+        setRun(data);
+        // #region agent log
+        const payloadOut = data?.output && typeof data.output === "object" ? (data.output as { output?: { userResponded?: boolean; response?: string } }).output : undefined;
+        fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'runs/[id]/page.tsx:handleSubmitReply',message:'respond ok, applied POST body to run state',data:{userResponded:!!payloadOut?.userResponded,responseLen:typeof payloadOut?.response==='string'?payloadOut.response.length:0},hypothesisId:'reply_ui',timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        await load(true);
+      } else {
+        const errBody = await res.json().catch(() => ({}));
+        const msg = typeof (errBody as { error?: string }).error === "string"
+          ? (errBody as { error: string }).error
+          : res.status === 400
+            ? "Run is no longer waiting for input. The run may have already continued."
+            : "Could not send reply.";
+        setReplyError(msg);
         await load(true);
       }
     } finally {
       setSubmittingReply(false);
+      setSubmittingOption(null);
     }
   }, [id, run, replyText, load]);
 
@@ -694,6 +797,8 @@ export default function RunDetailPage() {
   const trail = (out && typeof out === "object" && Array.isArray((out as { trail?: ExecutionTraceStep[] }).trail))
     ? (out as { trail: ExecutionTraceStep[] }).trail
     : [];
+  const payloadOutput = out && typeof out === "object" && (out as { output?: unknown }).output != null ? (out as { output: { userResponded?: boolean; response?: string } }).output : undefined;
+  const showUserReplyBanner = run.status === "running" && !!payloadOutput?.userResponded && typeof payloadOutput?.response === "string" && payloadOutput.response !== "";
   const executingMessage =
     run.status === "running" && out && typeof out === "object" && typeof (out as { executing?: string }).executing === "string"
       ? (out as { executing: string }).executing
@@ -707,6 +812,9 @@ export default function RunDetailPage() {
   const displayLogs = runLogs.filter((e) => e.level !== "meta");
   // Shell & stack trace: prefer persisted run_logs history when available, else trail-derived output
   const hasShellHistory = displayLogs.length > 0 || shellLogFromTrail.trim() !== "";
+  const runUsesContainer =
+    displayLogs.length > 0 ||
+    trail.some((s) => (s.toolCalls ?? []).some((t) => t.name === "std-container-run" || t.name === "std-container-session"));
   const lastMeta = [...runLogs].reverse().find((e) => e.level === "meta");
   const containerRunning =
     run.status === "running" && lastMeta?.message === "container_started";
@@ -748,7 +856,7 @@ export default function RunDetailPage() {
             )}
           </div>
         </div>
-        {run.status === "running" && (
+        {run.status === "running" && runUsesContainer && (
           <div className="run-detail-section" style={{ paddingTop: "0.25rem" }}>
             <div className="run-detail-label" style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Container</div>
             <div className="run-detail-value" style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.9rem" }}>
@@ -839,7 +947,7 @@ export default function RunDetailPage() {
               {run.status === "waiting_for_user"
                 ? `Waiting for your input — the workflow is paused${trail.length > 0 ? ` at ${trail.slice().sort((a, b) => b.order - a.order)[0]?.nodeId}` : ""} waiting for your response.`
                 : run.status === "running"
-                  ? "Running — agents are executing."
+                  ? (executingMessage ? `Running — ${executingMessage}` : "Running — agents are executing.")
                   : run.status === "completed"
                     ? "Completed."
                     : run.status === "failed"
@@ -848,26 +956,26 @@ export default function RunDetailPage() {
                         ? "Cancelled."
                         : run.status}
             </li>
-            {run.targetType === "workflow" && (() => {
+            {run.targetType === "workflow" && runUsesContainer && (() => {
               const stepWithContainer = trail.find((s) => s.toolCalls?.some((t) => t.name === "std-container-run" || t.name === "std-container-session"));
               const anyToolCalls = trail.some((s) => (s.toolCalls?.length ?? 0) > 0);
               if (stepWithContainer) {
                 return (
                   <li>
-                    <strong>Container (Podman):</strong> Invoked in step #{stepWithContainer.order + 1} — see <strong>Execution trail</strong> (Tools invoked) and <strong>Command output</strong> below.
+                    <strong>Container:</strong> Invoked in step #{stepWithContainer.order + 1} — see <strong>Execution trail</strong> (Tools invoked) and <strong>Command output</strong> below.
                   </li>
                 );
               }
               if (run.status === "waiting_for_user" && anyToolCalls) {
                 return (
                   <li style={{ color: "var(--resource-amber)", fontWeight: 500 }}>
-                    <strong>Container (Podman):</strong> Not invoked. The agent requested your input without calling Run Container or Container session first. See <strong>Execution trail</strong> → <strong>Tools invoked</strong> for what the agent actually called.
+                    <strong>Container:</strong> Not invoked. The agent requested your input without calling Run Container or Container session first. See <strong>Execution trail</strong> → <strong>Tools invoked</strong> for what the agent actually called.
                   </li>
                 );
               }
               return (
                 <li>
-                  <strong>Container (Podman):</strong> {anyToolCalls ? "Not invoked in this run." : "No tool calls recorded yet."}
+                  <strong>Container:</strong> {anyToolCalls ? "Not invoked in this run." : "No tool calls recorded yet."}
                 </li>
               );
             })()}
@@ -882,33 +990,17 @@ export default function RunDetailPage() {
                 </li>
               );
             })()}
-            <li style={{ color: "var(--text-muted)", marginTop: "0.25rem" }}>
-              <strong>Note:</strong> There is no long-lived container — the agent runs one-off container commands; stdout/stderr appear in <strong>Live container output</strong> below when it does. Send a message in Chat (with this run in context) to interact with the agent.
-            </li>
+            {runUsesContainer && (
+              <li style={{ color: "var(--text-muted)", marginTop: "0.25rem" }}>
+                <strong>Note:</strong> There is no long-lived container — the agent runs one-off container commands; stdout/stderr appear in <strong>Live container output</strong> below when it does. Send a message in Chat (with this run in context) to interact with the agent.
+              </li>
+            )}
           </ul>
         </div>
       </div>
 
-      {run.status === "waiting_for_user" && out != null && typeof out === "object" && (
-        <AgentRequestBlock
-          question={rawQuestion || waitingForUserMessage}
-          options={
-            Array.isArray((out as { suggestions?: string[] }).suggestions)
-              ? (out as { suggestions: string[] }).suggestions
-              : Array.isArray((out as { options?: string[] }).options)
-                ? (out as { options: string[] }).options
-                : undefined
-          }
-          onReplyOption={(value) => {
-            setReplyText((prev) => (prev ? prev + " " + value : value));
-            setTimeout(() => document.getElementById("run-detail-reply-input")?.focus(), 50);
-          }}
-          showVagueHint
-        />
-      )}
-
-      {/* Live container output: show when we have logs, trail-derived output, or run is active */}
-      {(run.targetType === "workflow" && (hasLiveLogs || run.status === "running" || run.status === "waiting_for_user" || (run.status === "completed" && hasShellHistory))) && (
+      {/* Live container output: only when the workflow actually used a container (std-container-run / std-container-session) */}
+      {(run.targetType === "workflow" && runUsesContainer && (hasLiveLogs || run.status === "running" || run.status === "waiting_for_user" || (run.status === "completed" && hasShellHistory))) && (
         <div id="live-container-output" className="run-detail-card run-detail-shell-card" style={{ marginBottom: "1rem", scrollMarginTop: "1rem" }}>
           <div className="run-detail-section" style={{ marginBottom: "0.75rem" }}>
             <div className="run-detail-label" style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
@@ -1030,72 +1122,106 @@ export default function RunDetailPage() {
               {hasError
                 ? "Error message and stack. Hints for container or LLM issues appear below when relevant."
                 : run.status === "waiting_for_user"
-                  ? "Run is paused; reply in Chat or on this page to continue."
+                  ? <>Run is paused; <a href={`/chat?runId=${encodeURIComponent(run.id)}`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--primary)", textDecoration: "underline" }}>reply in Chat</a> or on this page to continue.</>
                   : "Run result payload and final output."}
             </p>
           </div>
           <div className="run-detail-output-body">
             <div className="run-detail-output-content">
               {run.status === "waiting_for_user" && !hasError ? (
-                <div className="run-detail-value">
-                  <div id="run-detail-request" style={{ marginBottom: "0.75rem" }}>
-                    <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.25rem", textTransform: "uppercase", letterSpacing: "0.03em" }}>
-                      Request
-                    </div>
-                    <p style={{ margin: 0, fontWeight: 500 }}>
+                <div className="run-detail-value run-detail-reply-box">
+                  <div id="run-detail-request" className="run-detail-reply-question">
+                    <p style={{ margin: 0, fontWeight: 500, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                       {waitingForUserMessage || "Waiting for your input."}
                     </p>
+                    {isVagueRequest && (
+                      <p style={{ margin: "0.35rem 0 0 0", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                        {WAITING_WHAT_TO_DO}
+                      </p>
+                    )}
                   </div>
-                  <div style={{ marginBottom: "0.75rem", padding: "0.6rem 0.75rem", background: "var(--surface-muted)", borderRadius: 6, fontSize: "0.9rem" }}>
-                    <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.2rem", textTransform: "uppercase", letterSpacing: "0.03em" }}>
-                      What to do
-                    </div>
-                    <p style={{ margin: 0, color: "var(--text-primary)" }}>
-                      {isVagueRequest ? WAITING_WHAT_TO_DO : "Reply in the box below with your answer, or reply in Chat. Your response will be sent to the agent and the run will continue."}
-                    </p>
+                  <div className="run-detail-reply-options-row">
+                    {Array.isArray((out as { suggestions?: string[] }).suggestions) && ((out as { suggestions: string[] }).suggestions.length > 0)
+                      ? ((out as { suggestions: string[] }).suggestions as string[]).filter((s): s is string => typeof s === "string").map((s, i) => {
+                          const sendingThis = submittingOption === s;
+                          return (
+                            <button
+                              key={i}
+                              type="button"
+                              className="run-detail-reply-option-btn"
+                              onClick={() => void handleSubmitReply(s)}
+                              disabled={submittingReply}
+                              aria-busy={sendingThis}
+                              title={sendingThis ? "Sending…" : `Send "${s}"`}
+                            >
+                              {sendingThis ? (
+                                <>
+                                  <Loader2 size={14} className="spin" aria-hidden style={{ marginRight: 6, verticalAlign: "middle" }} />
+                                  Sending…
+                                </>
+                              ) : (
+                                s
+                              )}
+                            </button>
+                          );
+                        })
+                      : Array.isArray((out as { options?: string[] }).options) && ((out as { options: string[] }).options.length > 0)
+                        ? ((out as { options: string[] }).options as string[]).filter((s): s is string => typeof s === "string").map((s, i) => {
+                            const sendingThis = submittingOption === s;
+                            return (
+                              <button
+                                key={i}
+                                type="button"
+                                className="run-detail-reply-option-btn"
+                                onClick={() => void handleSubmitReply(s)}
+                                disabled={submittingReply}
+                                aria-busy={sendingThis}
+                                title={sendingThis ? "Sending…" : `Send "${s}"`}
+                              >
+                                {sendingThis ? (
+                                  <>
+                                    <Loader2 size={14} className="spin" aria-hidden style={{ marginRight: 6, verticalAlign: "middle" }} />
+                                    Sending…
+                                  </>
+                                ) : (
+                                  s
+                                )}
+                              </button>
+                            );
+                          })
+                        : null}
                   </div>
-                  {Array.isArray((out as { suggestions?: string[] }).suggestions) && ((out as { suggestions: string[] }).suggestions.length > 0) ? (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", marginBottom: "0.75rem" }}>
-                      {((out as { suggestions: string[] }).suggestions as string[]).filter((s): s is string => typeof s === "string").map((s, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          className="button button-ghost button-small"
-                          style={{ fontSize: "0.85rem" }}
-                          onClick={() => setReplyText((prev) => (prev ? prev + " " + s : s))}
-                        >
-                          {s}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
                   <form
                     onSubmit={(e) => { e.preventDefault(); void handleSubmitReply(); }}
-                    style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: "32rem" }}
+                    className="run-detail-reply-form"
                   >
                     <textarea
                       id="run-detail-reply-input"
-                      className="run-detail-value"
-                      placeholder="Type your response…"
+                      className="run-detail-reply-textarea"
+                      placeholder="Or type your response…"
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
                       rows={3}
-                      style={{ resize: "vertical", minHeight: "4rem" }}
-                      aria-label="Your response to the request above"
+                      aria-label="Your response"
                       aria-describedby="run-detail-request"
+                      disabled={submittingReply}
                     />
                     <button
                       type="submit"
-                      className="button button-success"
-                      disabled={submittingReply}
-                      style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                      className="button button-success run-detail-reply-submit"
+                      disabled={submittingReply || !replyText.trim()}
                     >
-                      {submittingReply ? <Loader2 size={14} className="spin" /> : <MessageCircle size={14} />}
-                      {submittingReply ? "Sending…" : "Send response"}
+                      {submittingReply && !submittingOption ? <Loader2 size={14} className="spin" /> : <MessageCircle size={14} />}
+                      {submittingReply && !submittingOption ? "Sending…" : "Send"}
                     </button>
                   </form>
-                  <p style={{ margin: "0.5rem 0 0 0", fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                    You can also reply in Chat with the run context from &quot;Copy for chat&quot; below.
+                  {replyError && (
+                    <p className="run-detail-reply-hint" style={{ color: "var(--resource-red)", marginTop: "0.5rem" }} role="alert">
+                      {replyError}
+                    </p>
+                  )}
+                  <p className="run-detail-reply-hint">
+                    You can also reply in Chat using &quot;Copy for chat&quot; below.
                   </p>
                 </div>
               ) : hasError ? (
@@ -1119,14 +1245,14 @@ export default function RunDetailPage() {
                 return (
                   <div className="run-detail-value" style={{ marginTop: "1rem", padding: "0.75rem 1rem", background: "var(--surface-muted)", borderRadius: 8, borderLeft: "3px solid var(--primary)", fontSize: "0.9rem" }}>
                     <strong style={{ display: "block", marginBottom: "0.35rem" }}>Container runtime not found</strong>
-                    <p style={{ margin: 0, color: "var(--text-muted)" }}>Install Docker or Podman to run workflows that use containers:</p>
+                    <p style={{ margin: 0, color: "var(--text-muted)" }}>Install a container engine (Docker or Podman) to run workflows that use containers:</p>
                     <ul style={{ margin: "0.5rem 0 0 1.25rem", padding: 0 }}>
                       <li><a href="https://docs.docker.com/get-docker/" target="_blank" rel="noopener noreferrer" style={{ color: "var(--primary)" }}>Docker</a></li>
                       <li><a href="https://podman.io/getting-started/installation" target="_blank" rel="noopener noreferrer" style={{ color: "var(--primary)" }}>Podman</a></li>
                     </ul>
                     {isEnoent && (
                       <p style={{ margin: "0.5rem 0 0 0", fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                        If Podman/Docker works in your terminal, start the dev server from that same terminal so it inherits the same PATH.
+                        If your container engine works in your terminal, start the dev server from that same terminal so it inherits the same PATH.
                       </p>
                     )}
                     <p style={{ margin: "0.5rem 0 0 0", fontSize: "0.85rem", color: "var(--text-muted)" }}>
@@ -1176,8 +1302,13 @@ export default function RunDetailPage() {
             <div className="run-detail-label" style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
               <GitBranch size={16} /> Execution trail
             </div>
+            {showUserReplyBanner && (
+              <p style={{ margin: "0.5rem 0 0.75rem 0", padding: "0.5rem 0.75rem", background: "var(--surface-muted)", borderRadius: "var(--radius)", fontSize: "0.9rem", borderLeft: "3px solid var(--primary)" }}>
+                <strong>You replied:</strong> <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{payloadOutput?.response ?? ""}</span>
+              </p>
+            )}
             <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: "0.25rem 0 0 0" }}>
-              Chronological steps: which agent ran at each step (by order and round). Expand a step to see input and output. When an agent runs a container command, its <strong>Command output</strong> (stdout/stderr/exit code) appears here and in <strong>Shell &amp; stack trace</strong> below.
+              Full history in order: <strong>oldest at top, newest at bottom.</strong> Tool calls, your replies, and results appear in the order they happened. Expand a step below to see details. When an agent runs a container command, its <strong>Command output</strong> appears here and in <strong>Shell &amp; stack trace</strong> below.
             </p>
             <label className="run-trail-toggle">
               <input
@@ -1190,8 +1321,64 @@ export default function RunDetailPage() {
               </span>
               Show only outputs
             </label>
+            {trail.length > 0 && (() => {
+              const sorted = trail.slice().sort((a, b) => a.order - b.order);
+              type TrailEvent = { kind: "tool"; stepNum: number; name: string; argsSummary?: string; resultSummary?: string } | { kind: "user_reply"; stepNum: number; reply: string };
+              const events: TrailEvent[] = [];
+              for (const s of sorted) {
+                if (s.inputIsUserReply && s.input != null) {
+                  const reply = extractUserReplyFromPartnerMessage(s.input);
+                  if (reply != null) events.push({ kind: "user_reply", stepNum: s.order + 1, reply });
+                }
+                for (const t of s.toolCalls ?? []) {
+                  events.push({ kind: "tool", stepNum: s.order + 1, name: t.name, argsSummary: t.argsSummary, resultSummary: t.resultSummary });
+                }
+              }
+              if (events.length === 0) return null;
+              return (
+                <div style={{ marginTop: "0.75rem", padding: "0.6rem 0.75rem", background: "var(--surface-muted)", borderRadius: "var(--radius)", fontSize: "0.85rem" }}>
+                  <div style={{ fontWeight: 600, marginBottom: "0.2rem" }}>What happened (chronological)</div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.35rem" }}>Oldest at top → newest at bottom. Each line is one action or your reply, with its result.</div>
+                  <div style={{ maxHeight: "min(40vh, 320px)", overflowY: "auto", overflowX: "hidden" }}>
+                    <ol style={{ margin: 0, paddingLeft: "1.25rem", lineHeight: 1.6 }}>
+                      {events.map((e, i) =>
+                        e.kind === "user_reply" ? (
+                          <li key={i}>
+                            <span style={{ color: "var(--primary)", fontWeight: 500 }}>You replied:</span> {e.reply}
+                          </li>
+                        ) : (
+                          <li key={i}>
+                            <span style={{ color: "var(--text-muted)", marginRight: "0.35rem" }}>#{e.stepNum}</span>
+                            <code style={{ fontSize: "0.8em" }}>{e.name}</code>
+                            {e.argsSummary != null && <span style={{ color: "var(--text-muted)" }}> {e.argsSummary}</span>}
+                            {e.resultSummary != null && (
+                              <span style={{ color: e.resultSummary === "ok" ? "var(--text-muted)" : e.resultSummary === "waiting for user" ? "var(--primary)" : "var(--resource-red)" }}> → {e.resultSummary}</span>
+                            )}
+                          </li>
+                        )
+                      )}
+                    </ol>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
-          <div className="run-detail-trail-list" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <div
+            className="run-detail-trail-list"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.75rem",
+              maxHeight: "min(70vh, 640px)",
+              overflowY: "auto",
+              overflowX: "hidden",
+            }}
+          >
+            {trail.length > 0 && (
+              <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", margin: "0 0 0.25rem 0", flexShrink: 0 }}>
+                Step details (same order: oldest first)
+              </p>
+            )}
             {trail.length === 0 && run.status === "running" ? (
               <div className="run-trail-step run-trail-step-progress" style={{ padding: "0.75rem 1rem", background: "var(--surface-muted)", borderRadius: "var(--radius)", display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.9rem" }}>
                 <Loader2 size={18} className="spin" style={{ flexShrink: 0 }} />
@@ -1203,10 +1390,11 @@ export default function RunDetailPage() {
                 .sort((a, b) => a.order - b.order)
                 .map((step, i) => (
                   <TrailStepCard
-                    key={`${step.nodeId}-${step.order}`}
+                    key={`${step.nodeId}-${step.order}-${i}`}
                     step={step}
                     index={i}
                     outputsOnly={showOutputsOnly}
+                    runId={run?.id}
                   />
                 ))
             )}
@@ -1214,7 +1402,7 @@ export default function RunDetailPage() {
         </div>
       )}
 
-      {out != null && typeof out === "object" && (
+      {out != null && typeof out === "object" && (runUsesContainer || stackTrace) && (
         <div className="run-detail-card run-detail-shell-card run-detail-shell-card-large run-detail-grid-card">
           <div className="run-detail-section" style={{ marginBottom: "0.5rem", flexShrink: 0 }}>
             <div className="run-detail-label" style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>

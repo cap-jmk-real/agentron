@@ -14,8 +14,31 @@ const DEFAULT_CDP_URL = "http://127.0.0.1:9222";
 const DEFAULT_CDP_PORT = 9222;
 const DEFAULT_TIMEOUT_MS = 30000;
 const LAUNCH_WAIT_MS = 12000;
+/** Minimum ms between interactive actions (navigate, click, fill) to avoid bot detection. ~20 actions/min at 3000ms. */
+const DEFAULT_MIN_ACTION_INTERVAL_MS = 3000;
 
 let launchAttempted = false;
+/** Last time an interactive browser action completed (navigate, click, fill). Used for throttling. */
+let lastInteractiveActionAt = 0;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Enforces a minimum interval between interactive actions, with random jitter so delays
+ * look more human (not fixed). Actual interval is base + random(0, 50% of base).
+ */
+async function throttleInteractiveAction(minIntervalMs: number): Promise<void> {
+  if (minIntervalMs <= 0) return;
+  const now = Date.now();
+  const elapsed = now - lastInteractiveActionAt;
+  const jitterMs = Math.floor(minIntervalMs * 0.5 * Math.random());
+  const requiredIntervalMs = minIntervalMs + jitterMs;
+  if (elapsed < requiredIntervalMs && lastInteractiveActionAt > 0) {
+    await sleep(requiredIntervalMs - elapsed);
+  }
+}
 
 function getChromePath(): string {
   if (process.platform === "darwin") return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -100,6 +123,10 @@ export async function browserAutomation(input: unknown): Promise<BrowserAutomati
     typeof o.cdpUrl === "string" && o.cdpUrl.trim() ? o.cdpUrl.trim() : DEFAULT_CDP_URL;
   const timeout =
     typeof o.timeout === "number" && o.timeout > 0 ? Math.min(o.timeout, 60000) : DEFAULT_TIMEOUT_MS;
+  const minActionIntervalMs =
+    typeof o.minActionIntervalMs === "number" && o.minActionIntervalMs >= 0
+      ? Math.min(o.minActionIntervalMs, 60000)
+      : DEFAULT_MIN_ACTION_INTERVAL_MS;
   const useDefaultCdp = cdpUrl === DEFAULT_CDP_URL;
 
   let browser: Awaited<ReturnType<typeof getPage>>["browser"] | undefined;
@@ -123,6 +150,7 @@ export async function browserAutomation(input: unknown): Promise<BrowserAutomati
 
     switch (action) {
       case "navigate": {
+        await throttleInteractiveAction(minActionIntervalMs);
         const url = typeof o.url === "string" ? o.url.trim() : "";
         if (!url) return { success: false, error: "url is required for action navigate" };
         try {
@@ -133,6 +161,7 @@ export async function browserAutomation(input: unknown): Promise<BrowserAutomati
             " If the URL is wrong or unreachable, use web search (e.g. std-web-search or DuckDuckGo) to find the correct URL, then retry navigate.";
           return { success: false, error: navMsg + urlHint };
         }
+        lastInteractiveActionAt = Date.now();
         const content = await page.content();
         return { success: true, content: content.slice(0, 100_000) };
       }
@@ -144,16 +173,20 @@ export async function browserAutomation(input: unknown): Promise<BrowserAutomati
         return { success: true, content: snippet };
       }
       case "click": {
+        await throttleInteractiveAction(minActionIntervalMs);
         const selector = typeof o.selector === "string" ? o.selector.trim() : "";
         if (!selector) return { success: false, error: "selector is required for action click" };
         await page.click(selector, { timeout });
+        lastInteractiveActionAt = Date.now();
         return { success: true };
       }
       case "fill": {
+        await throttleInteractiveAction(minActionIntervalMs);
         const selector = typeof o.selector === "string" ? o.selector.trim() : "";
         const value = typeof o.value === "string" ? o.value : String(o.value ?? "");
         if (!selector) return { success: false, error: "selector is required for action fill" };
         await page.fill(selector, value, { timeout });
+        lastInteractiveActionAt = Date.now();
         return { success: true };
       }
       case "screenshot": {

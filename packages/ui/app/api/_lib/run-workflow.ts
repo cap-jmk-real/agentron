@@ -51,10 +51,22 @@ import {
 } from "./db";
 import { getContainerManager, withContainerInstallHint } from "./container-manager";
 import { getWorkflowMaxSelfFixRetries, getMaxFileUploadBytes } from "./app-settings";
+import { getStoredCredential, listStoredCredentialKeys } from "./credential-store";
 import path from "node:path";
 import fs from "node:fs";
 
 export const WAITING_FOR_USER_MESSAGE = "WAITING_FOR_USER";
+
+/** Thrown when request_user_help runs; carries the execution trail so the run output can preserve it. */
+export class WaitingForUserError extends Error {
+  constructor(
+    message: string,
+    public readonly trail: ExecutionTraceStep[]
+  ) {
+    super(message);
+    this.name = "WaitingForUserError";
+  }
+}
 
 /** True if a tool result indicates failure (error, non-zero exitCode, or HTTP 4xx/5xx). Used for self-fix loop. Exported for tests. */
 export function isToolResultFailure(result: unknown): boolean {
@@ -379,8 +391,46 @@ async function buildAvailableTools(toolIds: string[]): Promise<LLMToolDef[]> {
   return out;
 }
 
-async function executeStudioTool(toolId: string, input: unknown, override?: ToolOverride): Promise<unknown> {
+async function executeStudioTool(toolId: string, input: unknown, override?: ToolOverride, vaultKey?: Buffer | null): Promise<unknown> {
+  if (toolId === "std-list-vault-credentials") {
+    // #region agent log
+    if (!vaultKey) fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'run-workflow.ts:std-list-vault-credentials',message:'vault tool called without vaultKey',data:{vaultKeyPresent:false},hypothesisId:'vault_access',timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    if (!vaultKey) return { error: "Vault not approved for this run. Tell the user: To grant vault access, unlock the vault first (open Vault in the Studio and enter your master password), then reply again here (e.g. 'Proceed' or 'Approve vault'). The run will then have access to list and use credentials." };
+    const list = await listStoredCredentialKeys(vaultKey);
+    return { keys: list.map((r) => r.key) };
+  }
+  if (toolId === "std-get-vault-credential") {
+    const arg = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+    const credentialKey = typeof arg.credentialKey === "string" ? arg.credentialKey.trim() : "";
+    if (!credentialKey) return { error: "credentialKey is required" };
+    const vaultApproved = !!vaultKey;
+    if (!vaultKey) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'run-workflow.ts:std-get-vault-credential',message:'credentials cannot be read',data:{credentialKey,vaultApproved:false,hasValue:false,reason:'vault_not_approved'},hypothesisId:'H2',timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      return { error: "Vault not approved for this run. Tell the user: Unlock the vault first (open Vault in the Studio, enter your master password), then reply again to this run (e.g. 'Proceed' or 'Approve vault'). The run will then be able to read credentials." };
+    }
+    const value = await getStoredCredential(credentialKey, vaultKey);
+    const hasValue = value !== null;
+    const readOk = hasValue;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'run-workflow.ts:std-get-vault-credential',message:readOk?'credential read ok':'credentials cannot be read',data:{credentialKey,vaultApproved:true,hasValue,readOk,reason:readOk?undefined:'credential_not_found'},hypothesisId:'H2',timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    if (value === null) return { error: `Credential not found for key: ${credentialKey}. Call std-list-vault-credentials to see which keys are stored in the vault, then use one of those exact key names.` };
+    return { value };
+  }
   if (toolId === "std-browser-automation") {
+    const arg = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+    const action = typeof arg.action === "string" ? arg.action : "";
+    const value = typeof arg.value === "string" ? arg.value : "";
+    const looksLikePlaceholder = /^\s*\{\{/.test(value) || /__VAULT_/i.test(value) || (/\/\//.test(value) && value.toLowerCase().includes("vault"));
+    // #region agent log
+    if (action === "fill") fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'run-workflow.ts:std-browser-automation fill',message:'browser fill invoked',data:{action,selector:typeof arg.selector==='string'?arg.selector.slice(0,40):undefined,valueLen:value.length,looksLikePlaceholder},hypothesisId:'H3',timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    if (action === "fill" && looksLikePlaceholder) {
+      return { success: false, error: "You DO have access to the vault. Call std-list-vault-credentials to see stored key names, then std-get-vault-credential with the exact key for username and for password. Use each returned .value in fill. Do not ask the user to paste credentials or type placeholders." };
+    }
     const { browserAutomation } = await import("./browser-automation");
     return browserAutomation(input ?? {});
   }
@@ -468,6 +518,8 @@ export type RunWorkflowOptions = {
   branchId?: string;
   /** When set, used as the first-turn partner message so the agent continues after user responded to request_user_help. */
   resumeUserResponse?: string;
+  /** When set, std-get-vault-credential can read credentials (e.g. after user approved "use vault credentials" for this run). */
+  vaultKey?: Buffer | null;
   /** Called after each agent step so the run can be updated with partial trail/output for live UI updates. */
   onStepComplete?: (trail: ExecutionTraceStep[], lastOutput: unknown) => void | Promise<void>;
   /** Called when run progress changes (workflow started, tool executing) so the UI can show current activity. */
@@ -490,8 +542,10 @@ export type ExecutionTraceStep = {
   input?: unknown;
   output?: unknown;
   error?: string;
-  /** Tool invocations in this step (name and short args summary) for debugging. */
-  toolCalls?: Array<{ name: string; argsSummary?: string }>;
+  /** Tool invocations in this step (name, args summary, and short result) for debugging. */
+  toolCalls?: Array<{ name: string; argsSummary?: string; resultSummary?: string }>;
+  /** When true, this step's input is the user's reply to a request_user_help (so the trail clearly shows the agent received it). */
+  inputIsUserReply?: boolean;
 };
 
 type NodeAgentGraph = {
@@ -615,12 +669,19 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
       partnerOutput = prevNode ? sharedContext.get(`__output_${prevNode.id}`) : undefined;
       sourceNodeId = prevNode?.id;
     }
+    const resumeText = options.resumeUserResponse?.trim() ?? "";
+    const looksLikeVaultApproval = /use vault|vault credentials|yes.*vault|approve.*vault/i.test(resumeText) && resumeText.length < 120;
     const partnerMessage =
       partnerOutput !== undefined
         ? (typeof partnerOutput === "string" ? partnerOutput : JSON.stringify(partnerOutput))
-        : (options.resumeUserResponse !== undefined && options.resumeUserResponse !== ""
-          ? options.resumeUserResponse
+        : (resumeText !== ""
+          ? (looksLikeVaultApproval
+            ? `The user has replied: "${resumeText}". They approved using vault credentials. Call std-list-vault-credentials to see which keys are stored, then std-get-vault-credential with the key that matches each field (username/email vs password). Use each returned .value in std-browser-automation fill. Do not ask the user to paste credentials. Do not call request_user_help again for the same question.`
+            : `The user has replied to your previous request (the one you sent via request_user_help). Their reply: "${resumeText}". Proceed based on this reply; do not call request_user_help again for the same question.`)
           : FIRST_TURN_DEFAULT);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'run-workflow.ts:partnerMessage',message:'agent step partnerMessage',data:{fromResume:partnerOutput===undefined&&(options.resumeUserResponse?.length??0)>0,partnerMessageLen:typeof partnerMessage==='string'?partnerMessage.length:0},hypothesisId:'H4_H5',timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const precedingAgentName = sourceNodeId ? (sharedContext.get(`__agentName_${sourceNodeId}`) as string | undefined) : undefined;
 
     const recentTurns = (sharedContext.get("__recent_turns") as Array<{ speaker: string; text: string }> | undefined) ?? [];
@@ -635,8 +696,17 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
     currentAgentId = agentId;
 
     const round = sharedContext.get("__round") as number | undefined;
-    const step: ExecutionTraceStep = { nodeId, agentId, agentName: agent.name, order: stepOrder++, ...(round !== undefined && { round }), input };
-    const toolCallsForStep: Array<{ name: string; argsSummary?: string }> = [];
+    const inputIsUserReply = partnerOutput === undefined && (options.resumeUserResponse?.length ?? 0) > 0;
+    const step: ExecutionTraceStep = {
+      nodeId,
+      agentId,
+      agentName: agent.name,
+      order: stepOrder++,
+      ...(round !== undefined && { round }),
+      input,
+      ...(inputIsUserReply && { inputIsUserReply: true }),
+    };
+    const toolCallsForStep: Array<{ name: string; argsSummary?: string; resultSummary?: string }> = [];
     let lastToolId: string | null = null;
     let lastToolResult: unknown = null;
     let selfFixAttempts = 0;
@@ -684,14 +754,25 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
         const optsPart = opts.length > 0 ? `, ${opts.length} option(s)` : "";
         return q ? `question: ${q}${optsPart}` : undefined;
       }
+      if (toolId === "std-get-vault-credential") {
+        const key = typeof o.credentialKey === "string" ? o.credentialKey : undefined;
+        return key ? `credentialKey: ${key}` : undefined;
+      }
+      if (toolId === "std-list-vault-credentials") return "list keys";
       return undefined;
     }
 
     const workflowContextSnapshot = typeof sharedContext.snapshot === "function" ? sharedContext.snapshot() : {};
     const shared = { ...workflowContextSnapshot } as Record<string, unknown>;
 
-    const def = (agent as Agent & { definition?: { graph?: unknown; toolIds?: string[]; defaultLlmConfigId?: string } }).definition ?? {};
-    const toolIds = (def.toolIds ?? []) as string[];
+    const def = (agent as Agent & { definition?: { graph?: { nodes?: unknown[] }; toolIds?: string[]; defaultLlmConfigId?: string } }).definition ?? {};
+    const declaredToolIds = (def.toolIds ?? []) as string[];
+    const graphNodes = def.graph && typeof def.graph === "object" && Array.isArray(def.graph.nodes) ? def.graph.nodes : [];
+    const graphToolIds = graphNodes
+      .filter((n): n is { type?: string; parameters?: { toolId?: string } } => typeof n === "object" && n !== null && (n as { type?: string }).type === "tool")
+      .map((n) => (n.parameters?.toolId as string)?.trim())
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    const toolIds = [...new Set([...declaredToolIds, ...graphToolIds])];
     const defaultLlmConfigId = def.defaultLlmConfigId as string | undefined;
     let availableTools = await buildAvailableTools(toolIds);
     const requestUserHelpTool = {
@@ -734,6 +815,13 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
       const urlSearchNote = "If a URL does not load or is wrong (e.g. 404, timeout, unreachable), use web search to find the correct URL, then retry browser navigate.";
       toolInstructionsBlock = toolInstructionsBlock ? `${toolInstructionsBlock}\n${urlSearchNote}` : urlSearchNote;
     }
+    if ((toolIds.includes("std-get-vault-credential") || toolIds.includes("std-list-vault-credentials")) && toolIds.includes("std-browser-automation")) {
+      const vaultFillNote = "For login forms: call std-list-vault-credentials first to see which credential keys are stored (e.g. linkedin_username, linkedin_password). Then call std-get-vault-credential with the exact key that matches the field (username/email vs password). Use the returned .value in std-browser-automation fill. Never type placeholders. If you don't have std-list-vault-credentials, try keys like linkedin_email and linkedin_password.";
+      toolInstructionsBlock = toolInstructionsBlock ? `${toolInstructionsBlock}\n${vaultFillNote}` : vaultFillNote;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'run-workflow.ts:vaultFillNote',message:'vault fill note injected',data:{runId,toolIds:toolIds.filter(t=>t.includes('vault')||t.includes('browser')),noteLen:vaultFillNote.length},hypothesisId:'H1',timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+    }
 
     const context = {
       sharedContext: shared,
@@ -770,6 +858,8 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
           };
         }
         toolCallsForStep.push({ name: toolId, argsSummary: toolArgsSummary(toolId, input) });
+        // Emit progress so the run page shows "Executing: <toolId>" while waiting (avoids appearing stuck)
+        await options.onProgress?.({ message: `Executing: ${toolId}`, toolId }, trail);
         if (toolId === "request_user_help") {
           const arg = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
           const message = (typeof arg.message === "string" ? arg.message : "").trim() || "Need your input";
@@ -799,6 +889,20 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
             payload.suggestions = combined;
             payload.options = combined;
           }
+          // Preserve execution trail so the run page shows steps and continuation after user reply
+          const runRows = await db.select({ output: executions.output }).from(executions).where(eq(executions.id, runId));
+          const existingParsed = runRows[0]?.output != null
+            ? (typeof runRows[0].output === "string" ? (() => { try { return JSON.parse(runRows[0].output as string) as Record<string, unknown>; } catch { return {}; } })() : (runRows[0].output as Record<string, unknown>))
+            : {};
+          const existingTrailBefore = Array.isArray(existingParsed.trail) ? (existingParsed.trail as ExecutionTraceStep[]) : [];
+          step.output = undefined;
+          if (toolCallsForStep.length > 0) step.toolCalls = [...toolCallsForStep];
+          const trailWithCurrent = [...existingTrailBefore, step];
+          payload.trail = trailWithCurrent;
+          if (toolCallsForStep.length > 0) {
+            const last = toolCallsForStep[toolCallsForStep.length - 1];
+            last.resultSummary = "waiting for user";
+          }
           // #region agent log
           fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'run-workflow.ts:request_user_help',message:'writing waiting_for_user payload',data:{runId,questionLen:question?.length??0,optionsLen:combined.length},hypothesisId:'H5',timestamp:Date.now()})}).catch(()=>{});
           // #endregion
@@ -827,7 +931,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
           result = await runWriteFile(merged, runId);
         } else {
           try {
-            result = await executeStudioTool(toolId, merged, override);
+            result = await executeStudioTool(toolId, merged, override, options.vaultKey ?? null);
           } catch (toolErr) {
             const errMsg = toolErr instanceof Error ? toolErr.message : String(toolErr);
             await db.insert(runLogs).values({
@@ -838,6 +942,10 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
               payload: null,
               createdAt: Date.now(),
             }).run();
+            if (toolCallsForStep.length > 0) {
+              const last = toolCallsForStep[toolCallsForStep.length - 1];
+              last.resultSummary = (errMsg.split(/\n/)[0]?.trim() ?? errMsg).slice(0, 100);
+            }
             throw toolErr;
           }
         }
@@ -856,6 +964,13 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
             payload: null,
             createdAt: Date.now(),
           }).run();
+        }
+        // Record short result for trail (so run page shows outcome per action; no secrets)
+        if (toolCallsForStep.length > 0) {
+          const last = toolCallsForStep[toolCallsForStep.length - 1];
+          last.resultSummary = toolErrorMsg
+            ? (toolErrorMsg.split(/\n/)[0]?.trim() ?? toolErrorMsg).slice(0, 100)
+            : "ok";
         }
         lastToolId = toolId;
         lastToolResult = result;
@@ -907,7 +1022,13 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
       step.error = err instanceof Error ? err.message : String(err);
       if (toolCallsForStep.length > 0) step.toolCalls = [...toolCallsForStep];
       trail.push(step);
-      await options.onStepComplete?.(trail, undefined);
+      // Do not overwrite run output when request_user_help just wrote the waiting payload
+      if (err instanceof Error && err.message !== WAITING_FOR_USER_MESSAGE) {
+        await options.onStepComplete?.(trail, undefined);
+      }
+      if (err instanceof Error && err.message === WAITING_FOR_USER_MESSAGE) {
+        throw new WaitingForUserError(WAITING_FOR_USER_MESSAGE, trail);
+      }
       throw err;
     }
   };
@@ -950,8 +1071,11 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
  */
 export async function runWorkflowForRun(
   runId: string,
-  opts?: { resumeUserResponse?: string }
+  opts?: { resumeUserResponse?: string; vaultKey?: Buffer | null }
 ): Promise<void> {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'run-workflow.ts:runWorkflowForRun',message:'resume workflow invoked',data:{runId,resumeUserResponseLen:opts?.resumeUserResponse?.length??0,hasVaultKey:!!opts?.vaultKey},hypothesisId:'vault_access',timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   const rows = await db
     .select({ targetId: executions.targetId, targetBranchId: executions.targetBranchId })
     .from(executions)
@@ -964,11 +1088,21 @@ export async function runWorkflowForRun(
     trail: ExecutionTraceStep[],
     lastOutput: unknown
   ) => {
-    const payload = executionOutputSuccess(lastOutput ?? undefined, trail);
+    const runRows = await db.select({ output: executions.output }).from(executions).where(eq(executions.id, runId));
+    const current = runRows[0]?.output;
+    const parsed = typeof current === "string" ? (() => { try { return JSON.parse(current) as Record<string, unknown>; } catch { return undefined; } })() : (current as Record<string, unknown> | null | undefined);
+    const existingTrail = Array.isArray(parsed?.trail) ? (parsed.trail as ExecutionTraceStep[]) : [];
+    const mergedTrail = existingTrail.length > 0 ? [...existingTrail, ...trail] : trail;
+    const payload = executionOutputSuccess(lastOutput ?? undefined, mergedTrail);
     await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
   };
   const onProgress = async (state: { message: string; toolId?: string }, currentTrail: ExecutionTraceStep[]) => {
-    const payload = executionOutputSuccess(undefined, currentTrail.length > 0 ? currentTrail : undefined, state.message);
+    const runRows = await db.select({ output: executions.output }).from(executions).where(eq(executions.id, runId));
+    const current = runRows[0]?.output;
+    const parsed = typeof current === "string" ? (() => { try { return JSON.parse(current) as Record<string, unknown>; } catch { return undefined; } })() : (current as Record<string, unknown> | null | undefined);
+    const existingTrail = Array.isArray(parsed?.trail) ? (parsed.trail as ExecutionTraceStep[]) : [];
+    const mergedTrail = currentTrail.length > 0 ? [...existingTrail, ...currentTrail] : existingTrail;
+    const payload = executionOutputSuccess(undefined, mergedTrail.length > 0 ? mergedTrail : undefined, state.message);
     await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
   };
   const isCancelled = async () => {
@@ -982,7 +1116,7 @@ export async function runWorkflowForRun(
         executionId: executionId,
         level: "stdout",
         message: chunk.stdout,
-        payload: null,
+        payload: undefined,
         createdAt: Date.now(),
       }).run();
     }
@@ -992,7 +1126,7 @@ export async function runWorkflowForRun(
         executionId,
         level: "stderr",
         message: chunk.stderr,
-        payload: null,
+        payload: undefined,
         createdAt: Date.now(),
       }).run();
     }
@@ -1002,7 +1136,7 @@ export async function runWorkflowForRun(
         executionId,
         level: "meta",
         message: chunk.meta,
-        payload: null,
+        payload: undefined,
         createdAt: Date.now(),
       }).run();
     }
@@ -1014,6 +1148,7 @@ export async function runWorkflowForRun(
       runId,
       branchId,
       resumeUserResponse: opts?.resumeUserResponse,
+      vaultKey: opts?.vaultKey ?? null,
       onStepComplete,
       onProgress,
       isCancelled,
@@ -1021,7 +1156,12 @@ export async function runWorkflowForRun(
       maxSelfFixRetries: getWorkflowMaxSelfFixRetries(),
     });
     await destroyContainerSession(runId);
-    const payload = executionOutputSuccess(output ?? context, trail);
+    const runRows = await db.select({ output: executions.output }).from(executions).where(eq(executions.id, runId));
+    const current = runRows[0]?.output;
+    const parsed = typeof current === "string" ? (() => { try { return JSON.parse(current) as Record<string, unknown>; } catch { return undefined; } })() : (current as Record<string, unknown> | null | undefined);
+    const existingTrail = Array.isArray(parsed?.trail) ? (parsed.trail as ExecutionTraceStep[]) : [];
+    const mergedTrail = existingTrail.length > 0 ? [...existingTrail, ...trail] : trail;
+    const payload = executionOutputSuccess(output ?? context, mergedTrail);
     await db.update(executions).set({
       status: "completed",
       finishedAt: Date.now(),
@@ -1029,7 +1169,18 @@ export async function runWorkflowForRun(
     }).where(eq(executions.id, runId)).run();
   } catch (err) {
     const rawMessage = err instanceof Error ? err.message : String(err);
-    if (rawMessage === WAITING_FOR_USER_MESSAGE) {
+    if (rawMessage === WAITING_FOR_USER_MESSAGE || err instanceof WaitingForUserError) {
+      if (err instanceof WaitingForUserError && err.trail.length > 0) {
+        const runRows = await db.select({ output: executions.output }).from(executions).where(eq(executions.id, runId));
+        const current = runRows[0]?.output;
+        const parsed = typeof current === "string" ? (() => { try { return JSON.parse(current) as Record<string, unknown>; } catch { return {}; } })() : ((current as Record<string, unknown> | null) ?? {});
+        // request_user_help already wrote the full trail (existing + current step) to the DB.
+        // err.trail is only this run's in-memory steps; do not overwrite and lose prior steps.
+        const existingTrail = Array.isArray(parsed?.trail) ? (parsed.trail as ExecutionTraceStep[]) : [];
+        const trailToSave = existingTrail.length > 0 ? existingTrail : err.trail;
+        const merged = { ...parsed, trail: trailToSave };
+        await db.update(executions).set({ output: JSON.stringify(merged) }).where(eq(executions.id, runId)).run();
+      }
       return;
     }
     await destroyContainerSession(runId);

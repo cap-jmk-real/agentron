@@ -19,12 +19,12 @@ export const WORKFLOW_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "respond_to_run",
-    description: "Send the user's response to a workflow run that is waiting for user input. Use when the user is directly answering the run's question (e.g. selecting an option, providing requested data). The run will resume with this response. Do NOT use when the user wants to stop the run, modify agents, or do something else.",
+    description: "Send the user's response to a workflow run that is waiting for user input. Use when the user is directly answering the run's question (e.g. selecting an option, providing requested data). Set 'response' to the **exact** text the user sent (full option label or their typed reply) — never a number or abbreviation. The run will resume with this response. Do NOT use when the user wants to stop the run, modify agents, or do something else.",
     parameters: {
       type: "object",
       properties: {
         runId: { type: "string", description: "Run ID (from runWaitingContext)" },
-        response: { type: "string", description: "The user's response to send to the run (e.g. their answer, selected option)" },
+        response: { type: "string", description: "The exact user message (full option label or typed text); never use '1', '2', or similar — pass the full text." },
       },
       required: ["runId", "response"],
     },

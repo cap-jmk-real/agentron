@@ -254,6 +254,7 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
       headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
       body: JSON.stringify(body),
       signal: abortSignal,
+      credentials: "same-origin",
     });
 
     if (!res.ok) {

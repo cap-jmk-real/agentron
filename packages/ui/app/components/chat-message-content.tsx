@@ -268,6 +268,21 @@ export function messageContentIndicatesSuccess(content: string | undefined): boo
   return successPhrases.some((p) => lower.includes(p));
 }
 
+/** Extract agent request (question + options + runId) from execute_workflow result when status is waiting_for_user. For showing "What the agent asked" in chat history. */
+export function getAgentRequestFromToolResults(
+  toolResults: { name: string; result?: unknown }[] | undefined
+): { question: string; options: string[]; runId: string } | null {
+  if (!Array.isArray(toolResults)) return null;
+  const execWf = toolResults.find((r) => r.name === "execute_workflow");
+  const result = execWf?.result;
+  if (!result || typeof result !== "object") return null;
+  const obj = result as { status?: string; id?: string; question?: string; options?: string[] };
+  if (obj.status !== "waiting_for_user" || typeof obj.id !== "string") return null;
+  const question = typeof obj.question === "string" && obj.question.trim() ? obj.question.trim() : "";
+  const options = Array.isArray(obj.options) ? obj.options.map((o) => String(o)).filter(Boolean) : [];
+  return { question, options, runId: obj.id };
+}
+
 /** True when message has ask_user/ask_credentials/format_response waiting for input (lenient: checks waitingForUser, options, or format_response with needsInput). */
 export function hasAskUserWaitingForInput(
   toolResults: { name: string; result?: unknown }[] | undefined

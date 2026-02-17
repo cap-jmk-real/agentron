@@ -13,6 +13,7 @@ type ExecutionTraceStep = {
   input?: unknown;
   output?: unknown;
   error?: string;
+  inputIsUserReply?: boolean;
 };
 
 type RunListItem = {
@@ -60,7 +61,10 @@ function buildTraceText(trace: TraceResponse): string {
   const sorted = [...(trace.trail || [])].sort((a, b) => a.order - b.order);
   sorted.forEach((step, i) => {
     lines.push(`  #${i + 1} ${step.agentName} (${step.nodeId})${step.round !== undefined ? ` [Round ${step.round + 1}]` : ""}`);
-    if (step.input !== undefined) lines.push("    Input: " + (typeof step.input === "string" ? step.input : JSON.stringify(step.input)));
+    if (step.input !== undefined) {
+      const label = step.inputIsUserReply ? "User reply (agent received):" : "Input:";
+      lines.push("    " + label + " " + (typeof step.input === "string" ? step.input : JSON.stringify(step.input)));
+    }
     if (step.output !== undefined) lines.push("    Output: " + (typeof step.output === "string" ? step.output : JSON.stringify(step.output)));
     if (step.error) lines.push("    Error: " + step.error);
     lines.push("");
@@ -114,7 +118,9 @@ function TrailStepCard({ step }: { step: ExecutionTraceStep }) {
         <div style={{ padding: "0 0.75rem 0.75rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           {hasInput && (
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.2rem" }}>Input</div>
+              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.2rem" }}>
+                {step.inputIsUserReply ? "User reply (agent received this)" : "Input"}
+              </div>
               <pre style={{ margin: 0, padding: "0.5rem", background: "var(--surface)", borderRadius: 6, fontSize: "0.8rem", overflow: "auto", maxHeight: 200 }}>
                 {formatValue(step.input)}
               </pre>

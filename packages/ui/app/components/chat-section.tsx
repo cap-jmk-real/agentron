@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   Send,
   Loader,
@@ -25,7 +25,7 @@ import {
   ChevronRight,
   RotateCw,
 } from "lucide-react";
-import { ChatMessageContent, ChatMessageResourceLinks, ChatToolResults, getAssistantMessageDisplayContent, getLoadingStatus, getMessageDisplayState, getSuggestedOptions, getSuggestedOptionsFromToolResults, hasAskUserWaitingForInput, messageContentIndicatesSuccess, messageHasSuccessfulToolResults, normalizeToolResults, ReasoningContent } from "./chat-message-content";
+import { ChatMessageContent, ChatMessageResourceLinks, ChatToolResults, getAgentRequestFromToolResults, getAssistantMessageDisplayContent, getLoadingStatus, getMessageDisplayState, getSuggestedOptions, getSuggestedOptionsFromToolResults, hasAskUserWaitingForInput, messageContentIndicatesSuccess, messageHasSuccessfulToolResults, normalizeToolResults, ReasoningContent } from "./chat-message-content";
 import { performChatStreamSend } from "../hooks/useChatStream";
 import { useMinimumStepsDisplayTime, MIN_STEPS_DISPLAY_MS } from "../hooks/useMinimumStepsDisplayTime";
 
@@ -464,6 +464,20 @@ function ChatSectionMessageRow({
                   );
                 })();
                 })()}
+                {msg.role === "assistant" && (() => {
+                  const agentRequest = getAgentRequestFromToolResults(list);
+                  if (!agentRequest || (!agentRequest.question && agentRequest.options.length === 0)) return null;
+                  return (
+                    <div className="chat-history-agent-request" style={{ marginTop: "0.75rem" }}>
+                      <AgentRequestBlock
+                        question={agentRequest.question || undefined}
+                        options={agentRequest.options}
+                        viewRunHref={`/runs/${agentRequest.runId}`}
+                        showVagueHint={false}
+                      />
+                    </div>
+                  );
+                })()}
               </>
             ) : null}
             {list.length > 0 ? <ChatMessageResourceLinks results={list} /> : null}
@@ -485,6 +499,8 @@ function ChatSectionMessageRow({
 
 export default function ChatSection({ onOpenSettings }: Props) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const replyToRunId = searchParams.get("runId")?.trim() || undefined;
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -507,6 +523,8 @@ export default function ChatSection({ onOpenSettings }: Props) {
   const [pendingInputIds, setPendingInputIds] = useState<Set<string>>(new Set());
   const [runWaiting, setRunWaiting] = useState(false);
   const [runWaitingData, setRunWaitingData] = useState<{ runId: string; question?: string; options?: string[] } | null>(null);
+  /** Option label currently being sent from the "What the agent needs" card; cleared when loading becomes false. */
+  const [runWaitingOptionSending, setRunWaitingOptionSending] = useState<string | null>(null);
   /** When set, an option was just clicked for this message; show loading on that option and disable others until send completes. */
   const [optionSending, setOptionSending] = useState<{ messageId: string; label: string } | null>(null);
 
@@ -669,7 +687,7 @@ export default function ChatSection({ onOpenSettings }: Props) {
                 // #endregion
                 if (question || options.length > 0) {
                   setRunWaitingData((prev) =>
-                    prev?.runId === runId ? { ...prev, question: question ?? prev?.question, options: options.length > 0 ? options : (prev?.options ?? []) } : prev
+                    prev?.runId === runId && prev ? { runId: prev.runId, question: question ?? prev.question, options: options.length > 0 ? options : (prev.options ?? []) } : prev
                   );
                   setRunWaitingInCache(conversationId, { runId, question, options: options.length > 0 ? options : (data.options ?? []) });
                 }
@@ -993,7 +1011,10 @@ export default function ChatSection({ onOpenSettings }: Props) {
   const lastTraceSteps = lastMsg?.role === "assistant" ? lastMsg.traceSteps : undefined;
   // Clear option-sending state when request finishes so buttons are clickable again
   useEffect(() => {
-    if (!loading) setOptionSending(null);
+    if (!loading) {
+      setOptionSending(null);
+      setRunWaitingOptionSending(null);
+    }
   }, [loading]);
   // Only auto-scroll when we're actively streaming (loading + assistant last), not on every messages update (refetch/cross-tab would scroll away)
   useEffect(() => {
@@ -1010,8 +1031,11 @@ export default function ChatSection({ onOpenSettings }: Props) {
     const text = textOverride !== undefined ? textOverride : input.trim();
     if (!text || loading) return;
     setRunFinishedNotification(null);
-    setRunWaiting(false);
-    setRunWaitingData(null);
+    const sendingFromAgentRequestCard = textOverride !== undefined && runWaitingData != null;
+    if (!sendingFromAgentRequestCard) {
+      setRunWaiting(false);
+      setRunWaitingData(null);
+    }
     if (textOverride === undefined && !extraBody?.continueShellApproval) {
       setInput("");
       if (conversationId) setDraft(conversationId, "");
@@ -1062,7 +1086,7 @@ export default function ChatSection({ onOpenSettings }: Props) {
       randomId,
       normalizeToolResults,
       buildBody: (base) => base,
-      extraBody,
+      extraBody: { ...(replyToRunId && { runId: replyToRunId }), ...extraBody },
       onRunFinished: (runId, status, details) => {
         if (status === "waiting_for_user") {
           setRunFinishedNotification({ runId, status });
@@ -1118,7 +1142,7 @@ export default function ChatSection({ onOpenSettings }: Props) {
       onInputRestore: (t) => setInput(t),
     });
     abortRef.current = null;
-  }, [input, loading, messages, providerId, conversationId, pathname, fetchRunWaiting]);
+  }, [input, loading, messages, providerId, conversationId, pathname, replyToRunId, fetchRunWaiting, runWaitingData]);
 
   const handleShellCommandApprove = useCallback(async (command: string) => {
     if (shellCommandLoading || loading) return;
@@ -1348,7 +1372,11 @@ export default function ChatSection({ onOpenSettings }: Props) {
                   options={runWaitingData.options}
                   runId={runWaitingData.runId}
                   viewRunHref={runWaitingData.runId ? `/runs/${runWaitingData.runId}` : undefined}
-                  onReplyOption={(value) => send(value)}
+                  sendingOption={runWaitingOptionSending}
+                  onReplyOption={(value) => {
+                    setRunWaitingOptionSending(value);
+                    send(value);
+                  }}
                   onCancelRun={async () => {
                     if (!runWaitingData?.runId) return;
                     try {

@@ -24,7 +24,7 @@ import {
 } from "../_lib/db";
 import { scheduleReminder, cancelReminderTimeout } from "../_lib/reminder-scheduler";
 import { registerScheduledTurnRunner } from "../_lib/run-scheduled-turn";
-import { runWorkflow, runWorkflowForRun, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE, runWriteFile, runContainerBuild, runContainer, runContainerSession } from "../_lib/run-workflow";
+import { runWorkflow, runWorkflowForRun, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE, WaitingForUserError, runWriteFile, runContainerBuild, runContainer, runContainerSession } from "../_lib/run-workflow";
 import { enqueueWorkflowRun } from "../_lib/workflow-queue";
 import { getDeploymentCollectionId, retrieveChunks } from "../_lib/rag";
 import type { RemoteServer } from "../_lib/db";
@@ -1224,6 +1224,9 @@ async function executeTool(
     case "respond_to_run": {
       const runId = typeof a.runId === "string" ? (a.runId as string).trim() : "";
       const response = typeof a.response === "string" ? (a.response as string).trim() : "(no text)";
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:respond_to_run',message:'respond_to_run invoked',data:{runId,responseLen:response.length},hypothesisId:'H2_H3',timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (!runId) return { error: "runId is required" };
       const runRows = await db.select().from(executions).where(eq(executions.id, runId));
       if (runRows.length === 0) return { error: "Run not found" };
@@ -1252,7 +1255,7 @@ async function executeTool(
         .set({ status: "running", finishedAt: null, output: JSON.stringify(outPayload) })
         .where(eq(executions.id, runId))
         .run();
-      enqueueWorkflowRun(() => runWorkflowForRun(runId, { resumeUserResponse: response }));
+      enqueueWorkflowRun(() => runWorkflowForRun(runId, { resumeUserResponse: response, vaultKey: vaultKey ?? undefined }));
       return { id: runId, status: "running", message: "Response sent to run. The workflow continues. [View run](/runs/" + runId + ") to see progress." };
     }
     case "get_run": {
@@ -1265,7 +1268,7 @@ async function executeTool(
     }
     case "execute_workflow": {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/af7dcd5d-c72d-47cc-bc97-a16719175ca2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:execute_workflow',message:'execute_workflow args',data:{hasId:!!(a as Record<string,unknown>).id,hasWorkflowId:!!(a as Record<string,unknown>).workflowId,idVal:(a as Record<string,unknown>).id,workflowIdVal:(a as Record<string,unknown>).workflowId},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:execute_workflow',message:'execute_workflow start',data:{hasVaultKey:!!vaultKey},hypothesisId:'vault_access',timestamp:Date.now()})}).catch(()=>{});
       // #endregion
       const workflowId = ((a as Record<string, unknown>).workflowId ?? (a as Record<string, unknown>).id) as string;
       if (!workflowId || typeof workflowId !== "string" || !workflowId.trim()) return { error: "Workflow id is required" };
@@ -1291,7 +1294,7 @@ async function executeTool(
           const rows = await db.select({ status: executions.status }).from(executions).where(eq(executions.id, runId));
           return rows[0]?.status === "cancelled";
         };
-        const { output, context, trail } = await runWorkflow({ workflowId, runId, branchId, onStepComplete, onProgress, isCancelled });
+        const { output, context, trail } = await runWorkflow({ workflowId, runId, branchId, vaultKey: vaultKey ?? undefined, onStepComplete, onProgress, isCancelled });
         const payload = executionOutputSuccess(output ?? context, trail);
         await db.update(executions).set({ status: "completed", finishedAt: Date.now(), output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
         const updated = await db.select().from(executions).where(eq(executions.id, runId));
@@ -1305,6 +1308,18 @@ async function executeTool(
           return { id: runId, workflowId, status: "cancelled", message: "Run was stopped by the user." };
         }
         if (rawMessage === WAITING_FOR_USER_MESSAGE) {
+          // Preserve execution trail when request_user_help overwrote the run output (so run page shows progress)
+          if (err instanceof WaitingForUserError && err.trail.length > 0) {
+            try {
+              const runRows = await db.select({ output: executions.output }).from(executions).where(eq(executions.id, runId));
+              const raw = runRows[0]?.output;
+              const parsed = raw == null ? {} : (typeof raw === "string" ? (JSON.parse(raw) as Record<string, unknown>) : (raw as Record<string, unknown>));
+              const merged = { ...parsed, trail: err.trail };
+              await db.update(executions).set({ output: JSON.stringify(merged) }).where(eq(executions.id, runId)).run();
+            } catch {
+              // ignore
+            }
+          }
           // Forward the run's question/options so the chat UI can show them without a separate run-waiting request
           let question: string | undefined;
           let options: string[] = [];
@@ -1316,8 +1331,8 @@ async function executeTool(
               const inner = out.output && typeof out.output === "object" && out.output !== null ? (out.output as Record<string, unknown>) : out;
               const q = (typeof inner?.question === "string" ? inner.question : undefined)?.trim();
               const msg = (typeof inner?.message === "string" ? inner.message : undefined)?.trim();
-              question = (q || msg) || undefined;
-              const opts = Array.isArray(inner?.suggestions) ? inner.suggestions : Array.isArray(inner?.options) ? inner.options : undefined;
+              question = (q || msg) || (typeof out.question === "string" ? out.question.trim() : undefined);
+              const opts = Array.isArray(inner?.suggestions) ? inner.suggestions : Array.isArray(inner?.options) ? inner.options : Array.isArray(out.suggestions) ? out.suggestions : undefined;
               options = opts?.map((o) => String(o)).filter(Boolean) ?? [];
             }
           } catch {
@@ -1855,17 +1870,33 @@ export async function POST(request: Request) {
   }
 
   const bypassRunResponse = payload.bypassRunResponse === true;
+  const runIdFromClient = typeof payload.runId === "string" ? payload.runId.trim() || undefined : undefined;
 
   // Option 3: when a run is waiting for user input, inject runWaitingContext so the Chat assistant can decide
   // to call respond_to_run or take another action. No auto-routing — messages always go to the assistant.
   let runWaitingContext: string | undefined;
   if (!bypassRunResponse && !isCredentialReply && conversationId) {
-    const waitingRows = await db
+    let waitingRows = await db
       .select({ id: executions.id, targetId: executions.targetId, output: executions.output })
       .from(executions)
       .where(and(eq(executions.status, "waiting_for_user"), eq(executions.conversationId, conversationId)))
       .orderBy(desc(executions.startedAt))
       .limit(1);
+    // Runs started from the Run page have conversationId = null; allow replying via Chat when client sends runId (e.g. from "Reply in Chat" link).
+    if (waitingRows.length === 0 && runIdFromClient) {
+      const byRunId = await db
+        .select({ id: executions.id, targetId: executions.targetId, output: executions.output })
+        .from(executions)
+        .where(eq(executions.id, runIdFromClient))
+        .limit(1);
+      if (byRunId.length > 0 && byRunId[0].id === runIdFromClient) {
+        const runRow = await db.select({ status: executions.status }).from(executions).where(eq(executions.id, runIdFromClient)).limit(1);
+        if (runRow[0]?.status === "waiting_for_user") {
+          waitingRows = byRunId;
+          await db.update(executions).set({ conversationId }).where(eq(executions.id, runIdFromClient)).run();
+        }
+      }
+    }
     if (waitingRows.length > 0) {
       const runId = waitingRows[0].id;
       let current: Record<string, unknown> | undefined;
@@ -1901,6 +1932,49 @@ export async function POST(request: Request) {
       ].filter(Boolean);
       parts.push("raw output (JSON): " + JSON.stringify(inner ?? current ?? {}));
       runWaitingContext = parts.join("\n");
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:runWaitingContext',message:'run waiting context set for chat',data:{runId,conversationId},hypothesisId:'H1',timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      // Auto-forward user's Chat message to the waiting run so the workflow receives it without requiring the assistant to call respond_to_run
+      const replyText = (userMessage ?? "").trim();
+      if (!bypassRunResponse && !isCredentialReply && replyText !== "") {
+        const runRows = await db.select().from(executions).where(eq(executions.id, runId));
+        if (runRows.length > 0 && runRows[0].status === "waiting_for_user") {
+          const run = runRows[0];
+          const response = replyText || "(no text)";
+          const current = (() => {
+            try {
+              const raw = run.output;
+              return typeof raw === "string" ? JSON.parse(raw) : raw;
+            } catch {
+              return undefined;
+            }
+          })();
+          const existingOutput = current && typeof current === "object" && !Array.isArray(current) && current.output !== undefined ? current.output : undefined;
+          const existingTrail = Array.isArray(current?.trail) ? current.trail : [];
+          const mergedOutput = {
+            ...(existingOutput && typeof existingOutput === "object" && !Array.isArray(existingOutput) ? existingOutput : {}),
+            userResponded: true,
+            response,
+          };
+          const outPayload = executionOutputSuccess(mergedOutput, existingTrail.length > 0 ? existingTrail : undefined);
+          await db
+            .update(executions)
+            .set({ status: "running", finishedAt: null, output: JSON.stringify(outPayload) })
+            .where(eq(executions.id, runId))
+            .run();
+          const replyPreview = response.length > 80 ? response.slice(0, 77) + "…" : response;
+          await db.insert(runLogs).values({
+            id: crypto.randomUUID(),
+            executionId: runId,
+            level: "stdout",
+            message: `User replied (Chat): ${replyPreview}`,
+            payload: null,
+            createdAt: Date.now(),
+          }).run();
+          enqueueWorkflowRun(() => runWorkflowForRun(runId, { resumeUserResponse: response, vaultKey: vaultKey ?? undefined }));
+        }
+      }
     }
   }
 

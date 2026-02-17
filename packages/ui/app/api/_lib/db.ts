@@ -727,6 +727,8 @@ export const STANDARD_TOOLS: { id: string; name: string }[] = [
   { id: "std-container-build", name: "Build image from Containerfile" },
   { id: "std-write-file", name: "Write file" },
   { id: "std-request-user-help", name: "Request user input (workflow pause)" },
+  { id: "std-list-vault-credentials", name: "List vault credential key names (workflow only; user must approve vault). Returns { keys: string[] }. Call this first to see which keys are stored (e.g. linkedin_username, linkedin_password), then use std-get-vault-credential with the exact key." },
+  { id: "std-get-vault-credential", name: "Get vault credential (workflow only; user must approve vault). Returns { value: \"the actual secret\" }. Use that value in std-browser-automation fill. Never type placeholders into forms (e.g. {{vault.xxx}}, __VAULT_LINKEDIN_USERNAME__) — call this tool and use result.value." },
 ];
 
 /** Ensures default/built-in tools exist in the DB so they appear in the Tools list. */
@@ -795,8 +797,21 @@ export async function ensureStandardTools(): Promise<void> {
       value: { type: "string", description: "Value to fill (for fill)" },
       timeout: { type: "number", description: "Timeout in ms (optional)" },
       cdpUrl: { type: "string", description: "Chrome CDP URL (default http://localhost:9222). Start Chrome with: chrome --remote-debugging-port=9222" },
+      minActionIntervalMs: { type: "number", description: "Minimum ms between navigate/click/fill to avoid bot detection (default 3000). Use 5000 for slower, more human-like pacing; 0 to disable." },
     },
     required: ["action"],
+  };
+  const stdGetVaultCredentialInputSchema = {
+    type: "object",
+    properties: {
+      credentialKey: { type: "string", description: "Credential key (e.g. linkedin_email, linkedin_password). Use std-list-vault-credentials first to see stored key names." },
+    },
+    required: ["credentialKey"],
+  };
+  const stdListVaultCredentialsInputSchema = {
+    type: "object",
+    properties: {},
+    required: [],
   };
 
   for (const t of STANDARD_TOOLS) {
@@ -808,6 +823,8 @@ export async function ensureStandardTools(): Promise<void> {
     const isContainerBuild = t.id === "std-container-build";
     const isWriteFile = t.id === "std-write-file";
     const isBrowserAutomation = t.id === "std-browser-automation";
+    const isGetVaultCredential = t.id === "std-get-vault-credential";
+    const isListVaultCredentials = t.id === "std-list-vault-credentials";
     await db
       .insert(tools)
       .values({
@@ -815,7 +832,7 @@ export async function ensureStandardTools(): Promise<void> {
         name: t.name,
         protocol: "native",
         config: "{}",
-        inputSchema: isContainerRun ? JSON.stringify(stdContainerRunInputSchema) : isWebSearch ? JSON.stringify(stdWebSearchInputSchema) : isRequestUserHelp ? JSON.stringify(stdRequestUserHelpInputSchema) : isContainerSession ? JSON.stringify(stdContainerSessionInputSchema) : isContainerBuild ? JSON.stringify(stdContainerBuildInputSchema) : isWriteFile ? JSON.stringify(stdWriteFileInputSchema) : isBrowserAutomation ? JSON.stringify(stdBrowserAutomationInputSchema) : null,
+        inputSchema: isContainerRun ? JSON.stringify(stdContainerRunInputSchema) : isWebSearch ? JSON.stringify(stdWebSearchInputSchema) : isRequestUserHelp ? JSON.stringify(stdRequestUserHelpInputSchema) : isContainerSession ? JSON.stringify(stdContainerSessionInputSchema) : isContainerBuild ? JSON.stringify(stdContainerBuildInputSchema) : isWriteFile ? JSON.stringify(stdWriteFileInputSchema) : isBrowserAutomation ? JSON.stringify(stdBrowserAutomationInputSchema) : isGetVaultCredential ? JSON.stringify(stdGetVaultCredentialInputSchema) : isListVaultCredentials ? JSON.stringify(stdListVaultCredentialsInputSchema) : null,
         outputSchema: null,
       })
       .run();

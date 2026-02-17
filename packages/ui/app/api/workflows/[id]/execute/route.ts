@@ -1,10 +1,11 @@
 import { json } from "../../../_lib/response";
 import { db, executions, runLogs, toExecutionRow, fromExecutionRow } from "../../../_lib/db";
 import { executionOutputSuccess, executionOutputFailure } from "../../../_lib/db";
-import { runWorkflow, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE } from "../../../_lib/run-workflow";
+import { runWorkflow, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE, WaitingForUserError } from "../../../_lib/run-workflow";
 import { withContainerInstallHint } from "../../../_lib/container-manager";
 import { enqueueWorkflowRun } from "../../../_lib/workflow-queue";
 import { getAppSettings } from "../../../_lib/app-settings";
+import { getVaultKeyFromRequest } from "../../../_lib/vault";
 import { eq } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
@@ -35,6 +36,11 @@ export async function POST(request: Request, { params }: Params) {
     status: "running",
   };
   await db.insert(executions).values(toExecutionRow(run)).run();
+
+  const vaultKey = getVaultKeyFromRequest(request);
+  // #region agent log
+  if (vaultKey) fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'workflows/[id]/execute/route.ts',message:'workflow start with vault',data:{runId,hasVaultKey:true},hypothesisId:'vault_access',timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   try {
     await enqueueWorkflowRun(async () => {
@@ -85,7 +91,7 @@ export async function POST(request: Request, { params }: Params) {
           }).run();
         }
       };
-      const { output, context, trail } = await runWorkflow({ workflowId, runId, onStepComplete, onProgress, isCancelled, onContainerStream, maxSelfFixRetries });
+      const { output, context, trail } = await runWorkflow({ workflowId, runId, vaultKey: vaultKey ?? undefined, onStepComplete, onProgress, isCancelled, onContainerStream, maxSelfFixRetries });
       const payload = executionOutputSuccess(output ?? context, trail);
       await db.update(executions).set({
         status: "completed",
@@ -98,6 +104,16 @@ export async function POST(request: Request, { params }: Params) {
   } catch (err) {
     const rawMessage = err instanceof Error ? err.message : String(err);
     if (rawMessage === WAITING_FOR_USER_MESSAGE) {
+      if (err instanceof WaitingForUserError && err.trail.length > 0) {
+        try {
+          const runRows = await db.select({ output: executions.output }).from(executions).where(eq(executions.id, runId));
+          const raw = runRows[0]?.output;
+          const parsed = raw == null ? {} : (typeof raw === "string" ? JSON.parse(raw) as Record<string, unknown> : raw as Record<string, unknown>);
+          await db.update(executions).set({ output: JSON.stringify({ ...parsed, trail: err.trail }) }).where(eq(executions.id, runId)).run();
+        } catch {
+          // ignore
+        }
+      }
       const updated = await db.select().from(executions).where(eq(executions.id, runId));
       return json(fromExecutionRow(updated[0]), { status: 200 });
     }

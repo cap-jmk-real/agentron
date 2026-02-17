@@ -619,10 +619,10 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
         };
       };
       const data = {
-        nodeRect: rect(nodeEl ?? undefined),
-        cardRect: rect(cardEl ?? undefined),
-        handleLeftRect: rect(handleLeft ?? undefined),
-        handleRightRect: rect(handleRight ?? undefined),
+        nodeRect: rect(nodeEl ?? null),
+        cardRect: rect(cardEl ?? null),
+        handleLeftRect: rect(handleLeft ?? null),
+        handleRightRect: rect(handleRight ?? null),
         nodeComputed: cs(nodeEl ?? null),
         cardComputed: cs(cardEl ?? null),
         handleLeftComputed: cs(handleLeft ?? null),

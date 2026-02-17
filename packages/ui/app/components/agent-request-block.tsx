@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Loader2 } from "lucide-react";
 
 export type AgentRequestData = {
   question?: string;
@@ -25,6 +26,8 @@ type AgentRequestBlockProps = {
   className?: string;
   /** If true, show a short hint when question is vague or short. */
   showVagueHint?: boolean;
+  /** Option value currently being sent; that button shows "Sending…" and options are disabled. */
+  sendingOption?: string | null;
 };
 
 const VAGUE_HINT =
@@ -49,10 +52,12 @@ export function AgentRequestBlock({
   onCancelRun,
   className = "",
   showVagueHint = true,
+  sendingOption = null,
 }: AgentRequestBlockProps) {
   const displayQuestion = question?.trim() || "The agent is waiting for your input.";
   const showHint = showVagueHint && (!question?.trim() || question.trim().length < 40 || isVagueQuestion(question.trim()));
   const hasOptions = Array.isArray(options) && options.length > 0;
+  const isSending = sendingOption != null && sendingOption !== "";
 
   return (
     <div className={`agent-request-block ${className}`.trim()} role="region" aria-label="Agent request">
@@ -75,18 +80,30 @@ export function AgentRequestBlock({
             <span className="agent-request-block-options-label">Options:</span>
             {onReplyOption ? (
               <ul className="agent-request-block-options-list" role="group" aria-label="Reply options">
-                {options.filter((s): s is string => typeof s === "string").map((s, i) => (
-                  <li key={i}>
-                    <button
-                      type="button"
-                      className="agent-request-block-option-btn"
-                      onClick={() => onReplyOption(s)}
-                      title="Send this as your reply"
-                    >
-                      {s}
-                    </button>
-                  </li>
-                ))}
+                {options.filter((s): s is string => typeof s === "string").map((s, i) => {
+                  const sendingThis = isSending && sendingOption === s;
+                  return (
+                    <li key={i}>
+                      <button
+                        type="button"
+                        className="agent-request-block-option-btn"
+                        onClick={() => !isSending && onReplyOption(s)}
+                        title={sendingThis ? "Sending…" : "Send this as your reply"}
+                        disabled={isSending}
+                        aria-busy={sendingThis}
+                      >
+                        {sendingThis ? (
+                          <>
+                            <Loader2 size={14} className="spin" style={{ marginRight: 6, verticalAlign: "middle" }} aria-hidden />
+                            Sending…
+                          </>
+                        ) : (
+                          s
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <span className="agent-request-block-options-inline">

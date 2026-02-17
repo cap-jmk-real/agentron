@@ -117,7 +117,8 @@ export async function runAssistant(
   if (options.runWaitingContext && options.runWaitingContext.trim().length > 0) {
     systemPrompt += `\n\n## Workflow run waiting for user input\n${options.runWaitingContext.trim()}\n\n**CRITICAL:** Do NOT output a generic "The agent is waiting for your input. Reply above to continue." message. Instead:
 1. First, surface the run's question to the user (from runWaitingContext above) so they know what to reply.
-2. Then process their message: (a) If they are directly answering the run's question (e.g. selecting an option, providing data), call respond_to_run with runId and response. (b) If they want to stop or cancel the run, call cancel_run. (c) If they want something else (modify the agent, ask a different question), do that instead. Always take action — never just tell them to reply.`;
+2. Then process their message: (a) If they are directly answering the run's question (e.g. selecting an option, providing data), call respond_to_run with runId and response. (b) If they want to stop or cancel the run, call cancel_run. (c) If they want something else (modify the agent, ask a different question), do that instead. Always take action — never just tell them to reply.
+3. For respond_to_run: set **response** to the **exact** text the user sent (the full option label if they clicked one, or their typed reply). Never use a number, index, or abbreviation (e.g. never "1" or "option 2" — use the full option text like "Wait for saved searches (do nothing)").`;
   }
 
   const messages: LLMMessage[] = [
