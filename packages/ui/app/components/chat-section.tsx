@@ -13,6 +13,7 @@ import {
   Trash2,
   ExternalLink,
   GitBranch,
+  Network,
   Bot,
   Settings2,
   Copy,
@@ -90,7 +91,7 @@ function getUiContext(pathname: string | null): string {
 
 type ToolResult = { name: string; args: Record<string, unknown>; result: unknown };
 
-type TraceStep = { phase: string; label?: string; contentPreview?: string };
+type TraceStep = { phase: string; label?: string; contentPreview?: string; inputPreview?: string; specialistId?: string; toolName?: string; toolInput?: unknown; toolOutput?: unknown };
 
 type InteractivePrompt = { question: string; options?: string[] };
 
@@ -264,11 +265,19 @@ function ChatSectionMessageRow({
           <p className="chat-section-rephrased-text">{msg.rephrasedPrompt}</p>
         </div>
       )}
-      {msg.role === "assistant" && (msg.traceSteps?.length ?? 0) > 0 && !effectiveHasFinalResponseContent && !(loading && isLast) && (
-        <div className="chat-section-trace-steps">
-          <span className="chat-section-trace-step" title={msg.traceSteps![msg.traceSteps!.length - 1].contentPreview ?? undefined}>
-            {msg.traceSteps![msg.traceSteps!.length - 1].label ?? msg.traceSteps![msg.traceSteps!.length - 1].phase}
-          </span>
+      {msg.role === "assistant" && (msg.traceSteps?.length ?? 0) > 0 && !effectiveHasFinalResponseContent && (
+        <div className="chat-section-trace-steps chat-section-trace-steps-current" aria-label="Assistant working">
+          {conversationId && (
+            <a href={`/queues?conversation=${encodeURIComponent(conversationId)}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.25rem" }}>
+              View full queue history →
+            </a>
+          )}
+          <div className="chat-section-trace-step-wrap chat-section-trace-step-wrap-left" style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: "0.5rem" }}>
+            <LogoLoading size={20} className="chat-section-bubble-logo-loading" aria-hidden />
+            <span className="chat-section-trace-step">
+              {getLoadingStatus(msg as Parameters<typeof getLoadingStatus>[0])}
+            </span>
+          </div>
         </div>
       )}
       {msg.role === "assistant" && msg.reasoning && isLast && !effectiveHasFinalResponseContent && (
@@ -413,31 +422,20 @@ function ChatSectionMessageRow({
                 <ChatMessageContent content={displayState.displayContent} structuredContent={displayState.structuredContent} />
                 {(() => {
                   const wouldShowOptions = displayState.hasAskUserWaiting && isLast && !loading;
-                  const optsFromText = !wouldShowOptions && isLast && !loading && /choose|option|please pick/i.test(displayState.displayContent)
-                    ? getSuggestedOptionsFromToolResults([], displayState.displayContent || "")
-                    : [];
-                  // #region agent log
-                  if (msg.role === "assistant" && isLast && !loading && /choose|option|please pick/i.test(displayState.displayContent)) {
-                    queueMicrotask(() => fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ location: "chat-section.tsx:options-skip", message: "Options block skipped or rendered", data: { wouldShowOptions, hasAskUserWaiting: displayState.hasAskUserWaiting, optsFromTextCount: optsFromText.length, optsFromTextPreview: optsFromText.slice(0, 5).map((o) => o.label) }, timestamp: Date.now(), hypothesisId: "H3-H5" }) }).catch(() => {}));
-                  }
-                  // #endregion
-                  return wouldShowOptions && (() => {
+                  if (!wouldShowOptions) return null;
                   const opts = msg.interactivePrompt?.options && msg.interactivePrompt.options.length > 0
                     ? msg.interactivePrompt.options.map((s) => ({ value: s, label: s }))
                     : getSuggestedOptionsFromToolResults(list, displayState.displayContent || "");
-                  // #region agent log
-                  queueMicrotask(() => fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ location: "chat-section.tsx:inline-options", message: "Options block rendering", data: { hasAskUserWaiting: displayState.hasAskUserWaiting, isLast, loading, optsCount: opts.length, optsPreview: opts.slice(0, 5).map((o) => o.label) }, timestamp: Date.now(), hypothesisId: "H4" }) }).catch(() => {}));
-                  // #endregion
                   if (opts.length === 0) return null;
                   const sendingForThisMsg = optionSending?.messageId === msg.id;
                   return (
                     <div className="chat-inline-options" role="group" aria-label="Choose an option">
                       <span className="chat-inline-options-label">Choose an option:</span>
                       <ul className="chat-inline-options-list">
-                        {opts.map((opt) => {
+                        {opts.map((opt, optIndex) => {
                           const isSendingThis = sendingForThisMsg && optionSending?.label === opt.label;
                           return (
-                            <li key={opt.value}>
+                            <li key={`option-${optIndex}-${opt.value}`}>
                               <button
                                 type="button"
                                 className="chat-inline-option-btn"
@@ -463,7 +461,6 @@ function ChatSectionMessageRow({
                       </ul>
                     </div>
                   );
-                })();
                 })()}
                 {msg.role === "assistant" && (() => {
                   const agentRequest = getAgentRequestFromToolResults(list);
@@ -1030,6 +1027,14 @@ export default function ChatSection({ onOpenSettings }: Props) {
 
   const lastMsg = messages[messages.length - 1];
   const lastTraceSteps = lastMsg?.role === "assistant" ? lastMsg.traceSteps : undefined;
+  const lastTracePhase = lastTraceSteps?.length ? lastTraceSteps[lastTraceSteps.length - 1].phase : undefined;
+  // Unstick: if last message has a "done" trace step but loading is still true (e.g. "done" event missed), clear loading
+  useEffect(() => {
+    if (loading && lastMsg?.role === "assistant" && lastTracePhase === "done") {
+      setLoading(false);
+      crossTabStateRef.current = { ...crossTabStateRef.current, loading: false };
+    }
+  }, [loading, lastMsg?.role, lastTracePhase]);
   // Clear option-sending state when request finishes so buttons are clickable again
   useEffect(() => {
     if (!loading) {
@@ -1471,7 +1476,7 @@ export default function ChatSection({ onOpenSettings }: Props) {
               onClick={() => handleChatModeChange("heap")}
               title="Heap: multi-agent (router + specialists)"
             >
-              <GitBranch size={14} aria-hidden />
+              <Network size={14} aria-hidden />
               <span>Heap</span>
             </button>
           </div>

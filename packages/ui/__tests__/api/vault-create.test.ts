@@ -71,7 +71,7 @@ describe("Vault create API", () => {
   });
 
   it("POST /api/vault/lock returns ok and Set-Cookie clear", async () => {
-    const res = await lockPost(new Request("http://localhost/api/vault/lock", { method: "POST" }));
+    const res = await lockPost();
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.ok).toBe(true);

@@ -19,7 +19,7 @@ export type ChatStreamMessage = {
   executingTodoLabel?: string;
   executingSubStepLabel?: string;
   rephrasedPrompt?: string | null;
-  traceSteps?: { phase: string; label?: string; contentPreview?: string }[];
+  traceSteps?: { phase: string; label?: string; contentPreview?: string; inputPreview?: string; specialistId?: string; toolName?: string; toolInput?: unknown; toolOutput?: unknown }[];
 };
 
 export type UseChatStreamParams = {
@@ -57,11 +57,25 @@ export function processChatStreamEvent(
   }
 ): void {
   if (event.type === "trace_step") {
+    const step: { phase: string; label?: string; contentPreview?: string; inputPreview?: string; specialistId?: string; toolName?: string; toolInput?: unknown; toolOutput?: unknown } = {
+      phase: event.phase ?? "",
+      label: event.label,
+      contentPreview: event.contentPreview,
+    };
+    if (event.inputPreview != null) step.inputPreview = event.inputPreview;
+    if (event.specialistId != null) step.specialistId = event.specialistId;
+    if (event.toolName != null) step.toolName = event.toolName;
+    if (event.toolInput !== undefined) step.toolInput = event.toolInput;
+    if (event.toolOutput !== undefined) step.toolOutput = event.toolOutput;
     ctx.setMessages((prev) =>
       prev.map((m) =>
-        m.id === ctx.placeholderId
-          ? { ...m, traceSteps: [...(m.traceSteps ?? []), { phase: event.phase ?? "", label: event.label, contentPreview: event.contentPreview }] }
-          : m
+        m.id === ctx.placeholderId ? { ...m, traceSteps: [...(m.traceSteps ?? []), step] } : m
+      )
+    );
+  } else if (event.type === "content_delta" && "delta" in event && typeof event.delta === "string") {
+    ctx.setMessages((prev) =>
+      prev.map((m) =>
+        m.id === ctx.placeholderId ? { ...m, content: (m.content ?? "") + event.delta } : m
       )
     );
   } else if (event.type === "rephrased_prompt" && event.rephrasedPrompt != null) {
@@ -249,6 +263,9 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
       ...(extraBody ?? {}),
     };
 
+    // #region agent log
+    if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"e0760a"},body:JSON.stringify({sessionId:"e0760a",location:"useChatStream.ts:before_fetch",message:"client sending message",data:{conversationId:body.conversationId ?? null,messageLen:(text||"").length},hypothesisId:"H1",timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const res = await fetch("/api/chat?stream=1", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
@@ -270,71 +287,72 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
       return;
     }
 
-    const reader = res.body?.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    if (!reader) {
-      updatePlaceholder({ content: "Error: No response body.", traceSteps: [] });
+    // Decoupled: expect 202 + turnId, then subscribe to events via SSE
+    if (res.status !== 202) {
+      updatePlaceholder({ content: "Error: Expected decoupled response (202).", traceSteps: [] });
       setLoading(false);
       return;
     }
 
+    let turnId: string;
     try {
-      const processBuffer = () => {
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          const dataMatch = line.match(/^data:\s*(.+)$/m);
-          if (!dataMatch) continue;
-          try {
-            const event = JSON.parse(dataMatch[1].trim()) as ChatStreamEvent;
-            processChatStreamEvent(event, {
-              placeholderId,
-              userMsgId,
-              updatePlaceholder,
-              setMessages,
-              setConversationId,
-              setConversationList,
-              doneReceived: doneReceivedRef,
-              onRunFinished,
-              onDone,
-            });
-          } catch {
-            // skip malformed event
-          }
-        }
-      };
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (value) buffer += decoder.decode(value, { stream: true });
-        processBuffer();
-        if (done) break;
-      }
-    } finally {
-      reader.releaseLock();
-      if (!doneReceivedRef.current && conversationId) {
-        fetch(`/api/chat?conversationId=${encodeURIComponent(conversationId)}`)
-          .then((r) => r.json())
-          .then((data) => {
-            if (!Array.isArray(data)) return;
-            const apiMessages = mapApiMessagesToMessage(data, normalizeToolResults);
-            // #region agent log
-            if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({location:"useChatStream:fallback_fetch",message:"fallback fetch (no done)",data:{apiLen:apiMessages.length,conversationId},hypothesisId:"H2",timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
-            setMessages((prev) => {
-              const lastPrev = prev[prev.length - 1] as ChatStreamMessage | undefined;
-              const lastApi = apiMessages[apiMessages.length - 1];
-              const willReplace = lastApi?.role === "assistant" && lastApi.content.trim() && lastPrev?.role === "assistant" && !lastPrev.content.trim();
-              const useApi = willReplace || apiMessages.length > prev.length;
-              if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({location:"useChatStream:fallback_set",message:"fallback setMessages",data:{prevLen:prev.length,apiLen:apiMessages.length,willReplace,useApi},hypothesisId:"H2",timestamp:Date.now()})}).catch(()=>{});
-              if (willReplace) return apiMessages;
-              return apiMessages.length > prev.length ? apiMessages : prev;
-            });
-          })
-          .catch(() => {});
-      }
+      const data = await res.json();
+      turnId = typeof data?.turnId === "string" ? data.turnId : "";
+    } catch {
+      updatePlaceholder({ content: "Error: Invalid response (no turnId).", traceSteps: [] });
+      setLoading(false);
+      return;
     }
+    if (!turnId) {
+      updatePlaceholder({ content: "Error: Missing turnId.", traceSteps: [] });
+      setLoading(false);
+      return;
+    }
+
+    const eventSource = new EventSource(`/api/chat/events?turnId=${encodeURIComponent(turnId)}`);
+    const processEvent = (raw: string) => {
+      try {
+        const event = JSON.parse(raw) as ChatStreamEvent;
+        processChatStreamEvent(event, {
+          placeholderId,
+          userMsgId,
+          updatePlaceholder,
+          setMessages,
+          setConversationId,
+          setConversationList,
+          doneReceived: doneReceivedRef,
+          onRunFinished,
+          onDone,
+        });
+      } catch {
+        // skip malformed event
+      }
+    };
+
+    eventSource.onmessage = (e) => {
+      if (!e.data) return;
+      processEvent(e.data);
+      try {
+        const event = JSON.parse(e.data) as { type?: string };
+        if (event.type === "done" || event.type === "error") {
+          eventSource.close();
+          setLoading(false);
+        }
+      } catch {
+        //
+      }
+    };
+    eventSource.onerror = () => {
+      eventSource.close();
+      if (!doneReceivedRef.current) {
+        updatePlaceholder({ content: "Request failed or connection lost. You can try again or refresh the page.", traceSteps: [] });
+      }
+      setLoading(false);
+    };
   } catch (err) {
+    // #region agent log
+    if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"e0760a"},body:JSON.stringify({sessionId:"e0760a",location:"useChatStream.ts:catch",message:"chat fetch threw",data:{name:err instanceof Error?err.name:"",message:err instanceof Error?err.message:String(err)},hypothesisId:"H3",timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (err instanceof Error && err.name === "AbortError") {
       setMessages((prev) => prev.filter((m) => m.id !== placeholderId));
       onAbort?.();

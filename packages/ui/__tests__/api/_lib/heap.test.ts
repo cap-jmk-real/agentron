@@ -5,6 +5,7 @@ import {
   SPECIALIST_TOOL_CAP,
   TOP_LEVEL_CAP,
   DELEGATE_TARGETS_CAP,
+  buildRegistryFromSpecs,
   buildRouterPrompt,
   parseRouterOutput,
   buildHeapDAG,
@@ -62,6 +63,36 @@ describe("heap registry", () => {
     const reg = getRegistry(custom);
     expect(reg.topLevelIds).toEqual(["only"]);
     expect(reg.specialists.only?.toolNames).toEqual(["ask_user"]);
+  });
+
+  it("buildRegistryFromSpecs splits specialists with more than SPECIALIST_TOOL_CAP tools into a delegator hierarchy", () => {
+    const manyTools = Array.from({ length: SPECIALIST_TOOL_CAP + 3 }, (_, i) => `tool_${i}`);
+    const reg = buildRegistryFromSpecs(
+      [
+        {
+          id: "big",
+          description: "Big specialist",
+          toolNames: manyTools,
+        },
+      ],
+      ["big"]
+    );
+
+    // Top-level id stays the logical id.
+    expect(reg.topLevelIds).toEqual(["big"]);
+
+    const big = reg.specialists.big;
+    expect(big).toBeDefined();
+    expect(big?.toolNames).toEqual([]);
+    expect(big?.delegateTargets && big.delegateTargets.length).toBeGreaterThan(0);
+
+    // All concrete specialists respect the tool cap.
+    Object.values(reg.specialists).forEach((entry) => {
+      expect(entry.toolNames.length).toBeLessThanOrEqual(SPECIALIST_TOOL_CAP);
+      if (entry.delegateTargets) {
+        expect(entry.delegateTargets.length).toBeLessThanOrEqual(DELEGATE_TARGETS_CAP);
+      }
+    });
   });
 });
 

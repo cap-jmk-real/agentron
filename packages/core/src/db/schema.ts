@@ -27,6 +27,8 @@ export const workflows = sqliteTable("workflows", {
   maxRounds: integer("max_rounds"),
   turnInstruction: text("turn_instruction"),
   branches: text("branches"),
+  /** Optional explicit execution order: JSON array of steps (node id or { parallel: nodeIds }). */
+  executionOrder: text("execution_order"),
   createdAt: integer("created_at").notNull()
 });
 
@@ -322,6 +324,18 @@ export const workflowQueue = sqliteTable("workflow_queue", {
 export const conversationLocks = sqliteTable("conversation_locks", {
   conversationId: text("conversation_id").primaryKey(),
   startedAt: integer("started_at").notNull(),
+  createdAt: integer("created_at").notNull()
+});
+
+/** Atomistic log of chat (and later workflow) steps for the Message queue UI. Persisted as steps run so the Queues page can show them immediately. */
+export const messageQueueLog = sqliteTable("message_queue_log", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id").notNull(),
+  messageId: text("message_id"),
+  type: text("type").notNull(),
+  phase: text("phase"),
+  label: text("label"),
+  payload: text("payload"),
   createdAt: integer("created_at").notNull()
 });
 

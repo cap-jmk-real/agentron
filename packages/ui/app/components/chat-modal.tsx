@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Send, ThumbsUp, ThumbsDown, Loader, Loader2, Minus, Copy, Check, Circle, CircleDot, Square, MessageSquarePlus, List, Star, Trash2, ExternalLink, GitBranch, Bot, Settings2, KeyRound, Lock, Unlock, RotateCw } from "lucide-react";
+import { Send, ThumbsUp, ThumbsDown, Loader, Loader2, Minus, Copy, Check, Circle, CircleDot, Square, MessageSquarePlus, List, Star, Trash2, ExternalLink, GitBranch, Network, Bot, Settings2, KeyRound, Lock, Unlock, RotateCw } from "lucide-react";
 import { ChatMessageContent, ChatMessageResourceLinks, ChatToolResults, getAgentRequestFromToolResults, getAssistantMessageDisplayContent, getLoadingStatus, getMessageDisplayState, getSuggestedOptions, getSuggestedOptionsFromToolResults, hasAskUserWaitingForInput, messageContentIndicatesSuccess, messageHasSuccessfulToolResults, normalizeToolResults, ReasoningContent } from "./chat-message-content";
 import { performChatStreamSend } from "../hooks/useChatStream";
 import { useMinimumStepsDisplayTime, MIN_STEPS_DISPLAY_MS } from "../hooks/useMinimumStepsDisplayTime";
@@ -74,7 +74,7 @@ function getUiContext(pathname: string | null): string {
 
 type ToolResult = { name: string; args: Record<string, unknown>; result: unknown };
 
-type TraceStep = { phase: string; label?: string; contentPreview?: string };
+type TraceStep = { phase: string; label?: string; contentPreview?: string; inputPreview?: string; specialistId?: string; toolName?: string; toolInput?: unknown; toolOutput?: unknown };
 
 type InteractivePrompt = { question: string; options?: string[] };
 
@@ -275,10 +275,18 @@ function ChatModalMessageRow({
         </div>
       )}
       {msg.role === "assistant" && (msg.traceSteps?.length ?? 0) > 0 && !effectiveHasFinalResponseContent && (
-        <div className="chat-trace-steps" aria-label="Current step">
-          <span className="chat-trace-step" title={msg.traceSteps![msg.traceSteps!.length - 1].contentPreview ?? undefined}>
-            {msg.traceSteps![msg.traceSteps!.length - 1].label ?? msg.traceSteps![msg.traceSteps!.length - 1].phase}
-          </span>
+        <div className="chat-trace-steps chat-trace-steps-current" aria-label="Assistant working">
+          {conversationId && (
+            <a href={`/queues?conversation=${encodeURIComponent(conversationId)}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.25rem" }}>
+              View full queue history →
+            </a>
+          )}
+          <div className="chat-trace-step-wrap chat-trace-step-wrap-left" style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: "0.5rem" }}>
+            <LogoLoading size={20} className="chat-bubble-logo-loading" aria-hidden />
+            <span className="chat-trace-step">
+              {getLoadingStatus(msg as Parameters<typeof getLoadingStatus>[0])}
+            </span>
+          </div>
         </div>
       )}
       {msg.role === "assistant" && msg.reasoning && isLastMessage && !effectiveHasFinalResponseContent && (
@@ -347,10 +355,10 @@ function ChatModalMessageRow({
                     <div className="chat-inline-options" role="group" aria-label="Choose an option">
                       <span className="chat-inline-options-label">Choose an option:</span>
                       <ul className="chat-inline-options-list">
-                        {opts.map((opt) => {
+                        {opts.map((opt, optIndex) => {
                           const isSendingThis = sendingForThisMsg && optionSending?.label === opt.label;
                           return (
-                            <li key={opt.value}>
+                            <li key={`option-${optIndex}-${opt.value}`}>
                               <button
                                 type="button"
                                 className="chat-inline-option-btn"
@@ -1029,6 +1037,14 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
 
   const lastMsg = messages[messages.length - 1];
   const lastTraceSteps = lastMsg?.role === "assistant" ? lastMsg.traceSteps : undefined;
+  const lastTracePhase = lastTraceSteps?.length ? lastTraceSteps[lastTraceSteps.length - 1].phase : undefined;
+  // Unstick: if last message has a "done" trace step but loading is still true (e.g. "done" event missed), clear loading
+  useEffect(() => {
+    if (loading && lastMsg?.role === "assistant" && lastTracePhase === "done") {
+      setLoading(false);
+      crossTabStateRef.current = { ...crossTabStateRef.current, loading: false };
+    }
+  }, [loading, lastMsg?.role, lastTracePhase]);
   // Clear option-sending state when request finishes so buttons are clickable again
   useEffect(() => {
     if (!loading) {
@@ -1608,7 +1624,7 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
               onClick={() => handleChatModeChange("heap")}
               title="Heap: multi-agent (router + specialists)"
             >
-              <GitBranch size={14} aria-hidden />
+              <Network size={14} aria-hidden />
               <span>Heap</span>
             </button>
           </div>

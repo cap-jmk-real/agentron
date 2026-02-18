@@ -27,8 +27,8 @@ const DEFAULT_AGENT_GRID = {
 const DEFAULT_WORKFLOW_GRID = {
   startX: 80,
   startY: 60,
-  stepX: 240,
-  stepY: 140,
+  stepX: 300,
+  stepY: 180,
   cols: 3,
 } as const;
 
@@ -221,12 +221,67 @@ export function layoutNodesByGraph<T>(params: {
     }
   }
   const remaining = ids.filter((id) => !topo.includes(id));
-  for (const id of remaining) topo.push(id);
+
+  // For cycle nodes: find one feedback edge so we can assign layers in DAG order and avoid same-layer overlap.
+  let feedbackEdge: { source: string; target: string } | null = null;
+  if (remaining.length > 0) {
+    const cycleEdges = remaining.flatMap((id) => (successors.get(id) ?? []).filter((t) => remaining.includes(t)).map((target) => ({ source: id, target })));
+    const visit = new Set<string>();
+    const stack = new Set<string>();
+    const postOrder: string[] = [];
+    function dfs(u: string): boolean {
+      visit.add(u);
+      stack.add(u);
+      for (const e of cycleEdges) {
+        if (e.source !== u) continue;
+        const v = e.target;
+        if (!visit.has(v)) {
+          if (dfs(v)) return true;
+        } else if (stack.has(v)) {
+          feedbackEdge = { source: u, target: v };
+          return true;
+        }
+      }
+      stack.delete(u);
+      postOrder.push(u);
+      return false;
+    }
+    for (const id of remaining) {
+      if (!visit.has(id) && dfs(id)) break;
+    }
+  }
+
+  const inDegreeForLayers = new Map<string, number>();
+  for (const id of ids) inDegreeForLayers.set(id, 0);
+  for (const e of edges) {
+    if (!idToItem.has(e.source) || !idToItem.has(e.target) || e.source === e.target) continue;
+    if (feedbackEdge && e.source === feedbackEdge.source && e.target === feedbackEdge.target) continue;
+    inDegreeForLayers.set(e.target, (inDegreeForLayers.get(e.target) ?? 0) + 1);
+  }
+  const topoForLayers: string[] = [];
+  const q = ids.filter((id) => inDegreeForLayers.get(id) === 0);
+  while (q.length > 0) {
+    const n = q.shift()!;
+    topoForLayers.push(n);
+    for (const e of edges) {
+      if (e.source !== n) continue;
+      if (!idToItem.has(e.target)) continue;
+      if (feedbackEdge && e.source === feedbackEdge.source && e.target === feedbackEdge.target) continue;
+      const d = inDegreeForLayers.get(e.target)! - 1;
+      inDegreeForLayers.set(e.target, d);
+      if (d === 0) q.push(e.target);
+    }
+  }
+  const stillRemaining = ids.filter((id) => !topoForLayers.includes(id));
+  for (const id of stillRemaining) topoForLayers.push(id);
 
   const layer = new Map<string, number>();
-  for (const id of topo) {
+  for (const id of topoForLayers) {
     const preds = incoming.get(id) ?? [];
-    const l = preds.length === 0 ? 0 : 1 + Math.max(...preds.map((p) => layer.get(p) ?? 0));
+    const predLayers = preds
+      .filter((p) => !(feedbackEdge && id === feedbackEdge.target && p === feedbackEdge.source))
+      .map((p) => layer.get(p) ?? 0);
+    const l = predLayers.length === 0 ? 0 : 1 + Math.max(...predLayers);
     layer.set(id, l);
   }
 

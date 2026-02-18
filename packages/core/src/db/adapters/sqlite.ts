@@ -32,6 +32,7 @@ const SCHEMA_SQL = `
           max_rounds integer,
           turn_instruction text,
           branches text,
+          execution_order text,
           created_at integer not null
         );
         create table if not exists tools (
@@ -123,6 +124,16 @@ const SCHEMA_SQL = `
         create table if not exists conversation_locks (
           conversation_id text primary key,
           started_at integer not null,
+          created_at integer not null
+        );
+        create table if not exists message_queue_log (
+          id text primary key,
+          conversation_id text not null,
+          message_id text,
+          type text not null,
+          phase text,
+          label text,
+          payload text,
           created_at integer not null
         );
         create table if not exists skills (
@@ -425,7 +436,7 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         "reminders", "training_runs", "agent_store_entries", "guardrails", "technique_insights", "technique_playbook", "improvement_jobs",
         "rag_vectors", "rag_connectors", "rag_documents", "rag_collections", "rag_vector_stores", "rag_document_stores", "rag_encoding_configs",
         "tasks", "sandbox_site_bindings", "feedback", "remote_servers", "model_pricing", "token_usage",
-        "custom_functions", "sandboxes", "files", "chat_messages", "conversations", "assistant_memory", "chat_assistant_settings", "saved_credentials", "vault_meta", "contexts",
+        "message_queue_log", "custom_functions", "sandboxes", "files", "chat_messages", "conversations", "assistant_memory", "chat_assistant_settings", "saved_credentials", "vault_meta", "contexts",
         "agent_skills", "skills", "run_logs", "executions", "llm_configs", "prompts", "tools", "workflows", "agents"
       ];
       for (const table of tables) {
@@ -447,6 +458,11 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
       }
       try {
         sqlite.exec("ALTER TABLE workflows ADD COLUMN branches text");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE workflows ADD COLUMN execution_order text");
       } catch {
         // Column already exists
       }
@@ -547,6 +563,11 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
       }
       try {
         sqlite.exec('CREATE TABLE IF NOT EXISTS vault_meta (id text primary key, salt text not null, "check" text not null, created_at integer not null)');
+      } catch {
+        // Already exists
+      }
+      try {
+        sqlite.exec("CREATE TABLE IF NOT EXISTS message_queue_log (id text primary key, conversation_id text not null, message_id text, type text not null, phase text, label text, payload text, created_at integer not null)");
       } catch {
         // Already exists
       }

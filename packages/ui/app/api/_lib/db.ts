@@ -38,6 +38,7 @@ import {
   executionRunState,
   workflowQueue,
   conversationLocks,
+  messageQueueLog,
 } from "@agentron-studio/core";
 import type {
   Agent,
@@ -140,6 +141,7 @@ export {
   executionRunState,
   workflowQueue,
   conversationLocks,
+  messageQueueLog,
 };
 
 export type ReminderTaskType = "message" | "assistant_task";
@@ -237,6 +239,10 @@ export const toWorkflowRow = (workflow: Workflow) => ({
   maxRounds: (workflow as Workflow & { maxRounds?: number | null }).maxRounds ?? null,
   turnInstruction: (workflow as Workflow & { turnInstruction?: string | null }).turnInstruction ?? null,
   branches: workflow.branches != null ? JSON.stringify(workflow.branches) : null,
+  executionOrder:
+    workflow.executionOrder != null && workflow.executionOrder.length > 0
+      ? JSON.stringify(workflow.executionOrder)
+      : null,
   createdAt: Date.now()
 });
 
@@ -250,7 +256,8 @@ export const fromWorkflowRow = (row: typeof workflows.$inferSelect): Workflow =>
   schedule: row.schedule ?? undefined,
   maxRounds: row.maxRounds ?? undefined,
   turnInstruction: row.turnInstruction ?? undefined,
-  branches: parseJson((row as { branches?: string | null }).branches) ?? undefined
+  branches: parseJson((row as { branches?: string | null }).branches) ?? undefined,
+  executionOrder: parseJson((row as { executionOrder?: string | null }).executionOrder) ?? undefined
 } as Workflow);
 
 export const toToolRow = (tool: ToolDefinition) => ({

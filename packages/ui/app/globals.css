@@ -2274,8 +2274,8 @@ html[data-theme="dark"] .textarea:focus {
   background: var(--surface-muted);
 }
 
-/* ========== REACT FLOW FIX DISABLED FOR BUG REPRO – uncomment this block to re-enable ========== */
-/* .react-flow__viewport-portal {
+/* React Flow: viewport-portal must not block so pane/viewport receive pan; nodes must receive pointer so nodes are clickable. */
+.react-flow__viewport-portal {
   pointer-events: none;
 }
 
@@ -2299,15 +2299,14 @@ html[data-theme="dark"] .textarea:focus {
 .react-flow__node {
   z-index: 50 !important;
   pointer-events: auto !important;
-  cursor: default !important;
+  cursor: pointer !important;
   isolation: isolate;
   transform: translateZ(0);
 }
 .react-flow__node .nopan:not(.react-flow__handle) {
   position: relative;
   z-index: 2;
-} */
-/* ========== END commented React Flow fix ========== */
+}
 
 /* Canvas wrapper: fill space so React Flow receives all pointer events; no cursor so .react-flow controls it */
 .canvas-react-flow-wrap {
@@ -2321,17 +2320,16 @@ html[data-theme="dark"] .textarea:focus {
   height: 100%;
 }
 
-/* .react-flow__pane.draggable {
+.react-flow__pane.draggable {
   cursor: grab;
 }
 .react-flow__pane.dragging {
   cursor: grabbing;
 }
 
-Override library (commented for bug repro): .react-flow__node.draggable etc
 .react-flow__node.draggable,
 .react-flow__node.draggable.selectable {
-  cursor: default !important;
+  cursor: pointer !important;
 }
 .react-flow__node.draggable.dragging {
   cursor: grabbing !important;
@@ -2375,41 +2373,6 @@ Override library (commented for bug repro): .react-flow__node.draggable etc
 .react-flow__node [role="button"].nopan {
   cursor: pointer !important;
 }
-end Override library block
-.react-flow__node .nopan .drag-handle,
-.react-flow__node .drag-handle {
-  cursor: move !important;
-  pointer-events: auto;
-}
-
-.react-flow__node.dragging,
-.react-flow__node:active {
-  cursor: grabbing;
-}
-
-When over interactive node content (nopan), show the right cursor
-.react-flow__node input.nopan,
-.react-flow__node textarea.nopan {
-  cursor: text !important;
-  pointer-events: auto !important;
-}
-.react-flow__node select.nopan {
-  cursor: pointer !important;
-  pointer-events: auto !important;
-  position: relative;
-  z-index: 20;
-}
-.react-flow__node select.nopan:focus {
-  z-index: 21;
-}
-
-.react-flow__node .nopan.button,
-.react-flow__node button.nopan,
-.react-flow__node .canvas-node-remove-btn,
-.react-flow__node a.nopan,
-.react-flow__node [role="button"].nopan {
-  cursor: pointer !important;
-} */
 
 /* Decision node: tools from canvas */
 .decision-tools-empty {
@@ -4715,6 +4678,11 @@ html[data-theme="dark"] .run-detail-reply-textarea:focus {
   line-height: 1.6;
 }
 
+.chat-msg-content-markdown .chat-md-ol {
+  list-style-type: decimal;
+  list-style-position: outside;
+}
+
 .chat-msg-content-markdown .chat-md-li {
   margin: 0.35em 0;
 }
@@ -5006,6 +4974,45 @@ html[data-theme="dark"] .run-detail-reply-textarea:focus {
 
 .chat-section-trace-step {
   white-space: nowrap;
+}
+
+.chat-section-trace-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.chat-section-trace-step-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.chat-section-trace-step-wrap-left {
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.chat-section-trace-step-wrap-left .chat-section-bubble-logo-loading {
+  flex-shrink: 0;
+}
+
+.chat-section-trace-step-detail {
+  font-size: 0.75rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--border);
+}
+
+.chat-section-trace-step-detail code,
+.chat-section-trace-detail-label {
+  font-size: inherit;
+}
+
+.chat-section-trace-detail-label {
+  font-weight: 600;
+  color: var(--text);
+  margin-right: 0.25rem;
 }
 
 .chat-section-typing,
@@ -6127,6 +6134,45 @@ a.chat-header-btn {
 
 .chat-trace-step {
   white-space: nowrap;
+}
+
+.chat-trace-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.chat-trace-step-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.chat-trace-step-wrap-left {
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.chat-trace-step-wrap-left .chat-bubble-logo-loading {
+  flex-shrink: 0;
+}
+
+.chat-trace-step-detail {
+  font-size: 0.75rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--border);
+}
+
+.chat-trace-step-detail code,
+.chat-trace-detail-label {
+  font-size: inherit;
+}
+
+.chat-trace-detail-label {
+  font-weight: 600;
+  color: var(--text);
+  margin-right: 0.25rem;
 }
 
 .chat-typing-status {

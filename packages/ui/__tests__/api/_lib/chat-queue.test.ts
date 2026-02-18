@@ -1,7 +1,34 @@
 import { describe, it, expect } from "vitest";
+import { eq } from "drizzle-orm";
 import { runSerializedByConversation } from "../../../app/api/_lib/chat-queue";
+import { db, conversationLocks } from "../../../app/api/_lib/db";
 
 describe("chat-queue", () => {
+  it("alreadyLocked: true runs handler and releases lock", async () => {
+    const convId = "conv-already-locked-" + Date.now();
+    const now = Date.now();
+    await db.insert(conversationLocks).values({ conversationId: convId, startedAt: now, createdAt: now }).run();
+    const result = await runSerializedByConversation(convId, async () => "result", { alreadyLocked: true });
+    expect(result).toBe("result");
+    const rows = await db.select().from(conversationLocks).where(eq(conversationLocks.conversationId, convId));
+    expect(rows.length).toBe(0);
+  });
+
+  it("alreadyLocked: true still releases lock on handler throw", async () => {
+    const convId = "conv-already-locked-throw-" + Date.now();
+    const now = Date.now();
+    await db.insert(conversationLocks).values({ conversationId: convId, startedAt: now, createdAt: now }).run();
+    await expect(
+      runSerializedByConversation(convId, async () => {
+        throw new Error("oops");
+      }, { alreadyLocked: true })
+    ).rejects.toThrow("oops");
+    const rows = await db.select().from(conversationLocks).where(eq(conversationLocks.conversationId, convId));
+    expect(rows.length).toBe(0);
+    const second = await runSerializedByConversation(convId, async () => "second");
+    expect(second).toBe("second");
+  });
+
   it("returns handler result", async () => {
     const result = await runSerializedByConversation("conv-1", async () => "ok");
     expect(result).toBe("ok");

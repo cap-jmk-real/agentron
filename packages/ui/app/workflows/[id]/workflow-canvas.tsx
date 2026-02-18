@@ -20,12 +20,10 @@ import {
   type EdgeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-/* Load after library so the broken state wins and the interactive-nodes bug reproduces. Remove when done. */
-import "../../force-bug.css";
 import { User, LayoutGrid, X } from "lucide-react";
 import { CanvasNodeCard } from "../../components/canvas-node-card";
 import { CanvasLabelEdge } from "../../components/canvas-label-edge";
-import { getGridPosition, getWorkflowGridOptions, layoutNodesWithoutOverlap } from "../../lib/canvas-layout";
+import { getGridPosition, getWorkflowGridOptions, layoutNodesByGraph } from "../../lib/canvas-layout";
 
 type Agent = { id: string; name: string };
 
@@ -320,16 +318,24 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
           type="button"
           className="button button-secondary"
           onClick={() => {
-            const arranged = layoutNodesWithoutOverlap(
-              wfNodes,
-              (n) => n.position,
-              (n, x, y) => ({ ...n, position: [x, y] as [number, number] }),
-              getWorkflowGridOptions()
-            );
+            const opts = getWorkflowGridOptions();
+            const arranged = layoutNodesByGraph({
+              items: wfNodes,
+              getNodeId: (n) => n.id,
+              edges: wfEdges.map((e) => ({ source: e.source, target: e.target })),
+              setPosition: (n, x, y) => ({ ...n, position: [x, y] as [number, number] }),
+              options: {
+                startX: opts.startX,
+                startY: opts.startY,
+                stepX: opts.stepX,
+                stepY: opts.stepY,
+                parentCenterOffsetUp: 40,
+              },
+            });
             onNodesEdgesChange(arranged, wfEdges);
           }}
           style={{ fontSize: "0.82rem", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem", marginTop: "0.25rem" }}
-          title="Arrange nodes in a grid"
+          title="Arrange nodes by flow (left to right; cycles supported)"
         >
           <LayoutGrid size={14} /> Arrange
         </button>

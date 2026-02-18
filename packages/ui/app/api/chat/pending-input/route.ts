@@ -2,7 +2,7 @@ import { json } from "../../_lib/response";
 import { db, chatMessages, conversations } from "../../_lib/db";
 import { eq, desc } from "drizzle-orm";
 
-/** Returns count and list of conversations where the Chat assistant is waiting for user input (ask_user, format_response with options/needsInput). */
+/** Returns count and list of conversations where the Chat assistant is waiting for user input (ask_user, format_response with needsInput). */
 export async function GET() {
   const rows = await db
     .select({ conversationId: chatMessages.conversationId, role: chatMessages.role, toolCalls: chatMessages.toolCalls })
@@ -60,9 +60,8 @@ function hasWaitingForInput(toolResults: { name: string; result?: unknown }[]): 
     if (r.name === "format_response") {
       const res = r.result;
       if (!res || typeof res !== "object") return false;
-      const obj = res as { formatted?: boolean; options?: unknown[]; needsInput?: string };
+      const obj = res as { formatted?: boolean; needsInput?: string };
       if (obj.formatted !== true) return false;
-      if (Array.isArray(obj.options) && obj.options.length > 0) return true;
       if (typeof obj.needsInput === "string" && obj.needsInput.trim()) return true;
       return false;
     }

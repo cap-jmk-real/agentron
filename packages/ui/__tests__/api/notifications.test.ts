@@ -3,6 +3,8 @@ import { GET } from "../../app/api/notifications/route";
 import { POST as clearPost } from "../../app/api/notifications/clear/route";
 import {
   createNotification,
+  createChatNotification,
+  clearActiveBySourceId,
   clearAll,
   listNotifications,
 } from "../../app/api/_lib/notifications-store";
@@ -153,5 +155,53 @@ describe("Notifications API", () => {
       })
     );
     expect(res.status).toBe(400);
+  });
+
+  describe("chat notifications (conversation needs user input)", () => {
+    it("createChatNotification creates active chat notification with correct title and severity", () => {
+      const n = createChatNotification("conv-123");
+      expect(n.type).toBe("chat");
+      expect(n.sourceId).toBe("conv-123");
+      expect(n.title).toBe("Chat needs your input");
+      expect(n.message).toContain("Open the conversation");
+      expect(n.severity).toBe("warning");
+      expect(n.status).toBe("active");
+      expect(n.metadata?.conversationId).toBe("conv-123");
+
+      const { items, totalActiveCount } = listNotifications({ status: "active" });
+      expect(items.length).toBe(1);
+      expect(totalActiveCount).toBe(1);
+      expect(items[0].id).toBe(n.id);
+    });
+
+    it("createChatNotification replaces previous active chat notification for same conversation", () => {
+      createChatNotification("conv-same");
+      const second = createChatNotification("conv-same");
+      const { items, totalActiveCount } = listNotifications({ status: "active" });
+      expect(items.length).toBe(1);
+      expect(totalActiveCount).toBe(1);
+      expect(items[0].id).toBe(second.id);
+    });
+
+    it("clearActiveBySourceId clears only active notifications for given type and sourceId", () => {
+      createChatNotification("conv-a");
+      createChatNotification("conv-b");
+      const cleared = clearActiveBySourceId("chat", "conv-a");
+      expect(cleared).toBe(1);
+      const { items } = listNotifications({ status: "active" });
+      expect(items.length).toBe(1);
+      expect(items[0].sourceId).toBe("conv-b");
+    });
+
+    it("GET /api/notifications returns chat notifications with conversationTitle", async () => {
+      createChatNotification("conv-needs-input");
+      const res = await GET(new Request("http://localhost/api/notifications?types=chat"));
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.items.length).toBe(1);
+      expect(data.items[0].type).toBe("chat");
+      expect(data.items[0].title).toBe("Chat needs your input");
+      expect(data.items[0]).toHaveProperty("conversationTitle");
+    });
   });
 });

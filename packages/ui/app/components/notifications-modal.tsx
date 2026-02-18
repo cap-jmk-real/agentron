@@ -15,6 +15,7 @@ export type NotificationItem = {
   createdAt: number;
   updatedAt: number;
   targetName?: string;
+  conversationTitle?: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -150,9 +151,13 @@ export default function NotificationsModal({
                     </span>
                     <span className="notifications-item-content">
                       <span className="notifications-item-title">{item.title}</span>
-                      {(item.targetName || item.message) && (
+                      {(item.targetName ?? item.conversationTitle ?? item.message) && (
                         <span className="notifications-item-message">
-                          {item.type === "run" && item.targetName ? item.targetName : item.message || ""}
+                          {item.type === "run" && item.targetName
+                            ? item.targetName
+                            : item.type === "chat" && item.conversationTitle
+                              ? item.conversationTitle
+                              : item.message || ""}
                         </span>
                       )}
                       <span className="notifications-item-time">{formatTime(item.createdAt)}</span>

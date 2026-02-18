@@ -1,7 +1,7 @@
 import { json } from "../_lib/response";
 import { listNotifications } from "../_lib/notifications-store";
 import type { NotificationType } from "../_lib/notifications-store";
-import { db, executions, workflows, agents } from "../_lib/db";
+import { db, executions, workflows, agents, conversations } from "../_lib/db";
 import { eq, inArray } from "drizzle-orm";
 
 export const runtime = "nodejs";
@@ -45,10 +45,27 @@ export async function GET(request: Request) {
     }
   }
 
+  // Enrich chat notifications with conversation title
+  const chatConversationIds = [...new Set(items.filter((n) => n.type === "chat").map((n) => n.sourceId))];
+  const conversationIdToTitle: Record<string, string> = {};
+  if (chatConversationIds.length > 0) {
+    const convRows = await db
+      .select({ id: conversations.id, title: conversations.title })
+      .from(conversations)
+      .where(inArray(conversations.id, chatConversationIds));
+    for (const c of convRows) {
+      conversationIdToTitle[c.id] = c.title?.trim() ?? "";
+    }
+  }
+
   const enriched = items.map((n) => {
     if (n.type === "run") {
       const targetName = runIdToTargetName[n.sourceId];
       return { ...n, targetName: targetName ?? (n.metadata?.targetId as string) ?? n.sourceId };
+    }
+    if (n.type === "chat") {
+      const conversationTitle = conversationIdToTitle[n.sourceId] ?? (n.metadata?.conversationId as string) ?? n.sourceId;
+      return { ...n, conversationTitle };
     }
     return n;
   });

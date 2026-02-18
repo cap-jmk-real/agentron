@@ -105,6 +105,20 @@ export function clearAll(types?: NotificationType[]): number {
   return count;
 }
 
+/** Clear active notifications with the given type and sourceId (e.g. one "chat needs input" per conversation). */
+export function clearActiveBySourceId(type: NotificationType, sourceId: string): number {
+  const all = load();
+  const now = Date.now();
+  let count = 0;
+  for (let i = 0; i < all.length; i++) {
+    if (all[i].status !== "active" || all[i].type !== type || all[i].sourceId !== sourceId) continue;
+    all[i] = { ...all[i], status: "cleared" as const, updatedAt: now };
+    count++;
+  }
+  if (count > 0) save(all);
+  return count;
+}
+
 /** Create a new notification (used by run/chat event wiring). */
 export function createNotification(entry: {
   type: NotificationType;
@@ -152,5 +166,18 @@ export function createRunNotification(
     message: "",
     severity,
     metadata: metadata ?? {},
+  });
+}
+
+/** Create a chat notification when a conversation is waiting for user input (ask_user / ask_credentials / format_response). Replaces any existing active chat notification for this conversation. */
+export function createChatNotification(conversationId: string): Notification {
+  clearActiveBySourceId("chat", conversationId);
+  return createNotification({
+    type: "chat",
+    sourceId: conversationId,
+    title: "Chat needs your input",
+    message: "Open the conversation to reply.",
+    severity: "warning",
+    metadata: { conversationId },
   });
 }

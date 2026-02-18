@@ -171,35 +171,6 @@ export function ChatMessageContent({ content, structuredContent }: Props) {
 
 export type ToolResult = { name: string; args: Record<string, unknown>; result: unknown };
 
-/** Parse numbered options from text, e.g. "(1) Option A (2) Option B", "1) First 2) Second", or "1. First 2. Second". */
-function parseSuggestedOptionsFromText(text: string): { value: string; label: string }[] {
-  if (!text?.trim()) return [];
-  const options: { value: string; label: string }[] = [];
-  const parenRegex = /\(\s*(\d+)\s*\)\s*([^(\n]+?)(?=\s*\(\s*\d+\s*\)|$)/g;
-  let m: RegExpExecArray | null;
-  while ((m = parenRegex.exec(text)) !== null) {
-    const label = m[2].trim().replace(/\s+/g, " ");
-    if (label) options.push({ value: m[1], label });
-  }
-  if (options.length > 0) return options;
-  // "1) Option text\n2) Option text" (digit + closing paren, common in assistant replies)
-  const digitParenRegex = /(\d+)\)\s*([\s\S]+?)(?=\n\s*\d+\)|$)/g;
-  while ((m = digitParenRegex.exec(text)) !== null) {
-    let raw = m[2].trim();
-    // Drop trailing "Please reply..." / "Tell me what to change" line so it isn't part of the last option label
-    raw = raw.replace(/\n\n\s*(Please reply|reply with|tell me what to change)[\s\S]*$/i, "").trim();
-    const label = raw.replace(/\s+/g, " ");
-    if (label) options.push({ value: m[1], label });
-  }
-  if (options.length > 0) return options;
-  const dotRegex = /(\d+)\.\s*([^\n]+?)(?=\s*\d+\.|$)/g;
-  while ((m = dotRegex.exec(text)) !== null) {
-    const label = m[2].trim().replace(/\s+/g, " ");
-    if (label) options.push({ value: m[1], label });
-  }
-  return options;
-}
-
 /** Normalize toolCalls from API (may have `arguments`) to ToolResult shape with `args`. */
 export function normalizeToolResults(
   raw: unknown
@@ -214,34 +185,36 @@ export function normalizeToolResults(
   }).filter((r) => r.name);
 }
 
-/** Get clickable options from ask_user: uses result.options when present, else parses question text. */
-export function getSuggestedOptions(
-  askUserResult: { result?: unknown } | undefined,
-  questionOrDisplayText: string
-): { value: string; label: string }[] {
-  const res = askUserResult?.result;
-  if (res && typeof res === "object" && res !== null && "options" in res) {
-    const opts = (res as { options?: unknown }).options;
-    if (Array.isArray(opts) && opts.length > 0) {
-      return opts
-        .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
-        .map((s) => ({ value: s.trim(), label: s.trim() }));
-    }
-  }
-  return parseSuggestedOptionsFromText(questionOrDisplayText || "");
+/** Extract options array from a tool result (ask_user — only tool that supplies options). Returns undefined if no options. */
+function optionsFromToolResult(result: unknown): { value: string; label: string }[] | undefined {
+  if (result == null || typeof result !== "object") return undefined;
+  const opts = (result as { options?: unknown }).options;
+  if (!Array.isArray(opts) || opts.length === 0) return undefined;
+  const out = opts
+    .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    .map((s) => ({ value: s.trim(), label: s.trim() }));
+  return out.length > 0 ? out : undefined;
 }
 
-/** Get clickable options from tool results (ask_user, ask_credentials, or format_response). Use when interactivePrompt.options may be missing (e.g. reload). */
+/** Get clickable options from ask_user result. Options come only from the tool's options array (LLM is prompted to supply display-ready labels). */
+export function getSuggestedOptions(
+  askUserResult: { result?: unknown } | undefined,
+  _questionOrDisplayText: string
+): { value: string; label: string }[] {
+  const fromResult = optionsFromToolResult(askUserResult?.result);
+  return fromResult && fromResult.length > 0 ? fromResult : [];
+}
+
+/** Get clickable options from tool results. Options are only supplied by ask_user (options array); frontend displays them as-is. User can always type a custom reply. */
 export function getSuggestedOptionsFromToolResults(
   toolResults: { name: string; result?: unknown }[] | undefined,
-  fallbackDisplayText: string
+  _fallbackDisplayText: string
 ): { value: string; label: string }[] {
-  if (!Array.isArray(toolResults)) return parseSuggestedOptionsFromText(fallbackDisplayText);
-  const withOptions = toolResults.find(
-    (r) => r.name === "ask_user" || r.name === "ask_credentials" || r.name === "format_response"
-  );
-  const opts = getSuggestedOptions(withOptions, fallbackDisplayText);
-  return opts.length > 0 ? opts : parseSuggestedOptionsFromText(fallbackDisplayText);
+  if (!Array.isArray(toolResults)) return [];
+  const fromAskUser = optionsFromToolResult(toolResults.find((r) => r.name === "ask_user")?.result);
+  if (fromAskUser && fromAskUser.length > 0) return fromAskUser;
+  const fromCredentials = optionsFromToolResult(toolResults.find((r) => r.name === "ask_credentials")?.result);
+  return fromCredentials && fromCredentials.length > 0 ? fromCredentials : [];
 }
 
 /** True when the message has tool results that indicate a successful turn (e.g. create_agent, get_agent). Don't show "An error occurred" for these. */
@@ -300,9 +273,8 @@ export function hasAskUserWaitingForInput(
     if (r.name === "format_response") {
       const res = r.result;
       if (!res || typeof res !== "object") return false;
-      const obj = res as { formatted?: boolean; options?: unknown[]; needsInput?: string };
+      const obj = res as { formatted?: boolean; needsInput?: string };
       if (obj.formatted !== true) return false;
-      if (Array.isArray(obj.options) && obj.options.length > 0) return true;
       if (typeof obj.needsInput === "string" && obj.needsInput.trim()) return true;
       return false;
     }
@@ -316,19 +288,10 @@ export function getMessageDisplayState(
   options: { isLast: boolean; loading: boolean }
 ) {
   const list = msg.toolResults ?? [];
-  const parsedOptionsFromContent =
-    msg.role === "assistant" ? parseSuggestedOptionsFromText(msg.content || "") : [];
-  const contentSuggestsChoice = /pick one|choose one|please reply|reply with|what would you like|what you would like|option \d|^\s*1\)/im.test(msg.content || "");
   const hasAskUserWaiting =
     msg.status === "waiting_for_input" ||
     msg.interactivePrompt != null ||
-    hasAskUserWaitingForInput(list) ||
-    (parsedOptionsFromContent.length >= 2 && contentSuggestsChoice);
-  // #region agent log
-  if (msg.role === "assistant" && (list.length > 0 || (msg.content && /choose|option|please pick/i.test(msg.content)))) {
-    fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ location: "chat-message-content.tsx:getMessageDisplayState", message: "Inline options detection", data: { hasAskUserWaiting, status: msg.status, hasInteractivePrompt: !!msg.interactivePrompt, interactivePromptOptions: msg.interactivePrompt?.options, toolNames: list.map((r) => r.name), hasAskUserFromToolResults: hasAskUserWaitingForInput(list), contentPreview: msg.content?.slice(0, 200) }, timestamp: Date.now(), hypothesisId: "H1" }) }).catch(() => {});
-  }
-  // #endregion
+    hasAskUserWaitingForInput(list);
   const displayContent = msg.role === "assistant"
     ? (hasAskUserWaiting && msg.content.startsWith("Error: ")
       ? (getAssistantMessageDisplayContent("", list) || msg.content)
@@ -340,7 +303,12 @@ export function getMessageDisplayState(
   const structuredContent = hasStructuredContent && fmtRes?.summary
     ? { summary: fmtRes.summary.trim(), needsInput: typeof fmtRes.needsInput === "string" ? fmtRes.needsInput.trim() : undefined }
     : undefined;
-  const hasFinalResponseContent = options.isLast && msg.role === "assistant" && !options.loading && (displayContent.trim() !== "" || !!hasStructuredContent);
+  const traceSteps = (msg as { traceSteps?: { phase: string }[] }).traceSteps;
+  const lastPhase = traceSteps?.length ? traceSteps[traceSteps.length - 1].phase : undefined;
+  const hasDonePhase = lastPhase === "done";
+  const hasFinalResponseContent =
+    (options.isLast && msg.role === "assistant" && !options.loading && (displayContent.trim() !== "" || !!hasStructuredContent)) ||
+    (options.isLast && msg.role === "assistant" && hasDonePhase);
   const todos = (msg as { todos?: unknown[] }).todos;
   const isEmptyPlaceholder = msg.role === "assistant" && options.loading && options.isLast
     && displayContent.trim() === ""
@@ -353,7 +321,7 @@ export function getMessageDisplayState(
 /** Status string for loading indicator (modal and section). */
 export function getLoadingStatus(
   msg: {
-    traceSteps?: { phase: string; label?: string }[];
+    traceSteps?: { phase: string; label?: string; specialistId?: string; toolName?: string }[];
     todos?: string[];
     completedStepIndices?: number[];
     executingStepIndex?: number;
@@ -363,7 +331,13 @@ export function getLoadingStatus(
 ): string {
   const lastTrace = (msg.traceSteps?.length ?? 0) > 0 ? msg.traceSteps![msg.traceSteps!.length - 1] : undefined;
   const isCallingLlm = lastTrace?.phase === "llm_request";
-  if (isCallingLlm) return "Calling LLM…";
+  if (isCallingLlm) return lastTrace?.specialistId ? `Calling LLM… (${lastTrace.specialistId})` : "Calling LLM…";
+  const isLlmResponse = lastTrace?.phase === "llm_response";
+  if (isLlmResponse) return lastTrace?.specialistId ? `Response received (${lastTrace.specialistId})` : "Response received";
+  const heapTool = lastTrace?.phase === "heap_tool" || lastTrace?.phase === "heap_tool_done";
+  if (heapTool && lastTrace && "specialistId" in lastTrace && "toolName" in lastTrace) return `${(lastTrace as { specialistId: string }).specialistId} → ${(lastTrace as { toolName: string }).toolName}`;
+  const heapSpecialist = lastTrace?.phase === "heap_specialist" || lastTrace?.phase === "heap_specialist_done";
+  if (heapSpecialist && lastTrace && "specialistId" in lastTrace) return `Specialist ${(lastTrace as { specialistId: string }).specialistId}…`;
   const total = msg.todos?.length ?? 0;
   const allDone = total > 0 && (msg.completedStepIndices?.length ?? 0) === total;
   if (allDone) return "Completing…";

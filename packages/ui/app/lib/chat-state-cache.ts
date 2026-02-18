@@ -27,7 +27,7 @@ export type CachedMessage = {
   executingTodoLabel?: string;
   executingSubStepLabel?: string;
   rephrasedPrompt?: string | null;
-  traceSteps?: { phase: string; label?: string; contentPreview?: string }[];
+  traceSteps?: { phase: string; label?: string; contentPreview?: string; inputPreview?: string; specialistId?: string; toolName?: string; toolInput?: unknown; toolOutput?: unknown }[];
 };
 
 export type RunWaitingState = { runId: string; question?: string; options?: string[] };
