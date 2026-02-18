@@ -115,10 +115,11 @@ export async function runAssistant(
     systemPrompt += `\n\n## Cross-chat context (preferences and recent conversation summaries)\n${options.crossChatContext.trim()}`;
   }
   if (options.runWaitingContext && options.runWaitingContext.trim().length > 0) {
-    systemPrompt += `\n\n## Workflow run waiting for user input\n${options.runWaitingContext.trim()}\n\n**CRITICAL:** Do NOT output a generic "The agent is waiting for your input. Reply above to continue." message. Instead:
-1. First, surface the run's question to the user (from runWaitingContext above) so they know what to reply.
-2. Then process their message: (a) If they are directly answering the run's question (e.g. selecting an option, providing data), call respond_to_run with runId and response. (b) If they want to stop or cancel the run, call cancel_run. (c) If they want something else (modify the agent, ask a different question), do that instead. Always take action — never just tell them to reply.
-3. For respond_to_run: set **response** to the **exact** text the user sent (the full option label if they clicked one, or their typed reply). Never use a number, index, or abbreviation (e.g. never "1" or "option 2" — use the full option text like "Wait for saved searches (do nothing)").`;
+    systemPrompt += `\n\n## Workflow run(s) context\n${options.runWaitingContext.trim()}\n\n**CRITICAL:** Do NOT output a generic "The agent is waiting for your input. Reply above to continue." message. Instead:
+1. Always know which run you are referring to (runId). When multiple runs are listed (e.g. one waiting for input, one executing), if the user's message does not clearly refer to one run, ask: "Do you mean the run waiting for your input, or the one that's still executing?" — then use the correct runId for get_run, respond_to_run, or cancel_run.
+2. First, surface the run's question to the user when relevant (from runWaitingContext above) so they know what to reply.
+3. Then process their message: (a) If they are directly answering a run's question (e.g. selecting an option, providing data), call respond_to_run with that run's runId and response. (b) If they want to stop or cancel a run, call cancel_run with that run's runId. (c) If they want something else (modify the agent, ask a different question), do that instead. Always take action — never just tell them to reply.
+4. For respond_to_run: set **response** to the **exact** text the user sent (the full option label if they clicked one, or their typed reply). Never use a number, index, or abbreviation (e.g. never "1" or "option 2" — use the full option text like "Wait for saved searches (do nothing)").`;
   }
 
   const messages: LLMMessage[] = [

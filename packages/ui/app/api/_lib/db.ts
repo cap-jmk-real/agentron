@@ -1,5 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
+import { eq } from "drizzle-orm";
 import { createSqliteAdapter } from "@agentron-studio/core";
 import { appendLogLine } from "./api-logger";
 import {
@@ -713,22 +714,38 @@ export function ensureAgentFilesDir(contextId: string): string {
   return dir;
 }
 
-export const STANDARD_TOOLS: { id: string; name: string }[] = [
+export const STANDARD_TOOLS: { id: string; name: string; description?: string }[] = [
   { id: "std-fetch-url", name: "Fetch URL" },
   { id: "std-browser", name: "Browser" },
-  { id: "std-browser-automation", name: "Browser automation (navigate, snapshot, click, fill). Use first to get lists from web pages; then request_user_help to ask the user to choose." },
+  {
+    id: "std-browser-automation",
+    name: "Browser automation",
+    description: "Navigate, snapshot, click, fill. Use first to get lists from web pages; then request_user_help to ask the user to choose.",
+  },
   { id: "std-run-code", name: "Run Code" },
   { id: "std-http-request", name: "HTTP Request" },
   { id: "std-webhook", name: "Webhook" },
   { id: "std-weather", name: "Weather" },
   { id: "std-web-search", name: "Web Search" },
   { id: "std-container-run", name: "Run Container" },
-  { id: "std-container-session", name: "Container session (create once, exec many)" },
+  {
+    id: "std-container-session",
+    name: "Container session",
+    description: "Create once, exec many. Actions: ensure, exec, destroy.",
+  },
   { id: "std-container-build", name: "Build image from Containerfile" },
   { id: "std-write-file", name: "Write file" },
   { id: "std-request-user-help", name: "Request user input (workflow pause)" },
-  { id: "std-list-vault-credentials", name: "List vault credential key names (workflow only; user must approve vault). Returns { keys: string[] }. Call this first to see which keys are stored (e.g. linkedin_username, linkedin_password), then use std-get-vault-credential with the exact key." },
-  { id: "std-get-vault-credential", name: "Get vault credential (workflow only; user must approve vault). Returns { value: \"the actual secret\" }. Use that value in std-browser-automation fill. Never type placeholders into forms (e.g. {{vault.xxx}}, __VAULT_LINKEDIN_USERNAME__) — call this tool and use result.value." },
+  {
+    id: "std-list-vault-credentials",
+    name: "List vault credential keys",
+    description: "Workflow only; user must approve vault. Returns { keys: string[] }. Call this first to see which keys are stored (e.g. linkedin_username, linkedin_password), then use std-get-vault-credential with the exact key.",
+  },
+  {
+    id: "std-get-vault-credential",
+    name: "Get vault credential",
+    description: "Workflow only; user must approve vault. Returns { value: \"the actual secret\" }. Use that value in std-browser-automation fill. Never type placeholders into forms (e.g. {{vault.xxx}}) — call this tool and use result.value.",
+  },
 ];
 
 /** Ensures default/built-in tools exist in the DB so they appear in the Tools list. */
@@ -815,7 +832,6 @@ export async function ensureStandardTools(): Promise<void> {
   };
 
   for (const t of STANDARD_TOOLS) {
-    if (existingIds.has(t.id)) continue;
     const isContainerRun = t.id === "std-container-run";
     const isWebSearch = t.id === "std-web-search";
     const isRequestUserHelp = t.id === "std-request-user-help";
@@ -825,18 +841,28 @@ export async function ensureStandardTools(): Promise<void> {
     const isBrowserAutomation = t.id === "std-browser-automation";
     const isGetVaultCredential = t.id === "std-get-vault-credential";
     const isListVaultCredentials = t.id === "std-list-vault-credentials";
-    await db
-      .insert(tools)
-      .values({
-        id: t.id,
-        name: t.name,
-        protocol: "native",
-        config: "{}",
-        inputSchema: isContainerRun ? JSON.stringify(stdContainerRunInputSchema) : isWebSearch ? JSON.stringify(stdWebSearchInputSchema) : isRequestUserHelp ? JSON.stringify(stdRequestUserHelpInputSchema) : isContainerSession ? JSON.stringify(stdContainerSessionInputSchema) : isContainerBuild ? JSON.stringify(stdContainerBuildInputSchema) : isWriteFile ? JSON.stringify(stdWriteFileInputSchema) : isBrowserAutomation ? JSON.stringify(stdBrowserAutomationInputSchema) : isGetVaultCredential ? JSON.stringify(stdGetVaultCredentialInputSchema) : isListVaultCredentials ? JSON.stringify(stdListVaultCredentialsInputSchema) : null,
-        outputSchema: null,
-      })
-      .run();
-    existingIds.add(t.id);
+    const configJson = t.description ? JSON.stringify({ description: t.description }) : "{}";
+    if (!existingIds.has(t.id)) {
+      await db
+        .insert(tools)
+        .values({
+          id: t.id,
+          name: t.name,
+          protocol: "native",
+          config: configJson,
+          inputSchema: isContainerRun ? JSON.stringify(stdContainerRunInputSchema) : isWebSearch ? JSON.stringify(stdWebSearchInputSchema) : isRequestUserHelp ? JSON.stringify(stdRequestUserHelpInputSchema) : isContainerSession ? JSON.stringify(stdContainerSessionInputSchema) : isContainerBuild ? JSON.stringify(stdContainerBuildInputSchema) : isWriteFile ? JSON.stringify(stdWriteFileInputSchema) : isBrowserAutomation ? JSON.stringify(stdBrowserAutomationInputSchema) : isGetVaultCredential ? JSON.stringify(stdGetVaultCredentialInputSchema) : isListVaultCredentials ? JSON.stringify(stdListVaultCredentialsInputSchema) : null,
+          outputSchema: null,
+        })
+        .run();
+      existingIds.add(t.id);
+    } else if (t.description) {
+      const existingRows = await db.select({ config: tools.config }).from(tools).where(eq(tools.id, t.id));
+      const existingConfig = existingRows[0]?.config;
+      let config = existingConfig ? (() => { try { return JSON.parse(existingConfig as string) as Record<string, unknown>; } catch { return {}; } })() : {};
+      if (typeof config !== "object" || config === null) config = {};
+      config = { ...config, description: t.description };
+      await db.update(tools).set({ name: t.name, config: JSON.stringify(config) }).where(eq(tools.id, t.id)).run();
+    }
   }
 }
 

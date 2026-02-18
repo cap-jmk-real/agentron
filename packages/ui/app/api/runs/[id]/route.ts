@@ -21,8 +21,8 @@ export async function GET(_: Request, { params }: Params) {
     const ag = await db.select({ name: agents.name }).from(agents).where(eq(agents.id, run.targetId));
     targetName = ag[0]?.name;
   }
-  const logRows = await db.select({ level: runLogs.level, message: runLogs.message, createdAt: runLogs.createdAt }).from(runLogs).where(eq(runLogs.executionId, id)).orderBy(asc(runLogs.createdAt));
-  const logs = logRows.map((r) => ({ level: r.level, message: r.message, createdAt: r.createdAt }));
+  const logRows = await db.select({ level: runLogs.level, message: runLogs.message, payload: runLogs.payload, createdAt: runLogs.createdAt }).from(runLogs).where(eq(runLogs.executionId, id)).orderBy(asc(runLogs.createdAt));
+  const logs = logRows.map((r) => ({ level: r.level, message: r.message, payload: r.payload, createdAt: r.createdAt }));
   return json({ ...run, targetName, logs });
 }
 

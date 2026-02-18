@@ -365,11 +365,13 @@ async function buildAvailableTools(toolIds: string[]): Promise<LLMToolDef[]> {
       const tool = rows.length > 0 ? fromToolRow(rows[0]) : STANDARD_TOOLS.find((t) => t.id === id) ?? { id, name: id, protocol: "native" as const, config: {}, inputSchema: { type: "object", properties: {}, required: [] } };
       const inputSchema = typeof (tool as unknown as { inputSchema?: unknown }).inputSchema === "object" && (tool as unknown as { inputSchema?: unknown }).inputSchema !== null ? (tool as unknown as { inputSchema: Record<string, unknown> }).inputSchema : { type: "object", properties: {}, required: [] };
       const schema = inputSchema as Record<string, unknown>;
+      const cfg = (tool as { config?: { description?: string } }).config;
+      const description = typeof cfg?.description === "string" ? cfg.description : tool.name;
       out.push({
         type: "function",
         function: {
           name: tool.id,
-          description: tool.name,
+          description,
           parameters: schema,
         },
       });
@@ -379,11 +381,13 @@ async function buildAvailableTools(toolIds: string[]): Promise<LLMToolDef[]> {
     if (rows.length === 0) continue;
     const tool = fromToolRow(rows[0]);
     const schema = (typeof tool.inputSchema === "object" && tool.inputSchema !== null ? tool.inputSchema : { type: "object", properties: {}, required: [] }) as Record<string, unknown>;
+    const cfg = (tool as { config?: { description?: string } }).config;
+    const description = typeof cfg?.description === "string" ? cfg.description : tool.name;
     out.push({
       type: "function",
       function: {
         name: tool.id,
-        description: tool.name,
+        description,
         parameters: schema,
       },
     });
@@ -391,7 +395,14 @@ async function buildAvailableTools(toolIds: string[]): Promise<LLMToolDef[]> {
   return out;
 }
 
-async function executeStudioTool(toolId: string, input: unknown, override?: ToolOverride, vaultKey?: Buffer | null): Promise<unknown> {
+async function executeStudioTool(
+  toolId: string,
+  input: unknown,
+  override?: ToolOverride,
+  vaultKey?: Buffer | null,
+  isCancelled?: () => Promise<boolean>,
+  runId?: string
+): Promise<unknown> {
   if (toolId === "std-list-vault-credentials") {
     // #region agent log
     if (!vaultKey) fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'run-workflow.ts:std-list-vault-credentials',message:'vault tool called without vaultKey',data:{vaultKeyPresent:false},hypothesisId:'vault_access',timestamp:Date.now()})}).catch(()=>{});
@@ -432,7 +443,23 @@ async function executeStudioTool(toolId: string, input: unknown, override?: Tool
       return { success: false, error: "You DO have access to the vault. Call std-list-vault-credentials to see stored key names, then std-get-vault-credential with the exact key for username and for password. Use each returned .value in fill. Do not ask the user to paste credentials or type placeholders." };
     }
     const { browserAutomation } = await import("./browser-automation");
-    return browserAutomation(input ?? {});
+    const onLog =
+      runId != null
+        ? (entry: { level: "stdout" | "stderr"; message: string; payload?: Record<string, unknown> }) => {
+            void db
+              .insert(runLogs)
+              .values({
+                id: crypto.randomUUID(),
+                executionId: runId,
+                level: entry.level,
+                message: entry.message,
+                payload: entry.payload != null ? JSON.stringify(entry.payload) : null,
+                createdAt: Date.now(),
+              })
+              .run();
+          }
+        : undefined;
+    return browserAutomation(input ?? {}, { isCancelled, onLog });
   }
   const builtin = STD_IDS[toolId];
   if (builtin) return builtin(input ?? {});
@@ -475,6 +502,23 @@ async function executeStudioTool(toolId: string, input: unknown, override?: Tool
 
 /** Error message when the run was cancelled by the user (so callers can set status to "cancelled" instead of "failed"). */
 export const RUN_CANCELLED_MESSAGE = "Run cancelled by user";
+
+/** Prefix for run_log message so logs clearly show where the error or event came from (Playwright, code, container, etc.). */
+function getLogSourceTag(toolId: string): string {
+  switch (toolId) {
+    case "std-browser-automation":
+      return "[Playwright]";
+    case "std-run-code":
+      return "[Run code]";
+    case "std-container-run":
+    case "std-container-session":
+      return "[Container]";
+    case "std-web-search":
+      return "[Web search]";
+    default:
+      return "[Tool]";
+  }
+}
 
 const WORKFLOW_MEMORY_MAX_RECENT_TURNS = 12;
 const GET_WORKFLOW_CONTEXT_TOOL_ID = "get_workflow_context";
@@ -930,16 +974,47 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
         } else if (toolId === "std-write-file") {
           result = await runWriteFile(merged, runId);
         } else {
+          if (toolId === "std-browser-automation") {
+            const arg = merged && typeof merged === "object" ? (merged as Record<string, unknown>) : {};
+            const action = typeof arg.action === "string" ? arg.action : "";
+            const url = typeof arg.url === "string" ? String(arg.url).trim() : "";
+            const selector = typeof arg.selector === "string" ? String(arg.selector).trim() : "";
+            const valueLen = typeof arg.value === "string" ? (arg.value as string).length : 0;
+            const parts: string[] = [action || "?"];
+            if (url) parts.push(`url=${url.length > 100 ? url.slice(0, 97) + "…" : url}`);
+            if (selector) parts.push(`selector=${selector.length > 80 ? selector.slice(0, 77) + "…" : selector}`);
+            if (action === "fill" && valueLen > 0) parts.push(`valueLen=${valueLen}`);
+            await db.insert(runLogs).values({
+              id: crypto.randomUUID(),
+              executionId: runId,
+              level: "stdout",
+              message: `[Playwright] ${parts.join(" ")}`,
+              payload: JSON.stringify({ source: "playwright", action: action || "?", url: url || undefined }),
+              createdAt: Date.now(),
+            }).run();
+          }
           try {
-            result = await executeStudioTool(toolId, merged, override, options.vaultKey ?? null);
+            result = await executeStudioTool(toolId, merged, override, options.vaultKey ?? null, options.isCancelled, runId);
           } catch (toolErr) {
             const errMsg = toolErr instanceof Error ? toolErr.message : String(toolErr);
+            const arg = merged && typeof merged === "object" ? (merged as Record<string, unknown>) : {};
+            const sourceTag = getLogSourceTag(toolId);
+            const payloadObj: Record<string, unknown> = { source: sourceTag.replace(/^\[|\]$/g, "").toLowerCase().replace(" ", "_"), toolId, error: errMsg.slice(0, 500) };
+            if (toolId === "std-web-search" && typeof arg.query === "string") payloadObj.query = arg.query.slice(0, 200);
+            if (toolId === "std-browser-automation") {
+              if (typeof arg.url === "string") payloadObj.url = arg.url.slice(0, 200);
+              if (typeof arg.action === "string") payloadObj.action = arg.action;
+            }
+            if (toolId === "std-run-code") {
+              if (typeof arg.language === "string") payloadObj.language = arg.language;
+              if (typeof arg.code === "string") payloadObj.codeSnippet = arg.code.slice(0, 300);
+            }
             await db.insert(runLogs).values({
               id: crypto.randomUUID(),
               executionId: runId,
               level: "stderr",
-              message: `Tool ${toolId} threw: ${errMsg}`,
-              payload: null,
+              message: `${sourceTag} threw — ${errMsg}`,
+              payload: JSON.stringify(payloadObj),
               createdAt: Date.now(),
             }).run();
             if (toolCallsForStep.length > 0) {
@@ -956,12 +1031,28 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
               ? (result as { error: string }).error
               : null);
         if (toolErrorMsg) {
+          const sourceTag = getLogSourceTag(toolId);
+          const arg = merged && typeof merged === "object" ? (merged as Record<string, unknown>) : {};
+          const res = result != null && typeof result === "object" ? (result as Record<string, unknown>) : {};
+          const payloadObj: Record<string, unknown> = { source: sourceTag.replace(/^\[|\]$/g, "").toLowerCase().replace(" ", "_"), toolId, error: toolErrorMsg.slice(0, 500) };
+          if (toolId === "std-web-search" && typeof arg.query === "string") payloadObj.query = arg.query.slice(0, 200);
+          if (toolId === "std-browser-automation") {
+            if (typeof arg.url === "string") payloadObj.url = arg.url.slice(0, 200);
+            if (typeof arg.action === "string") payloadObj.action = arg.action;
+            if (typeof arg.selector === "string") payloadObj.selector = arg.selector.slice(0, 100);
+          }
+          if (toolId === "std-run-code") {
+            if (typeof arg.language === "string") payloadObj.language = arg.language;
+            if (typeof arg.code === "string") payloadObj.codeSnippet = arg.code.slice(0, 300);
+            if (typeof res.stderr === "string") payloadObj.stderr = res.stderr.slice(0, 500);
+            if (typeof res.stdout === "string" && res.stdout.length > 0) payloadObj.stdoutPreview = res.stdout.slice(0, 200);
+          }
           await db.insert(runLogs).values({
             id: crypto.randomUUID(),
             executionId: runId,
             level: "stderr",
-            message: `Tool ${toolId}: ${toolErrorMsg}`,
-            payload: null,
+            message: `${sourceTag} ${toolErrorMsg}`,
+            payload: JSON.stringify(payloadObj),
             createdAt: Date.now(),
           }).run();
         }
@@ -971,6 +1062,29 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
           last.resultSummary = toolErrorMsg
             ? (toolErrorMsg.split(/\n/)[0]?.trim() ?? toolErrorMsg).slice(0, 100)
             : "ok";
+        }
+        // Persist container non-zero exit for any workflow run (streaming or one-shot)
+        if (
+          (toolId === "std-container-run" || toolId === "std-container-session") &&
+          result != null &&
+          typeof result === "object" &&
+          "exitCode" in result
+        ) {
+          const r = result as { exitCode: number; stderr?: string };
+          if (r.exitCode !== 0) {
+            const stderrPreview = (r.stderr ?? "").trim().slice(0, 200);
+            void db
+              .insert(runLogs)
+              .values({
+                id: crypto.randomUUID(),
+                executionId: runId,
+                level: "stderr",
+                message: `[Container] exited with code ${r.exitCode}${stderrPreview ? ` — ${stderrPreview}` : ""}`,
+                payload: JSON.stringify({ source: "container", toolId, exitCode: r.exitCode, stderrSummary: (r.stderr ?? "").slice(0, 500) }),
+                createdAt: Date.now(),
+              })
+              .run();
+          }
         }
         lastToolId = toolId;
         lastToolResult = result;
@@ -1019,9 +1133,36 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
       await options.onStepComplete?.(trail, output);
       return output;
     } catch (err) {
-      step.error = err instanceof Error ? err.message : String(err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const errStack = err instanceof Error ? err.stack : undefined;
+      step.error = errMsg;
       if (toolCallsForStep.length > 0) step.toolCalls = [...toolCallsForStep];
       trail.push(step);
+      // Persist agent/code execution errors to run_logs for any workflow run (debugging, iterative improvement)
+      if (errMsg !== WAITING_FOR_USER_MESSAGE) {
+        const kind = agent.kind ?? "llm";
+        const sourceTag = kind === "code" ? "[Code agent]" : "[Agent]";
+        const payloadObj: Record<string, unknown> = {
+          source: kind === "code" ? "code_agent" : "agent",
+          nodeId,
+          agentId: agent.id,
+          agentName: agent.name,
+          kind,
+          error: errMsg.slice(0, 1000),
+        };
+        if (errStack) payloadObj.stack = errStack.slice(0, 1500);
+        void db
+          .insert(runLogs)
+          .values({
+            id: crypto.randomUUID(),
+            executionId: runId,
+            level: "stderr",
+            message: `${sourceTag} ${errMsg}`,
+            payload: JSON.stringify(payloadObj),
+            createdAt: Date.now(),
+          })
+          .run();
+      }
       // Do not overwrite run output when request_user_help just wrote the waiting payload
       if (err instanceof Error && err.message !== WAITING_FOR_USER_MESSAGE) {
         await options.onStepComplete?.(trail, undefined);
@@ -1115,8 +1256,8 @@ export async function runWorkflowForRun(
         id: crypto.randomUUID(),
         executionId: executionId,
         level: "stdout",
-        message: chunk.stdout,
-        payload: undefined,
+        message: `[Container] ${chunk.stdout}`,
+        payload: JSON.stringify({ source: "container" }),
         createdAt: Date.now(),
       }).run();
     }
@@ -1125,8 +1266,8 @@ export async function runWorkflowForRun(
         id: crypto.randomUUID(),
         executionId,
         level: "stderr",
-        message: chunk.stderr,
-        payload: undefined,
+        message: `[Container] ${chunk.stderr}`,
+        payload: JSON.stringify({ source: "container" }),
         createdAt: Date.now(),
       }).run();
     }
@@ -1135,8 +1276,8 @@ export async function runWorkflowForRun(
         id: crypto.randomUUID(),
         executionId,
         level: "meta",
-        message: chunk.meta,
-        payload: undefined,
+        message: `[Container] ${chunk.meta}`,
+        payload: JSON.stringify({ source: "container" }),
         createdAt: Date.now(),
       }).run();
     }

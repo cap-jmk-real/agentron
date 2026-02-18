@@ -21,6 +21,8 @@ import {
   type EdgeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+/* Load after library so the broken state wins and the interactive-nodes bug reproduces. Remove when done. */
+import "../../force-bug.css";
 import { useState } from "react";
 import { Brain, Wrench, BookOpen, Save, ArrowRightLeft, Settings2, Library, LogIn, LogOut, GitBranch, Search, LayoutGrid, X } from "lucide-react";
 import { CanvasNodeCard } from "../../components/canvas-node-card";

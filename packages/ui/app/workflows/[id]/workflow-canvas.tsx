@@ -20,6 +20,8 @@ import {
   type EdgeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+/* Load after library so the broken state wins and the interactive-nodes bug reproduces. Remove when done. */
+import "../../force-bug.css";
 import { User, LayoutGrid, X } from "lucide-react";
 import { CanvasNodeCard } from "../../components/canvas-node-card";
 import { CanvasLabelEdge } from "../../components/canvas-label-edge";

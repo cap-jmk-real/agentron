@@ -1969,12 +1969,11 @@ html[data-theme="dark"] .textarea:focus {
   background: var(--surface-muted);
 }
 
-/* React Flow: viewport-portal is a full-size overlay on top of nodes; it had no pointer-events so it captured hover/click and inherited pane cursor (grab). Let events pass through to nodes/pane. */
-.react-flow__viewport-portal {
+/* ========== REACT FLOW FIX DISABLED FOR BUG REPRO – uncomment this block to re-enable ========== */
+/* .react-flow__viewport-portal {
   pointer-events: none;
 }
 
-/* React Flow: library sets .react-flow__viewport to pointer-events: none, so hit-testing falls through to the pane (library CSS loads after globals). Override with !important so viewport receives; empty area shows grab, nodes receive events. */
 .react-flow__viewport {
   pointer-events: auto !important;
   cursor: grab !important;
@@ -1983,7 +1982,6 @@ html[data-theme="dark"] .textarea:focus {
   cursor: grabbing;
 }
 
-/* React Flow: .react-flow__nodes has pointer-events: none in library; override so node/select receive clicks. Cursor default to avoid flicker (grab only on viewport for empty canvas). */
 .react-flow__nodes {
   pointer-events: auto !important;
   cursor: default;
@@ -1993,8 +1991,6 @@ html[data-theme="dark"] .textarea:focus {
   cursor: grabbing;
 }
 
-/* React Flow: node well above container/viewport (z-index 50) so it always receives hover/click, dropdown works, no cursor flicker. */
-/* firstNode had z-index 0 at runtime (library overwrites); use !important so nodes sit above viewport (z-index 2) and receive pointer. */
 .react-flow__node {
   z-index: 50 !important;
   pointer-events: auto !important;
@@ -2002,11 +1998,11 @@ html[data-theme="dark"] .textarea:focus {
   isolation: isolate;
   transform: translateZ(0);
 }
-/* nopan: stacking context for dropdown/controls; exclude handles so they keep position: absolute and sit at card edges */
 .react-flow__node .nopan:not(.react-flow__handle) {
   position: relative;
   z-index: 2;
-}
+} */
+/* ========== END commented React Flow fix ========== */
 
 /* Canvas wrapper: fill space so React Flow receives all pointer events; no cursor so .react-flow controls it */
 .canvas-react-flow-wrap {
@@ -2020,15 +2016,14 @@ html[data-theme="dark"] .textarea:focus {
   height: 100%;
 }
 
-/* React Flow: grab only on empty canvas (.react-flow__pane), never on nodes. Library loads after globals so use !important. */
-.react-flow__pane.draggable {
+/* .react-flow__pane.draggable {
   cursor: grab;
 }
 .react-flow__pane.dragging {
   cursor: grabbing;
 }
 
-/* Override library: draggable no longer grab; selectable must not force pointer on whole node (library has .react-flow__node.selectable { cursor: pointer } which can win after our CSS). */
+Override library (commented for bug repro): .react-flow__node.draggable etc
 .react-flow__node.draggable,
 .react-flow__node.draggable.selectable {
   cursor: default !important;
@@ -2042,7 +2037,6 @@ html[data-theme="dark"] .textarea:focus {
   cursor: default;
 }
 
-/* Cursor for moving a node: drag handle shows move (four-way arrow). More specific so it wins over .nopan { cursor: default }. */
 .react-flow__node .nopan .drag-handle,
 .react-flow__node .drag-handle {
   cursor: move !important;
@@ -2054,13 +2048,11 @@ html[data-theme="dark"] .textarea:focus {
   cursor: grabbing;
 }
 
-/* When over interactive node content (nopan), show the right cursor so pan doesn’t “win” and first click works */
 .react-flow__node input.nopan,
 .react-flow__node textarea.nopan {
   cursor: text !important;
   pointer-events: auto !important;
 }
-/* Dropdown (select): pointer to show it's clickable, not text */
 .react-flow__node select.nopan {
   cursor: pointer !important;
   pointer-events: auto !important;
@@ -2078,6 +2070,41 @@ html[data-theme="dark"] .textarea:focus {
 .react-flow__node [role="button"].nopan {
   cursor: pointer !important;
 }
+end Override library block
+.react-flow__node .nopan .drag-handle,
+.react-flow__node .drag-handle {
+  cursor: move !important;
+  pointer-events: auto;
+}
+
+.react-flow__node.dragging,
+.react-flow__node:active {
+  cursor: grabbing;
+}
+
+When over interactive node content (nopan), show the right cursor
+.react-flow__node input.nopan,
+.react-flow__node textarea.nopan {
+  cursor: text !important;
+  pointer-events: auto !important;
+}
+.react-flow__node select.nopan {
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 20;
+}
+.react-flow__node select.nopan:focus {
+  z-index: 21;
+}
+
+.react-flow__node .nopan.button,
+.react-flow__node button.nopan,
+.react-flow__node .canvas-node-remove-btn,
+.react-flow__node a.nopan,
+.react-flow__node [role="button"].nopan {
+  cursor: pointer !important;
+} */
 
 /* Decision node: tools from canvas */
 .decision-tools-empty {

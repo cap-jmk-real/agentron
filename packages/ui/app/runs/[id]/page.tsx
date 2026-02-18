@@ -48,7 +48,7 @@ type ExecutionTraceStep = {
   inputIsUserReply?: boolean;
 };
 
-type RunLogEntry = { level: string; message: string; createdAt: number };
+type RunLogEntry = { level: string; message: string; payload?: string | null; createdAt: number };
 
 type Run = {
   id: string;
@@ -107,7 +107,25 @@ async function copyToClipboard(text: string): Promise<boolean> {
 /** Build full shell/container log text for copying and for the debug block (includes stdout, stderr, meta). */
 function buildShellAndContainerLogText(logs: RunLogEntry[]): string {
   if (!Array.isArray(logs) || logs.length === 0) return "";
-  return logs.map((e) => `[${e.level}] ${e.message}`).join("\n");
+  return logs
+    .map((e) => {
+      let line = `[${e.level}] ${e.message}`;
+      if (e.payload != null && e.payload !== "") {
+        try {
+          const p = JSON.parse(e.payload) as Record<string, unknown>;
+          if (p && typeof p === "object" && !Array.isArray(p)) {
+            const parts = Object.entries(p)
+              .filter(([, v]) => v !== undefined && v !== null && v !== "")
+              .map(([k, v]) => `${k}: ${typeof v === "string" && v.length > 80 ? v.slice(0, 77) + "…" : v}`);
+            if (parts.length > 0) line += " " + parts.join(", ");
+          }
+        } catch {
+          line += " " + (e.payload.length > 80 ? e.payload.slice(0, 77) + "…" : e.payload);
+        }
+      }
+      return line;
+    })
+    .join("\n");
 }
 
 /** Build a paste-ready block for the user to copy into chat for debugging. Includes full shell/container logs. */

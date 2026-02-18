@@ -811,13 +811,14 @@ async function executeTool(
           graphEdges.push(...(a.graphEdges as { id: string; source: string; target: string }[]));
         }
         let updateToolIds = Array.isArray(a.toolIds) ? (a.toolIds as string[]).filter((x) => typeof x === "string") : (def.toolIds as string[] | undefined);
-        if (!updateToolIds || updateToolIds.length === 0) {
-          const fromGraph = graphNodes
-            .filter((n) => n.type === "tool" && n.parameters && typeof (n.parameters as { toolId?: string }).toolId === "string")
-            .map((n) => (n.parameters as { toolId: string }).toolId);
-          if (fromGraph.length > 0) updateToolIds = [...new Set(fromGraph)];
+        const fromGraph = graphNodes
+          .filter((n) => n.type === "tool" && n.parameters && typeof (n.parameters as { toolId?: string }).toolId === "string")
+          .map((n) => (n.parameters as { toolId: string }).toolId);
+        updateToolIds = [...new Set([...(updateToolIds ?? []), ...fromGraph])];
+        if (updateToolIds.length > 0) {
+          ensureToolNodesInGraph(graphNodes, graphEdges, updateToolIds);
+          def.toolIds = updateToolIds;
         }
-        if (updateToolIds && updateToolIds.length > 0) ensureToolNodesInGraph(graphNodes, graphEdges, updateToolIds);
         def.graph = { nodes: applyAgentGraphLayout(graphNodes, graphEdges), edges: graphEdges };
       } else if (Array.isArray(a.toolIds) && a.toolIds.length > 0) {
         const existingGraph = def.graph;
@@ -1872,8 +1873,8 @@ export async function POST(request: Request) {
   const bypassRunResponse = payload.bypassRunResponse === true;
   const runIdFromClient = typeof payload.runId === "string" ? payload.runId.trim() || undefined : undefined;
 
-  // Option 3: when a run is waiting for user input, inject runWaitingContext so the Chat assistant can decide
-  // to call respond_to_run or take another action. No auto-routing — messages always go to the assistant.
+  // Option 3: when a run is waiting for user input (or a run is executing), inject run context so the Chat assistant
+  // can respond to the right run and does not confuse multiple runs (e.g. one finished, one running).
   let runWaitingContext: string | undefined;
   if (!bypassRunResponse && !isCredentialReply && conversationId) {
     let waitingRows = await db
@@ -1896,6 +1897,22 @@ export async function POST(request: Request) {
           await db.update(executions).set({ conversationId }).where(eq(executions.id, runIdFromClient)).run();
         }
       }
+    }
+    // Also fetch the most recent running run for this conversation so the assistant knows about it when one run finished and another is running.
+    const runningRows = await db
+      .select({ id: executions.id, targetId: executions.targetId })
+      .from(executions)
+      .where(and(eq(executions.status, "running"), eq(executions.conversationId, conversationId)))
+      .orderBy(desc(executions.startedAt))
+      .limit(1);
+    const runningRunId = runningRows.length > 0 ? runningRows[0].id : undefined;
+    const waitingRunId = waitingRows.length > 0 ? waitingRows[0].id : undefined;
+    const runningLine = runningRunId
+      ? `**Run currently executing** (use get_run(id: "${runningRunId}") to check status): runId ${runningRunId}. Do not say the run cannot be found.`
+      : undefined;
+    if (waitingRows.length === 0 && runningLine) {
+      runWaitingContext = runningLine;
+      runWaitingContext += "\n**Rule:** When referring to this run, use runId " + runningRunId + ".";
     }
     if (waitingRows.length > 0) {
       const runId = waitingRows[0].id;
@@ -1925,13 +1942,17 @@ export async function POST(request: Request) {
       const opts = Array.isArray(inner?.options) ? inner.options : suggestions;
       const optionsList = opts?.map((o) => String(o)).filter(Boolean) ?? [];
       const parts: string[] = [
-        `runId: ${runId}`,
+        `**Run waiting for your reply** (use this runId for respond_to_run): ${runId}`,
         `targetId: ${waitingRows[0].targetId ?? "unknown"}`,
         question ? `question: ${question}` : "",
         optionsList.length > 0 ? `options: ${optionsList.join(", ")}` : "",
       ].filter(Boolean);
       parts.push("raw output (JSON): " + JSON.stringify(inner ?? current ?? {}));
       runWaitingContext = parts.join("\n");
+      if (runningLine && runningRunId !== waitingRunId) {
+        runWaitingContext += "\n" + runningLine;
+        runWaitingContext += "\n**Rule:** There are two runs (one waiting for input, one executing). Always be clear which run you refer to. If the user's message does not clearly refer to one run, ask: \"Do you mean the run waiting for your input, or the one that's still executing?\"";
+      }
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:runWaitingContext',message:'run waiting context set for chat',data:{runId,conversationId},hypothesisId:'H1',timestamp:Date.now()})}).catch(()=>{});
       // #endregion
@@ -2162,12 +2183,16 @@ export async function POST(request: Request) {
   // Track token usage across all LLM calls in this request
   const usageEntries: { response: LLMResponse }[] = [];
 
-  /** Build a callLLM wrapper that records usage and optionally records trace + streams trace_step events. */
+  const STOPPED_BY_USER = "Stopped by user";
+
+  /** Build a callLLM wrapper that records usage and optionally records trace + streams trace_step events. Respects request signal so the agent stops when the user clicks Stop. */
   function createTrackingCallLLM(opts: {
     pushTrace?: (entry: LLMTraceCall) => void;
     enqueueTraceStep?: (step: { phase: string; label?: string; messageCount?: number; contentPreview?: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }) => void;
+    signal?: AbortSignal | null;
   }) {
     return async (req: Parameters<typeof manager.chat>[1]) => {
+      if (opts.signal?.aborted) throw new Error(STOPPED_BY_USER);
       opts.enqueueTraceStep?.({ phase: "llm_request", label: "Calling LLM…", messageCount: req.messages.length });
       const response = await manager.chat(llmConfig as LLMConfig, req, { source: "chat" });
       usageEntries.push({ response });
@@ -2222,6 +2247,10 @@ export async function POST(request: Request) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
+        const signal = request.signal;
+        const throwIfAborted = () => {
+          if (signal?.aborted) throw new Error(STOPPED_BY_USER);
+        };
         const userMsg = { id: crypto.randomUUID(), role: "user" as const, content: contentToStore, createdAt: Date.now(), conversationId: conversationId! };
         let generatedTitle: string | null = null;
         const llmTraceEntries: LLMTraceCall[] = [];
@@ -2239,10 +2268,12 @@ export async function POST(request: Request) {
         const streamTrackingCallLLM = createTrackingCallLLM({
           pushTrace: (e) => llmTraceEntries.push(e),
           enqueueTraceStep: (step) => enqueue({ type: "trace_step", ...step }),
+          signal,
         });
         let doneSent = false;
         try {
           await db.insert(chatMessages).values(toChatMessageRow(userMsg)).run();
+          throwIfAborted();
 
           if (existingRows.length === 0 && !isCredentialReply) {
             enqueue({ type: "trace_step", phase: "title", label: "Generating title…" });
@@ -2250,9 +2281,11 @@ export async function POST(request: Request) {
             await db.update(conversations).set({ ...(generatedTitle && { title: generatedTitle }) }).where(eq(conversations.id, conversationId!)).run();
             enqueue({ type: "trace_step", phase: "title_done", label: "Title set" });
           }
+          throwIfAborted();
 
           // High-level context preparation step (history, feedback, knowledge, studio resources)
           enqueue({ type: "trace_step", phase: "prepare", label: "Preparing context (history, knowledge, tools)…" });
+          throwIfAborted();
 
           let effectiveMessage: string;
           let rephrasedPrompt: string | undefined;
@@ -2275,6 +2308,7 @@ export async function POST(request: Request) {
           } else {
             enqueue({ type: "trace_step", phase: "rephrase", label: "Rephrasing…" });
             const rephraseResult = await rephraseAndClassify(userMessage || contentToStore, manager, llmConfig, { onLlmCall: (e) => { rephraseTraceEntry = e; } });
+            throwIfAborted();
             enqueue({ type: "trace_step", phase: "rephrase_done", label: "Rephrase done" });
             rephrasedPrompt = rephraseResult.rephrasedPrompt;
             if (rephrasedPrompt != null) {
@@ -2288,6 +2322,7 @@ export async function POST(request: Request) {
               if (lastUserMsg) effectiveMessage = lastUserMsg;
             }
           }
+          throwIfAborted();
 
           const result = await runAssistant(history, effectiveMessage, {
             callLLM: streamTrackingCallLLM,

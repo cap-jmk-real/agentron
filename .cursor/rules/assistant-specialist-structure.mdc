@@ -1,0 +1,72 @@
+---
+description: Agentron assistant specialist structure — 10-tool cap per specialist and traceable logging
+globs: packages/runtime/src/chat/**/*.ts, packages/ui/app/api/chat/**/*.ts
+alwaysApply: false
+---
+
+# Assistant / Specialist Structure (Agentron)
+
+When editing the **Agentron assistant agent specialist structure** (tool sets, specialist registry, router, or chat route that runs them), follow these rules.
+
+## 1. Cap: No more than 10 tools per specialist
+
+- **Every specialist must have at most 10 tools.** When adding or changing tools for a specialist, count the tools; if the result would exceed 10, **split the specialist** into two (or more) sub-specialists with disjoint tool sets.
+- Applies to:
+  - Any module that defines a **named tool set** (e.g. `AGENT_TOOLS`, `WORKFLOW_TOOLS`, or future `*_SPECIALIST_TOOLS`).
+  - Any **specialist registry** or map from specialist id to tool array.
+  - The combined **flat** assistant tool list is exempt (used for legacy/single-agent mode); the cap applies to **per-specialist** sets only.
+- **How to enforce:** When adding a new tool to a specialist set, check `array.length` (or add a comment/code check): if adding one would make it > 10, create a new sub-specialist (e.g. split "Workflow" into "Workflow definition" and "Run control") and assign tools to the appropriate set.
+- **Example:** If "Improvement" has 8 tools and you need to add 3 more, do not add all to the same set; create "Improvement jobs" (8) and "Optimization & technique" (3) and register both.
+
+## 2. Traceable execution logging (assistant stack trace)
+
+Add **structured logging** so execution can be traced end-to-end from the assistant stack (router → specialist → tool calls → results).
+
+### Requirements
+
+- **Correlation:** Use a single **trace id** (e.g. `traceId` or `requestId`) for the whole chat turn and log it on every relevant line so logs can be filtered (e.g. `grep traceId=abc logs`).
+- **Router:** When the router runs, log at least: `traceId`, phase `router`, input summary (e.g. message length or first 80 chars), output summary (e.g. `priorityOrder` and `refinedTask` length). Example: `[assistant] traceId=… phase=router priorityOrder=[workflow_definition,agent]`.
+- **Specialist:** When a specialist runs, log: `traceId`, phase `specialist`, `specialistId`, and optionally `refinedTask` length or summary. On completion, log success/failure and duration or result summary.
+- **Tool execution:** When a tool is executed (from the assistant), log: `traceId`, phase `tool`, `toolName`, and optionally `specialistId` (if in multi-agent mode). On completion, log success/error and a short result hint (e.g. "ok", "error: …", or result type).
+- **Delegators (deep heap):** When a specialist returns a sub-heap (`delegateHeap`), log: `traceId`, phase `delegate`, `specialistId` (delegator), `delegateHeap`, and `depth` (current delegation depth). When starting a specialist that is part of a sub-heap, log the same `traceId` and include `depth` so the assistant stack trace shows router → specialist → delegate → sub-specialist → tool.
+- **Log levels:** Use `info` for normal flow (router result, specialist start/end, tool call/result); `debug` for full payloads or large content; `error` for failures with context (traceId, phase, specialistId, toolName).
+- **Format:** Prefer structured fields (JSON or key=value) so log aggregation can filter by `phase`, `specialistId`, or `toolName`. A single-line format per event makes it easy to follow a request: e.g. `[assistant] traceId=xyz phase=router …` then `[assistant] traceId=xyz phase=specialist specialistId=workflow_definition …` then `[assistant] traceId=xyz phase=tool toolName=create_workflow …`.
+
+### Where to add logging
+
+- **Chat route** (`packages/ui/app/api/chat/route.ts`): Generate and pass `traceId` at the start of the turn; log when calling the assistant (or router/specialist), and when executing tools (before/after `executeTool`).
+- **Assistant / router / specialist runners** (`packages/runtime/src/chat/`): Accept optional `traceId` (or context object with `traceId`); log at router entry/exit, specialist entry/exit, and when invoking tools.
+- **Tool execution path:** Wherever `executeTool` is called, log the tool name and result (or error) with the same `traceId` so the full stack (router → specialist → tool → result) is visible in one trace.
+
+### Example log line style
+
+```
+[assistant] traceId=req-abc123 phase=router priorityOrder=workflow_definition,agent refinedTaskLen=42
+[assistant] traceId=req-abc123 phase=specialist specialistId=workflow_definition start
+[assistant] traceId=req-abc123 phase=tool toolName=create_workflow result=ok id=wf-xyz
+[assistant] traceId=req-abc123 phase=specialist specialistId=workflow_definition end ok
+```
+
+This keeps the **assistant stack trace** (router → specialist → tool → result; or router → specialist → delegate → sub-specialist → tool when using deep heaps) easy to follow in logs.
+
+## 3. Delegators and deep heaps
+
+- **Specialists can be delegators:** A specialist may return a **sub-heap** (`delegateHeap`: array of specialist ids) and optionally `delegateTask`. The runtime runs that sub-heap (with a **heap stack** and **depth limit**, e.g. 3–5) before continuing the parent heap. Do not add an "invoke specialist" tool to stay under the 10-tool cap; the protocol is "return `delegateHeap` in the specialist response."
+- **When implementing or editing the heap runner:** Maintain a stack of heaps; when a specialist returns `delegateHeap`, push the current heap remainder onto the stack, run the delegate heap, then pop and continue. Enforce a max delegation depth; pass summarized context (e.g. created IDs) into sub-heap specialists. See the plan (Delegator specialists and deep heaps) for the full contract.
+
+## 4. Recursive specialist knowledge: keep prompts short
+
+- **No single LLM sees all specialists.** To avoid overloading prompts, use **scoped specialist lists** at each level:
+  - **Router:** Only inject **top-level** specialist ids (e.g. 5–7 entry points) with a one-line description each. Do NOT list every leaf specialist (workflow_definition, run_control, improvement_jobs, …) in the router prompt.
+  - **Delegators:** Each specialist that can delegate has an **allowed list** (`delegateTargets`). When building that specialist's prompt, inject only those sub-specialist ids and short descriptions. Do NOT inject the full registry.
+- **Registry:** Store optional `delegateTargets` per specialist (the ids it can delegate to). Router prompt is built from a fixed **top-level** list (or entry-point ids). This keeps every prompt short and recursive: each node only sees the specialists relevant to its level.
+
+## 5. Small choice set at every level (branching factor cap)
+
+**Too many specialist options at one level is the same problem as too many tools:** the LLM cannot make good decisions. So cap **both** tools and specialist choices:
+
+- **Tools per specialist:** already cap 10 (see section 1).
+- **Specialist options per level:** at any routing or delegation step, the LLM must choose from **at most ~5–7** specialist ids. Enforce:
+  - **Router:** Top-level list length ≤ 7 (e.g. 5–7 entry points). If you have more leaf specialists, **group** them under fewer top-level ids (e.g. "workflow" subsumes workflow_definition + run_control).
+  - **Delegators:** Each `delegateTargets` array length ≤ 7 (or 5). If a parent would have more than 7 sub-specialists, add an **intermediate layer** (meta-specialists) so the parent delegates to 2–3 meta-ids, and each meta has 3–5 children. No single prompt lists "choose one of 12 specialists."
+- **Rationale:** Coordination works because every decision point has a small choice set (few tools or few specialist ids). Adding many specialists without grouping recreates the original "too many tools" problem at the specialist level.

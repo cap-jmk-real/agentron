@@ -145,9 +145,9 @@ export function processChatStreamEvent(
     if (!ctx.doneReceived.current) {
       const errorContent = `Error: ${event.error ?? "Unknown error"}`;
       if (event.messageId) {
-        ctx.setMessages((prev) => prev.map((m) => (m.id === ctx.placeholderId ? { ...m, id: event.messageId!, content: errorContent } : m)));
+        ctx.setMessages((prev) => prev.map((m) => (m.id === ctx.placeholderId ? { ...m, id: event.messageId!, content: errorContent, traceSteps: [] } : m)));
       } else {
-        ctx.updatePlaceholder({ content: errorContent });
+        ctx.updatePlaceholder({ content: errorContent, traceSteps: [] });
       }
     }
     if (event.userMessageId) {
@@ -265,7 +265,7 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
         const e = data.error?.trim().replace(/^\.\s*/, "") || "";
         if (e && e !== ".") errMsg = e;
       } catch {}
-      updatePlaceholder({ content: `Error: ${errMsg}` });
+      updatePlaceholder({ content: `Error: ${errMsg}`, traceSteps: [] });
       setLoading(false);
       return;
     }
@@ -274,7 +274,7 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
     const decoder = new TextDecoder();
     let buffer = "";
     if (!reader) {
-      updatePlaceholder({ content: "Error: No response body." });
+      updatePlaceholder({ content: "Error: No response body.", traceSteps: [] });
       setLoading(false);
       return;
     }
@@ -340,7 +340,7 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
       onAbort?.();
       if (onInputRestore) onInputRestore(text);
     } else {
-      updatePlaceholder({ content: "Failed to reach assistant." });
+      updatePlaceholder({ content: "Request failed or connection lost. You can try again or refresh the page.", traceSteps: [] });
     }
   } finally {
     setLoading(false);

@@ -1,0 +1,17 @@
+/**
+ * Force the React Flow "interactive nodes" bug so it reliably reproduces.
+ * Import this in layout.tsx AFTER globals.css to override any other CSS.
+ * Remove the import when you no longer need to reproduce the bug.
+ *
+ * Bug: viewport and nodes have pointer-events: none; viewport-portal blocks.
+ * Result: clicks on buttons/inputs inside nodes do nothing or start panning.
+ */
+.react-flow__viewport {
+  pointer-events: none !important;
+}
+.react-flow__nodes {
+  pointer-events: none !important;
+}
+.react-flow__viewport-portal {
+  pointer-events: auto !important;
+}

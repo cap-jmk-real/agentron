@@ -72,6 +72,19 @@ Coverage should:
 
 ---
 
+### No LLMs in tests when possible (testing paradigm)
+
+Tests must run **without real LLM calls** wherever the behavior under test is code paths, data flow, or tool execution. Use **deterministic inputs and mocks** so we know the code works regardless of model variance.
+
+- **Mock in tests:** Router output (fixed `priorityOrder` + `refinedTask`). Specialist runs: mock `runSpecialist` / LLM to return fixed content or tool_calls. Tool handlers: real or in-process mocks with deterministic responses. Heap runner, registry, validation, context merge, and chat-route branching are tested with **no live LLM provider**.
+- **Statistical behavior in production:** Non-deterministic LLM output is handled by **human-in-the-loop** (user confirms goal, gives feedback) and **self-improvement** (improver updates prompts/specialists from run logs and feedback). Tests do **not** rely on "good" or "bad" LLM output; they rely on fixed mock responses.
+- **When an LLM might appear in tests:** Only for tests that explicitly assert "router or specialist produces valid JSON" or "refine produces a suggestion" from a **single canned prompt/response** (e.g. fixture response from a file). Prefer still mocking the LLM client so the test stays deterministic and fast.
+- **Improvement / planner / heap tests:** Mock `get_run_for_improvement` with fixture run + logs; mock the improver’s or planner’s LLM to return a fixed plan or update payload. Assert flow and DB updates, not model quality.
+
+Apply this when writing or reviewing tests for: heap runner, chat route (heap mode), improvement workflow, improvement-planning specialist, run-improve loop.
+
+---
+
 ### Unit Tests (Default)
 
 Unit tests are the **default testing tool**.
@@ -153,6 +166,7 @@ Work is **not complete** unless:
 * Edge cases and failure modes are covered
 * Integration tests exist where boundaries matter
 * Coverage gaps are intentional and explained
+* Tests for heap, improvement, or assistant paths use **deterministic mocks** (no real LLM) when testing code flow; statistical behavior is left to human-in-the-loop and self-improvement in production
 
 ---
 
@@ -164,6 +178,7 @@ Before presenting code, the agent asks:
 * What assumptions are encoded in tests?
 * Are critical paths protected by unit tests?
 * Are boundaries validated by integration tests?
+* For heap/improvement/assistant tests: did I use deterministic mocks (no real LLM) so the test verifies code flow, not model output?
 * Did I run the unit tests?
 * Did I run the test coverage (`npm run test:coverage --workspace packages/ui`) and check the report?
 * Did I run the build (and fix any errors)?
@@ -205,6 +220,18 @@ After modifying code, **always run the relevant build(s)** to catch and fix pote
 - **Consistency:** Each merge to `main` must have a version bump. If you merge twice without bumping, the second release will fail (duplicate tag). The `release:bump` script keeps root, `apps/desktop`, and `apps/docs` versions aligned.
 
 - **CI:** PRs to `main` run the desktop build (to verify the app builds). Merging to `main` creates the GitHub Release with installers and deploys docs.
+
+---
+
+## Chat assistant specialist structure (multi-agent / heap)
+
+When editing the **assistant agent specialist structure** (tool sets per specialist, specialist registry, router, or chat route that runs them):
+
+- **Cap: No more than 10 tools per specialist.** If a domain would exceed 10 tools, split it into sub-specialists (e.g. Workflow → "Workflow definition" + "Run control"). Applies to any file that defines or registers per-specialist tool sets (e.g. `packages/runtime/src/chat/tools/`, specialist registry, chat route).
+- **Logging:** Add traceable execution logging so the assistant stack can be followed in logs. Use a single **trace id** per chat turn; log at **router** (priorityOrder, refinedTask summary), **specialist** (specialistId, start/end), **tool** (toolName, result/error), and when a specialist **delegates** (delegateHeap, depth) with the same trace id. Prefer structured key=value or JSON so logs can be filtered. See `.cursor/rules/assistant-specialist-structure.mdc` for full details.
+- **Delegators / deep heap:** Specialists can act as delegators by returning a sub-heap (`delegateHeap`); the runtime runs it with a heap stack and depth limit before continuing the parent heap. No extra "invoke specialist" tool; cap 10 tools per specialist still applies.
+- **Recursive prompts:** Do not overload any LLM with all specialist descriptions. Router gets only **top-level** specialist ids (small list); each delegator gets only its **delegateTargets** (sub-specialists it can delegate to). Scoped lists per node keep prompts short.
+- **Small choice set at every level:** Too many specialist options at once hurts decisions (same as too many tools). Cap **branching factor**: router top-level list ≤ 7; each delegator's `delegateTargets` ≤ 7. If you have more sub-specialists, add an intermediate layer (group into meta-specialists) so no LLM ever sees "choose one of 12."
 
 ---
 

@@ -25,6 +25,33 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Message thrown when the run is cancelled so the workflow can set status to "cancelled". Must match RUN_CANCELLED_MESSAGE in run-workflow. */
+const RUN_CANCELLED_MESSAGE = "Run cancelled by user";
+
+/** Rejects when isCancelled() returns true. Polls every checkIntervalMs so long operations can exit when user clicks Stop. */
+async function waitUntilCancelled(
+  isCancelled: () => Promise<boolean>,
+  checkIntervalMs: number = 1500
+): Promise<never> {
+  while (true) {
+    await sleep(checkIntervalMs);
+    if (await isCancelled()) throw new Error(RUN_CANCELLED_MESSAGE);
+  }
+}
+
+/** Race a long operation with cancellation; when cancelled, throws so the run can stop. */
+async function withCancellation<T>(
+  promise: Promise<T>,
+  isCancelled?: () => Promise<boolean>
+): Promise<T> {
+  if (!isCancelled) return promise;
+  const result = await Promise.race([
+    promise,
+    waitUntilCancelled(isCancelled),
+  ]);
+  return result as T;
+}
+
 /**
  * Enforces a minimum interval between interactive actions, with random jitter so delays
  * look more human (not fixed). Actual interval is base + random(0, 50% of base).
@@ -108,7 +135,23 @@ async function getPage(cdpUrl: string) {
   return { page: pages[0], browser };
 }
 
-export async function browserAutomation(input: unknown): Promise<BrowserAutomationOutput> {
+export type BrowserLogEntry = {
+  level: "stdout" | "stderr";
+  message: string;
+  payload?: Record<string, unknown>;
+};
+
+export type BrowserAutomationContext = {
+  /** When provided, long operations (navigate, click, fill, waitFor) are raced with this; when it returns true the tool exits so the run can stop. */
+  isCancelled?: () => Promise<boolean>;
+  /** When provided, run_logs-style entries are emitted after each action for debugging and "Copy for chat". */
+  onLog?: (entry: BrowserLogEntry) => void;
+};
+
+export async function browserAutomation(
+  input: unknown,
+  context?: BrowserAutomationContext
+): Promise<BrowserAutomationOutput> {
   if (input === null || typeof input !== "object") {
     return { success: false, error: "Input must be an object with action" };
   }
@@ -118,6 +161,9 @@ export async function browserAutomation(input: unknown): Promise<BrowserAutomati
   if (!validActions.includes(action)) {
     return { success: false, error: `action must be one of: ${validActions.join(", ")}` };
   }
+
+  const isCancelled = context?.isCancelled;
+  const onLog = context?.onLog;
 
   const cdpUrl =
     typeof o.cdpUrl === "string" && o.cdpUrl.trim() ? o.cdpUrl.trim() : DEFAULT_CDP_URL;
@@ -133,13 +179,13 @@ export async function browserAutomation(input: unknown): Promise<BrowserAutomati
   try {
     let pageAndBrowser: Awaited<ReturnType<typeof getPage>>;
     try {
-      pageAndBrowser = await getPage(cdpUrl);
+      pageAndBrowser = await withCancellation(getPage(cdpUrl), isCancelled);
     } catch (firstErr) {
       const isRefused = /ECONNREFUSED|connection refused/i.test(
         firstErr instanceof Error ? firstErr.message : String(firstErr)
       );
       if (useDefaultCdp && isRefused && (await tryLaunchChrome())) {
-        pageAndBrowser = await getPage(cdpUrl);
+        pageAndBrowser = await withCancellation(getPage(cdpUrl), isCancelled);
       } else {
         throw firstErr;
       }
@@ -154,14 +200,29 @@ export async function browserAutomation(input: unknown): Promise<BrowserAutomati
         const url = typeof o.url === "string" ? o.url.trim() : "";
         if (!url) return { success: false, error: "url is required for action navigate" };
         try {
-          await page.goto(url, { waitUntil: "domcontentloaded", timeout });
+          await withCancellation(
+            page.goto(url, { waitUntil: "domcontentloaded", timeout }),
+            isCancelled
+          );
         } catch (navErr) {
           const navMsg = navErr instanceof Error ? navErr.message : String(navErr);
+          onLog?.({
+            level: "stderr",
+            message: `[Playwright] navigate failed — ${navMsg}`,
+            payload: { source: "playwright", action: "navigate", url, error: navMsg },
+          });
           const urlHint =
             " If the URL is wrong or unreachable, use web search (e.g. std-web-search or DuckDuckGo) to find the correct URL, then retry navigate.";
           return { success: false, error: navMsg + urlHint };
         }
         lastInteractiveActionAt = Date.now();
+        const finalUrl = page.url();
+        const pageTitle = await page.title().catch(() => "");
+        onLog?.({
+          level: "stdout",
+          message: "[Playwright] navigate completed",
+          payload: { source: "playwright", action: "navigate", requestedUrl: url, finalUrl, pageTitle },
+        });
         const content = await page.content();
         return { success: true, content: content.slice(0, 100_000) };
       }
@@ -170,35 +231,101 @@ export async function browserAutomation(input: unknown): Promise<BrowserAutomati
         const body = await page.locator("body").first();
         const text = await body.innerText().catch(() => "");
         const snippet = text.slice(0, 50_000) || content.slice(0, 50_000);
+        const snippetPreview = snippet.slice(0, 300).replace(/\s+/g, " ").trim();
+        const hasKnownErrorPage = /sorry[, ]*we couldn't find that page|404|not found/i.test(snippet);
+        onLog?.({
+          level: "stdout",
+          message: "[Playwright] getContent",
+          payload: {
+            source: "playwright",
+            action: "getContent",
+            contentLength: snippet.length,
+            snippetPreview: snippetPreview ? snippetPreview + (snippet.length > 300 ? "…" : "") : undefined,
+            hasKnownErrorPage,
+          },
+        });
         return { success: true, content: snippet };
       }
       case "click": {
         await throttleInteractiveAction(minActionIntervalMs);
         const selector = typeof o.selector === "string" ? o.selector.trim() : "";
         if (!selector) return { success: false, error: "selector is required for action click" };
-        await page.click(selector, { timeout });
-        lastInteractiveActionAt = Date.now();
-        return { success: true };
+        try {
+          await withCancellation(page.click(selector, { timeout }), isCancelled);
+          lastInteractiveActionAt = Date.now();
+          onLog?.({
+            level: "stdout",
+            message: "[Playwright] click",
+            payload: { source: "playwright", action: "click", selector: selector.slice(0, 80), outcome: "found and clicked" },
+          });
+          return { success: true };
+        } catch (clickErr) {
+          const msg = clickErr instanceof Error ? clickErr.message : String(clickErr);
+          onLog?.({
+            level: "stderr",
+            message: `[Playwright] click failed — ${msg}`,
+            payload: { source: "playwright", action: "click", selector: selector.slice(0, 80), error: msg },
+          });
+          throw clickErr;
+        }
       }
       case "fill": {
         await throttleInteractiveAction(minActionIntervalMs);
         const selector = typeof o.selector === "string" ? o.selector.trim() : "";
         const value = typeof o.value === "string" ? o.value : String(o.value ?? "");
         if (!selector) return { success: false, error: "selector is required for action fill" };
-        await page.fill(selector, value, { timeout });
-        lastInteractiveActionAt = Date.now();
-        return { success: true };
+        try {
+          await withCancellation(page.fill(selector, value, { timeout }), isCancelled);
+          lastInteractiveActionAt = Date.now();
+          onLog?.({
+            level: "stdout",
+            message: "[Playwright] fill",
+            payload: { source: "playwright", action: "fill", selector: selector.slice(0, 80), valueLen: value.length, outcome: "filled" },
+          });
+          return { success: true };
+        } catch (fillErr) {
+          const msg = fillErr instanceof Error ? fillErr.message : String(fillErr);
+          onLog?.({
+            level: "stderr",
+            message: `[Playwright] fill failed — ${msg}`,
+            payload: { source: "playwright", action: "fill", selector: selector.slice(0, 80), error: msg },
+          });
+          throw fillErr;
+        }
       }
       case "screenshot": {
         const buffer = await page.screenshot({ type: "png", fullPage: false });
         const base64 = buffer.toString("base64");
+        onLog?.({
+          level: "stdout",
+          message: "[Playwright] screenshot",
+          payload: { source: "playwright", action: "screenshot", bytes: buffer.length },
+        });
         return { success: true, screenshot: `data:image/png;base64,${base64}` };
       }
       case "waitFor": {
         const selector = typeof o.selector === "string" ? o.selector.trim() : "";
         if (!selector) return { success: false, error: "selector is required for action waitFor" };
-        await page.waitForSelector(selector, { state: "visible", timeout });
-        return { success: true };
+        try {
+          await withCancellation(
+            page.waitForSelector(selector, { state: "visible", timeout }),
+            isCancelled
+          );
+          onLog?.({
+            level: "stdout",
+            message: "[Playwright] waitFor",
+            payload: { source: "playwright", action: "waitFor", selector: selector.slice(0, 80), outcome: "visible" },
+          });
+          return { success: true };
+        } catch (waitErr) {
+          const msg = waitErr instanceof Error ? waitErr.message : String(waitErr);
+          onLog?.({
+            level: "stderr",
+            message: `[Playwright] waitFor failed — ${msg}`,
+            payload: { source: "playwright", action: "waitFor", selector: selector.slice(0, 80), error: msg },
+          });
+          throw waitErr;
+        }
       }
       default:
         return { success: false, error: `Unhandled action: ${action}` };
