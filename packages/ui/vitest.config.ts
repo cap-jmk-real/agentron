@@ -40,6 +40,10 @@ export default defineConfig({
         "**/api/run-code/**",
         "**/api/runs/**/respond/**",
         "**/app/lib/system-stats-interval.ts",
+        // Browser-only layout/draft/cache; unit-test with jsdom if needed. See __tests__/README.md.
+        "**/app/lib/canvas-layout.ts",
+        "**/app/lib/chat-drafts.ts",
+        "**/app/lib/chat-state-cache.ts",
         // Browser-only hooks (DOM, React context); unit-test with jsdom if needed. See __tests__/README.md.
         "**/app/hooks/**",
         // Setup flow; env/onboarding. See __tests__/README.md.

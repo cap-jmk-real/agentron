@@ -76,6 +76,55 @@ const SCHEMA_SQL = `
           payload text,
           created_at integer not null
         );
+        create table if not exists workflow_messages (
+          id text primary key,
+          execution_id text not null,
+          node_id text,
+          agent_id text,
+          role text not null,
+          content text not null,
+          message_type text,
+          metadata text,
+          created_at integer not null
+        );
+        create table if not exists execution_events (
+          id text primary key,
+          execution_id text not null,
+          sequence integer not null,
+          type text not null,
+          payload text,
+          processed_at integer,
+          created_at integer not null
+        );
+        create table if not exists execution_run_state (
+          execution_id text primary key,
+          workflow_id text not null,
+          target_branch_id text,
+          current_node_id text,
+          round integer not null,
+          shared_context text not null,
+          status text not null,
+          waiting_at_node_id text,
+          trail_snapshot text,
+          updated_at integer not null
+        );
+        create table if not exists workflow_queue (
+          id text primary key,
+          type text not null,
+          payload text not null,
+          status text not null,
+          run_id text,
+          enqueued_at integer not null,
+          started_at integer,
+          finished_at integer,
+          error text,
+          created_at integer not null
+        );
+        create table if not exists conversation_locks (
+          conversation_id text primary key,
+          started_at integer not null,
+          created_at integer not null
+        );
         create table if not exists skills (
           id text primary key,
           name text not null,

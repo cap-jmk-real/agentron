@@ -5,6 +5,9 @@ import { POST as agentsPost } from "../../app/api/agents/route";
 import { GET as runsGet } from "../../app/api/runs/route";
 import { GET as runGet, PATCH as runPatch } from "../../app/api/runs/[id]/route";
 import { GET as traceGet } from "../../app/api/runs/[id]/trace/route";
+import { GET as eventsGet } from "../../app/api/runs/[id]/events/route";
+import { GET as messagesGet } from "../../app/api/runs/[id]/messages/route";
+import { GET as agentRequestGet } from "../../app/api/runs/[id]/agent-request/route";
 import { GET as pendingHelpGet } from "../../app/api/runs/pending-help/route";
 
 describe("Runs API", () => {
@@ -99,6 +102,122 @@ describe("Runs API", () => {
     expect(res.status).toBe(404);
     const data = await res.json();
     expect(data.error).toBe("Not found");
+  });
+
+  it("GET /api/runs/:id/events returns 404 for non-existent run", async () => {
+    const res = await eventsGet(new Request("http://localhost/api/runs/nonexistent-id/events"), {
+      params: Promise.resolve({ id: "nonexistent-id" }),
+    });
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe("Run not found");
+  });
+
+  it("GET /api/runs/:id/events returns events and runState for existing run", async () => {
+    const res = await eventsGet(new Request("http://localhost/api/runs/x/events"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.runId).toBe(runId);
+    expect(Array.isArray(data.events)).toBe(true);
+    expect(data).toHaveProperty("copyForDiagnosis");
+  });
+
+  it("GET /api/runs/:id/messages returns 404 for non-existent run", async () => {
+    const res = await messagesGet(new Request("http://localhost/api/runs/nonexistent-id/messages"), {
+      params: Promise.resolve({ id: "nonexistent-id" }),
+    });
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe("Run not found");
+  });
+
+  it("GET /api/runs/:id/messages returns messages for existing run", async () => {
+    const res = await messagesGet(new Request("http://localhost/api/runs/x/messages"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.runId).toBe(runId);
+    expect(Array.isArray(data.messages)).toBe(true);
+  });
+
+  it("GET /api/runs/:id/messages accepts limit param", async () => {
+    const res = await messagesGet(new Request("http://localhost/api/runs/x/messages?limit=5"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.runId).toBe(runId);
+    expect(Array.isArray(data.messages)).toBe(true);
+  });
+
+  it("GET /api/runs/:id/agent-request returns 404 for non-existent run", async () => {
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/nonexistent-id/agent-request"), {
+      params: Promise.resolve({ id: "nonexistent-id" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("GET /api/runs/:id/agent-request returns question and options when run waiting_for_user", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { question: "Choose one?", options: ["A", "B", "C"] },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBe("Choose one?");
+    expect(data.options).toEqual(["A", "B", "C"]);
+  });
+
+  it("GET /api/runs/:id/agent-request returns question from suggestions when run waiting_for_user", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { output: { question: "Pick?", suggestions: ["X", "Y"] } },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBe("Pick?");
+    expect(data.options).toEqual(["X", "Y"]);
+  });
+
+  it("GET /api/runs/:id/agent-request returns empty question/options when run not waiting_for_user", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed", output: {} }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBeUndefined();
+    expect(data.options).toEqual([]);
   });
 
   it("GET /api/runs/pending-help returns count and requests array", async () => {

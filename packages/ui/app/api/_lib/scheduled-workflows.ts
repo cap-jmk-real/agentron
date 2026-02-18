@@ -1,16 +1,13 @@
 /**
  * Schedules workflow runs for workflows with executionMode "interval" or "continuous" and a schedule.
  * Uses WorkflowScheduler for interval (seconds); uses setTimeout for daily@ / weekly@ and reschedules after each run.
+ * All runs go through the DB-backed workflow queue (enqueueScheduledWorkflow + waitForJob).
  */
 import { WorkflowScheduler } from "@agentron-studio/runtime";
 import { eq } from "drizzle-orm";
-import { db, workflows, executions } from "./db";
-import { fromWorkflowRow, toExecutionRow } from "./db";
-import { executionOutputSuccess, executionOutputFailure } from "./db";
-import { runWorkflow, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE } from "./run-workflow";
-import { getWorkflowMaxSelfFixRetries } from "./app-settings";
-import { withContainerInstallHint } from "./container-manager";
-import { enqueueWorkflowRun } from "./workflow-queue";
+import { db, workflows } from "./db";
+import { fromWorkflowRow } from "./db";
+import { enqueueScheduledWorkflow, waitForJob } from "./workflow-queue";
 import type { Workflow } from "@agentron-studio/core";
 
 const intervalScheduler = new WorkflowScheduler();
@@ -79,71 +76,6 @@ export function nextWeeklyMs(days: number[]): number {
   return next.getTime() - now.getTime();
 }
 
-async function runOneScheduledWorkflow(workflowId: string, branchId?: string): Promise<void> {
-  const runId = crypto.randomUUID();
-  await db
-    .insert(executions)
-    .values(
-      toExecutionRow({
-        id: runId,
-        targetType: "workflow",
-        targetId: workflowId,
-        targetBranchId: branchId ?? null,
-        status: "running",
-      })
-    )
-    .run();
-
-  try {
-    const onStepComplete = async (trail: Array<{ order: number; round?: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string }>, lastOutput: unknown) => {
-      const payload = executionOutputSuccess(lastOutput ?? undefined, trail);
-      await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
-    };
-    const onProgress = async (
-      state: { message: string; toolId?: string },
-      currentTrail: Array<{ order: number; round?: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string }>
-    ) => {
-      const payload = executionOutputSuccess(undefined, currentTrail.length > 0 ? currentTrail : undefined, state.message);
-      await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
-    };
-    const isCancelled = async () => {
-      const rows = await db.select({ status: executions.status }).from(executions).where(eq(executions.id, runId));
-      return rows[0]?.status === "cancelled";
-    };
-    const { output, context, trail } = await runWorkflow({
-      workflowId,
-      runId,
-      branchId,
-      onStepComplete,
-      onProgress,
-      isCancelled,
-      maxSelfFixRetries: getWorkflowMaxSelfFixRetries(),
-    });
-    const payload = executionOutputSuccess(output ?? context, trail);
-    await db
-      .update(executions)
-      .set({ status: "completed", finishedAt: Date.now(), output: JSON.stringify(payload) })
-      .where(eq(executions.id, runId))
-      .run();
-  } catch (err) {
-    const rawMessage = err instanceof Error ? err.message : String(err);
-    if (rawMessage === WAITING_FOR_USER_MESSAGE) {
-      return;
-    }
-    if (rawMessage === RUN_CANCELLED_MESSAGE) {
-      await db.update(executions).set({ status: "cancelled", finishedAt: Date.now() }).where(eq(executions.id, runId)).run();
-      return;
-    }
-    const message = withContainerInstallHint(rawMessage);
-    const payload = executionOutputFailure(message, { message, stack: err instanceof Error ? err.stack : undefined });
-    await db
-      .update(executions)
-      .set({ status: "failed", finishedAt: Date.now(), output: JSON.stringify(payload) })
-      .where(eq(executions.id, runId))
-      .run();
-  }
-}
-
 /** Key for calendar timeout map: workflow-only or workflow:branchId for branch schedules. */
 function scheduleKey(workflowId: string, branchId?: string): string {
   return branchId ? `${workflowId}:${branchId}` : workflowId;
@@ -155,20 +87,17 @@ function scheduleKey(workflowId: string, branchId?: string): string {
  */
 function runContinuousLoop(workflowId: string, branchId: string | undefined, delayMs: number): void {
   const key = scheduleKey(workflowId, branchId);
-  const run = () => {
-    enqueueWorkflowRun(() => runOneScheduledWorkflow(workflowId, branchId))
-      .then(() => {
-        const t = setTimeout(() => runContinuousLoop(workflowId, branchId, delayMs), delayMs);
-        continuousTimeouts.set(key, t);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof Error && err.message === WAITING_FOR_USER_MESSAGE) return;
-        if (err instanceof Error && err.message === RUN_CANCELLED_MESSAGE) return;
-        const t = setTimeout(() => runContinuousLoop(workflowId, branchId, delayMs), delayMs);
-        continuousTimeouts.set(key, t);
-      });
+  const run = async () => {
+    try {
+      const jobId = await enqueueScheduledWorkflow({ workflowId, branchId });
+      await waitForJob(jobId);
+    } catch {
+      // continue to reschedule
+    }
+    const t = setTimeout(() => runContinuousLoop(workflowId, branchId, delayMs), delayMs);
+    continuousTimeouts.set(key, t);
   };
-  run();
+  void run();
 }
 
 function scheduleCalendarWorkflow(workflow: Workflow, branchId?: string): void {
@@ -179,30 +108,38 @@ function scheduleCalendarWorkflow(workflow: Workflow, branchId?: string): void {
 
   const daily = parseDaily(schedule);
   if (daily) {
-    const run = () => {
-      void enqueueWorkflowRun(() => runOneScheduledWorkflow(workflow.id, branchId)).then(() => {
-        const ms = nextDailyMs(daily.hour, daily.minute);
-        const t = setTimeout(() => scheduleCalendarWorkflow(workflow, branchId), ms);
-        calendarTimeouts.set(scheduleKey(workflow.id, branchId), t);
-      });
+    const run = async () => {
+      try {
+        const jobId = await enqueueScheduledWorkflow({ workflowId: workflow.id, branchId });
+        await waitForJob(jobId);
+      } catch {
+        // continue to reschedule
+      }
+      const ms = nextDailyMs(daily.hour, daily.minute);
+      const t = setTimeout(() => scheduleCalendarWorkflow(workflow, branchId), ms);
+      calendarTimeouts.set(scheduleKey(workflow.id, branchId), t);
     };
     const ms = nextDailyMs(daily.hour, daily.minute);
-    const t = setTimeout(run, ms);
+    const t = setTimeout(() => void run(), ms);
     calendarTimeouts.set(scheduleKey(workflow.id, branchId), t);
     return;
   }
 
   const weeklyDays = parseWeekly(schedule);
   if (weeklyDays) {
-    const run = () => {
-      void enqueueWorkflowRun(() => runOneScheduledWorkflow(workflow.id, branchId)).then(() => {
-        const ms = nextWeeklyMs(weeklyDays);
-        const t = setTimeout(() => scheduleCalendarWorkflow(workflow, branchId), ms);
-        calendarTimeouts.set(scheduleKey(workflow.id, branchId), t);
-      });
+    const run = async () => {
+      try {
+        const jobId = await enqueueScheduledWorkflow({ workflowId: workflow.id, branchId });
+        await waitForJob(jobId);
+      } catch {
+        // continue to reschedule
+      }
+      const ms = nextWeeklyMs(weeklyDays);
+      const t = setTimeout(() => scheduleCalendarWorkflow(workflow, branchId), ms);
+      calendarTimeouts.set(scheduleKey(workflow.id, branchId), t);
     };
     const ms = nextWeeklyMs(weeklyDays);
-    const t = setTimeout(run, ms);
+    const t = setTimeout(() => void run(), ms);
     calendarTimeouts.set(scheduleKey(workflow.id, branchId), t);
   }
 }
@@ -261,7 +198,10 @@ export function refreshScheduledWorkflows(): void {
               intervalScheduler.scheduleInterval(
                 { ...workflow, id: `${workflow.id}:${branch.id}` },
                 intervalMs,
-                () => enqueueWorkflowRun(() => runOneScheduledWorkflow(workflow.id, branch.id))
+                async () => {
+                  const jobId = await enqueueScheduledWorkflow({ workflowId: workflow.id, branchId: branch.id });
+                  await waitForJob(jobId);
+                }
               );
               continue;
             }
@@ -291,9 +231,10 @@ export function refreshScheduledWorkflows(): void {
         const seconds = parseScheduleSeconds(schedule);
         if (seconds != null) {
           const intervalMs = seconds * 1000;
-          intervalScheduler.scheduleInterval(workflow, intervalMs, () =>
-            enqueueWorkflowRun(() => runOneScheduledWorkflow(workflow.id))
-          );
+          intervalScheduler.scheduleInterval(workflow, intervalMs, async () => {
+            const jobId = await enqueueScheduledWorkflow({ workflowId: workflow.id });
+            await waitForJob(jobId);
+          });
           continue;
         }
         if (schedule.startsWith("daily@") || schedule.startsWith("weekly@")) {

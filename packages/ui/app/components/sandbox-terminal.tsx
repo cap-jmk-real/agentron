@@ -116,8 +116,11 @@ export function SandboxTerminal({ sandboxId, sandboxName, className }: SandboxTe
         cleanup();
       };
     } catch (err) {
-      setStatus("error");
-      setErrorMessage(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      queueMicrotask(() => {
+        setStatus("error");
+        setErrorMessage(msg);
+      });
       return cleanup;
     }
   }, [sandboxId]);

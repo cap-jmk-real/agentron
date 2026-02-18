@@ -18,11 +18,11 @@ Ideal for teams that need **local AI automation**, **privacy-first agent orchest
 
 ## How to install Agentron
 
-**Prerequisites:** Node.js version in `.nvmrc` (e.g. 22.x) and npm.
+**Prerequisites:** Node.js version in `.nvmrc` (e.g. 22.x) and npm or pnpm.
 
 1. Clone the repo and enter the project: `git clone <repo-url> && cd agentron`
-2. Install dependencies: `npm run install:ui` (UI only) or `npm install` (full, including desktop)
-3. Run the app: `npm run dev:ui` then open http://localhost:3000
+2. Install dependencies: `npm run install:ui` or `pnpm install` (UI only) or `npm install` (full, including desktop)
+3. Run the app: `npm run dev:ui` or `pnpm run dev:ui` then open http://localhost:3000
 
 Full step-by-step instructions, troubleshooting, and desktop build details: **[INSTALL.md](INSTALL.md)**.
 

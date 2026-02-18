@@ -22,7 +22,7 @@ export default function SandboxShellPage() {
 
   useEffect(() => {
     if (!id) {
-      setLoading(false);
+      queueMicrotask(() => setLoading(false));
       return;
     }
     let cancelled = false;

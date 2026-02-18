@@ -108,4 +108,53 @@ describe("Settings app API", () => {
     const data = await res.json();
     expect(data.maxFileUploadBytes).toBe(before.maxFileUploadBytes);
   });
+
+  it("PATCH /api/settings/app updates containerEngine", async () => {
+    const getRes = await GET();
+    const before = await getRes.json();
+    const engine = before.containerEngine === "podman" ? "docker" : "podman";
+    const patchRes = await PATCH(
+      new Request("http://localhost/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ containerEngine: engine }),
+      })
+    );
+    expect(patchRes.status).toBe(200);
+    const patched = await patchRes.json();
+    expect(patched.containerEngine).toBe(engine);
+    await PATCH(
+      new Request("http://localhost/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ containerEngine: before.containerEngine }),
+      })
+    );
+  });
+
+  it("PATCH /api/settings/app updates shellCommandAllowlist", async () => {
+    const patchRes = await PATCH(
+      new Request("http://localhost/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shellCommandAllowlist: ["echo", "ls"] }),
+      })
+    );
+    expect(patchRes.status).toBe(200);
+    const data = await patchRes.json();
+    expect(data.shellCommandAllowlist).toEqual(["echo", "ls"]);
+  });
+
+  it("PATCH /api/settings/app addShellCommand adds single command", async () => {
+    const patchRes = await PATCH(
+      new Request("http://localhost/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ addShellCommand: "whoami" }),
+      })
+    );
+    expect(patchRes.status).toBe(200);
+    const data = await patchRes.json();
+    expect(data.addedCommands).toEqual(["whoami"]);
+  });
 });

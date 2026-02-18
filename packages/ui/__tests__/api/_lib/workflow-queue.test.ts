@@ -1,41 +1,64 @@
 import { describe, it, expect } from "vitest";
-import { enqueueWorkflowRun } from "../../../app/api/_lib/workflow-queue";
+import {
+  enqueueWorkflowStart,
+  enqueueWorkflowResume,
+  enqueueScheduledWorkflow,
+  getWorkflowQueueJob,
+  getWorkflowQueueStatus,
+  listWorkflowQueueJobs,
+} from "../../../app/api/_lib/workflow-queue";
 
 describe("workflow-queue", () => {
-  it("runs a single job and resolves", async () => {
-    let ran = false;
-    await enqueueWorkflowRun(async () => {
-      ran = true;
-    });
-    expect(ran).toBe(true);
+  it("enqueueWorkflowStart returns job id and job is readable", async () => {
+    const runId = crypto.randomUUID();
+    const workflowId = "wf-1";
+    const jobId = await enqueueWorkflowStart({ runId, workflowId });
+    expect(typeof jobId).toBe("string");
+    expect(jobId.length).toBeGreaterThan(0);
+    const job = await getWorkflowQueueJob(jobId);
+    expect(job).not.toBeNull();
+    expect(job!.id).toBe(jobId);
+    expect(job!.type).toBe("workflow_start");
+    expect(job!.status).toBe("queued");
+    expect(job!.runId).toBe(runId);
   });
 
-  it("runs jobs with concurrency limit", async () => {
-    const order: number[] = [];
-    const start = (id: number) =>
-      enqueueWorkflowRun(async () => {
-        order.push(id);
-        await new Promise((r) => setTimeout(r, 30));
-        order.push(-id);
-      });
-
-    const p1 = start(1);
-    const p2 = start(2);
-    const p3 = start(3);
-    await Promise.all([p1, p2, p3]);
-
-    expect(order).toHaveLength(6);
-    expect(order.filter((x) => x > 0).sort((a, b) => a - b)).toEqual([1, 2, 3]);
-    expect(order.filter((x) => x < 0).sort((a, b) => a - b)).toEqual([-3, -2, -1]);
-    const firstTwoStarts = order.indexOf(1) < order.indexOf(3) && order.indexOf(2) < order.indexOf(3);
-    expect(firstTwoStarts).toBe(true);
+  it("enqueueWorkflowResume returns job id", async () => {
+    const runId = crypto.randomUUID();
+    const jobId = await enqueueWorkflowResume({ runId, resumeUserResponse: "ok" });
+    expect(typeof jobId).toBe("string");
+    const job = await getWorkflowQueueJob(jobId);
+    expect(job?.type).toBe("workflow_resume");
+    expect(job?.status).toBe("queued");
   });
 
-  it("propagates job rejection", async () => {
-    await expect(
-      enqueueWorkflowRun(async () => {
-        throw new Error("job failed");
+  it("enqueueScheduledWorkflow returns job id", async () => {
+    const jobId = await enqueueScheduledWorkflow({ workflowId: "wf-2", branchId: "br-1" });
+    expect(typeof jobId).toBe("string");
+    const job = await getWorkflowQueueJob(jobId);
+    expect(job?.type).toBe("scheduled");
+    expect(job?.runId).toBeNull();
+  });
+
+  it("getWorkflowQueueStatus returns queued/running/concurrency", async () => {
+    const status = await getWorkflowQueueStatus();
+    expect(status).toEqual(
+      expect.objectContaining({
+        queued: expect.any(Number),
+        running: expect.any(Number),
+        concurrency: 2,
       })
-    ).rejects.toThrow("job failed");
+    );
+  });
+
+  it("listWorkflowQueueJobs returns array with limit", async () => {
+    const jobs = await listWorkflowQueueJobs({ limit: 10 });
+    expect(Array.isArray(jobs)).toBe(true);
+    jobs.forEach((j) => {
+      expect(j).toHaveProperty("id");
+      expect(j).toHaveProperty("type");
+      expect(j).toHaveProperty("status");
+      expect(j).toHaveProperty("createdAt");
+    });
   });
 });

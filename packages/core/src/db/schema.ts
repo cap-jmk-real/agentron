@@ -266,6 +266,65 @@ export const runLogs = sqliteTable("run_logs", {
   createdAt: integer("created_at").notNull()
 });
 
+/** Workflow/execution messages: persisted conversation per run so agents communicate via messages and Agentron can read them. */
+export const workflowMessages = sqliteTable("workflow_messages", {
+  id: text("id").primaryKey(),
+  executionId: text("execution_id").notNull(),
+  nodeId: text("node_id"),
+  agentId: text("agent_id"),
+  role: text("role").notNull(), // 'agent' | 'user' | 'system'
+  content: text("content").notNull(),
+  messageType: text("message_type"),
+  metadata: text("metadata"),
+  createdAt: integer("created_at").notNull()
+});
+
+/** Event queue for event-driven workflow execution. Processed in sequence order. */
+export const executionEvents = sqliteTable("execution_events", {
+  id: text("id").primaryKey(),
+  executionId: text("execution_id").notNull(),
+  sequence: integer("sequence").notNull(),
+  type: text("type").notNull(), // NodeRequested | NodeCompleted | UserResponded | RunStarted
+  payload: text("payload"), // JSON
+  processedAt: integer("processed_at"),
+  createdAt: integer("created_at").notNull()
+});
+
+/** Run state for event-driven workflow (current node, round, sharedContext snapshot). */
+export const executionRunState = sqliteTable("execution_run_state", {
+  executionId: text("execution_id").primaryKey(),
+  workflowId: text("workflow_id").notNull(),
+  targetBranchId: text("target_branch_id"),
+  currentNodeId: text("current_node_id"),
+  round: integer("round").notNull(),
+  sharedContext: text("shared_context").notNull(), // JSON
+  status: text("status").notNull(), // running | waiting_for_user | completed | failed
+  waitingAtNodeId: text("waiting_at_node_id"),
+  trailSnapshot: text("trail_snapshot"), // JSON array of ExecutionTraceStep for resume
+  updatedAt: integer("updated_at").notNull()
+});
+
+/** Workflow run queue (DB-backed). type: workflow_start | workflow_resume | scheduled. */
+export const workflowQueue = sqliteTable("workflow_queue", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  payload: text("payload").notNull(), // JSON
+  status: text("status").notNull(), // queued | running | completed | failed
+  runId: text("run_id"), // for workflow_start/resume, the execution id
+  enqueuedAt: integer("enqueued_at").notNull(),
+  startedAt: integer("started_at"),
+  finishedAt: integer("finished_at"),
+  error: text("error"),
+  createdAt: integer("created_at").notNull()
+});
+
+/** Chat turn locks: one active turn per conversation (DB-backed serialization). */
+export const conversationLocks = sqliteTable("conversation_locks", {
+  conversationId: text("conversation_id").primaryKey(),
+  startedAt: integer("started_at").notNull(),
+  createdAt: integer("created_at").notNull()
+});
+
 // --- RAG: encoding config (user-configured; changing it requires re-encoding vectors) ---
 export const ragEncodingConfigs = sqliteTable("rag_encoding_configs", {
   id: text("id").primaryKey(),

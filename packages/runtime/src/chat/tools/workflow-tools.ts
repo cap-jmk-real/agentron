@@ -39,6 +39,43 @@ export const WORKFLOW_TOOLS: AssistantToolDef[] = [
     },
   },
   {
+    name: "get_run_messages",
+    description: "Get the workflow/run message log for a run (persisted agent and user messages). Use to see what has been said in the workflow so far (e.g. when a run is waiting for input or when the user asks what happened in a run). Returns ordered messages (role, content, nodeId, agentId, createdAt).",
+    parameters: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "Run/execution ID" },
+        limit: { type: "number", description: "Optional max number of messages to return (default 50, max 100)" },
+      },
+      required: ["runId"],
+    },
+  },
+  {
+    name: "get_run_for_improvement",
+    description: "Load a run with bounded context for improving an agent: returns run metadata, trail summary (one line per step), and recent errors from run_logs. Use when improving from a failed or incomplete run (e.g. improvement workflow). First call with runId only; only pass includeFullLogs: true if the summary is insufficient to diagnose or fix the failure.",
+    parameters: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "Run/execution ID to load for improvement" },
+        includeFullLogs: { type: "boolean", description: "If true, return full trail and run_logs. Default false. Only set true when the bounded summary is insufficient." },
+      },
+      required: ["runId"],
+    },
+  },
+  {
+    name: "get_feedback_for_scope",
+    description: "List recent feedback for a target (agent or workflow) so you can improve from past user ratings. Returns short rows (notes, input/output summaries) for the targetId. Use label to filter by good/bad feedback, and limit to cap the number of rows (default 20, max 50).",
+    parameters: {
+      type: "object",
+      properties: {
+        targetId: { type: "string", description: "Target id (agent or workflow) whose feedback you want to load" },
+        label: { type: "string", description: "Optional label to filter by (e.g. good, bad)" },
+        limit: { type: "number", description: "Optional max number of rows (default 20, max 50)" },
+      },
+      required: ["targetId"],
+    },
+  },
+  {
     name: "get_workflow",
     description: "Get a workflow by ID including its nodes, edges, and optional branches. Branches are disconnected graphs with their own schedule (interval, daily@HH:mm, weekly@0,1,2). Use when you need to read the current workflow graph or branches before updating.",
     parameters: {

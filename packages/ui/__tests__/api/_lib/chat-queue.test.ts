@@ -45,4 +45,15 @@ describe("chat-queue", () => {
       })
     ).rejects.toThrow("fail");
   });
+
+  it("when first handler rejects, second handler still runs", async () => {
+    const firstPromise = runSerializedByConversation("conv-reject", async () => {
+      await new Promise((r) => setTimeout(r, 20));
+      throw new Error("Stopped by user");
+    });
+    const secondPromise = runSerializedByConversation("conv-reject", async () => "second");
+    await expect(firstPromise).rejects.toThrow("Stopped by user");
+    const result = await secondPromise;
+    expect(result).toBe("second");
+  });
 });

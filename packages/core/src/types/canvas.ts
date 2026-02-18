@@ -21,6 +21,17 @@ export type CanvasNode = {
   parameters?: Record<string, unknown>;
 };
 
+/** Optional condition for conditional edges (e.g. steer by last message type or content). */
+export type EdgeCondition = {
+  /** "message_type": last message role or type must equal value. */
+  type: "message_type";
+  value: string;
+} | {
+  /** "content_contains": last output/message content must include value (case-insensitive). */
+  type: "content_contains";
+  value: string;
+};
+
 export type CanvasEdge = {
   id: string;
   source: string;
@@ -28,6 +39,8 @@ export type CanvasEdge = {
   /** Optional aliases for source/target (e.g. React Flow style). */
   from?: string;
   to?: string;
+  /** Optional: edge is taken only when condition evaluates true against last output/message. */
+  condition?: EdgeCondition;
 };
 
 /** Unified canvas structure - single source of truth for agent/workflow graphs. */

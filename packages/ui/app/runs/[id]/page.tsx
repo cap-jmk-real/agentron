@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Copy, CheckCircle, XCircle, Clock, Loader2, MessageCircle, GitBranch, Square, ThumbsUp, ThumbsDown, Terminal, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Copy, CheckCircle, XCircle, Clock, Loader2, MessageCircle, GitBranch, Square, ThumbsUp, ThumbsDown, Terminal, Eye, EyeOff, ListOrdered } from "lucide-react";
 import { openChatWithContext } from "../../components/chat-wrapper";
 
 /** When the agent calls request_user_help, the workflow throws this message; we treat it as "waiting for input", not a failure. */
@@ -166,8 +166,8 @@ function buildCopyForChatBlock(run: Run): string {
       lines.push("");
       lines.push("Output: " + (typeof out.output === "string" ? out.output : JSON.stringify(out.output, null, 2)));
     }
-    const payloadOut = out && typeof out === "object" && (out as { output?: { userResponded?: boolean; response?: string } }).output;
-    if (payloadOut?.userResponded && typeof payloadOut?.response === "string" && payloadOut.response !== "") {
+    const payloadOut = out && typeof out === "object" ? (out as { output?: { userResponded?: boolean; response?: string } }).output : undefined;
+    if (payloadOut && typeof payloadOut === "object" && payloadOut.userResponded && typeof payloadOut.response === "string" && payloadOut.response !== "") {
       lines.push("");
       lines.push("User replied: " + payloadOut.response);
     }
@@ -259,6 +259,24 @@ function getToolErrorFromOutput(output: unknown): string | null {
   const o = output as Record<string, unknown>;
   if (typeof o.error === "string" && o.error.trim()) return o.error.trim();
   return null;
+}
+
+/** One-line "what went wrong" summary from run_logs (for failed/waiting runs). */
+function buildWhatWentWrongOneLiner(logs: Array<{ level: string; message: string; payload?: string | null }>): string {
+  if (!Array.isArray(logs) || logs.length === 0) return "";
+  const errOrStderr = logs.filter((e) => e.level === "stderr" || (e.message && /\[.*\]/.test(e.message)));
+  if (errOrStderr.length === 0) return "";
+  const parts = errOrStderr.slice(-10).map((e) => {
+    const m = e.message.replace(/\n/g, " ").trim();
+    const sourceMatch = m.match(/^\[([^\]]+)\]/);
+    const source = sourceMatch ? sourceMatch[1] : e.level;
+    const rest = sourceMatch ? m.slice(sourceMatch[0].length).trim() : m;
+    const short = rest.length > 60 ? rest.slice(0, 57) + "…" : rest;
+    return `[${source}] ${short}`;
+  });
+  const n = errOrStderr.length;
+  if (n <= 3) return parts.join("; ");
+  return `${n} errors: ${parts.slice(-2).join("; ")}`;
 }
 
 /** Extract the user's actual reply from the partner message (e.g. "The user has replied: \"Approve vault\". ..."). */
@@ -569,6 +587,12 @@ export default function RunDetailPage() {
   const [showOutputsOnly, setShowOutputsOnly] = useState(true);
   const [liveShellCopied, setLiveShellCopied] = useState(false);
   const [shellTraceCopied, setShellTraceCopied] = useState(false);
+  const [eventsData, setEventsData] = useState<{
+    events: Array<{ sequence: number; type: string; payload: unknown; processedAt: number | null; createdAt: number }>;
+    runState: unknown;
+    copyForDiagnosis: string;
+  } | null>(null);
+  const [diagnosisCopied, setDiagnosisCopied] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [submittingReply, setSubmittingReply] = useState(false);
   /** When an option button is clicked, its value while the request is in flight (for loading state). */
@@ -621,6 +645,20 @@ export default function RunDetailPage() {
     const interval = setInterval(() => void load(true), 500);
     return () => clearInterval(interval);
   }, [run?.status, load]);
+
+  useEffect(() => {
+    if (!run?.id || run.targetType !== "workflow") return;
+    fetch(`/api/runs/${encodeURIComponent(run.id)}/events`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.events) && data.events.length > 0) {
+          setEventsData({ events: data.events, runState: data.runState, copyForDiagnosis: data.copyForDiagnosis ?? "" });
+        } else {
+          setEventsData(null);
+        }
+      })
+      .catch(() => setEventsData(null));
+  }, [run?.id, run?.targetType]);
 
   useEffect(() => {
     if (!run?.id) return;
@@ -856,6 +894,15 @@ export default function RunDetailPage() {
       </div>
 
       <div className="run-detail-card">
+        {(run.status === "failed" || run.status === "waiting_for_user") && (() => {
+          const oneLiner = buildWhatWentWrongOneLiner(run.logs ?? []);
+          return oneLiner ? (
+            <div className="run-detail-section" style={{ paddingBottom: "0.5rem", borderBottom: "1px solid var(--border)" }}>
+              <div className="run-detail-label" style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>What went wrong</div>
+              <div className="run-detail-value" style={{ fontSize: "0.9rem" }}>{oneLiner}</div>
+            </div>
+          ) : null;
+        })()}
         <div className="run-detail-section">
           <div className="run-detail-label">Status</div>
           <div className="run-detail-value" style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
@@ -1480,6 +1527,55 @@ export default function RunDetailPage() {
       )}
 
       </div>
+
+      {eventsData && eventsData.events.length > 0 && (
+        <div className="run-detail-card run-detail-grid-card" style={{ scrollMarginTop: "1rem" }}>
+          <div className="run-detail-section">
+            <div className="run-detail-label" style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+              <ListOrdered size={16} /> Event queue (diagnosis)
+            </div>
+            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: "0.25rem 0 0.5rem 0" }}>
+              Execution events for this run. Copy for support or debugging.
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+              <button
+                type="button"
+                className="button secondary"
+                style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                onClick={async () => {
+                  if (eventsData?.copyForDiagnosis && (await copyToClipboard(eventsData.copyForDiagnosis))) {
+                    setDiagnosisCopied(true);
+                    setTimeout(() => setDiagnosisCopied(false), 2000);
+                  }
+                }}
+              >
+                {diagnosisCopied ? <CheckCircle size={14} /> : <Copy size={14} />}
+                {diagnosisCopied ? "Copied" : "Copy for diagnosis"}
+              </button>
+            </div>
+            <div style={{ maxHeight: "min(40vh, 280px)", overflowY: "auto", overflowX: "auto", fontSize: "0.8rem", background: "var(--surface-muted)", borderRadius: "var(--radius)", padding: "0.5rem 0.75rem" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
+                    <th style={{ padding: "0.25rem 0.5rem 0.25rem 0" }}>#</th>
+                    <th style={{ padding: "0.25rem 0.5rem" }}>Type</th>
+                    <th style={{ padding: "0.25rem 0.5rem" }}>Processed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {eventsData.events.map((ev) => (
+                    <tr key={ev.sequence} style={{ borderBottom: "1px solid var(--border-muted)" }}>
+                      <td style={{ padding: "0.25rem 0.5rem 0.25rem 0" }}>{ev.sequence}</td>
+                      <td style={{ padding: "0.25rem 0.5rem" }}><code>{ev.type}</code></td>
+                      <td style={{ padding: "0.25rem 0.5rem", color: "var(--text-muted)" }}>{ev.processedAt != null ? new Date(ev.processedAt).toLocaleString() : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="run-detail-card run-detail-feedback-card">
         <div className="run-detail-section">

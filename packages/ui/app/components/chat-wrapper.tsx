@@ -15,7 +15,7 @@ export default function ChatWrapper() {
   useEffect(() => {
     if (isChatPage) return;
     try {
-      if (sessionStorage.getItem(CHAT_FAB_OPEN_KEY) === "1") setOpen(true);
+      if (sessionStorage.getItem(CHAT_FAB_OPEN_KEY) === "1") queueMicrotask(() => setOpen(true));
     } catch {
       /* ignore */
     }

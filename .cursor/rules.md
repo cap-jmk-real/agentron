@@ -65,7 +65,7 @@ Coverage should:
 
 ### How to evaluate coverage
 
-* **Run coverage (UI):** From repo root run `npm run test:coverage --workspace packages/ui`, or from `packages/ui` run `npm run test:coverage`. This runs the test suite with the V8 coverage provider and prints a text summary in the terminal.
+* **Run coverage (UI):** From repo root run `npm run test:coverage` (or `pnpm run test:coverage`), or from `packages/ui` run `npm run test:coverage`. This runs the test suite with the V8 coverage provider and prints a text summary in the terminal.
 * **Reports:** A summary (statements, branches, functions, lines) is printed after the run. An HTML report is written to `packages/ui/coverage/`; open `packages/ui/coverage/index.html` in a browser for per-file, line-by-line coverage.
 * **When to run:** Run coverage when adding or changing tests, when touching critical paths, or before pushing (alongside `npm test`). CI runs tests with coverage in the docs and desktop workflows; the coverage report is uploaded as an artifact.
 * **Interpretation:** Use the summary and HTML report to find uncovered lines and branches. Treat coverage as a risk signal (see Coverage Expectations above); acknowledge and justify gaps. No coverage threshold is enforced in CI; the goal is visibility and informed decisions.
@@ -180,7 +180,7 @@ Before presenting code, the agent asks:
 * Are boundaries validated by integration tests?
 * For heap/improvement/assistant tests: did I use deterministic mocks (no real LLM) so the test verifies code flow, not model output?
 * Did I run the unit tests?
-* Did I run the test coverage (`npm run test:coverage --workspace packages/ui`) and check the report?
+* Did I run the test coverage (`npm run test:coverage`) and check the report?
 * Did I run the build (and fix any errors)?
 * Before pushing: did I run `npm run pre-push` (or all CI steps: typecheck, lint, test, build:ui, build:docs, desktop dist) locally to save CI minutes?
 

@@ -31,13 +31,44 @@ jobs:
         run: npm run lint:ui
 
       - name: Test (UI) with coverage
-        run: npm run test:coverage --workspace packages/ui
+        run: npm run test:coverage
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           files: packages/ui/coverage/lcov.info
           fail_ci_if_error: false
+
+  test-pnpm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm config set optional true && pnpm install
+
+      - name: Rebuild better-sqlite3
+        run: pnpm rebuild better-sqlite3
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Lint UI
+        run: pnpm run lint:ui
+
+      - name: Test (UI)
+        run: pnpm test
 
   update-loc-badge:
     runs-on: ubuntu-latest

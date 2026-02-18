@@ -21,11 +21,15 @@ import {
   reminders,
   fromReminderRow,
   toReminderRow,
+  insertWorkflowMessage,
+  getWorkflowMessages,
 } from "../_lib/db";
 import { scheduleReminder, cancelReminderTimeout } from "../_lib/reminder-scheduler";
 import { registerScheduledTurnRunner } from "../_lib/run-scheduled-turn";
-import { runWorkflow, runWorkflowForRun, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE, WaitingForUserError, runWriteFile, runContainerBuild, runContainer, runContainerSession } from "../_lib/run-workflow";
-import { enqueueWorkflowRun } from "../_lib/workflow-queue";
+import { runWorkflow, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE, WaitingForUserError, runWriteFile, runContainerBuild, runContainer, runContainerSession } from "../_lib/run-workflow";
+import { getFeedbackForScope } from "../_lib/feedback-for-scope";
+import { getRunForImprovement } from "../_lib/run-for-improvement";
+import { enqueueWorkflowResume } from "../_lib/workflow-queue";
 import { getDeploymentCollectionId, retrieveChunks } from "../_lib/rag";
 import type { RemoteServer } from "../_lib/db";
 import { testRemoteConnection } from "../_lib/remote-test";
@@ -35,11 +39,12 @@ import { llmContextPrefix, normalizeChatError } from "../_lib/chat-helpers";
 import { openclawSend, openclawHistory, openclawAbort } from "../_lib/openclaw-client";
 import { eq, asc, desc, isNotNull, and, like, inArray } from "drizzle-orm";
 import type { LLMTraceCall, LLMConfig } from "@agentron-studio/core";
-import { runAssistant, buildFeedbackInjection, createDefaultLLMManager, resolveModelPricing, calculateCost, type StudioContext, searchWeb, fetchUrl, refinePrompt } from "@agentron-studio/runtime";
+import { runAssistant, buildFeedbackInjection, createDefaultLLMManager, resolveModelPricing, calculateCost, type StudioContext, searchWeb, fetchUrl, refinePrompt, getRegistry, runHeap, buildRouterPrompt, parseRouterOutput } from "@agentron-studio/runtime";
 import { getContainerManager, withContainerInstallHint } from "../_lib/container-manager";
 import { getShellCommandAllowlist, updateAppSettings } from "../_lib/app-settings";
 import { getStoredCredential, setStoredCredential } from "../_lib/credential-store";
 import { getVaultKeyFromRequest } from "../_lib/vault";
+import { createRunNotification } from "../_lib/notifications-store";
 import type { LLMMessage, LLMRequest, LLMResponse } from "@agentron-studio/runtime";
 import { layoutNodesByGraph } from "../../lib/canvas-layout";
 import { runShellCommand } from "../_lib/shell-exec";
@@ -1256,7 +1261,7 @@ async function executeTool(
         .set({ status: "running", finishedAt: null, output: JSON.stringify(outPayload) })
         .where(eq(executions.id, runId))
         .run();
-      enqueueWorkflowRun(() => runWorkflowForRun(runId, { resumeUserResponse: response, vaultKey: vaultKey ?? undefined }));
+      enqueueWorkflowResume({ runId, resumeUserResponse: response });
       return { id: runId, status: "running", message: "Response sent to run. The workflow continues. [View run](/runs/" + runId + ") to see progress." };
     }
     case "get_run": {
@@ -1266,6 +1271,33 @@ async function executeTool(
       const run = runRows[0] as { id: string; targetType: string; targetId: string; status: string; startedAt: number; finishedAt: number | null; output: string | null };
       const output = run.output ? (() => { try { return JSON.parse(run.output) as unknown; } catch { return run.output; } })() : undefined;
       return { id: run.id, targetType: run.targetType, targetId: run.targetId, status: run.status, startedAt: run.startedAt, finishedAt: run.finishedAt, output };
+    }
+    case "get_run_messages": {
+      const runIdArg = typeof (a as { runId?: string }).runId === "string" ? (a as { runId: string }).runId.trim() : "";
+      if (!runIdArg) return { error: "runId is required" };
+      const limit = typeof (a as { limit?: number }).limit === "number" && (a as { limit: number }).limit > 0
+        ? Math.min(100, (a as { limit: number }).limit)
+        : 50;
+      const runRows = await db.select({ id: executions.id }).from(executions).where(eq(executions.id, runIdArg));
+      if (runRows.length === 0) return { error: "Run not found" };
+      const messages = await getWorkflowMessages(runIdArg, limit);
+      return { runId: runIdArg, messages };
+    }
+    case "get_run_for_improvement": {
+      const runIdArg = typeof (a as { runId?: string }).runId === "string" ? (a as { runId: string }).runId.trim() : "";
+      if (!runIdArg) return { error: "runId is required" };
+      const includeFullLogs = (a as { includeFullLogs?: boolean }).includeFullLogs === true;
+      return getRunForImprovement(runIdArg, { includeFullLogs });
+    }
+    case "get_feedback_for_scope": {
+      const targetId = typeof (a as { targetId?: string }).targetId === "string" ? (a as { targetId: string }).targetId.trim() : "";
+      if (!targetId) return { error: "targetId is required" };
+      const rawLabel = typeof (a as { label?: string }).label === "string" ? (a as { label: string }).label.trim() : "";
+      const label = rawLabel === "good" || rawLabel === "bad" ? rawLabel : undefined;
+      const limit = typeof (a as { limit?: number }).limit === "number" && (a as { limit: number }).limit > 0
+        ? (a as { limit: number }).limit
+        : undefined;
+      return getFeedbackForScope(targetId, { label, limit });
     }
     case "execute_workflow": {
       // #region agent log
@@ -1298,6 +1330,11 @@ async function executeTool(
         const { output, context, trail } = await runWorkflow({ workflowId, runId, branchId, vaultKey: vaultKey ?? undefined, onStepComplete, onProgress, isCancelled });
         const payload = executionOutputSuccess(output ?? context, trail);
         await db.update(executions).set({ status: "completed", finishedAt: Date.now(), output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
+        try {
+          createRunNotification(runId, "completed", { targetType: "workflow", targetId: workflowId });
+        } catch {
+          // ignore
+        }
         const updated = await db.select().from(executions).where(eq(executions.id, runId));
         const runResult = fromExecutionRow(updated[0]);
         return { id: runId, workflowId, status: "completed", message: "Workflow run completed. Check Runs in the sidebar for full output and execution trail.", output: runResult.output };
@@ -1351,6 +1388,11 @@ async function executeTool(
         const message = withContainerInstallHint(rawMessage);
         const payload = executionOutputFailure(message, { message, stack: err instanceof Error ? err.stack : undefined });
         await db.update(executions).set({ status: "failed", finishedAt: Date.now(), output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
+        try {
+          createRunNotification(runId, "failed", { targetType: "workflow", targetId: workflowId });
+        } catch {
+          // ignore
+        }
         return { id: runId, workflowId, status: "failed", error: message, message: `Workflow run failed: ${message}` };
       }
     }
@@ -1825,6 +1867,84 @@ const MAX_SUMMARIES = 10;
 /** Number of last messages (user + assistant) to include per recent conversation so the user can reference "the output" or "what you said". */
 const LAST_MESSAGES_PER_RECENT_CHAT = 6;
 
+/** Run one turn in heap (multi-agent) mode: router LLM → run heap with specialists; returns assistant-shaped result. */
+async function runHeapModeTurn(opts: {
+  effectiveMessage: string;
+  callLLM: (req: LLMRequest) => Promise<LLMResponse>;
+  executeToolCtx: { conversationId: string | undefined; vaultKey: Buffer | null | undefined };
+  registry: ReturnType<typeof getRegistry>;
+  manager: ReturnType<typeof createDefaultLLMManager>;
+  llmConfig: LLMConfig | null;
+  pushUsage: (response: LLMResponse) => void;
+  enqueueTrace?: (step: { phase: string; label?: string }) => void;
+  feedbackInjection?: string;
+  ragContext?: string;
+  uiContext?: string;
+  studioContext?: StudioContext;
+  systemPromptOverride?: string;
+  temperature?: number;
+  maxTokens?: number;
+}): Promise<{ content: string; toolResults: { name: string; args: Record<string, unknown>; result: unknown }[]; reasoning?: string; todos?: string[]; completedStepIndices?: number[] }> {
+  const { effectiveMessage, callLLM, executeToolCtx, registry, manager, llmConfig, pushUsage, enqueueTrace } = opts;
+  const traceId = crypto.randomUUID();
+  enqueueTrace?.({ phase: "router", label: "Routing…" });
+
+  const routerPrompt = buildRouterPrompt(effectiveMessage, registry);
+  const routerResponse = await manager.chat(llmConfig as LLMConfig, {
+    messages: [{ role: "user", content: routerPrompt }],
+    temperature: 0.2,
+    maxTokens: 1024,
+  }, { source: "chat" });
+  pushUsage(routerResponse);
+
+  const parsed = parseRouterOutput(routerResponse.content ?? "");
+  const priorityOrder = parsed?.priorityOrder ?? (registry.topLevelIds[0] ? [registry.topLevelIds[0]] : []);
+  const refinedTask = parsed?.refinedTask ?? effectiveMessage;
+
+  enqueueTrace?.({ phase: "heap", label: "Running specialists…" });
+
+  type RunSpecialist = (specialistId: string, task: string, context: { steps: { specialistId: string; outcome: string }[] }) => Promise<{ summary: string }>;
+  const runSpecialist: RunSpecialist = async (specialistId, task, context) => {
+    const specialist = registry.specialists[specialistId];
+    if (!specialist) return { summary: `Unknown specialist: ${specialistId}.` };
+    const toolNames = specialist.toolNames;
+    const contextStr = context.steps.length
+      ? context.steps.map((s) => `${s.specialistId}: ${s.outcome}`).join("\n")
+      : "";
+    const specialistMessage = contextStr ? `${task}\n\nPrevious steps:\n${contextStr}` : task;
+    const execTool = async (name: string, args: Record<string, unknown>) => {
+      if (!toolNames.includes(name)) {
+        return { error: "Tool not available for this specialist." };
+      }
+      return executeTool(name, args, executeToolCtx);
+    };
+    const result = await runAssistant([], specialistMessage, {
+      callLLM,
+      executeTool: execTool,
+      systemPromptOverride: `You are the "${specialistId}" specialist. Use only these tools: ${toolNames.join(", ")}. Complete the task and respond with a brief summary.`,
+      feedbackInjection: opts.feedbackInjection,
+      ragContext: opts.ragContext,
+      uiContext: opts.uiContext,
+      studioContext: opts.studioContext,
+      temperature: opts.temperature ?? 0.4,
+      maxTokens: opts.maxTokens ?? 16384,
+    });
+    const summary = (result.content ?? "").trim().slice(0, 600) || (result.toolResults.length > 0 ? "Done." : "No output.");
+    return { summary };
+  };
+
+  const heapResult = await runHeap(priorityOrder, refinedTask, runSpecialist, registry, {
+    traceId,
+    log: (msg, data) => {
+      if (typeof console !== "undefined" && console.info) {
+        console.info(msg, data ?? "");
+      }
+    },
+  });
+
+  return { content: heapResult.summary, toolResults: [], reasoning: undefined, todos: undefined, completedStepIndices: undefined };
+}
+
 export async function POST(request: Request) {
   const payload = await request.json();
   const userMessage = payload.message as string;
@@ -1835,6 +1955,8 @@ export async function POST(request: Request) {
   const conversationTitle = typeof payload.conversationTitle === "string" ? payload.conversationTitle.trim() || undefined : undefined;
   const credentialResponse = payload.credentialResponse as { credentialKey?: string; value?: string; save?: boolean } | undefined;
   const isCredentialReply = credentialResponse && typeof credentialResponse.value === "string" && credentialResponse.value.trim() !== "";
+
+  const useHeapMode = payload.useHeapMode === true;
 
   const continueShellApproval = payload.continueShellApproval as { command?: string; stdout?: string; stderr?: string; exitCode?: number } | undefined;
   const hasContinueShellApproval =
@@ -1993,7 +2115,7 @@ export async function POST(request: Request) {
             payload: null,
             createdAt: Date.now(),
           }).run();
-          enqueueWorkflowRun(() => runWorkflowForRun(runId, { resumeUserResponse: response, vaultKey: vaultKey ?? undefined }));
+          enqueueWorkflowResume({ runId, resumeUserResponse: response });
         }
       }
     }
@@ -2324,32 +2446,50 @@ export async function POST(request: Request) {
           }
           throwIfAborted();
 
-          const result = await runAssistant(history, effectiveMessage, {
-            callLLM: streamTrackingCallLLM,
-            executeTool: (toolName: string, toolArgs: Record<string, unknown>) => executeTool(toolName, toolArgs, { conversationId, vaultKey }),
-            feedbackInjection: feedbackInjection || undefined,
-            ragContext,
-            uiContext: [uiContext, getSystemContext()].filter(Boolean).join("\n\n"),
-            attachedContext: attachedContext || undefined,
-            studioContext,
-            crossChatContext: crossChatContextTrimmed,
-            runWaitingContext: runWaitingContext,
-            chatSelectedLlm: llmConfig ? { id: llmConfig.id, provider: llmConfig.provider, model: llmConfig.model } : undefined,
-            systemPromptOverride,
-            temperature: chatTemperature,
-            maxTokens: CHAT_ASSISTANT_MAX_TOKENS,
-            onProgress: {
-              onPlan(reasoning, todos) {
-                safeEnqueue({ type: "plan", reasoning, todos });
-              },
-              onStepStart(stepIndex, todoLabel, toolName, subStepLabel) {
-                safeEnqueue({ type: "step_start", stepIndex, todoLabel, toolName, ...(subStepLabel != null && { subStepLabel }) });
-              },
-              onToolDone(index) {
-                safeEnqueue({ type: "todo_done", index });
-              },
-            },
-          });
+          const result = useHeapMode
+            ? await runHeapModeTurn({
+                effectiveMessage,
+                callLLM: streamTrackingCallLLM,
+                executeToolCtx: { conversationId, vaultKey },
+                registry: getRegistry(),
+                manager,
+                llmConfig,
+                pushUsage: (r) => usageEntries.push({ response: r }),
+                enqueueTrace: (step) => enqueue({ type: "trace_step", ...step }),
+                feedbackInjection: feedbackInjection || undefined,
+                ragContext,
+                uiContext: [uiContext, getSystemContext()].filter(Boolean).join("\n\n"),
+                studioContext,
+                systemPromptOverride,
+                temperature: chatTemperature,
+                maxTokens: CHAT_ASSISTANT_MAX_TOKENS,
+              })
+            : await runAssistant(history, effectiveMessage, {
+                callLLM: streamTrackingCallLLM,
+                executeTool: (toolName: string, toolArgs: Record<string, unknown>) => executeTool(toolName, toolArgs, { conversationId, vaultKey }),
+                feedbackInjection: feedbackInjection || undefined,
+                ragContext,
+                uiContext: [uiContext, getSystemContext()].filter(Boolean).join("\n\n"),
+                attachedContext: attachedContext || undefined,
+                studioContext,
+                crossChatContext: crossChatContextTrimmed,
+                runWaitingContext: runWaitingContext,
+                chatSelectedLlm: llmConfig ? { id: llmConfig.id, provider: llmConfig.provider, model: llmConfig.model } : undefined,
+                systemPromptOverride,
+                temperature: chatTemperature,
+                maxTokens: CHAT_ASSISTANT_MAX_TOKENS,
+                onProgress: {
+                  onPlan(reasoning, todos) {
+                    safeEnqueue({ type: "plan", reasoning, todos });
+                  },
+                  onStepStart(stepIndex, todoLabel, toolName, subStepLabel) {
+                    safeEnqueue({ type: "step_start", stepIndex, todoLabel, toolName, ...(subStepLabel != null && { subStepLabel }) });
+                  },
+                  onToolDone(index) {
+                    safeEnqueue({ type: "todo_done", index });
+                  },
+                },
+              });
 
           const planToolCall = (result.reasoning || (result.todos && result.todos.length > 0))
             ? {
@@ -2505,21 +2645,38 @@ export async function POST(request: Request) {
       }
     }
 
-    const result = await runAssistant(history, effectiveMessage, {
-      callLLM: trackingCallLLM,
-      executeTool: (toolName: string, toolArgs: Record<string, unknown>) => executeTool(toolName, toolArgs, { conversationId, vaultKey }),
-      feedbackInjection: feedbackInjection || undefined,
-      ragContext,
-      uiContext: [uiContext, getSystemContext()].filter(Boolean).join("\n\n"),
-      attachedContext: attachedContext || undefined,
-      studioContext,
-      crossChatContext: crossChatContextTrimmed,
-      runWaitingContext: runWaitingContext,
-      chatSelectedLlm: llmConfig ? { id: llmConfig.id, provider: llmConfig.provider, model: llmConfig.model } : undefined,
-      systemPromptOverride,
-      temperature: chatTemperature,
-      maxTokens: CHAT_ASSISTANT_MAX_TOKENS,
-    });
+    const result = useHeapMode
+      ? await runHeapModeTurn({
+          effectiveMessage,
+          callLLM: trackingCallLLM,
+          executeToolCtx: { conversationId, vaultKey },
+          registry: getRegistry(),
+          manager,
+          llmConfig,
+          pushUsage: (r) => usageEntries.push({ response: r }),
+          feedbackInjection: feedbackInjection || undefined,
+          ragContext,
+          uiContext: [uiContext, getSystemContext()].filter(Boolean).join("\n\n"),
+          studioContext,
+          systemPromptOverride,
+          temperature: chatTemperature,
+          maxTokens: CHAT_ASSISTANT_MAX_TOKENS,
+        })
+      : await runAssistant(history, effectiveMessage, {
+          callLLM: trackingCallLLM,
+          executeTool: (toolName: string, toolArgs: Record<string, unknown>) => executeTool(toolName, toolArgs, { conversationId, vaultKey }),
+          feedbackInjection: feedbackInjection || undefined,
+          ragContext,
+          uiContext: [uiContext, getSystemContext()].filter(Boolean).join("\n\n"),
+          attachedContext: attachedContext || undefined,
+          studioContext,
+          crossChatContext: crossChatContextTrimmed,
+          runWaitingContext: runWaitingContext,
+          chatSelectedLlm: llmConfig ? { id: llmConfig.id, provider: llmConfig.provider, model: llmConfig.model } : undefined,
+          systemPromptOverride,
+          temperature: chatTemperature,
+          maxTokens: CHAT_ASSISTANT_MAX_TOKENS,
+        });
 
     // Save assistant message to DB (user message already saved above)
     const planToolCall = (result.reasoning || (result.todos && result.todos.length > 0))

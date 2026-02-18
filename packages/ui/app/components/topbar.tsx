@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Search, Sun, Moon, MessageCircle } from "lucide-react";
 import { openChat } from "./chat-wrapper";
+import NotificationsButton from "./notifications-button";
 
 export default function Topbar() {
   const [theme, setTheme] = useState("light");
@@ -30,6 +31,7 @@ export default function Topbar() {
           <Search size={14} />
           <input placeholder="Search..." />
         </div>
+        <NotificationsButton />
         <button type="button" className="icon-button" onClick={() => openChat()} title="Open chat" aria-label="Open chat">
           <MessageCircle size={14} />
         </button>

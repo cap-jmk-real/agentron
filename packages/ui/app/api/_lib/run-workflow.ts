@@ -5,6 +5,7 @@
 import { eq } from "drizzle-orm";
 import {
   WorkflowEngine,
+  SharedContextManager,
   NodeAgentExecutor,
   CodeAgentExecutor,
   createDefaultLLMManager,
@@ -21,6 +22,15 @@ import {
 import type { Workflow, Agent, LLMConfig, Canvas } from "@agentron-studio/core";
 import type { PromptTemplate } from "@agentron-studio/core";
 import type { LLMResponse } from "@agentron-studio/runtime";
+import {
+  enqueueExecutionEvent,
+  getNextPendingEvent,
+  markEventProcessed,
+  getExecutionRunState,
+  setExecutionRunState,
+  updateExecutionRunState,
+  parseRunStateSharedContext,
+} from "./execution-events";
 import {
   db,
   agents,
@@ -48,10 +58,15 @@ import {
   ensureStandardTools,
   ensureAgentFilesDir,
   STANDARD_TOOLS,
+  insertWorkflowMessage,
+  getWorkflowMessages,
 } from "./db";
 import { getContainerManager, withContainerInstallHint } from "./container-manager";
 import { getWorkflowMaxSelfFixRetries, getMaxFileUploadBytes } from "./app-settings";
 import { getStoredCredential, listStoredCredentialKeys } from "./credential-store";
+import { getRunForImprovement } from "./run-for-improvement";
+import { getFeedbackForScope } from "./feedback-for-scope";
+import { createRunNotification } from "./notifications-store";
 import path from "node:path";
 import fs from "node:fs";
 
@@ -403,6 +418,21 @@ async function executeStudioTool(
   isCancelled?: () => Promise<boolean>,
   runId?: string
 ): Promise<unknown> {
+  if (toolId === "get_run_for_improvement") {
+    const arg = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+    const runIdArg = typeof arg.runId === "string" ? arg.runId.trim() : "";
+    if (!runIdArg) return { error: "runId is required" };
+    const includeFullLogs = arg.includeFullLogs === true;
+    return getRunForImprovement(runIdArg, { includeFullLogs });
+  }
+  if (toolId === "get_feedback_for_scope") {
+    const arg = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+    const targetId = typeof arg.targetId === "string" ? arg.targetId.trim() : "";
+    if (!targetId) return { error: "targetId is required" };
+    const label = typeof arg.label === "string" && arg.label.trim() ? (arg.label.trim() as "good" | "bad") : undefined;
+    const limit = typeof arg.limit === "number" && arg.limit > 0 ? arg.limit : undefined;
+    return getFeedbackForScope(targetId, { label, limit });
+  }
   if (toolId === "std-list-vault-credentials") {
     // #region agent log
     if (!vaultKey) fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'run-workflow.ts:std-list-vault-credentials',message:'vault tool called without vaultKey',data:{vaultKeyPresent:false},hypothesisId:'vault_access',timestamp:Date.now()})}).catch(()=>{});
@@ -659,11 +689,57 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
     return response;
   };
 
-  // Normalize edges: canvas uses source/target, engine/handler use from/to
-  const edges = (workflowForEngine.edges ?? []).map((e: { source?: string; target?: string; from?: string; to?: string }) => ({
+  // Normalize edges: canvas uses source/target, engine/handler use from/to; preserve condition for conditional edges
+  const edges = (workflowForEngine.edges ?? []).map((e: { source?: string; target?: string; from?: string; to?: string; condition?: { type: string; value: string } }) => ({
     from: e.source ?? e.from ?? "",
     to: e.target ?? e.to ?? "",
+    condition: e.condition,
   }));
+
+  /** Evaluate edge condition against last output/message (for conditional edges). */
+  function evaluateEdgeCondition(condition: { type: string; value: string } | undefined, lastOutput: unknown): boolean {
+    if (!condition) return true;
+    const content = typeof lastOutput === "string" ? lastOutput : JSON.stringify(lastOutput ?? "");
+    if (condition.type === "message_type") {
+      return content === condition.value || (lastOutput != null && typeof lastOutput === "object" && (lastOutput as Record<string, unknown>).type === condition.value);
+    }
+    if (condition.type === "content_contains") {
+      return content.toLowerCase().includes(condition.value.toLowerCase());
+    }
+    return true;
+  }
+
+  /** Compute next node from workflow graph (with conditional edges and rounds). */
+  function computeNextNodeId(
+    currentNodeId: string,
+    lastOutput: unknown,
+    round: number
+  ): { nextNodeId: string | null; nextRound: number; completed: boolean } {
+    const nodes = workflowForEngine.nodes ?? [];
+    const maxRounds = effectiveMaxRounds != null && effectiveMaxRounds > 0 ? effectiveMaxRounds : null;
+    const startNodeId = nodes[0]?.id ?? null;
+    const hasEdges = edges.length > 0;
+
+    if (hasEdges && startNodeId) {
+      const outgoing = edges.filter((e: { from: string }) => e.from === currentNodeId);
+      const matching = outgoing.filter((e: { condition?: { type: string; value: string } }) => evaluateEdgeCondition(e.condition, lastOutput));
+      const edge = matching[0] ?? outgoing[0];
+      const nextId = edge?.to ?? null;
+      if (nextId && nextId !== startNodeId) return { nextNodeId: nextId, nextRound: round, completed: false };
+      if (nextId === startNodeId) {
+        const nextRound = round + 1;
+        if (maxRounds != null && nextRound >= maxRounds) return { nextNodeId: null, nextRound, completed: true };
+        return { nextNodeId: startNodeId, nextRound, completed: false };
+      }
+      return { nextNodeId: null, nextRound: round, completed: true };
+    }
+
+    const idx = nodes.findIndex((n) => n.id === currentNodeId);
+    if (idx < 0 || idx >= nodes.length - 1) return { nextNodeId: null, nextRound: round, completed: true };
+    return { nextNodeId: nodes[idx + 1].id, nextRound: round, completed: false };
+  }
+
+  const USE_EVENT_DRIVEN_ENGINE = true;
 
   async function buildToolInstructionsBlock(toolIds: string[]): Promise<string> {
     if (toolIds.length === 0) return "";
@@ -712,6 +788,12 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
       const prevNode = prevNodeIndex >= 0 ? (workflowForEngine.nodes ?? [])[prevNodeIndex] : undefined;
       partnerOutput = prevNode ? sharedContext.get(`__output_${prevNode.id}`) : undefined;
       sourceNodeId = prevNode?.id;
+    }
+    // Prefer partner message from persisted workflow_messages when available (message-based communication)
+    const runMsgs = await getWorkflowMessages(runId, 500);
+    if (runMsgs.length > 0 && fromId) {
+      const lastFromNode = [...runMsgs].reverse().find((m) => m.nodeId === fromId && m.role === "agent");
+      if (lastFromNode) partnerOutput = lastFromNode.content;
     }
     const resumeText = options.resumeUserResponse?.trim() ?? "";
     const looksLikeVaultApproval = /use vault|vault credentials|yes.*vault|approve.*vault/i.test(resumeText) && resumeText.length < 120;
@@ -954,6 +1036,11 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
             status: "waiting_for_user",
             output: JSON.stringify(payload),
           }).where(eq(executions.id, runId)).run();
+          try {
+            createRunNotification(runId, "waiting_for_user", { targetType: "workflow", targetId: workflowId });
+          } catch {
+            // ignore
+          }
           throw new Error(WAITING_FOR_USER_MESSAGE);
         }
         const toolContext = {
@@ -1130,6 +1217,13 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
       step.output = output;
       if (toolCallsForStep.length > 0) step.toolCalls = [...toolCallsForStep];
       trail.push(step);
+      await insertWorkflowMessage({
+        executionId: runId,
+        nodeId,
+        agentId,
+        role: "agent",
+        content: typeof output === "string" ? output : JSON.stringify(output ?? ""),
+      });
       await options.onStepComplete?.(trail, output);
       return output;
     } catch (err) {
@@ -1176,13 +1270,181 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
 
   const handlers: Record<string, (nodeId: string, config: Record<string, unknown> | undefined, sharedContext: unknown) => Promise<unknown>> = {
     agent: (nodeId, config, sharedContext) => agentHandler(nodeId, config, sharedContext as { get: (k: string) => unknown; set: (k: string, v: unknown) => void }),
+    wait_for_user: async (nodeId, config) => {
+      const question = (config?.question as string) ?? (config?.message as string) ?? "Please respond to continue.";
+      trail.push({ nodeId, agentId: "", agentName: "Wait for user", order: stepOrder++, input: question, output: undefined, error: undefined, inputIsUserReply: false });
+      await options.onStepComplete?.(trail, undefined);
+      throw new WaitingForUserError(WAITING_FOR_USER_MESSAGE, trail);
+    },
   };
 
   await ensureStandardTools();
   const engine = new WorkflowEngine();
   const initialContext: Record<string, unknown> = { __recent_turns: [], __summary: "" };
   await options.onProgress?.({ message: "Starting workflow…" }, trail);
-  const result = await engine.execute(workflowForEngine, handlers, initialContext);
+
+  let result: { output: unknown; context: Record<string, unknown> };
+
+  if (USE_EVENT_DRIVEN_ENGINE) {
+    const startNodeId = (workflowForEngine.nodes ?? [])[0]?.id;
+    if (!startNodeId) {
+      result = { output: undefined, context: initialContext };
+    } else {
+      let state = await getExecutionRunState(runId);
+      if (state?.trailSnapshot) {
+        const snap = typeof state.trailSnapshot === "string" ? (JSON.parse(state.trailSnapshot) as ExecutionTraceStep[]) : (state.trailSnapshot as ExecutionTraceStep[]);
+        if (Array.isArray(snap)) {
+          trail.length = 0;
+          trail.push(...snap);
+          stepOrder = snap.reduce((m, s) => Math.max(m, (s.order ?? 0) + 1), 0);
+        }
+      }
+      if (options.resumeUserResponse?.trim() && state) {
+        await enqueueExecutionEvent(runId, "UserResponded", { content: options.resumeUserResponse.trim() });
+      }
+      if (!state) {
+        await setExecutionRunState(runId, {
+          workflowId,
+          targetBranchId: branchId ?? null,
+          currentNodeId: startNodeId,
+          round: 0,
+          sharedContext: initialContext,
+          status: "running",
+        });
+        if (!options.resumeUserResponse?.trim()) {
+          await enqueueExecutionEvent(runId, "RunStarted");
+          await enqueueExecutionEvent(runId, "NodeRequested", { nodeId: startNodeId });
+        }
+      }
+
+      async function processOneEvent(event: { id: string; type: string; payload: Record<string, unknown> | null }): Promise<"continue" | "waiting" | "completed"> {
+        if (event.type === "RunStarted") {
+          await markEventProcessed(event.id);
+          return "continue";
+        }
+        if (event.type === "NodeRequested") {
+          const nodeId = (event.payload?.nodeId as string) ?? "";
+          const node = (workflowForEngine.nodes ?? []).find((n) => n.id === nodeId);
+          if (!node) {
+            await markEventProcessed(event.id);
+            return "continue";
+          }
+          state = await getExecutionRunState(runId);
+          if (!state || state.status !== "running") {
+            await markEventProcessed(event.id);
+            return "completed";
+          }
+          const ctx = new SharedContextManager(parseRunStateSharedContext(state) as Record<string, unknown>);
+          const nodeParams = node as { parameters?: Record<string, unknown>; config?: Record<string, unknown> };
+          const config = nodeParams.parameters ?? nodeParams.config ?? {};
+          const handler = handlers[node.type];
+          if (!handler) {
+            await markEventProcessed(event.id);
+            return "continue";
+          }
+          try {
+            const output = await handler(nodeId, config, ctx);
+            const snapshot = ctx.snapshot();
+            snapshot[`__output_${nodeId}`] = output;
+            await setExecutionRunState(runId, {
+              workflowId: state.workflowId,
+              targetBranchId: state.targetBranchId,
+              currentNodeId: nodeId,
+              round: state.round,
+              sharedContext: snapshot,
+              status: "running",
+              trailSnapshot: trail,
+            });
+            await enqueueExecutionEvent(runId, "NodeCompleted", { nodeId, output });
+            await markEventProcessed(event.id);
+            return "continue";
+          } catch (err) {
+            if (err instanceof WaitingForUserError) {
+              await updateExecutionRunState(runId, {
+                status: "waiting_for_user",
+                waitingAtNodeId: nodeId,
+                trailSnapshot: trail,
+              });
+              await markEventProcessed(event.id);
+              return "waiting";
+            }
+            throw err;
+          }
+        }
+        if (event.type === "NodeCompleted") {
+          const nodeId = (event.payload?.nodeId as string) ?? "";
+          const output = event.payload?.output;
+          state = await getExecutionRunState(runId);
+          if (!state) {
+            await markEventProcessed(event.id);
+            return "completed";
+          }
+          const { nextNodeId, nextRound, completed } = computeNextNodeId(nodeId, output, state.round);
+          if (completed) {
+            await updateExecutionRunState(runId, { status: "completed", round: nextRound });
+            await markEventProcessed(event.id);
+            return "completed";
+          }
+          if (nextNodeId) {
+            await updateExecutionRunState(runId, { currentNodeId: nextNodeId, round: nextRound });
+            await enqueueExecutionEvent(runId, "NodeRequested", { nodeId: nextNodeId });
+          }
+          await markEventProcessed(event.id);
+          return "continue";
+        }
+        if (event.type === "UserResponded") {
+          const content = (event.payload?.content as string) ?? "";
+          state = await getExecutionRunState(runId);
+          if (!state || !state.waitingAtNodeId) {
+            await markEventProcessed(event.id);
+            return "completed";
+          }
+          const waitingNodeId = state.waitingAtNodeId;
+          const ctx = parseRunStateSharedContext(state) as Record<string, unknown>;
+          ctx.__user_response = content;
+          const { nextNodeId } = computeNextNodeId(waitingNodeId, content, state.round);
+          await setExecutionRunState(runId, {
+            workflowId: state.workflowId,
+            targetBranchId: state.targetBranchId,
+            currentNodeId: state.currentNodeId,
+            round: state.round,
+            sharedContext: ctx,
+            status: "running",
+            waitingAtNodeId: null,
+          });
+          if (nextNodeId) await enqueueExecutionEvent(runId, "NodeRequested", { nodeId: nextNodeId });
+          await markEventProcessed(event.id);
+          return "continue";
+        }
+        await markEventProcessed(event.id);
+        return "continue";
+      }
+
+      while (true) {
+        const event = await getNextPendingEvent(runId);
+        if (!event) {
+          const s = await getExecutionRunState(runId);
+          if (s?.status === "running") await updateExecutionRunState(runId, { status: "completed" });
+          break;
+        }
+        if (options.isCancelled && (await options.isCancelled())) throw new Error(RUN_CANCELLED_MESSAGE);
+        const outcome = await processOneEvent(event);
+        if (outcome === "waiting") {
+          throw new WaitingForUserError(WAITING_FOR_USER_MESSAGE, trail);
+        }
+        if (outcome === "completed") break;
+      }
+
+      state = await getExecutionRunState(runId);
+      const ctx = state ? parseRunStateSharedContext(state) : initialContext;
+      const nodes = workflowForEngine.nodes ?? [];
+      const lastNodeId = state?.currentNodeId ?? nodes[nodes.length - 1]?.id;
+      const output = lastNodeId && ctx ? (ctx[`__output_${lastNodeId}`] as unknown) : undefined;
+      result = { output: output ?? ctx?.output, context: ctx ?? initialContext };
+    }
+  } else {
+    result = await engine.execute(workflowForEngine, handlers, initialContext);
+  }
 
   for (const entry of usageEntries) {
     const usage = entry.response.usage;
@@ -1308,6 +1570,11 @@ export async function runWorkflowForRun(
       finishedAt: Date.now(),
       output: JSON.stringify(payload),
     }).where(eq(executions.id, runId)).run();
+    try {
+      createRunNotification(runId, "completed", { targetType: "workflow", targetId: workflowId });
+    } catch {
+      // ignore
+    }
   } catch (err) {
     const rawMessage = err instanceof Error ? err.message : String(err);
     if (rawMessage === WAITING_FOR_USER_MESSAGE || err instanceof WaitingForUserError) {
@@ -1335,6 +1602,93 @@ export async function runWorkflowForRun(
         finishedAt: Date.now(),
         output: JSON.stringify(payload),
       }).where(eq(executions.id, runId)).run();
+      try {
+        createRunNotification(runId, "failed", { targetType: "workflow", targetId: workflowId });
+      } catch {
+        // ignore
+      }
     }
+  }
+}
+
+/**
+ * Run a workflow and update the execution row (used by execute route and by queue worker).
+ * Caller must have already created the execution row with status "running".
+ */
+export async function runWorkflowAndUpdateExecution(params: {
+  runId: string;
+  workflowId: string;
+  branchId?: string;
+  vaultKey?: Buffer | null;
+  maxSelfFixRetries?: number;
+}): Promise<void> {
+  const { runId, workflowId, branchId, vaultKey, maxSelfFixRetries } = params;
+  const onStepComplete = async (
+    trail: Array<{ order: number; round?: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string }>,
+    lastOutput: unknown
+  ) => {
+    const payload = executionOutputSuccess(lastOutput ?? undefined, trail);
+    await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
+  };
+  const onProgress = async (
+    state: { message: string; toolId?: string },
+    currentTrail: Array<{ order: number; round?: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string }>
+  ) => {
+    const payload = executionOutputSuccess(undefined, currentTrail.length > 0 ? currentTrail : undefined, state.message);
+    await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
+  };
+  const isCancelled = async () => {
+    const rows = await db.select({ status: executions.status }).from(executions).where(eq(executions.id, runId));
+    return rows[0]?.status === "cancelled";
+  };
+  const onContainerStream = (executionId: string, chunk: { stdout?: string; stderr?: string; meta?: string }) => {
+    if (chunk.stdout) {
+      void db.insert(runLogs).values({ id: crypto.randomUUID(), executionId, level: "stdout", message: chunk.stdout, payload: null, createdAt: Date.now() }).run();
+    }
+    if (chunk.stderr) {
+      void db.insert(runLogs).values({ id: crypto.randomUUID(), executionId, level: "stderr", message: chunk.stderr, payload: null, createdAt: Date.now() }).run();
+    }
+    if (chunk.meta) {
+      void db.insert(runLogs).values({ id: crypto.randomUUID(), executionId, level: "meta", message: chunk.meta, payload: null, createdAt: Date.now() }).run();
+    }
+  };
+  try {
+    const { output, context, trail } = await runWorkflow({
+      workflowId,
+      runId,
+      branchId,
+      vaultKey: vaultKey ?? undefined,
+      onStepComplete,
+      onProgress,
+      isCancelled,
+      onContainerStream,
+      maxSelfFixRetries: maxSelfFixRetries ?? getWorkflowMaxSelfFixRetries(),
+    });
+    const payload = executionOutputSuccess(output ?? context, trail);
+    await db.update(executions).set({ status: "completed", finishedAt: Date.now(), output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
+  } catch (err) {
+    const rawMessage = err instanceof Error ? err.message : String(err);
+    if (rawMessage === WAITING_FOR_USER_MESSAGE) {
+      if (err instanceof WaitingForUserError && err.trail.length > 0) {
+        try {
+          const runRows = await db.select({ output: executions.output }).from(executions).where(eq(executions.id, runId));
+          const raw = runRows[0]?.output;
+          const parsed = raw == null ? {} : (typeof raw === "string" ? JSON.parse(raw) as Record<string, unknown> : raw as Record<string, unknown>);
+          await db.update(executions).set({ output: JSON.stringify({ ...parsed, trail: err.trail }) }).where(eq(executions.id, runId)).run();
+        } catch {
+          // ignore
+        }
+      }
+      return;
+    }
+    await destroyContainerSession(runId);
+    if (rawMessage === RUN_CANCELLED_MESSAGE) {
+      await db.update(executions).set({ status: "cancelled", finishedAt: Date.now() }).where(eq(executions.id, runId)).run();
+    } else {
+      const message = withContainerInstallHint(rawMessage);
+      const payload = executionOutputFailure(message, { message, stack: err instanceof Error ? err.stack : undefined });
+      await db.update(executions).set({ status: "failed", finishedAt: Date.now(), output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
+    }
+    throw err;
   }
 }

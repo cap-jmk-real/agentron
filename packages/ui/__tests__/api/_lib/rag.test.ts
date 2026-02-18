@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { GET as encListGet, POST as encPost } from "../../../app/api/rag/encoding-config/route";
 import { GET as storeListGet, POST as storePost } from "../../../app/api/rag/document-store/route";
 import { POST as collPost } from "../../../app/api/rag/collections/route";
+import { embed } from "../../../app/api/_lib/embeddings";
 
 vi.mock("../../../app/api/_lib/embeddings", () => ({
   embed: vi.fn().mockResolvedValue([[0.1, 0.1, 0.1]]),
@@ -175,6 +176,30 @@ describe("rag", () => {
     it("respects limit", async () => {
       const chunks = await retrieveChunks(collectionId, "query", 1);
       expect(chunks.length).toBe(1);
+    });
+
+    it("returns empty array when embed returns no vector", async () => {
+      vi.mocked(embed).mockResolvedValueOnce([]);
+      const chunks = await retrieveChunks(collectionId, "query", 5);
+      expect(chunks).toEqual([]);
+    });
+
+    it("skips vectors with invalid JSON embedding", async () => {
+      await db
+        .insert(ragVectors)
+        .values({
+          id: crypto.randomUUID(),
+          collectionId,
+          documentId: "doc-invalid",
+          chunkIndex: 0,
+          text: "invalid embedding row",
+          embedding: "not-valid-json",
+          createdAt: Date.now(),
+        })
+        .run();
+      const chunks = await retrieveChunks(collectionId, "query", 10);
+      expect(chunks.every((c) => c.text !== "invalid embedding row")).toBe(true);
+      expect(chunks.length).toBeGreaterThanOrEqual(2);
     });
   });
 });

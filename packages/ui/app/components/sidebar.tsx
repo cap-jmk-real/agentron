@@ -149,6 +149,7 @@ const sections: NavSection[] = [
       { label: "Knowledge", href: "/knowledge", icon: icons.knowledge },
       { label: "Statistics", href: "/stats", icon: icons.stats },
       { label: "Runs", href: "/runs", icon: icons.runs },
+      { label: "Queues", href: "/queues", icon: icons.queue },
       { label: "Sandboxes", href: "/sandboxes", icon: icons.container },
       { label: "Request queue", href: "/requests", icon: icons.queue },
     ],

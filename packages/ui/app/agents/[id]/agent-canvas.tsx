@@ -570,8 +570,11 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
   const onSaveToolToLibraryRef = useRef(typeof onSaveToolToLibrary === "function" ? onSaveToolToLibrary : undefined);
   const isDraggingRef = useRef(false);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  llmConfigsRef.current = llmConfigs;
-  onSaveToolToLibraryRef.current = typeof onSaveToolToLibrary === "function" ? onSaveToolToLibrary : undefined;
+
+  useEffect(() => {
+    llmConfigsRef.current = llmConfigs;
+    onSaveToolToLibraryRef.current = typeof onSaveToolToLibrary === "function" ? onSaveToolToLibrary : undefined;
+  }, [llmConfigs, onSaveToolToLibrary]);
 
   // #region agent log
   useEffect(() => {
@@ -768,6 +771,7 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
   );
 
   const initialNodes = useMemo(
+    // eslint-disable-next-line react-hooks/refs -- we pass props (llmConfigs, onSaveToolToLibrary), not refs; refs are only for sync effect
     () => nodes.map((n, i) => toFlowNode(n, i, tools, nodes, edges, onConfigChange, onRemove, onSaveToolToLibrary, llmConfigs)),
     [nodes, edges, tools, llmConfigs, onConfigChange, onRemove, onSaveToolToLibrary]
   );
@@ -775,7 +779,10 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
 
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(initialNodes);
   const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState(initialEdges);
-  setFlowNodesRef.current = setFlowNodes;
+
+  useEffect(() => {
+    setFlowNodesRef.current = setFlowNodes;
+  }, [setFlowNodes]);
 
   /* Sync props → flow state only when structure changes (add/remove/move), not when only config changes (e.g. dropdown). Refs for llmConfigs/onSaveToolToLibrary avoid effect loop from unstable parent refs. Skip sync while user is dragging to prevent flicker. */
   useEffect(() => {

@@ -13,6 +13,7 @@ import {
   Trash2,
   ExternalLink,
   GitBranch,
+  Bot,
   Settings2,
   Copy,
   Check,
@@ -417,7 +418,7 @@ function ChatSectionMessageRow({
                     : [];
                   // #region agent log
                   if (msg.role === "assistant" && isLast && !loading && /choose|option|please pick/i.test(displayState.displayContent)) {
-                    fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ location: "chat-section.tsx:options-skip", message: "Options block skipped or rendered", data: { wouldShowOptions, hasAskUserWaiting: displayState.hasAskUserWaiting, optsFromTextCount: optsFromText.length, optsFromTextPreview: optsFromText.slice(0, 5).map((o) => o.label) }, timestamp: Date.now(), hypothesisId: "H3-H5" }) }).catch(() => {});
+                    queueMicrotask(() => fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ location: "chat-section.tsx:options-skip", message: "Options block skipped or rendered", data: { wouldShowOptions, hasAskUserWaiting: displayState.hasAskUserWaiting, optsFromTextCount: optsFromText.length, optsFromTextPreview: optsFromText.slice(0, 5).map((o) => o.label) }, timestamp: Date.now(), hypothesisId: "H3-H5" }) }).catch(() => {}));
                   }
                   // #endregion
                   return wouldShowOptions && (() => {
@@ -425,7 +426,7 @@ function ChatSectionMessageRow({
                     ? msg.interactivePrompt.options.map((s) => ({ value: s, label: s }))
                     : getSuggestedOptionsFromToolResults(list, displayState.displayContent || "");
                   // #region agent log
-                  fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ location: "chat-section.tsx:inline-options", message: "Options block rendering", data: { hasAskUserWaiting: displayState.hasAskUserWaiting, isLast, loading, optsCount: opts.length, optsPreview: opts.slice(0, 5).map((o) => o.label) }, timestamp: Date.now(), hypothesisId: "H4" }) }).catch(() => {});
+                  queueMicrotask(() => fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ location: "chat-section.tsx:inline-options", message: "Options block rendering", data: { hasAskUserWaiting: displayState.hasAskUserWaiting, isLast, loading, optsCount: opts.length, optsPreview: opts.slice(0, 5).map((o) => o.label) }, timestamp: Date.now(), hypothesisId: "H4" }) }).catch(() => {}));
                   // #endregion
                   if (opts.length === 0) return null;
                   const sendingForThisMsg = optionSending?.messageId === msg.id;
@@ -516,6 +517,7 @@ export default function ChatSection({ onOpenSettings }: Props) {
   const [feedbackByContentKey, setFeedbackByContentKey] = useState<Record<string, "good" | "bad">>({});
   const [providers, setProviders] = useState<LlmProvider[]>([]);
   const [providerId, setProviderId] = useState("");
+  const [chatMode, setChatMode] = useState<"traditional" | "heap">("traditional");
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [collapsedStepsByMsg, setCollapsedStepsByMsg] = useState<Record<string, boolean>>({});
   const [runFinishedNotification, setRunFinishedNotification] = useState<{ runId: string; status: string } | null>(null);
@@ -529,6 +531,7 @@ export default function ChatSection({ onOpenSettings }: Props) {
   const [optionSending, setOptionSending] = useState<{ messageId: string; label: string } | null>(null);
 
   const CHAT_DEFAULT_PROVIDER_KEY = "chat-default-provider-id";
+  const CHAT_MODE_KEY = "chat-mode";
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1007,6 +1010,24 @@ export default function ChatSection({ onOpenSettings }: Props) {
     if (typeof localStorage !== "undefined" && value) localStorage.setItem(CHAT_DEFAULT_PROVIDER_KEY, value);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const s = localStorage.getItem(CHAT_MODE_KEY);
+      if (s === "heap") setChatMode("heap");
+    } catch {
+      // ignore
+    }
+  }, []);
+  const handleChatModeChange = useCallback((mode: "traditional" | "heap") => {
+    setChatMode(mode);
+    try {
+      localStorage.setItem(CHAT_MODE_KEY, mode);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const lastMsg = messages[messages.length - 1];
   const lastTraceSteps = lastMsg?.role === "assistant" ? lastMsg.traceSteps : undefined;
   // Clear option-sending state when request finishes so buttons are clickable again
@@ -1086,7 +1107,7 @@ export default function ChatSection({ onOpenSettings }: Props) {
       randomId,
       normalizeToolResults,
       buildBody: (base) => base,
-      extraBody: { ...(replyToRunId && { runId: replyToRunId }), ...extraBody },
+      extraBody: { ...(replyToRunId && { runId: replyToRunId }), useHeapMode: chatMode === "heap", ...extraBody },
       onRunFinished: (runId, status, details) => {
         if (status === "waiting_for_user") {
           setRunFinishedNotification({ runId, status });
@@ -1142,7 +1163,7 @@ export default function ChatSection({ onOpenSettings }: Props) {
       onInputRestore: (t) => setInput(t),
     });
     abortRef.current = null;
-  }, [input, loading, messages, providerId, conversationId, pathname, replyToRunId, fetchRunWaiting, runWaitingData]);
+  }, [input, loading, messages, providerId, conversationId, pathname, replyToRunId, fetchRunWaiting, runWaitingData, chatMode]);
 
   const handleShellCommandApprove = useCallback(async (command: string) => {
     if (shellCommandLoading || loading) return;
@@ -1307,21 +1328,6 @@ export default function ChatSection({ onOpenSettings }: Props) {
             </button>
           )}
           <span className="chat-section-brand">Agentron</span>
-          <select
-            className="chat-section-model-select"
-            value={providerId}
-            onChange={handleProviderChange}
-            title="Select model"
-          >
-            <option value="">Select model…</option>
-            {[...providers]
-              .sort((a, b) => a.model.localeCompare(b.model, undefined, { sensitivity: "base" }) || a.provider.localeCompare(b.provider))
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.model} ({p.provider})
-                </option>
-              ))}
-          </select>
         </header>
 
         <div className="chat-section-messages" ref={scrollRef}>
@@ -1432,6 +1438,44 @@ export default function ChatSection({ onOpenSettings }: Props) {
             </button>
           </div>
         )}
+        <div className="chat-section-input-options">
+          <select
+            className="chat-section-model-select"
+            value={providerId}
+            onChange={handleProviderChange}
+            title="Select model"
+            aria-label="Model"
+          >
+            <option value="">Select model…</option>
+            {[...providers]
+              .sort((a, b) => a.model.localeCompare(b.model, undefined, { sensitivity: "base" }) || a.provider.localeCompare(b.provider))
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.model} ({p.provider})
+                </option>
+              ))}
+          </select>
+          <div className="chat-section-mode-segments" role="group" aria-label="Mode">
+            <button
+              type="button"
+              className={`chat-section-mode-segment${chatMode === "traditional" ? " chat-section-mode-segment-active" : ""}`}
+              onClick={() => handleChatModeChange("traditional")}
+              title="Traditional: single assistant"
+            >
+              <Bot size={14} aria-hidden />
+              <span>Traditional</span>
+            </button>
+            <button
+              type="button"
+              className={`chat-section-mode-segment${chatMode === "heap" ? " chat-section-mode-segment-active" : ""}`}
+              onClick={() => handleChatModeChange("heap")}
+              title="Heap: multi-agent (router + specialists)"
+            >
+              <GitBranch size={14} aria-hidden />
+              <span>Heap</span>
+            </button>
+          </div>
+        </div>
         <div className="chat-section-input-wrap">
           <div className="chat-section-input-inner">
             <textarea

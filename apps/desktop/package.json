@@ -28,6 +28,9 @@
   },
   "devDependencies": {
     "@electron/rebuild": "latest",
+    "@next/swc-darwin-arm64": "^16.1.6",
+    "@rollup/rollup-darwin-arm64": "4.57.1",
+    "@rollup/rollup-darwin-x64": "4.57.1",
     "electron": "40.2.1",
     "electron-builder": "26.7.0",
     "esbuild": "0.24.0",

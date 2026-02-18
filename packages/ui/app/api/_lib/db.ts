@@ -1,6 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
-import { eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { createSqliteAdapter } from "@agentron-studio/core";
 import { appendLogLine } from "./api-logger";
 import {
@@ -33,6 +33,11 @@ import {
   trainingRuns,
   runLogs,
   reminders,
+  workflowMessages,
+  executionEvents,
+  executionRunState,
+  workflowQueue,
+  conversationLocks,
 } from "@agentron-studio/core";
 import type {
   Agent,
@@ -130,6 +135,11 @@ export {
   trainingRuns,
   runLogs,
   reminders,
+  workflowMessages,
+  executionEvents,
+  executionRunState,
+  workflowQueue,
+  conversationLocks,
 };
 
 export type ReminderTaskType = "message" | "assistant_task";
@@ -311,6 +321,62 @@ export const fromExecutionRow = (row: typeof executions.$inferSelect) => ({
   finishedAt: row.finishedAt,
   output: parseJson(row.output)
 });
+
+export type WorkflowMessageRow = {
+  id: string;
+  executionId: string;
+  nodeId?: string | null;
+  agentId?: string | null;
+  role: "agent" | "user" | "system";
+  content: string;
+  messageType?: string | null;
+  metadata?: string | null;
+  createdAt: number;
+};
+
+/** Append a workflow/execution message (agent turn or user response). */
+export async function insertWorkflowMessage(msg: {
+  id?: string;
+  executionId: string;
+  nodeId?: string;
+  agentId?: string;
+  role: "agent" | "user" | "system";
+  content: string;
+  messageType?: string;
+  metadata?: string;
+}): Promise<void> {
+  const id = msg.id ?? crypto.randomUUID();
+  await db.insert(workflowMessages).values({
+    id,
+    executionId: msg.executionId,
+    nodeId: msg.nodeId ?? null,
+    agentId: msg.agentId ?? null,
+    role: msg.role,
+    content: msg.content,
+    messageType: msg.messageType ?? null,
+    metadata: msg.metadata ?? null,
+    createdAt: Date.now(),
+  }).run();
+}
+
+/** Load workflow messages for a run (chronological order, optional limit = last N). */
+export async function getWorkflowMessages(executionId: string, limit?: number): Promise<WorkflowMessageRow[]> {
+  if (typeof limit === "number" && limit > 0) {
+    const rows = await db
+      .select()
+      .from(workflowMessages)
+      .where(eq(workflowMessages.executionId, executionId))
+      .orderBy(desc(workflowMessages.createdAt))
+      .limit(limit);
+    return (rows as WorkflowMessageRow[]).reverse();
+  }
+  const rows = await db
+    .select()
+    .from(workflowMessages)
+    .where(eq(workflowMessages.executionId, executionId))
+    .orderBy(asc(workflowMessages.createdAt));
+  return rows as WorkflowMessageRow[];
+}
 
 /** Payload for execution output on success (workflow/agent run). */
 export function executionOutputSuccess(
@@ -746,6 +812,16 @@ export const STANDARD_TOOLS: { id: string; name: string; description?: string }[
     name: "Get vault credential",
     description: "Workflow only; user must approve vault. Returns { value: \"the actual secret\" }. Use that value in std-browser-automation fill. Never type placeholders into forms (e.g. {{vault.xxx}}) — call this tool and use result.value.",
   },
+  {
+    id: "get_run_for_improvement",
+    name: "Get run for improvement",
+    description: "Load a run with bounded context for improving an agent (trail summary + recent errors). Use runId from the improvement context. First call without includeFullLogs; only pass includeFullLogs: true if the summary is insufficient to fix the failure.",
+  },
+  {
+    id: "get_feedback_for_scope",
+    name: "Get feedback for scope",
+    description: "List recent feedback for a target (agent/workflow) as short rows: notes, input/output summaries. Use when improving from past feedback. Use targetId (agent or workflow id), optional label (good/bad), and limit (default 20, max 50).",
+  },
 ];
 
 /** Ensures default/built-in tools exist in the DB so they appear in the Tools list. */
@@ -830,6 +906,23 @@ export async function ensureStandardTools(): Promise<void> {
     properties: {},
     required: [],
   };
+  const getFeedbackForScopeInputSchema = {
+    type: "object",
+    properties: {
+      targetId: { type: "string", description: "Target id (agent or workflow) to load feedback for" },
+      label: { type: "string", description: "Optional feedback label to filter by (e.g. good, bad)" },
+      limit: { type: "number", description: "Max number of feedback rows (default 20, max 50)" },
+    },
+    required: ["targetId"],
+  };
+  const getRunForImprovementInputSchema = {
+    type: "object",
+    properties: {
+      runId: { type: "string", description: "Run/execution ID to load for improvement" },
+      includeFullLogs: { type: "boolean", description: "If true, return full trail and run_logs. Default false (bounded summary + recent errors). Only set true when the summary is insufficient." },
+    },
+    required: ["runId"],
+  };
 
   for (const t of STANDARD_TOOLS) {
     const isContainerRun = t.id === "std-container-run";
@@ -841,6 +934,8 @@ export async function ensureStandardTools(): Promise<void> {
     const isBrowserAutomation = t.id === "std-browser-automation";
     const isGetVaultCredential = t.id === "std-get-vault-credential";
     const isListVaultCredentials = t.id === "std-list-vault-credentials";
+    const isGetRunForImprovement = t.id === "get_run_for_improvement";
+    const isGetFeedbackForScope = t.id === "get_feedback_for_scope";
     const configJson = t.description ? JSON.stringify({ description: t.description }) : "{}";
     if (!existingIds.has(t.id)) {
       await db
@@ -850,7 +945,30 @@ export async function ensureStandardTools(): Promise<void> {
           name: t.name,
           protocol: "native",
           config: configJson,
-          inputSchema: isContainerRun ? JSON.stringify(stdContainerRunInputSchema) : isWebSearch ? JSON.stringify(stdWebSearchInputSchema) : isRequestUserHelp ? JSON.stringify(stdRequestUserHelpInputSchema) : isContainerSession ? JSON.stringify(stdContainerSessionInputSchema) : isContainerBuild ? JSON.stringify(stdContainerBuildInputSchema) : isWriteFile ? JSON.stringify(stdWriteFileInputSchema) : isBrowserAutomation ? JSON.stringify(stdBrowserAutomationInputSchema) : isGetVaultCredential ? JSON.stringify(stdGetVaultCredentialInputSchema) : isListVaultCredentials ? JSON.stringify(stdListVaultCredentialsInputSchema) : null,
+          inputSchema:
+            isContainerRun
+              ? JSON.stringify(stdContainerRunInputSchema)
+              : isWebSearch
+                ? JSON.stringify(stdWebSearchInputSchema)
+                : isRequestUserHelp
+                  ? JSON.stringify(stdRequestUserHelpInputSchema)
+                  : isContainerSession
+                    ? JSON.stringify(stdContainerSessionInputSchema)
+                    : isContainerBuild
+                      ? JSON.stringify(stdContainerBuildInputSchema)
+                      : isWriteFile
+                        ? JSON.stringify(stdWriteFileInputSchema)
+                        : isBrowserAutomation
+                          ? JSON.stringify(stdBrowserAutomationInputSchema)
+                          : isGetVaultCredential
+                            ? JSON.stringify(stdGetVaultCredentialInputSchema)
+                            : isListVaultCredentials
+                              ? JSON.stringify(stdListVaultCredentialsInputSchema)
+                              : isGetRunForImprovement
+                                ? JSON.stringify(getRunForImprovementInputSchema)
+                                : isGetFeedbackForScope
+                                  ? JSON.stringify(getFeedbackForScopeInputSchema)
+                                  : null,
           outputSchema: null,
         })
         .run();

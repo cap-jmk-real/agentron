@@ -1,5 +1,6 @@
 import { json } from "../../_lib/response";
 import { db, executions, runLogs, workflows, agents, fromExecutionRow } from "../../_lib/db";
+import { createRunNotification } from "../../_lib/notifications-store";
 import { eq, asc } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
@@ -47,6 +48,18 @@ export async function PATCH(request: Request, { params }: Params) {
     return json(fromExecutionRow(rows[0]));
   }
   await db.update(executions).set(updates as Record<string, unknown>).where(eq(executions.id, id)).run();
+  const runStatus = body.status as string | undefined;
+  if (runStatus === "completed" || runStatus === "failed" || runStatus === "waiting_for_user") {
+    const row = rows[0];
+    try {
+      createRunNotification(id, runStatus, {
+        targetType: row.targetType,
+        targetId: row.targetId,
+      });
+    } catch {
+      // ignore notification errors
+    }
+  }
   const updated = await db.select().from(executions).where(eq(executions.id, id));
   return json(fromExecutionRow(updated[0]));
 }

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Send, ThumbsUp, ThumbsDown, Loader, Loader2, Minus, Copy, Check, Circle, CircleDot, Square, MessageSquarePlus, List, Star, Trash2, ExternalLink, GitBranch, Settings2, KeyRound, Lock, Unlock, RotateCw } from "lucide-react";
+import { Send, ThumbsUp, ThumbsDown, Loader, Loader2, Minus, Copy, Check, Circle, CircleDot, Square, MessageSquarePlus, List, Star, Trash2, ExternalLink, GitBranch, Bot, Settings2, KeyRound, Lock, Unlock, RotateCw } from "lucide-react";
 import { ChatMessageContent, ChatMessageResourceLinks, ChatToolResults, getAgentRequestFromToolResults, getAssistantMessageDisplayContent, getLoadingStatus, getMessageDisplayState, getSuggestedOptions, getSuggestedOptionsFromToolResults, hasAskUserWaitingForInput, messageContentIndicatesSuccess, messageHasSuccessfulToolResults, normalizeToolResults, ReasoningContent } from "./chat-message-content";
 import { performChatStreamSend } from "../hooks/useChatStream";
 import { useMinimumStepsDisplayTime, MIN_STEPS_DISPLAY_MS } from "../hooks/useMinimumStepsDisplayTime";
@@ -473,6 +473,7 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [providers, setProviders] = useState<LlmProvider[]>([]);
   const [providerId, setProviderId] = useState<string>("");
+  const [chatMode, setChatMode] = useState<"traditional" | "heap">("traditional");
   const [credentialInput, setCredentialInput] = useState("");
   const [credentialSave, setCredentialSave] = useState(false);
   const [vaultLocked, setVaultLocked] = useState(true);
@@ -490,6 +491,7 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
   /** When set, an option was just clicked for this message; show loading on that option and disable others until send completes. */
   const [optionSending, setOptionSending] = useState<{ messageId: string; label: string } | null>(null);
   const CHAT_DEFAULT_PROVIDER_KEY = "chat-default-provider-id";
+  const CHAT_MODE_KEY = "chat-mode";
   const scrollRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -1007,6 +1009,24 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
     if (typeof localStorage !== "undefined" && value) localStorage.setItem(CHAT_DEFAULT_PROVIDER_KEY, value);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const s = localStorage.getItem(CHAT_MODE_KEY);
+      if (s === "heap") setChatMode("heap");
+    } catch {
+      // ignore
+    }
+  }, []);
+  const handleChatModeChange = useCallback((mode: "traditional" | "heap") => {
+    setChatMode(mode);
+    try {
+      localStorage.setItem(CHAT_MODE_KEY, mode);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const lastMsg = messages[messages.length - 1];
   const lastTraceSteps = lastMsg?.role === "assistant" ? lastMsg.traceSteps : undefined;
   // Clear option-sending state when request finishes so buttons are clickable again
@@ -1099,6 +1119,7 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
         body.attachedContext = attachedContext;
         clearAttachedContext?.();
       }
+      body.useHeapMode = chatMode === "heap";
       return body;
     };
 
@@ -1363,21 +1384,6 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
             <div className="chat-header-dot" />
             <span>Agentron</span>
           </div>
-          <select
-            className="chat-provider-select"
-            value={providerId}
-            onChange={handleProviderChange}
-            title="Select an LLM provider (required)"
-          >
-            <option value="">Select a provider…</option>
-            {[...providers]
-              .sort((a, b) => a.model.localeCompare(b.model, undefined, { sensitivity: "base" }) || a.provider.localeCompare(b.provider))
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.model} ({p.provider})
-                </option>
-              ))}
-          </select>
           {!embedded && (
             <button className="chat-header-btn chat-header-minimize" onClick={onClose} title="Minimize">
               <Minus size={14} />
@@ -1568,6 +1574,45 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
             No model selected. <a href="/settings/llm" className="chat-settings-link">Add an LLM provider in Settings</a> to send messages.
           </div>
         )}
+        {/* Model + Mode options */}
+        <div className="chat-input-options">
+          <select
+            className="chat-provider-select"
+            value={providerId}
+            onChange={handleProviderChange}
+            title="Select model"
+            aria-label="Model"
+          >
+            <option value="">Select model…</option>
+            {[...providers]
+              .sort((a, b) => a.model.localeCompare(b.model, undefined, { sensitivity: "base" }) || a.provider.localeCompare(b.provider))
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.model} ({p.provider})
+                </option>
+              ))}
+          </select>
+          <div className="chat-mode-segments" role="group" aria-label="Mode">
+            <button
+              type="button"
+              className={`chat-mode-segment${chatMode === "traditional" ? " chat-mode-segment-active" : ""}`}
+              onClick={() => handleChatModeChange("traditional")}
+              title="Traditional: single assistant"
+            >
+              <Bot size={14} aria-hidden />
+              <span>Traditional</span>
+            </button>
+            <button
+              type="button"
+              className={`chat-mode-segment${chatMode === "heap" ? " chat-mode-segment-active" : ""}`}
+              onClick={() => handleChatModeChange("heap")}
+              title="Heap: multi-agent (router + specialists)"
+            >
+              <GitBranch size={14} aria-hidden />
+              <span>Heap</span>
+            </button>
+          </div>
+        </div>
         {/* Input */}
         <div className="chat-input-bar">
           <textarea

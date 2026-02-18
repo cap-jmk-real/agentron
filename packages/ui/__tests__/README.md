@@ -2,8 +2,8 @@
 
 ## Running tests
 
-- **Run all tests:** `npm run test` (from `packages/ui`) or `npm run test --workspace packages/ui` (from repo root).
-- **Run with coverage:** `npm run test:coverage` (from `packages/ui`) or `npm run test:coverage --workspace packages/ui` (from repo root).
+- **Run all tests:** `npm run test` or `pnpm test` (from repo root), or `npm run test` from `packages/ui`.
+- **Run with coverage:** `npm run test:coverage` or `pnpm run test:coverage` (from repo root), or `npm run test:coverage` from `packages/ui`.
 - **Coverage report:** After `test:coverage`, open `packages/ui/coverage/index.html` for a line-by-line report.
 
 Tests run in **parallel** (multiple Vitest workers). Each worker gets its own SQLite DB and data dir via `vitest.setup.ts` (using `VITEST_POOL_ID`), so tests that mutate or reset the DB don’t affect other workers.

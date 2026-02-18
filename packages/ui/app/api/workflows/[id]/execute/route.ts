@@ -3,7 +3,7 @@ import { db, executions, runLogs, toExecutionRow, fromExecutionRow } from "../..
 import { executionOutputSuccess, executionOutputFailure } from "../../../_lib/db";
 import { runWorkflow, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE, WaitingForUserError } from "../../../_lib/run-workflow";
 import { withContainerInstallHint } from "../../../_lib/container-manager";
-import { enqueueWorkflowRun } from "../../../_lib/workflow-queue";
+import { enqueueWorkflowStart, waitForJob } from "../../../_lib/workflow-queue";
 import { getAppSettings } from "../../../_lib/app-settings";
 import { getVaultKeyFromRequest } from "../../../_lib/vault";
 import { eq } from "drizzle-orm";
@@ -43,62 +43,8 @@ export async function POST(request: Request, { params }: Params) {
   // #endregion
 
   try {
-    await enqueueWorkflowRun(async () => {
-      const onStepComplete = async (trail: Array<{ order: number; round?: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string }>, lastOutput: unknown) => {
-        const payload = executionOutputSuccess(lastOutput ?? undefined, trail);
-        await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
-      };
-      const onProgress = async (
-        state: { message: string; toolId?: string },
-        currentTrail: Array<{ order: number; round?: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string }>
-      ) => {
-        const payload = executionOutputSuccess(undefined, currentTrail.length > 0 ? currentTrail : undefined, state.message);
-        await db.update(executions).set({ output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
-      };
-      const isCancelled = async () => {
-        const rows = await db.select({ status: executions.status }).from(executions).where(eq(executions.id, runId));
-        return rows[0]?.status === "cancelled";
-      };
-      const onContainerStream = (executionId: string, chunk: { stdout?: string; stderr?: string; meta?: string }) => {
-        if (chunk.stdout) {
-          void db.insert(runLogs).values({
-            id: crypto.randomUUID(),
-            executionId,
-            level: "stdout",
-            message: chunk.stdout,
-            payload: null,
-            createdAt: Date.now(),
-          }).run();
-        }
-        if (chunk.stderr) {
-          void db.insert(runLogs).values({
-            id: crypto.randomUUID(),
-            executionId,
-            level: "stderr",
-            message: chunk.stderr,
-            payload: null,
-            createdAt: Date.now(),
-          }).run();
-        }
-        if (chunk.meta) {
-          void db.insert(runLogs).values({
-            id: crypto.randomUUID(),
-            executionId,
-            level: "meta",
-            message: chunk.meta,
-            payload: null,
-            createdAt: Date.now(),
-          }).run();
-        }
-      };
-      const { output, context, trail } = await runWorkflow({ workflowId, runId, vaultKey: vaultKey ?? undefined, onStepComplete, onProgress, isCancelled, onContainerStream, maxSelfFixRetries });
-      const payload = executionOutputSuccess(output ?? context, trail);
-      await db.update(executions).set({
-        status: "completed",
-        finishedAt: Date.now(),
-        output: JSON.stringify(payload),
-      }).where(eq(executions.id, runId)).run();
-    });
+    const jobId = await enqueueWorkflowStart({ runId, workflowId });
+    await waitForJob(jobId, { vaultKey: vaultKey ?? undefined });
     const updated = await db.select().from(executions).where(eq(executions.id, runId));
     return json(fromExecutionRow(updated[0]), { status: 200 });
   } catch (err) {

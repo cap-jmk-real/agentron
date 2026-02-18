@@ -1,7 +1,6 @@
 import { json } from "../../../_lib/response";
 import { db, executions, fromExecutionRow, executionOutputSuccess, runLogs } from "../../../_lib/db";
-import { runWorkflowForRun } from "../../../_lib/run-workflow";
-import { enqueueWorkflowRun } from "../../../_lib/workflow-queue";
+import { enqueueWorkflowResume } from "../../../_lib/workflow-queue";
 import { getVaultKeyFromRequest } from "../../../_lib/vault";
 import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
@@ -70,7 +69,7 @@ export async function POST(request: Request, { params }: Params) {
   // #region agent log
   fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'runs/[id]/respond/route.ts',message:'respond API enqueueing resume',data:{runId,responseLen:response.length,hasVaultKey:!!vaultKey},hypothesisId:'vault_access',timestamp:Date.now()})}).catch(()=>{});
   // #endregion
-  enqueueWorkflowRun(() => runWorkflowForRun(runId, { resumeUserResponse: response, vaultKey: vaultKey ?? undefined }));
+  await enqueueWorkflowResume({ runId, resumeUserResponse: response });
   const updated = await db.select().from(executions).where(eq(executions.id, runId));
   return json(fromExecutionRow(updated[0]));
 }
