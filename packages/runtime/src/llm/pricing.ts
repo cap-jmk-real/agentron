@@ -5,37 +5,37 @@
  */
 export const DEFAULT_MODEL_PRICING: Record<string, { input: number; output: number }> = {
   // --- OpenAI ---
-  "gpt-5.2":           { input: 1.75,  output: 14.00 },
-  "gpt-5-mini":        { input: 0.25,  output: 2.00 },
-  "gpt-4o":            { input: 2.50,  output: 10.00 },
-  "gpt-4o-mini":       { input: 0.15,  output: 0.60 },
-  "o3-mini":           { input: 1.10,  output: 4.40 },
-  "o1":                { input: 15.00, output: 60.00 },
-  "o1-mini":           { input: 1.10,  output: 4.40 },
+  "gpt-5.2": { input: 1.75, output: 14.0 },
+  "gpt-5-mini": { input: 0.25, output: 2.0 },
+  "gpt-4o": { input: 2.5, output: 10.0 },
+  "gpt-4o-mini": { input: 0.15, output: 0.6 },
+  "o3-mini": { input: 1.1, output: 4.4 },
+  o1: { input: 15.0, output: 60.0 },
+  "o1-mini": { input: 1.1, output: 4.4 },
 
   // --- Anthropic ---
-  "claude-opus-4.5":   { input: 5.00,  output: 25.00 },
-  "claude-sonnet-4.5": { input: 3.00,  output: 15.00 },
-  "claude-haiku-4.5":  { input: 1.00,  output: 5.00 },
-  "claude-3.5-haiku":  { input: 0.80,  output: 4.00 },
-  "claude-3.5-sonnet": { input: 6.00,  output: 30.00 },
+  "claude-opus-4.5": { input: 5.0, output: 25.0 },
+  "claude-sonnet-4.5": { input: 3.0, output: 15.0 },
+  "claude-haiku-4.5": { input: 1.0, output: 5.0 },
+  "claude-3.5-haiku": { input: 0.8, output: 4.0 },
+  "claude-3.5-sonnet": { input: 6.0, output: 30.0 },
 
   // --- Google Gemini ---
-  "gemini-2.5-pro":        { input: 1.25,  output: 10.00 },
-  "gemini-2.0-flash":      { input: 0.30,  output: 2.50 },
-  "gemini-2.5-flash-lite": { input: 0.10,  output: 0.40 },
+  "gemini-2.5-pro": { input: 1.25, output: 10.0 },
+  "gemini-2.0-flash": { input: 0.3, output: 2.5 },
+  "gemini-2.5-flash-lite": { input: 0.1, output: 0.4 },
 
   // --- DeepSeek ---
-  "deepseek-chat":     { input: 0.27,  output: 1.10 },
-  "deepseek-r1":       { input: 0.70,  output: 2.50 },
+  "deepseek-chat": { input: 0.27, output: 1.1 },
+  "deepseek-r1": { input: 0.7, output: 2.5 },
 
   // --- Mistral ---
-  "mistral-large-2512": { input: 0.50,  output: 1.50 },
-  "mistral-small-3.1":  { input: 0.03,  output: 0.11 },
-  "mistral-nemo":       { input: 0.02,  output: 0.04 },
+  "mistral-large-2512": { input: 0.5, output: 1.5 },
+  "mistral-small-3.1": { input: 0.03, output: 0.11 },
+  "mistral-nemo": { input: 0.02, output: 0.04 },
 
   // --- Meta Llama (OpenRouter) ---
-  "llama-3.1-405b-instruct": { input: 3.50,  output: 3.50 },
+  "llama-3.1-405b-instruct": { input: 3.5, output: 3.5 },
 
   // --- Qwen (OpenRouter) ---
   "deepseek-r1-distill-qwen-32b": { input: 0.29, output: 0.29 },

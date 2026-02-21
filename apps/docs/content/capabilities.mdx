@@ -1,0 +1,36 @@
+---
+title: Capabilities
+description: Feature matrix and what users can do in Agentron—agents, workflows, tools, chat, sandboxes, RAG, and more.
+---
+
+# Capabilities
+
+Agentron provides **local AI agent orchestration**, **workflow automation**, and **multi-agent** design in a single, self-hosted platform.
+
+---
+
+## Feature matrix
+
+<FeatureMatrix />
+
+---
+
+## What users can do
+
+- **Design agents** — Node graphs or code-based agents
+- **Build workflows** — Connect agents, set max rounds
+- **Add tools** — HTTP, MCP, or custom code
+- **Run and debug** — Execute workflows, inspect runs
+- **Chat with Agentron** — Natural-language commands; see [Agentron (Chat)](/concepts/assistant)
+- **Rate and improve** — Feedback on assistant responses
+
+---
+
+## Limits and constraints
+
+<Callout type="warning">
+  - **Node agents** require `llmConfigId` when using an LLM node
+  - **Standard tools** (`std-*`) can only update inputSchema/outputSchema
+  - **Workflows** need `maxRounds` when using looping edges to avoid infinite runs
+  - **Diagnose before fix** — Always use get_run, get_workflow, get_agent, get_tool before applying updates
+</Callout>

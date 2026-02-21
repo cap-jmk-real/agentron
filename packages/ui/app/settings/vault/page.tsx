@@ -20,7 +20,9 @@ export default function VaultSettingsPage() {
   const [clearModal, setClearModal] = useState(false);
   const [clearLoading, setClearLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
-  const [importResult, setImportResult] = useState<{ imported: number; errors?: string[] } | null>(null);
+  const [importResult, setImportResult] = useState<{ imported: number; errors?: string[] } | null>(
+    null
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newWebsite, setNewWebsite] = useState("");
@@ -142,8 +144,7 @@ export default function VaultSettingsPage() {
   };
 
   /** Derive storage key from website (e.g. "LinkedIn" → "linkedin"). */
-  const websiteToKey = (website: string) =>
-    website.trim().toLowerCase().replace(/\s+/g, "_") || "";
+  const websiteToKey = (website: string) => website.trim().toLowerCase().replace(/\s+/g, "_") || "";
 
   const handleAddCredential = async () => {
     const key = websiteToKey(newWebsite);
@@ -226,16 +227,27 @@ export default function VaultSettingsPage() {
     <div style={{ maxWidth: 680 }}>
       <h1 style={{ margin: "0 0 0.25rem" }}>Vault</h1>
       <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 1.5rem" }}>
-        Store API keys and passwords used by the chat agent. Data is encrypted with a master password. Unlock the vault in Chat to let the agent use saved credentials.
+        Store API keys and passwords used by the chat agent. Data is encrypted with a master
+        password. Unlock the vault in Chat to let the agent use saved credentials.
       </p>
 
       {!status.vaultExists && (
         <div className="card" style={{ padding: "1rem" }}>
-          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          <div
+            style={{
+              fontSize: "0.85rem",
+              fontWeight: 600,
+              marginBottom: "0.5rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.4rem",
+            }}
+          >
             <Lock size={16} /> Create vault
           </div>
           <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
-            Set a master password. You will need it to unlock the vault and manage stored credentials.
+            Set a master password. You will need it to unlock the vault and manage stored
+            credentials.
           </p>
           <div className="form-group" style={{ maxWidth: 320 }}>
             <input
@@ -243,7 +255,10 @@ export default function VaultSettingsPage() {
               className="input"
               placeholder="Master password"
               value={masterPassword}
-              onChange={(e) => { setMasterPassword(e.target.value); setVaultError(null); }}
+              onChange={(e) => {
+                setMasterPassword(e.target.value);
+                setVaultError(null);
+              }}
               onKeyDown={(e) => e.key === "Enter" && handleCreateOrUnlock()}
               aria-label="Master password"
             />
@@ -255,14 +270,25 @@ export default function VaultSettingsPage() {
             >
               {vaultLoading ? "…" : "Create vault"}
             </button>
-            {vaultError && <span style={{ fontSize: "0.82rem", color: "#dc2626" }}>{vaultError}</span>}
+            {vaultError && (
+              <span style={{ fontSize: "0.82rem", color: "#dc2626" }}>{vaultError}</span>
+            )}
           </div>
         </div>
       )}
 
       {status.vaultExists && status.locked && (
         <div className="card" style={{ padding: "1rem" }}>
-          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          <div
+            style={{
+              fontSize: "0.85rem",
+              fontWeight: 600,
+              marginBottom: "0.5rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.4rem",
+            }}
+          >
             <Lock size={16} /> Vault locked
           </div>
           <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
@@ -274,7 +300,10 @@ export default function VaultSettingsPage() {
               className="input"
               placeholder="Master password"
               value={masterPassword}
-              onChange={(e) => { setMasterPassword(e.target.value); setVaultError(null); }}
+              onChange={(e) => {
+                setMasterPassword(e.target.value);
+                setVaultError(null);
+              }}
               onKeyDown={(e) => e.key === "Enter" && handleCreateOrUnlock()}
               aria-label="Master password"
             />
@@ -286,7 +315,9 @@ export default function VaultSettingsPage() {
             >
               {vaultLoading ? "…" : "Unlock"}
             </button>
-            {vaultError && <span style={{ fontSize: "0.82rem", color: "#dc2626" }}>{vaultError}</span>}
+            {vaultError && (
+              <span style={{ fontSize: "0.82rem", color: "#dc2626" }}>{vaultError}</span>
+            )}
           </div>
         </div>
       )}
@@ -294,7 +325,16 @@ export default function VaultSettingsPage() {
       {status.vaultExists && !status.locked && (
         <>
           <div className="card" style={{ padding: "1rem", marginBottom: "0.75rem" }}>
-            <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+            <div
+              style={{
+                fontSize: "0.85rem",
+                fontWeight: 600,
+                marginBottom: "0.5rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.4rem",
+              }}
+            >
               <Unlock size={16} /> Vault unlocked
             </div>
             <button
@@ -308,32 +348,62 @@ export default function VaultSettingsPage() {
           </div>
 
           <div className="card" style={{ padding: "1rem" }}>
-            <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.75rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+            <div
+              style={{
+                fontSize: "0.85rem",
+                fontWeight: 600,
+                marginBottom: "0.75rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "0.5rem",
+              }}
+            >
               Stored credentials
               {!showAddForm && (
                 <button
                   type="button"
                   className="button button-small"
-                  onClick={() => { setShowAddForm(true); setAddError(null); setNewWebsite(""); setNewUsername(""); setNewPassword(""); }}
+                  onClick={() => {
+                    setShowAddForm(true);
+                    setAddError(null);
+                    setNewWebsite("");
+                    setNewUsername("");
+                    setNewPassword("");
+                  }}
                 >
                   <Plus size={14} /> Add credential
                 </button>
               )}
             </div>
             <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
-              Each credential stores website, username/email, and password. The key is derived from the website (e.g. linkedin). Add a new one or edit/delete existing.
+              Each credential stores website, username/email, and password. The key is derived from
+              the website (e.g. linkedin). Add a new one or edit/delete existing.
             </p>
 
             {showAddForm && (
-              <div style={{ padding: "0.75rem", background: "var(--surface-muted)", borderRadius: 10, marginBottom: "1rem" }}>
-                <div style={{ fontSize: "0.82rem", fontWeight: 600, marginBottom: "0.5rem" }}>New credential</div>
+              <div
+                style={{
+                  padding: "0.75rem",
+                  background: "var(--surface-muted)",
+                  borderRadius: 10,
+                  marginBottom: "1rem",
+                }}
+              >
+                <div style={{ fontSize: "0.82rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+                  New credential
+                </div>
                 <div className="form-group">
                   <input
                     type="text"
                     className="input"
                     placeholder="Website (e.g. LinkedIn, Gmail)"
                     value={newWebsite}
-                    onChange={(e) => { setNewWebsite(e.target.value); setAddError(null); }}
+                    onChange={(e) => {
+                      setNewWebsite(e.target.value);
+                      setAddError(null);
+                    }}
                     aria-label="Website"
                   />
                   <input
@@ -342,7 +412,10 @@ export default function VaultSettingsPage() {
                     autoComplete="username"
                     placeholder="Username or email"
                     value={newUsername}
-                    onChange={(e) => { setNewUsername(e.target.value); setAddError(null); }}
+                    onChange={(e) => {
+                      setNewUsername(e.target.value);
+                      setAddError(null);
+                    }}
                     aria-label="Username or email"
                   />
                   <input
@@ -351,16 +424,39 @@ export default function VaultSettingsPage() {
                     autoComplete="current-password"
                     placeholder="Password"
                     value={newPassword}
-                    onChange={(e) => { setNewPassword(e.target.value); setAddError(null); }}
+                    onChange={(e) => {
+                      setNewPassword(e.target.value);
+                      setAddError(null);
+                    }}
                     aria-label="Password"
                   />
                 </div>
-                {addError && <p style={{ fontSize: "0.82rem", color: "#dc2626", margin: "0 0 0.5rem" }}>{addError}</p>}
+                {addError && (
+                  <p style={{ fontSize: "0.82rem", color: "#dc2626", margin: "0 0 0.5rem" }}>
+                    {addError}
+                  </p>
+                )}
                 <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button type="button" className="button button-small" disabled={addSaving || !websiteToKey(newWebsite) || !newPassword.trim()} onClick={handleAddCredential}>
+                  <button
+                    type="button"
+                    className="button button-small"
+                    disabled={addSaving || !websiteToKey(newWebsite) || !newPassword.trim()}
+                    onClick={handleAddCredential}
+                  >
                     {addSaving ? "Saving…" : "Save"}
                   </button>
-                  <button type="button" className="button button-ghost button-small" onClick={() => { setShowAddForm(false); setNewWebsite(""); setNewUsername(""); setNewPassword(""); setAddError(null); }} disabled={addSaving}>
+                  <button
+                    type="button"
+                    className="button button-ghost button-small"
+                    onClick={() => {
+                      setShowAddForm(false);
+                      setNewWebsite("");
+                      setNewUsername("");
+                      setNewPassword("");
+                      setAddError(null);
+                    }}
+                    disabled={addSaving}
+                  >
                     Cancel
                   </button>
                 </div>
@@ -368,9 +464,21 @@ export default function VaultSettingsPage() {
             )}
 
             {keys.length === 0 && !showAddForm ? (
-              <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: 0 }}>No credentials stored yet. Add one above, save from Chat when the agent asks, or import from CSV below.</p>
+              <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: 0 }}>
+                No credentials stored yet. Add one above, save from Chat when the agent asks, or
+                import from CSV below.
+              </p>
             ) : keys.length > 0 ? (
-              <ul style={{ listStyle: "none", padding: 0, margin: "0 0 1rem", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              <ul
+                style={{
+                  listStyle: "none",
+                  padding: 0,
+                  margin: "0 0 1rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.35rem",
+                }}
+              >
                 {keys.map(({ key }) => (
                   <li
                     key={key}
@@ -390,7 +498,12 @@ export default function VaultSettingsPage() {
                         type="button"
                         className="button button-ghost button-small"
                         title="Edit credential"
-                        onClick={() => { setEditingKey(key); setEditWebsite(""); setEditUsername(""); setEditPassword(""); }}
+                        onClick={() => {
+                          setEditingKey(key);
+                          setEditWebsite("");
+                          setEditUsername("");
+                          setEditPassword("");
+                        }}
                       >
                         <Pencil size={14} />
                       </button>
@@ -410,8 +523,17 @@ export default function VaultSettingsPage() {
             ) : null}
 
             {editingKey && (
-              <div style={{ padding: "0.75rem", background: "var(--surface-muted)", borderRadius: 10, marginBottom: "1rem" }}>
-                <div style={{ fontSize: "0.82rem", fontWeight: 600, marginBottom: "0.35rem" }}>Edit credential: {editingKey}</div>
+              <div
+                style={{
+                  padding: "0.75rem",
+                  background: "var(--surface-muted)",
+                  borderRadius: 10,
+                  marginBottom: "1rem",
+                }}
+              >
+                <div style={{ fontSize: "0.82rem", fontWeight: 600, marginBottom: "0.35rem" }}>
+                  Edit credential: {editingKey}
+                </div>
                 <div className="form-group">
                   <input
                     type="text"
@@ -441,10 +563,25 @@ export default function VaultSettingsPage() {
                   />
                 </div>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button type="button" className="button button-small" disabled={editSaving || !editPassword.trim()} onClick={handleEditSave}>
+                  <button
+                    type="button"
+                    className="button button-small"
+                    disabled={editSaving || !editPassword.trim()}
+                    onClick={handleEditSave}
+                  >
                     {editSaving ? "Saving…" : "Save"}
                   </button>
-                  <button type="button" className="button button-ghost button-small" onClick={() => { setEditingKey(null); setEditWebsite(""); setEditUsername(""); setEditPassword(""); }} disabled={editSaving}>
+                  <button
+                    type="button"
+                    className="button button-ghost button-small"
+                    onClick={() => {
+                      setEditingKey(null);
+                      setEditWebsite("");
+                      setEditUsername("");
+                      setEditPassword("");
+                    }}
+                    disabled={editSaving}
+                  >
                     Cancel
                   </button>
                 </div>
@@ -452,17 +589,33 @@ export default function VaultSettingsPage() {
             )}
 
             <div style={{ paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
-              <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <div
+                style={{
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                  marginBottom: "0.5rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.4rem",
+                }}
+              >
                 <Upload size={16} /> Import from CSV
               </div>
               <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.5rem" }}>
-                CSV with columns like <code>key,value</code> or <code>name,password</code>. First row can be a header.
+                CSV with columns like <code>key,value</code> or <code>name,password</code>. First
+                row can be a header.
               </p>
               <input
                 ref={fileInputRef}
                 type="file"
                 accept=".csv,text/csv,application/json"
-                style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+                style={{
+                  position: "absolute",
+                  width: 1,
+                  height: 1,
+                  opacity: 0,
+                  pointerEvents: "none",
+                }}
                 onChange={handleImport}
               />
               <button
@@ -475,20 +628,36 @@ export default function VaultSettingsPage() {
               </button>
               {importResult && (
                 <div style={{ marginTop: "0.5rem", fontSize: "0.82rem" }}>
-                  <span style={{ color: "#22c55e", fontWeight: 500 }}>Imported {importResult.imported} credential(s).</span>
+                  <span style={{ color: "#22c55e", fontWeight: 500 }}>
+                    Imported {importResult.imported} credential(s).
+                  </span>
                   {importResult.errors && importResult.errors.length > 0 && (
-                    <ul style={{ margin: "0.35rem 0 0", paddingLeft: "1.25rem", color: "var(--text-muted)" }}>
+                    <ul
+                      style={{
+                        margin: "0.35rem 0 0",
+                        paddingLeft: "1.25rem",
+                        color: "var(--text-muted)",
+                      }}
+                    >
                       {importResult.errors.slice(0, 5).map((err, i) => (
                         <li key={i}>{err}</li>
                       ))}
-                      {importResult.errors.length > 5 && <li>…and {importResult.errors.length - 5} more</li>}
+                      {importResult.errors.length > 5 && (
+                        <li>…and {importResult.errors.length - 5} more</li>
+                      )}
                     </ul>
                   )}
                 </div>
               )}
             </div>
 
-            <div style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
+            <div
+              style={{
+                marginTop: "1rem",
+                paddingTop: "1rem",
+                borderTop: "1px solid var(--border)",
+              }}
+            >
               <button
                 type="button"
                 className="button button-ghost"
@@ -498,8 +667,16 @@ export default function VaultSettingsPage() {
               >
                 <Trash2 size={14} /> Clear all credentials
               </button>
-              <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: "0.35rem 0 0", lineHeight: 1.4 }}>
-                Remove every stored credential. The vault (master password) stays; you can create a new vault only by resetting the database.
+              <p
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--text-muted)",
+                  margin: "0.35rem 0 0",
+                  lineHeight: 1.4,
+                }}
+              >
+                Remove every stored credential. The vault (master password) stays; you can create a
+                new vault only by resetting the database.
               </p>
             </div>
           </div>
@@ -519,7 +696,9 @@ export default function VaultSettingsPage() {
       />
 
       <p style={{ marginTop: "1rem", fontSize: "0.82rem", color: "var(--text-muted)" }}>
-        <Link href="/settings" style={{ color: "var(--primary)" }}>← General settings</Link>
+        <Link href="/settings" style={{ color: "var(--primary)" }}>
+          ← General settings
+        </Link>
       </p>
     </div>
   );

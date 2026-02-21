@@ -18,10 +18,28 @@ export type ChatStreamContentDelta = { type: "content_delta"; delta: string };
 
 /** Discriminated union of chat stream event types. */
 export type ChatStreamEvent =
-  | { type: "trace_step"; phase: string; label?: string; contentPreview?: string; messageCount?: number; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number }; specialistId?: string; toolName?: string; toolInput?: unknown; toolOutput?: unknown; /** LLM request input (e.g. last user message or messages summary) for queue log and traces. */ inputPreview?: string }
+  | {
+      type: "trace_step";
+      phase: string;
+      label?: string;
+      contentPreview?: string;
+      messageCount?: number;
+      usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+      specialistId?: string;
+      toolName?: string;
+      toolInput?: unknown;
+      toolOutput?: unknown;
+      /** LLM request input (e.g. last user message or messages summary) for queue log and traces. */ inputPreview?: string;
+    }
   | { type: "rephrased_prompt"; rephrasedPrompt: string }
   | { type: "plan"; reasoning?: string; todos?: string[] }
-  | { type: "step_start"; stepIndex: number; toolName?: string; todoLabel?: string; subStepLabel?: string }
+  | {
+      type: "step_start";
+      stepIndex: number;
+      toolName?: string;
+      todoLabel?: string;
+      subStepLabel?: string;
+    }
   | { type: "todo_done"; index: number }
   | ChatStreamContentDelta
   | {
@@ -42,11 +60,15 @@ export type ChatStreamEvent =
   | { type: "error"; error?: string; messageId?: string; userMessageId?: string };
 
 /** Type guard: event is a done event. */
-export function isChatStreamDoneEvent(event: { type: string }): event is Extract<ChatStreamEvent, { type: "done" }> {
+export function isChatStreamDoneEvent(event: {
+  type: string;
+}): event is Extract<ChatStreamEvent, { type: "done" }> {
   return event.type === "done";
 }
 
 /** Type guard: event is an error event. */
-export function isChatStreamErrorEvent(event: { type: string }): event is Extract<ChatStreamEvent, { type: "error" }> {
+export function isChatStreamErrorEvent(event: {
+  type: string;
+}): event is Extract<ChatStreamEvent, { type: "error" }> {
   return event.type === "error";
 }

@@ -35,10 +35,7 @@ const DEFAULT_WORKFLOW_GRID = {
 /**
  * Returns the position for the i-th node. Uses column-major (LTR) when rows is set, else row-major.
  */
-export function getGridPosition(
-  index: number,
-  options: GridLayoutOptions = {}
-): Position {
+export function getGridPosition(index: number, options: GridLayoutOptions = {}): Position {
   const opts = { ...DEFAULT_AGENT_GRID, ...options };
   const { startX, startY, stepX, stepY, cols = 3, rows } = opts;
   if (rows != null && rows > 0) {
@@ -95,14 +92,9 @@ export function getWorkflowGridOptions(): GridLayoutOptions {
   return { ...DEFAULT_WORKFLOW_GRID };
 }
 
-function overlaps(
-  pos: [number, number],
-  existing: Position[],
-  tolerance: number
-): boolean {
+function overlaps(pos: [number, number], existing: Position[], tolerance: number): boolean {
   return existing.some(
-    (p) =>
-      Math.abs(p.x - pos[0]) < tolerance && Math.abs(p.y - pos[1]) < tolerance
+    (p) => Math.abs(p.x - pos[0]) < tolerance && Math.abs(p.y - pos[1]) < tolerance
   );
 }
 
@@ -225,7 +217,11 @@ export function layoutNodesByGraph<T>(params: {
   // For cycle nodes: find one feedback edge so we can assign layers in DAG order and avoid same-layer overlap.
   let feedbackEdge: { source: string; target: string } | null = null;
   if (remaining.length > 0) {
-    const cycleEdges = remaining.flatMap((id) => (successors.get(id) ?? []).filter((t) => remaining.includes(t)).map((target) => ({ source: id, target })));
+    const cycleEdges = remaining.flatMap((id) =>
+      (successors.get(id) ?? [])
+        .filter((t) => remaining.includes(t))
+        .map((target) => ({ source: id, target }))
+    );
     const visit = new Set<string>();
     const stack = new Set<string>();
     const postOrder: string[] = [];
@@ -254,24 +250,48 @@ export function layoutNodesByGraph<T>(params: {
   const inDegreeForLayers = new Map<string, number>();
   for (const id of ids) inDegreeForLayers.set(id, 0);
   type Edge = { source: string; target: string };
-  const edgesArr: Edge[] = edges as Edge[];
-  for (const e of edgesArr) {
-    if (!idToItem.has(e.source) || !idToItem.has(e.target) || e.source === e.target) continue;
-    if (feedbackEdge && e.source === feedbackEdge.source && e.target === feedbackEdge.target) continue;
-    inDegreeForLayers.set(e.target, (inDegreeForLayers.get(e.target) ?? 0) + 1);
+  const edgesList: Edge[] = edges as unknown as Edge[];
+  const getSrcTgt = (e: Edge): { src: string; tgt: string } => {
+    const o: { source: string; target: string } = e as unknown as {
+      source: string;
+      target: string;
+    };
+    return { src: o.source, tgt: o.target };
+  };
+  const fe: { source: string; target: string } | null = feedbackEdge;
+  for (let i = 0; i < edgesList.length; i++) {
+    const edge = edgesList[i];
+    if (!edge) continue;
+    const { src, tgt } = getSrcTgt(edge);
+    if (!idToItem.has(src) || !idToItem.has(tgt) || src === tgt) continue;
+    if (
+      fe &&
+      src === (fe as unknown as { source: string; target: string }).source &&
+      tgt === (fe as unknown as { source: string; target: string }).target
+    )
+      continue;
+    inDegreeForLayers.set(tgt, (inDegreeForLayers.get(tgt) ?? 0) + 1);
   }
   const topoForLayers: string[] = [];
   const q = ids.filter((id) => inDegreeForLayers.get(id) === 0);
   while (q.length > 0) {
     const n = q.shift()!;
     topoForLayers.push(n);
-    for (const e of edgesArr) {
-      if (e.source !== n) continue;
-      if (!idToItem.has(e.target)) continue;
-      if (feedbackEdge && e.source === feedbackEdge.source && e.target === feedbackEdge.target) continue;
-      const d = inDegreeForLayers.get(e.target)! - 1;
-      inDegreeForLayers.set(e.target, d);
-      if (d === 0) q.push(e.target);
+    for (let i = 0; i < edgesList.length; i++) {
+      const edge = edgesList[i];
+      if (!edge) continue;
+      const { src, tgt } = getSrcTgt(edge);
+      if (src !== n) continue;
+      if (!idToItem.has(tgt)) continue;
+      if (
+        fe &&
+        src === (fe as unknown as { source: string; target: string }).source &&
+        tgt === (fe as unknown as { source: string; target: string }).target
+      )
+        continue;
+      const d = inDegreeForLayers.get(tgt)! - 1;
+      inDegreeForLayers.set(tgt, d);
+      if (d === 0) q.push(tgt);
     }
   }
   const stillRemaining = ids.filter((id) => !topoForLayers.includes(id));
@@ -352,9 +372,10 @@ export function layoutNodesByGraph<T>(params: {
     const layerNodes = byLayer.get(l)!;
     for (const id of layerNodes) {
       const children = getChildrenInNextLayer(id);
-      const bottom = children.length > 0
-        ? Math.max(...children.map((c) => subtreeBottom.get(c) ?? yPos.get(c) ?? opts.startY))
-        : (yPos.get(id) ?? opts.startY);
+      const bottom =
+        children.length > 0
+          ? Math.max(...children.map((c) => subtreeBottom.get(c) ?? yPos.get(c) ?? opts.startY))
+          : (yPos.get(id) ?? opts.startY);
       subtreeBottom.set(id, bottom);
     }
   }

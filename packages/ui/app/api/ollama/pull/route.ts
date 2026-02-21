@@ -13,7 +13,10 @@ export async function POST(request: Request) {
   const parameterSize = (body.parameterSize as string) ?? "7B";
 
   if (!model) {
-    return new Response(JSON.stringify({ error: "model required" }), { status: 400, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: "model required" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   // Run compatibility check
@@ -28,7 +31,10 @@ export async function POST(request: Request) {
 
     if (!ollamaRes.ok || !ollamaRes.body) {
       const text = await ollamaRes.text();
-      return new Response(JSON.stringify({ error: text }), { status: 502, headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ error: text }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     // Create a transform stream that prepends compatibility info
@@ -39,7 +45,9 @@ export async function POST(request: Request) {
     const stream = new ReadableStream({
       async start(controller) {
         // Send compatibility info first
-        controller.enqueue(encoder.encode(JSON.stringify({ type: "compatibility", ...compat }) + "\n"));
+        controller.enqueue(
+          encoder.encode(JSON.stringify({ type: "compatibility", ...compat }) + "\n")
+        );
 
         while (true) {
           const { done, value } = await reader.read();
@@ -49,9 +57,13 @@ export async function POST(request: Request) {
           for (const line of text.split("\n").filter(Boolean)) {
             try {
               const parsed = JSON.parse(line);
-              controller.enqueue(encoder.encode(JSON.stringify({ type: "progress", ...parsed }) + "\n"));
+              controller.enqueue(
+                encoder.encode(JSON.stringify({ type: "progress", ...parsed }) + "\n")
+              );
             } catch {
-              controller.enqueue(encoder.encode(JSON.stringify({ type: "raw", data: line }) + "\n"));
+              controller.enqueue(
+                encoder.encode(JSON.stringify({ type: "raw", data: line }) + "\n")
+              );
             }
           }
         }
@@ -67,6 +79,9 @@ export async function POST(request: Request) {
       },
     });
   } catch {
-    return new Response(JSON.stringify({ error: "Cannot connect to Ollama" }), { status: 502, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: "Cannot connect to Ollama" }), {
+      status: 502,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }

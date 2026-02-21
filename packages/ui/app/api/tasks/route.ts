@@ -8,7 +8,11 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status") || "pending_approval";
-  const rows = await db.select().from(tasks).where(eq(tasks.status, status)).orderBy(desc(tasks.createdAt));
+  const rows = await db
+    .select()
+    .from(tasks)
+    .where(eq(tasks.status, status))
+    .orderBy(desc(tasks.createdAt));
   const taskList = rows.map(fromTaskRow);
   const agentsMap: Record<string, { name: string }> = {};
   const workflowsMap: Record<string, { name: string }> = {};
@@ -16,7 +20,10 @@ export async function GET(request: Request) {
     const agentIds = [...new Set(taskList.map((t) => t.agentId))];
     const workflowIds = [...new Set(taskList.map((t) => t.workflowId))];
     const agentRows = await db.select().from(agents).where(inArray(agents.id, agentIds));
-    const workflowRows = await db.select().from(workflows).where(inArray(workflows.id, workflowIds));
+    const workflowRows = await db
+      .select()
+      .from(workflows)
+      .where(inArray(workflows.id, workflowIds));
     for (const a of agentRows) agentsMap[a.id] = { name: a.name };
     for (const w of workflowRows) workflowsMap[w.id] = { name: w.name };
   }

@@ -15,7 +15,7 @@ const buildAnthropicPayload = (model: string, request: LLMRequest) => {
     .filter((msg) => msg.role !== "system")
     .map((msg) => ({
       role: msg.role === "assistant" ? "assistant" : "user",
-      content: msg.content
+      content: msg.content,
     }));
 
   return {
@@ -23,7 +23,7 @@ const buildAnthropicPayload = (model: string, request: LLMRequest) => {
     system: systemMessage,
     messages,
     max_tokens: request.maxTokens ?? 1024,
-    temperature: request.temperature
+    temperature: request.temperature,
   };
 };
 
@@ -42,9 +42,9 @@ export const anthropicProvider: LLMProviderAdapter = {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": config.apiKey,
-        "anthropic-version": "2023-06-01"
+        "anthropic-version": "2023-06-01",
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -66,9 +66,9 @@ export const anthropicProvider: LLMProviderAdapter = {
         completionTokens,
         totalTokens: promptTokens + completionTokens,
       },
-      raw: data
+      raw: data,
     };
 
     return result;
-  }
+  },
 };

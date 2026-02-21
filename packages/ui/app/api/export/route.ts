@@ -19,10 +19,13 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const type = (searchParams.get("type") ?? "all") as ExportType;
   if (!["tools", "agents", "workflows", "all"].includes(type)) {
-    return new Response(JSON.stringify({ error: "Invalid type. Use tools, agents, workflows, or all." }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: "Invalid type. Use tools, agents, workflows, or all." }),
+      {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 
   const exportedAt = new Date().toISOString();
@@ -34,9 +37,7 @@ export async function GET(request: Request) {
 
   if (type === "tools" || type === "all") {
     const rows = await db.select().from(toolsTable);
-    const tools = rows
-      .map(fromToolRow)
-      .filter((t) => !t.id.startsWith("std-"));
+    const tools = rows.map(fromToolRow).filter((t) => !t.id.startsWith("std-"));
     out.tools = tools;
   }
   if (type === "agents" || type === "all") {

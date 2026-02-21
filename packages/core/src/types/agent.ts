@@ -56,9 +56,17 @@ export type AgentExecutionContext = {
   /** callLLM accepts { llmConfigId?, messages, tools? }. llmConfigId selects which LLM to use (per-node). Returns LLMResponse when tools provided, else content string. */
   callLLM: (input: unknown) => Promise<unknown>;
   /** Build tool definitions for given tool IDs. Used by decision nodes. */
-  buildToolsForIds?: (toolIds: string[]) => Promise<Array<{ type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } }>>;
+  buildToolsForIds?: (toolIds: string[]) => Promise<
+    Array<{
+      type: "function";
+      function: { name: string; description: string; parameters: Record<string, unknown> };
+    }>
+  >;
   /** Cached tool definitions (legacy). Prefer buildToolsForIds for per-node tools. */
-  availableTools?: Array<{ type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } }>;
+  availableTools?: Array<{
+    type: "function";
+    function: { name: string; description: string; parameters: Record<string, unknown> };
+  }>;
   /** Optional workflow/RAG block to prepend to user message (workflow runner sets this). */
   ragBlock?: string;
   /** Optional tool instructions block to prepend to user message (workflow runner sets this). */

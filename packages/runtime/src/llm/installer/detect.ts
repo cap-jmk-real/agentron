@@ -15,13 +15,13 @@ export const detectLocalRuntimes = async (): Promise<DetectedRuntime[]> => {
     { kind: "lmstudio", endpoint: "http://localhost:1234", healthy: false },
     { kind: "localai", endpoint: "http://localhost:8080", healthy: false },
     { kind: "vllm", endpoint: "http://localhost:8000", healthy: false },
-    { kind: "llama_cpp", endpoint: "http://localhost:8081", healthy: false }
+    { kind: "llama_cpp", endpoint: "http://localhost:8081", healthy: false },
   ];
 
   const results = await Promise.all(
     candidates.map(async (candidate) => ({
       ...candidate,
-      healthy: await tryEndpoint(candidate.endpoint)
+      healthy: await tryEndpoint(candidate.endpoint),
     }))
   );
 

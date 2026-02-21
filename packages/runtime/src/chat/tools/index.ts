@@ -12,9 +12,10 @@ import { OPENCLAW_TOOLS } from "./openclaw-tools";
 import { REMINDER_TOOLS } from "./reminder-tools";
 import { OPENAPI_TOOLS } from "./openapi-tools";
 import { HEAP_TOOLS } from "./heap-tools";
+import { CUSTOM_FUNCTION_TOOLS } from "./custom-function-tools";
 
 export type { AssistantToolDef } from "./types";
-export { SYSTEM_PROMPT } from "./prompt";
+export { SYSTEM_PROMPT, BLOCK_AGENTIC_PATTERNS, BLOCK_DESIGN_AGENTS } from "./prompt";
 
 /** All assistant tools combined. Add new domain modules above and include them here. */
 export const ASSISTANT_TOOLS: AssistantToolDef[] = [
@@ -22,6 +23,7 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
   ...TOOL_TOOLS,
   ...HEAP_TOOLS,
   ...OPENAPI_TOOLS,
+  ...CUSTOM_FUNCTION_TOOLS,
   ...WORKFLOW_TOOLS,
   ...MISC_TOOLS,
   ...REMOTE_TOOLS,

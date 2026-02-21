@@ -46,6 +46,19 @@ describe("Shell command execute API", () => {
     expect(res.status).toBe(400);
   });
 
+  it("POST /api/shell-command/execute returns 400 when body is not valid JSON", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/shell-command/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not valid json",
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("command");
+  });
+
   it("POST /api/shell-command/execute returns 500 when runShellCommand throws", async () => {
     vi.mocked(runShellCommand).mockRejectedValueOnce(new Error("Exec failed"));
     const res = await POST(
@@ -58,5 +71,19 @@ describe("Shell command execute API", () => {
     expect(res.status).toBe(500);
     const data = await res.json();
     expect(data.error).toBeDefined();
+  });
+
+  it("POST /api/shell-command/execute returns 500 with generic message when throw is not Error", async () => {
+    vi.mocked(runShellCommand).mockRejectedValueOnce("string error");
+    const res = await POST(
+      new Request("http://localhost/api/shell-command/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: "echo fail" }),
+      })
+    );
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.error).toBe("Failed to execute command");
   });
 });

@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { GET as listGet, POST as listPost } from "../../app/api/rag/vector-store/route";
-import { GET as getOne, PUT as putOne, DELETE as deleteOne } from "../../app/api/rag/vector-store/[id]/route";
+import {
+  GET as getOne,
+  PUT as putOne,
+  DELETE as deleteOne,
+} from "../../app/api/rag/vector-store/[id]/route";
 
 describe("RAG vector-store API", () => {
   let createdId: string;

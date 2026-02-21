@@ -10,7 +10,10 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const collectionId = searchParams.get("collectionId");
   if (!collectionId) return json({ error: "collectionId required" }, { status: 400 });
-  const rows = await db.select().from(ragDocuments).where(eq(ragDocuments.collectionId, collectionId));
+  const rows = await db
+    .select()
+    .from(ragDocuments)
+    .where(eq(ragDocuments.collectionId, collectionId));
   return json(
     rows.map((r) => ({
       id: r.id,

@@ -11,15 +11,33 @@ const STALE_LOCK_MS = 5 * 60 * 1000;
 
 async function acquireLock(conversationId: string): Promise<void> {
   // #region agent log
-  if (typeof fetch !== "undefined") fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e0760a'},body:JSON.stringify({sessionId:'e0760a',location:'chat-queue.ts:acquireLock',message:'acquireLock called',data:{conversationId:conversationId ?? null,type:typeof conversationId},hypothesisId:'H2',timestamp:Date.now()})}).catch(()=>{});
+  if (typeof fetch !== "undefined")
+    fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e0760a" },
+      body: JSON.stringify({
+        sessionId: "e0760a",
+        location: "chat-queue.ts:acquireLock",
+        message: "acquireLock called",
+        data: { conversationId: conversationId ?? null, type: typeof conversationId },
+        hypothesisId: "H2",
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
   // #endregion
   const deadline = Date.now() + LOCK_WAIT_MS;
   while (Date.now() < deadline) {
-    const rows = await db.select().from(conversationLocks).where(eq(conversationLocks.conversationId, conversationId));
+    const rows = await db
+      .select()
+      .from(conversationLocks)
+      .where(eq(conversationLocks.conversationId, conversationId));
     if (rows.length > 0) {
       const row = rows[0];
       if (row.startedAt < Date.now() - STALE_LOCK_MS) {
-        await db.delete(conversationLocks).where(eq(conversationLocks.conversationId, conversationId)).run();
+        await db
+          .delete(conversationLocks)
+          .where(eq(conversationLocks.conversationId, conversationId))
+          .run();
       } else {
         await new Promise((r) => setTimeout(r, LOCK_POLL_MS));
       }
@@ -28,14 +46,41 @@ async function acquireLock(conversationId: string): Promise<void> {
     const now = Date.now();
     try {
       // #region agent log
-      if (typeof fetch !== "undefined") fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e0760a'},body:JSON.stringify({sessionId:'e0760a',location:'chat-queue.ts:acquireLock_insert',message:'insert lock',data:{conversationId:conversationId ?? null},hypothesisId:'H3',timestamp:Date.now()})}).catch(()=>{});
+      if (typeof fetch !== "undefined")
+        fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e0760a" },
+          body: JSON.stringify({
+            sessionId: "e0760a",
+            location: "chat-queue.ts:acquireLock_insert",
+            message: "insert lock",
+            data: { conversationId: conversationId ?? null },
+            hypothesisId: "H3",
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
       // #endregion
-      await db.insert(conversationLocks).values({ conversationId, startedAt: now, createdAt: now }).run();
+      await db
+        .insert(conversationLocks)
+        .values({ conversationId, startedAt: now, createdAt: now })
+        .run();
       return;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       // #region agent log
-      if (typeof fetch !== "undefined") fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e0760a'},body:JSON.stringify({sessionId:'e0760a',location:'chat-queue.ts:acquireLock_catch',message:'acquireLock insert failed',data:{message:msg,name:e instanceof Error?e.name:''},hypothesisId:'H3',timestamp:Date.now()})}).catch(()=>{});
+      if (typeof fetch !== "undefined")
+        fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e0760a" },
+          body: JSON.stringify({
+            sessionId: "e0760a",
+            location: "chat-queue.ts:acquireLock_catch",
+            message: "acquireLock insert failed",
+            data: { message: msg, name: e instanceof Error ? e.name : "" },
+            hypothesisId: "H3",
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
       // #endregion
       if (!/UNIQUE|unique|SqliteError.*primary/i.test(msg)) throw e;
       await new Promise((r) => setTimeout(r, LOCK_POLL_MS));
@@ -46,7 +91,10 @@ async function acquireLock(conversationId: string): Promise<void> {
 
 async function releaseLock(conversationId: string): Promise<void> {
   try {
-    await db.delete(conversationLocks).where(eq(conversationLocks.conversationId, conversationId)).run();
+    await db
+      .delete(conversationLocks)
+      .where(eq(conversationLocks.conversationId, conversationId))
+      .run();
   } catch {
     // Ensure we don't leave the handler's finally block throwing; next turn can still try to acquire
   }

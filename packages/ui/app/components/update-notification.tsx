@@ -6,7 +6,13 @@ const DISMISSED_KEY = "agentron-update-dismissed";
 
 type UpdateState =
   | { show: false }
-  | { show: true; version: string; status: "available" | "downloaded"; url?: string; releaseNotes?: string };
+  | {
+      show: true;
+      version: string;
+      status: "available" | "downloaded";
+      url?: string;
+      releaseNotes?: string;
+    };
 
 function isElectron(): boolean {
   return typeof window !== "undefined" && Boolean((window as Window).agentron);
@@ -67,21 +73,28 @@ export default function UpdateNotification() {
     const check = () => {
       fetch("/api/update-check")
         .then((r) => r.json())
-        .then((data: { available?: boolean; version?: string; url?: string; releaseNotes?: string }) => {
-          if (!data.available || !data.version) return;
-          try {
-            if (localStorage.getItem(DISMISSED_KEY) === data.version) return;
-          } catch {
-            // ignore
+        .then(
+          (data: {
+            available?: boolean;
+            version?: string;
+            url?: string;
+            releaseNotes?: string;
+          }) => {
+            if (!data.available || !data.version) return;
+            try {
+              if (localStorage.getItem(DISMISSED_KEY) === data.version) return;
+            } catch {
+              // ignore
+            }
+            setState({
+              show: true,
+              version: data.version,
+              status: "available",
+              url: data.url,
+              releaseNotes: data.releaseNotes,
+            });
           }
-          setState({
-            show: true,
-            version: data.version,
-            status: "available",
-            url: data.url,
-            releaseNotes: data.releaseNotes,
-          });
-        })
+        )
         .catch(() => {});
     };
     check();
@@ -106,11 +119,7 @@ export default function UpdateNotification() {
         </div>
         <div className="update-notification-actions">
           {isDesktop ? (
-            <button
-              type="button"
-              className="update-notification-primary"
-              onClick={installUpdate}
-            >
+            <button type="button" className="update-notification-primary" onClick={installUpdate}>
               {status === "downloaded" ? "Restart to install" : "Install now"}
             </button>
           ) : (

@@ -35,7 +35,7 @@ export async function fetchUrl(input: unknown): Promise<unknown> {
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": "AgentOS-Tool/1.0" },
-      signal: AbortSignal.timeout(15000)
+      signal: AbortSignal.timeout(15000),
     });
     const text = await res.text();
     return { status: res.status, url, content: text.slice(0, 100_000) };
@@ -114,7 +114,10 @@ export async function httpRequest(input: unknown): Promise<unknown> {
     const text = await res.text();
     let content: unknown = text;
     try {
-      if (headers["Accept"]?.includes("json") || res.headers.get("content-type")?.includes("json")) {
+      if (
+        headers["Accept"]?.includes("json") ||
+        res.headers.get("content-type")?.includes("json")
+      ) {
         content = JSON.parse(text);
       }
     } catch {
@@ -205,11 +208,12 @@ export async function weather(input: unknown): Promise<unknown> {
       return { error: "No weather data", location };
     }
     const temp = data.current.temperature_2m;
-    const tempDisplay = units === "fahrenheit" && temp != null
-      ? `${(temp * 9) / 5 + 32}°F`
-      : temp != null
-        ? `${temp}°C`
-        : "—";
+    const tempDisplay =
+      units === "fahrenheit" && temp != null
+        ? `${(temp * 9) / 5 + 32}°F`
+        : temp != null
+          ? `${temp}°C`
+          : "—";
     return {
       location: location,
       temperature: temp,
@@ -239,7 +243,8 @@ export async function webSearch(input: unknown): Promise<unknown> {
   if (!query) {
     return { error: "query is required", results: [] };
   }
-  const maxResults = typeof o.maxResults === "number" && o.maxResults > 0 ? Math.min(o.maxResults, 20) : undefined;
+  const maxResults =
+    typeof o.maxResults === "number" && o.maxResults > 0 ? Math.min(o.maxResults, 20) : undefined;
   try {
     return await searchWeb(query, { maxResults });
   } catch (err) {
@@ -255,7 +260,10 @@ export type BuiltinOptions = { baseUrl?: string };
  * Call this when setting up the tool registry for agent execution.
  * Run Code calls the app's /api/run-code; set AGENTOS_APP_URL or pass baseUrl if the app is not on localhost:3000.
  */
-export function registerBuiltinHandlers(adapter: NativeToolAdapter, options?: BuiltinOptions): void {
+export function registerBuiltinHandlers(
+  adapter: NativeToolAdapter,
+  options?: BuiltinOptions
+): void {
   adapter.register(STD_FETCH_URL, fetchUrl);
   adapter.register(STD_BROWSER, browser);
   adapter.register(STD_RUN_CODE, runCode);

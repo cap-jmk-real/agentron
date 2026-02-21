@@ -16,6 +16,63 @@ describe("Settings pricing API", () => {
     expect(data[0]).toHaveProperty("outputCostPerM");
   });
 
+  it("GET /api/settings/pricing includes default model with isCustom false when no override", async () => {
+    const res = await listGet();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const defaultEntry = data.find((m: { isCustom: boolean }) => m.isCustom === false);
+    expect(defaultEntry).toBeDefined();
+    expect(defaultEntry.modelPattern).toBeDefined();
+    expect(defaultEntry.id).toBeNull();
+  });
+
+  it("GET /api/settings/pricing includes custom override with isCustom true for default model", async () => {
+    const listRes = await listGet();
+    const list = await listRes.json();
+    const firstPattern = list[0]?.modelPattern;
+    if (!firstPattern) return;
+    await putOne(
+      new Request("http://localhost/api/settings/pricing", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modelPattern: firstPattern,
+          inputCostPerM: 0.01,
+          outputCostPerM: 0.02,
+        }),
+      })
+    );
+    const res = await listGet();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const entry = data.find((m: { modelPattern: string }) => m.modelPattern === firstPattern);
+    expect(entry).toBeDefined();
+    expect(entry.isCustom).toBe(true);
+  });
+
+  it("GET /api/settings/pricing includes custom-only model with isCustom true", async () => {
+    const pattern = "custom-only-pattern-xyz-123";
+    await putOne(
+      new Request("http://localhost/api/settings/pricing", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modelPattern: pattern,
+          inputCostPerM: 0.1,
+          outputCostPerM: 0.2,
+        }),
+      })
+    );
+    const res = await listGet();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const entry = data.find((m: { modelPattern: string }) => m.modelPattern === pattern);
+    expect(entry).toBeDefined();
+    expect(entry.isCustom).toBe(true);
+    expect(Number(entry.inputCostPerM)).toBe(0.1);
+    expect(Number(entry.outputCostPerM)).toBe(0.2);
+  });
+
   it("PUT /api/settings/pricing returns 400 when modelPattern missing", async () => {
     const res = await putOne(
       new Request("http://localhost/api/settings/pricing", {

@@ -17,20 +17,29 @@ async function ensureRunnerSandbox(name: string, image: string): Promise<string>
     const sb = fromSandboxRow(rows[0]);
     if (sb.containerId && sb.status === "running") return sb.containerId;
     const newContainerId = await podman.create(image, `${name}-${sb.id}`, { network: true });
-    await db.update(sandboxes).set({ status: "running", containerId: newContainerId }).where(eq(sandboxes.id, sb.id)).run();
+    await db
+      .update(sandboxes)
+      .set({ status: "running", containerId: newContainerId })
+      .where(eq(sandboxes.id, sb.id))
+      .run();
     return newContainerId;
   }
   const id = `runner-${name}-${Date.now()}`;
   const containerId = await podman.create(image, `${name}-${id}`, { network: true });
-  await db.insert(sandboxes).values(toSandboxRow({
-    id,
-    name,
-    image,
-    status: "running",
-    containerId,
-    config: {},
-    createdAt: Date.now(),
-  })).run();
+  await db
+    .insert(sandboxes)
+    .values(
+      toSandboxRow({
+        id,
+        name,
+        image,
+        status: "running",
+        containerId,
+        config: {},
+        createdAt: Date.now(),
+      })
+    )
+    .run();
   return containerId;
 }
 
@@ -87,12 +96,15 @@ else:
       }
     }
     if (result.exitCode !== 0) {
-      return json({
-        error: result.stderr || "Execution failed",
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode,
-      }, { status: 500 });
+      return json(
+        {
+          error: result.stderr || "Execution failed",
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+        },
+        { status: 500 }
+      );
     }
     return json({ output, stdout: result.stdout, stderr: result.stderr });
   } catch (err) {

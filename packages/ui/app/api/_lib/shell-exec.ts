@@ -54,23 +54,32 @@ function indexOfOutsideQuotes(str: string, sub: string): number {
 }
 
 /** Run a shell command and return stdout/stderr. Uses PowerShell on Windows (with full PATH from registry), sh on Unix. */
-export function runShellCommand(command: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+export function runShellCommand(
+  command: string
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   return new Promise((resolve) => {
     const isWin = platform() === "win32";
     let cmd = command;
     if (isWin) {
       // Use PowerShell; refresh PATH from registry so we see user-installed tools (podman, docker, etc.)
       // In PowerShell, "where" is an alias for Where-Object — use where.exe for finding executables
-      const pathRefresh = "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')";
+      const pathRefresh =
+        "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')";
       const normalized = command.trimStart().replace(/^where\s+/, "where.exe ");
       cmd = `${pathRefresh}; ${normalized}`;
     }
-    const [shell, args] = isWin ? ["powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd]] : ["sh", ["-c", cmd]];
+    const [shell, args] = isWin
+      ? ["powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd]]
+      : ["sh", ["-c", cmd]];
     const proc = spawn(shell, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
-    proc.stdout?.on("data", (d) => { stdout += String(d); });
-    proc.stderr?.on("data", (d) => { stderr += String(d); });
+    proc.stdout?.on("data", (d) => {
+      stdout += String(d);
+    });
+    proc.stderr?.on("data", (d) => {
+      stderr += String(d);
+    });
     proc.on("close", (code) => resolve({ stdout, stderr, exitCode: code ?? -1 }));
     proc.on("error", () => resolve({ stdout, stderr, exitCode: -1 }));
   });

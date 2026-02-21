@@ -18,7 +18,7 @@ export default defineConfig({
         lines: 70,
         statements: 70,
         functions: 70,
-        branches: 55,
+        branches: 100,
       },
       exclude: [
         "**/__tests__/**",
@@ -35,6 +35,7 @@ export default defineConfig({
         "**/api/_lib/openclaw-client.ts",
         "**/api/openclaw/**",
         "**/api/sandbox/**",
+        "**/api/sandbox-shell/**",
         "**/api/sandbox-proxy/**",
         "**/api/sandbox-site-bindings/**",
         "**/api/run-code/**",
@@ -46,6 +47,8 @@ export default defineConfig({
         "**/app/lib/chat-state-cache.ts",
         // Browser-only hooks (DOM, React context); unit-test with jsdom if needed. See __tests__/README.md.
         "**/app/hooks/**",
+        // Browser-only React components; unit-test with jsdom if needed. See __tests__/README.md.
+        "**/app/components/**",
         // Setup flow; env/onboarding. See __tests__/README.md.
         "**/api/setup/**",
         // LLM/external or heavy; covered by integration or manual. See __tests__/README.md.

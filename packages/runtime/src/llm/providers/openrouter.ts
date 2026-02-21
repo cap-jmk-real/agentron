@@ -77,7 +77,8 @@ export const openrouterProvider: LLMProviderAdapter = {
         ? {
             promptTokens: usage.promptTokens ?? 0,
             completionTokens: usage.completionTokens ?? 0,
-            totalTokens: usage.totalTokens ?? (usage.promptTokens ?? 0) + (usage.completionTokens ?? 0),
+            totalTokens:
+              usage.totalTokens ?? (usage.promptTokens ?? 0) + (usage.completionTokens ?? 0),
           }
         : undefined,
       raw: completion,

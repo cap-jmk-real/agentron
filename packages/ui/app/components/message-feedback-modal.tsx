@@ -36,11 +36,7 @@ export default function MessageFeedbackModal({
 
   return (
     <>
-      <div
-        className="chat-feedback-backdrop"
-        role="presentation"
-        onClick={handleClose}
-      />
+      <div className="chat-feedback-backdrop" role="presentation" onClick={handleClose} />
       <div
         className="chat-feedback-drawer"
         role="dialog"
@@ -48,7 +44,16 @@ export default function MessageFeedbackModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="chat-feedback-drawer-header">
-          <h3 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <h3
+            style={{
+              margin: 0,
+              fontSize: "0.95rem",
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+            }}
+          >
             {label === "good" ? <ThumbsUp size={18} /> : <ThumbsDown size={18} />}
             {label === "good" ? "Good response" : "Bad response"}
           </h3>
@@ -69,7 +74,11 @@ export default function MessageFeedbackModal({
           <textarea
             id="message-feedback-notes"
             className="message-feedback-textarea"
-            placeholder={label === "bad" ? "e.g. The agent made a bad decision because…" : "e.g. This was helpful because…"}
+            placeholder={
+              label === "bad"
+                ? "e.g. The agent made a bad decision because…"
+                : "e.g. This was helpful because…"
+            }
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={4}

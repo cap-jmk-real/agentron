@@ -9,7 +9,10 @@ export async function GET() {
     const rows = await db.select().from(llmConfigs);
     const configs = rows.map(fromLlmConfigRow);
     const safe = configs.map((c) => {
-      const extra = c.extra && typeof c.extra === "object" && !Array.isArray(c.extra) ? { ...(c.extra as Record<string, unknown>), apiKey: undefined } : c.extra;
+      const extra =
+        c.extra && typeof c.extra === "object" && !Array.isArray(c.extra)
+          ? { ...(c.extra as Record<string, unknown>), apiKey: undefined }
+          : c.extra;
       return { ...c, extra };
     });
     return json(safe);
@@ -21,14 +24,20 @@ export async function GET() {
 }
 
 /** Build extra for storage: include apiKey when provided from the UI (never sent to client). */
-function buildExtraForStorage(payload: Record<string, unknown>): Record<string, unknown> | undefined {
+function buildExtraForStorage(
+  payload: Record<string, unknown>
+): Record<string, unknown> | undefined {
   const { apiKey, rateLimit, contextLength, extra: rawExtra } = payload;
-  const extraObj = (rawExtra && typeof rawExtra === "object" && !Array.isArray(rawExtra)) ? rawExtra as Record<string, unknown> : {};
+  const extraObj =
+    rawExtra && typeof rawExtra === "object" && !Array.isArray(rawExtra)
+      ? (rawExtra as Record<string, unknown>)
+      : {};
   const { apiKey: _drop, ...safeExtra } = extraObj;
   const out: Record<string, unknown> = { ...safeExtra };
   if (rateLimit != null) out.rateLimit = rateLimit;
   if (contextLength != null && contextLength !== "") {
-    const n = typeof contextLength === "number" ? contextLength : parseInt(String(contextLength), 10);
+    const n =
+      typeof contextLength === "number" ? contextLength : parseInt(String(contextLength), 10);
     if (Number.isInteger(n) && n > 0) out.contextLength = n;
   }
   const keyFromPayload = apiKey != null ? String(apiKey).trim() : "";
@@ -45,7 +54,10 @@ export async function POST(request: Request) {
     const { apiKey: _a, rateLimit: _r, extra: _e, ...rest } = payload;
     const extra = buildExtraForStorage(payload);
     const config = { ...rest, id, extra };
-    await db.insert(llmConfigs).values(toLlmConfigRow(config as Parameters<typeof toLlmConfigRow>[0])).run();
+    await db
+      .insert(llmConfigs)
+      .values(toLlmConfigRow(config as Parameters<typeof toLlmConfigRow>[0]))
+      .run();
     const safe = { ...config, extra: extra ? { ...extra, apiKey: undefined } : undefined };
     return json(safe, { status: 201 });
   } catch (err) {

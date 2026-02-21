@@ -11,7 +11,9 @@ export type AgentPatternId =
   | "evaluator-optimizer"
   | "orchestrator-workers"
   | "diagnose-fix-rerun"
-  | "composition-over-complexity";
+  | "composition-over-complexity"
+  | "custom-echo-agent"
+  | "custom-linear-two-agents";
 
 export interface PatternExample {
   patternId: AgentPatternId;
@@ -74,7 +76,7 @@ export const AGENT_PATTERN_EXAMPLES: PatternExample[] = [
     label: "Orchestrator–workers",
     level: "workflow",
     prompts: [
-      "Create a workflow where an orchestrator agent receives the user request and delegates to two workers: one \"search\" agent (has fetch/search tool) and one \"summarizer\" agent (no tools). Orchestrator decides which worker to call. Wire orchestrator to both workers.",
+      'Create a workflow where an orchestrator agent receives the user request and delegates to two workers: one "search" agent (has fetch/search tool) and one "summarizer" agent (no tools). Orchestrator decides which worker to call. Wire orchestrator to both workers.',
       "I need one main agent that reads the task and assigns it to either a code agent or a writing agent. Create the orchestrator and the two worker agents, then a workflow with edges from the orchestrator to each worker.",
     ],
   },
@@ -83,7 +85,7 @@ export const AGENT_PATTERN_EXAMPLES: PatternExample[] = [
     label: "Diagnose–fix–rerun",
     level: "meta",
     prompts: [
-      "Run the \"two agents discuss weather\" workflow. If the trail shows they didn't actually use the weather tool or talked about something else, fix the agents (add the weather tool or tighten system prompts) and run again.",
+      'Run the "two agents discuss weather" workflow. If the trail shows they didn\'t actually use the weather tool or talked about something else, fix the agents (add the weather tool or tighten system prompts) and run again.',
       "I ran workflow X and the output was wrong. Please get the last run, look at the trail, and update the agent prompts or tools so the next run matches what I asked for.",
     ],
   },
@@ -94,6 +96,22 @@ export const AGENT_PATTERN_EXAMPLES: PatternExample[] = [
     prompts: [
       "Instead of one agent that does research and writing and review, create three separate agents (researcher, writer, reviewer) and chain them in a workflow. Each agent has one clear job.",
       "Design a workflow with small, focused agents: one that only fetches data, one that only formats it, one that only validates. Connect them with edges so data flows in order.",
+    ],
+  },
+  {
+    patternId: "custom-echo-agent",
+    label: "Custom: single echo agent",
+    level: "intra",
+    prompts: [
+      "Create a single agent that replies with exactly the word 'echo'. One LLM node, no tools.",
+    ],
+  },
+  {
+    patternId: "custom-linear-two-agents",
+    label: "Custom: linear two-agent workflow",
+    level: "workflow",
+    prompts: [
+      "Create a workflow with two agents: the first agent says exactly 'Step 1', the second says exactly 'Step 2'. Chain them in order with one edge. Create both agents and the workflow.",
     ],
   },
 ];

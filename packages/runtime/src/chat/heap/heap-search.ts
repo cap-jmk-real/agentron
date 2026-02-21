@@ -73,10 +73,19 @@ export function searchFromNode(
 /** True if the specialist is a delegator (no toolNames, has delegateTargets). */
 export function isDelegator(registry: SpecialistRegistry, specialistId: string): boolean {
   const entry = registry.specialists[specialistId];
-  return !!(entry && entry.toolNames.length === 0 && entry.delegateTargets && entry.delegateTargets.length > 0);
+  return !!(
+    entry &&
+    entry.toolNames.length === 0 &&
+    entry.delegateTargets &&
+    entry.delegateTargets.length > 0
+  );
 }
 
-export type ChooseFnAsync = (optionIds: string[], task: string, parentId: string) => Promise<string | null>;
+export type ChooseFnAsync = (
+  optionIds: string[],
+  task: string,
+  parentId: string
+) => Promise<string | null>;
 
 /**
  * Expands priorityOrder so each delegator is replaced by a leaf via repeated choose (e.g. LLM).

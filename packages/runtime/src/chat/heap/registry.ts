@@ -42,6 +42,8 @@ export interface LogicalSpecialistSpec {
   toolNames: string[];
   /** Optional: structured option groups (observe, act_prompt, etc.) so planner/improver query heap by intent. */
   optionGroups?: Record<string, SpecialistOptionGroup>;
+  /** Optional: when chunked into N parts, use partIds[i] as leaf id instead of ${id}__part${i+1}. Must satisfy partIds[i].startsWith(id + "_"). */
+  partIds?: string[];
 }
 
 /** Validates and trims arrays to caps. */
@@ -126,7 +128,7 @@ export function buildRegistryFromSpecs(
   const specialists: Record<string, SpecialistEntry> = {};
 
   for (const spec of specs) {
-    const { id, description, toolNames, optionGroups } = spec;
+    const { id, description, toolNames, optionGroups, partIds } = spec;
     const chunks = chunkArray(toolNames, SPECIALIST_TOOL_CAP);
 
     if (chunks.length === 0) {
@@ -139,10 +141,14 @@ export function buildRegistryFromSpecs(
       continue;
     }
 
-    // Build leaf specialists with tools.
+    // Build leaf specialists with tools. Use partIds when length matches and prefix is correct.
     const leafIds: string[] = [];
+    const prefix = id + "_";
     chunks.forEach((chunk, index) => {
-      const leafId = `${id}__part${index + 1}`;
+      const leafId =
+        partIds && partIds.length === chunks.length && partIds[index]?.startsWith(prefix)
+          ? partIds[index]!
+          : `${id}__part${index + 1}`;
       leafIds.push(leafId);
       specialists[leafId] = {
         id: leafId,
@@ -155,7 +161,8 @@ export function buildRegistryFromSpecs(
     addDelegatorHierarchy(id, description, leafIds, specialists, optionGroups);
   }
 
-  const logicalTopLevel = topLevelIds && topLevelIds.length > 0 ? topLevelIds : specs.map((s) => s.id);
+  const logicalTopLevel =
+    topLevelIds && topLevelIds.length > 0 ? topLevelIds : specs.map((s) => s.id);
   const resolvedTopLevel = logicalTopLevel.filter((id) => id in specialists);
 
   return applyRegistryCaps({
@@ -182,7 +189,8 @@ function buildDefaultRegistry(): SpecialistRegistry {
     },
     {
       id: "workflow",
-      description: "Workflows: list, get, create, update, execute, get run, cancel, respond, list versions, rollback; ask_user when asking which workflow to run/update; format_response when presenting next-step options so the user gets clickable choices.",
+      description:
+        "Workflows: list, get, create, update, execute, get run, cancel, respond, list versions, rollback; ask_user when asking which workflow to run/update; format_response when presenting next-step options so the user gets clickable choices.",
       toolNames: [
         "list_workflows",
         "get_workflow",
@@ -203,7 +211,8 @@ function buildDefaultRegistry(): SpecialistRegistry {
     // (a) improve_run: current run/session only; no DB. (b) improve_heap: registry, planner. (c) improve_agents_workflows: workflow agents and workflows in studio DB.
     {
       id: "improve_run",
-      description: "Improve current Agentron run/session only. Observe run/feedback, suggest prompt or workflow tweaks, apply_session_override for this run/session; no DB writes. Use when user wants to fix or preview changes for the current run only.",
+      description:
+        "Improve current Agentron run/session only. Observe run/feedback, suggest prompt or workflow tweaks, apply_session_override for this run/session; no DB writes. Use when user wants to fix or preview changes for the current run only.",
       toolNames: [
         "get_run_for_improvement",
         "get_feedback_for_scope",
@@ -216,7 +225,8 @@ function buildDefaultRegistry(): SpecialistRegistry {
     },
     {
       id: "improve_heap",
-      description: "Improve the heap (registry, planner; add/change specialists). Use get_specialist_options to query; register_specialist, update_specialist, list_specialists. Does not change workflow agents or workflows.",
+      description:
+        "Improve the heap (registry, planner; add/change specialists). Use get_specialist_options to query; register_specialist, update_specialist, list_specialists. Does not change workflow agents or workflows.",
       toolNames: [
         "get_specialist_options",
         "register_specialist",
@@ -227,13 +237,56 @@ function buildDefaultRegistry(): SpecialistRegistry {
     },
     {
       id: "improve_agents_workflows",
-      description: "Improve workflow agents and workflows (studio DB). Use when user wants to improve from a run/feedback, fix a failed run, or design self-learning. Observe (get_run_for_improvement, get_feedback_for_scope), then act (update_agent, update_workflow, training pipeline). Does not create agents or workflows; only updates existing ones.",
+      description:
+        "Improve workflow agents and workflows (studio DB). Use when user wants to improve from a run/feedback, fix a failed run, or design self-learning. Observe (get_run_for_improvement, get_feedback_for_scope), then act (update_agent, update_workflow, training pipeline). Does not create agents or workflows; only updates existing ones.",
       optionGroups: {
-        observe: { label: "Observe run and feedback", toolIds: ["get_run_for_improvement", "get_feedback_for_scope"] },
-        act_prompt: { label: "Adjust prompts (update_agent, apply_agent_prompt_improvement)", toolIds: ["get_agent", "update_agent", "apply_agent_prompt_improvement", "list_agent_versions", "rollback_agent"] },
-        act_topology: { label: "Adjust workflow/agent graph", toolIds: ["get_workflow", "update_workflow", "update_agent", "list_workflows", "list_workflow_versions", "rollback_workflow"] },
-        act_training: { label: "Training pipeline (jobs, generate data, trigger training)", toolIds: ["create_improvement_job", "get_improvement_job", "list_improvement_jobs", "update_improvement_job", "generate_training_data", "trigger_training", "get_training_status", "evaluate_model", "decide_optimization_target", "get_technique_knowledge", "record_technique_insight", "propose_architecture", "spawn_instance"] },
-        evaluate: { label: "Re-run or ask user (Done/Retry)", toolIds: ["execute_workflow", "ask_user"] },
+        observe: {
+          label: "Observe run and feedback",
+          toolIds: ["get_run_for_improvement", "get_feedback_for_scope"],
+        },
+        act_prompt: {
+          label: "Adjust prompts (update_agent, apply_agent_prompt_improvement)",
+          toolIds: [
+            "get_agent",
+            "update_agent",
+            "apply_agent_prompt_improvement",
+            "list_agent_versions",
+            "rollback_agent",
+          ],
+        },
+        act_topology: {
+          label: "Adjust workflow/agent graph",
+          toolIds: [
+            "get_workflow",
+            "update_workflow",
+            "update_agent",
+            "list_workflows",
+            "list_workflow_versions",
+            "rollback_workflow",
+          ],
+        },
+        act_training: {
+          label: "Training pipeline (jobs, generate data, trigger training)",
+          toolIds: [
+            "create_improvement_job",
+            "get_improvement_job",
+            "list_improvement_jobs",
+            "update_improvement_job",
+            "generate_training_data",
+            "trigger_training",
+            "get_training_status",
+            "evaluate_model",
+            "decide_optimization_target",
+            "get_technique_knowledge",
+            "record_technique_insight",
+            "propose_architecture",
+            "spawn_instance",
+          ],
+        },
+        evaluate: {
+          label: "Re-run or ask user (Done/Retry)",
+          toolIds: ["execute_workflow", "ask_user"],
+        },
       },
       toolNames: [
         "get_specialist_options",
@@ -272,7 +325,8 @@ function buildDefaultRegistry(): SpecialistRegistry {
     },
     {
       id: "agent",
-      description: "Agents: list, create, get, update, delete, list versions, rollback, list tools, list LLM providers",
+      description:
+        "Agents: list, create, get, update, delete, versions, rollback, list tools, LLM providers; and OpenClaw instance (send commands, history, abort) when an agent runs or steers OpenClaw.",
       toolNames: [
         "list_agents",
         "list_tools",
@@ -283,16 +337,66 @@ function buildDefaultRegistry(): SpecialistRegistry {
         "list_agent_versions",
         "rollback_agent",
         "list_llm_providers",
+        "ask_user",
+        "send_to_openclaw",
+        "openclaw_history",
+        "openclaw_abort",
+      ],
+      partIds: ["agent_lifecycle", "agent_openclaw"],
+      optionGroups: {
+        agent_lifecycle: {
+          label: "Agent CRUD, versions, rollback, LLM providers",
+          toolIds: [
+            "list_agents",
+            "list_tools",
+            "create_agent",
+            "get_agent",
+            "update_agent",
+            "delete_agent",
+            "list_agent_versions",
+            "rollback_agent",
+            "list_llm_providers",
+            "ask_user",
+          ],
+        },
+        openclaw: {
+          label: "OpenClaw instance (send, history, abort)",
+          toolIds: ["send_to_openclaw", "openclaw_history", "openclaw_abort"],
+        },
+      },
+    },
+    {
+      id: "tools",
+      description:
+        "Create and improve tools (HTTP, MCP, code). List/get/update tools; create_code_tool for new code tools; list/get/update_custom_function to read or change tool source. Use when the user wants to add a tool, implement a capability as a tool, or fix/improve an existing code tool.",
+      toolNames: [
+        "list_tools",
+        "get_tool",
+        "create_tool",
+        "update_tool",
+        "create_code_tool",
+        "list_custom_functions",
+        "get_custom_function",
+        "update_custom_function",
       ],
     },
     {
       id: "planner",
-      description: "Planner: outputs structured plan (priorityOrder, refinedTask, extractedContext, instructionsFor*); no DB tools",
+      description:
+        "Planner: outputs structured plan (priorityOrder, refinedTask, extractedContext, instructionsFor*); no DB tools",
       toolNames: [],
     },
   ];
 
-  return buildRegistryFromSpecs(specs, ["general", "workflow", "agent", "improve_run", "improve_heap", "improve_agents_workflows"]);
+  return buildRegistryFromSpecs(specs, [
+    "general",
+    "workflow",
+    "agent",
+    "tools",
+    "improve_run",
+    "improve_heap",
+    "improve_agents_workflows",
+  ]);
 }
 
 let defaultRegistry: SpecialistRegistry | null = null;
@@ -301,7 +405,10 @@ let defaultRegistry: SpecialistRegistry | null = null;
  * Merge overlay specialist entries into a registry. Override entries replace or add by id;
  * new ids are appended to topLevelIds up to TOP_LEVEL_CAP.
  */
-export function mergeRegistryOverrides(registry: SpecialistRegistry, overrides: SpecialistEntry[]): SpecialistRegistry {
+export function mergeRegistryOverrides(
+  registry: SpecialistRegistry,
+  overrides: SpecialistEntry[]
+): SpecialistRegistry {
   const specialists = { ...registry.specialists };
   let topLevelIds = [...registry.topLevelIds];
   for (const entry of overrides) {
@@ -347,11 +454,76 @@ export function getSubspecialistParent(id: string, registry: SpecialistRegistry)
 }
 
 /**
- * Primary top-level ids: those that are not subspecialists of another top-level.
- * Use for heap visualization (root → primary) and optionally for router prompt (shorter list).
+ * Top-level ids that are not subspecialists of another top-level (i.e. root-level entry points for the heap).
+ * Used by getOptionsAtNode(null) so the model sees only primary choices at the root.
  */
 export function getPrimaryTopLevelIds(registry: SpecialistRegistry): string[] {
   return registry.topLevelIds.filter((id) => getSubspecialistParent(id, registry) === null);
+}
+
+/** Serializable heap snapshot for docs and UI (same shape as GET /api/heap). */
+export interface HeapSnapshot {
+  topLevelIds: string[];
+  specialists: Array<{
+    id: string;
+    description?: string;
+    toolNames: string[];
+    delegateTargets?: string[];
+    optionGroups?: Record<string, { label: string; toolIds: string[] }>;
+  }>;
+  overlayIds: string[];
+}
+
+/**
+ * Build snapshot from a registry. Order: topLevelIds first, then all other specialist ids.
+ */
+export function registryToSnapshot(
+  registry: SpecialistRegistry,
+  overlayIds: string[] = []
+): HeapSnapshot {
+  const topSet = new Set(registry.topLevelIds);
+  const specialists = [
+    ...registry.topLevelIds.map((id) => {
+      const entry = registry.specialists[id];
+      if (!entry) return null;
+      return {
+        id,
+        description: entry.description,
+        toolNames: entry.toolNames ?? [],
+        delegateTargets: entry.delegateTargets,
+        optionGroups: entry.optionGroups
+          ? Object.fromEntries(
+              Object.entries(entry.optionGroups).map(([k, v]) => [
+                k,
+                { label: v.label, toolIds: v.toolIds ?? [] },
+              ])
+            )
+          : undefined,
+      };
+    }),
+    ...Object.entries(registry.specialists)
+      .filter(([id]) => !topSet.has(id))
+      .map(([id, entry]) => ({
+        id,
+        description: entry.description,
+        toolNames: entry.toolNames ?? [],
+        delegateTargets: entry.delegateTargets,
+        optionGroups: entry.optionGroups
+          ? Object.fromEntries(
+              Object.entries(entry.optionGroups).map(([k, v]) => [
+                k,
+                { label: v.label, toolIds: v.toolIds ?? [] },
+              ])
+            )
+          : undefined,
+      })),
+  ].filter((x): x is NonNullable<typeof x> => x != null);
+  return { topLevelIds: registry.topLevelIds, specialists, overlayIds };
+}
+
+/** Default production heap snapshot (no overrides). Use for docs and static export. */
+export function getDefaultHeapSnapshot(): HeapSnapshot {
+  return registryToSnapshot(getRegistry(), []);
 }
 
 /**
@@ -372,7 +544,10 @@ export function getChildSpecialistIds(id: string, registry: SpecialistRegistry):
  * For a delegator (has delegateTargets, empty toolNames), returns the union of tools from all delegate leaves.
  * Use this when running a specialist so delegators (e.g. workflow with workflow__part1, workflow__part2) allow all tools from their parts.
  */
-export function getToolsForSpecialist(registry: SpecialistRegistry, specialistId: string): string[] {
+export function getToolsForSpecialist(
+  registry: SpecialistRegistry,
+  specialistId: string
+): string[] {
   const entry = registry.specialists[specialistId];
   if (!entry) return [];
   if (entry.toolNames.length > 0) return entry.toolNames;

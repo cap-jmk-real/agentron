@@ -1,0 +1,63 @@
+---
+title: Tutorial — First workflow (prompts)
+description: Create your first workflow using prompts in the Agentron chat.
+---
+
+# Tutorial: First workflow (prompts)
+
+Create a workflow that connects two agents by asking the Agentron assistant. No graph editor required—just prompts.
+
+---
+
+## Prerequisites
+
+- Agentron running and at least one LLM provider configured
+- Either two existing agents, or be ready to create them via chat (see [First agent](/tutorials/first-agent))
+
+---
+
+## Prompts to try
+
+Open **Chat** and send these (or adapt).
+
+### 1. Create two agents (if you don’t have them)
+
+- **"Create an agent named Researcher that uses the first LLM provider and can fetch URLs."**
+- **"Create an agent named Summarizer that uses the first LLM provider and summarizes text."**
+
+  The assistant uses `create_agent` (and optionally `list_tools` / `update_agent` for tools like `std-fetch-url`).
+
+### 2. Create the workflow
+
+- **"Create a workflow named Research then Summarize. Add the Researcher agent and the Summarizer agent, and connect them in that order. Set max rounds to 2."**
+
+  The assistant will:
+  - `create_workflow` with a name
+  - `update_workflow` with `nodes` (two agent nodes) and `edges` (Researcher → Summarizer)
+  - set `maxRounds` so the run doesn’t loop forever
+
+### 3. Run the workflow
+
+- **"Run the Research then Summarize workflow with input: Summarize the content of https://example.com."**
+
+  The assistant can trigger execution (e.g. via `execute_workflow` or by pointing you to the workflow’s Run button). You can check **Runs** for output and logs.
+
+### 4. Inspect or fix
+
+- **"Show me my Research then Summarize workflow."** — `get_workflow`
+- **"The last run failed. What went wrong?"** — The assistant uses `list_runs`, `get_run`, and optionally `get_workflow` / `get_agent` to diagnose (see [AI Guide: diagnose before fix](/ai-guide#diagnose-before-fix)).
+
+---
+
+## What the assistant did
+
+- `create_workflow` — empty workflow with a name
+- `update_workflow` — `nodes` (type `agent`, `config.agentId`), `edges` (source → target), `maxRounds`
+- `execute_workflow` — run with input
+
+---
+
+## Next
+
+- [First RAG (prompts)](/tutorials/first-rag) — Add a knowledge collection and use it in chat or an agent
+- [Concepts: Workflows](/concepts/workflows) — Execution modes, branches, scheduling

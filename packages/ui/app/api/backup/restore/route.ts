@@ -14,7 +14,10 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get("file") ?? formData.get("backup");
     if (!file || typeof file === "string") {
-      return json({ error: "No file uploaded. Use form field 'file' or 'backup'." }, { status: 400 });
+      return json(
+        { error: "No file uploaded. Use form field 'file' or 'backup'." },
+        { status: 400 }
+      );
     }
     const blob = file as Blob;
     const buffer = Buffer.from(await blob.arrayBuffer());

@@ -80,6 +80,36 @@ describe("Tasks API", () => {
     expect(data.tasks.some((t: { id: string }) => t.id === taskId)).toBe(true);
   });
 
+  it("GET /api/tasks?status=approved returns only approved tasks", async () => {
+    const res = await listGet(new Request("http://localhost/api/tasks?status=approved"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data.tasks)).toBe(true);
+    expect(data.tasks.every((t: { status: string }) => t.status === "approved")).toBe(true);
+  });
+
+  it("POST /api/tasks accepts explicit id in body", async () => {
+    const explicitId = "task-explicit-id-" + Date.now();
+    const res = await listPost(
+      new Request("http://localhost/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: explicitId,
+          workflowId,
+          agentId,
+          stepId: "step-explicit",
+          stepName: "Step",
+          label: "Label",
+          status: "pending_approval",
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.id).toBe(explicitId);
+  });
+
   it("GET /api/tasks/:id returns task", async () => {
     const res = await getOne(new Request("http://localhost/api/tasks/x"), {
       params: Promise.resolve({ id: taskId }),
@@ -108,6 +138,55 @@ describe("Tasks API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.status).toBe("approved");
+  });
+
+  it("PATCH /api/tasks/:id rejects task with output and resolvedBy", async () => {
+    const resCreate = await listPost(
+      new Request("http://localhost/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workflowId,
+          agentId,
+          stepId: "reject-step",
+          stepName: "Reject",
+          label: "Reject this",
+          status: "pending_approval",
+        }),
+      })
+    );
+    const created = await resCreate.json();
+    const res = await patchOne(
+      new Request("http://localhost/api/tasks/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "rejected",
+          output: "not valid",
+          resolvedBy: "admin",
+        }),
+      }),
+      { params: Promise.resolve({ id: created.id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.status).toBe("rejected");
+    expect(data.output).toBe("not valid");
+    expect(data.resolvedBy).toBe("admin");
+  });
+
+  it("PATCH /api/tasks/:id returns 404 for unknown id", async () => {
+    const res = await patchOne(
+      new Request("http://localhost/api/tasks/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "approved" }),
+      }),
+      { params: Promise.resolve({ id: "non-existent-task-id" }) }
+    );
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe("Not found");
   });
 
   it("PATCH /api/tasks/:id returns 400 when already resolved", async () => {

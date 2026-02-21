@@ -14,7 +14,7 @@ const getGlobalStore = (): Store => {
       workflows: new Map(),
       llmProviders: new Map(),
       tools: new Map(),
-      runs: new Map()
+      runs: new Map(),
     };
   }
   return globalAny.__agentronStore;
@@ -27,6 +27,6 @@ export const json = (data: unknown, init?: ResponseInit) =>
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    }
+      ...(init?.headers ?? {}),
+    },
   });

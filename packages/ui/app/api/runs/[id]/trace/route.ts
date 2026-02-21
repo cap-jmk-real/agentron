@@ -29,10 +29,16 @@ export async function GET(_: Request, { params }: Params) {
 
   let targetName: string | undefined;
   if (run.targetType === "workflow") {
-    const wf = await db.select({ name: workflows.name }).from(workflows).where(eq(workflows.id, run.targetId));
+    const wf = await db
+      .select({ name: workflows.name })
+      .from(workflows)
+      .where(eq(workflows.id, run.targetId));
     targetName = wf[0]?.name;
   } else if (run.targetType === "agent") {
-    const ag = await db.select({ name: agents.name }).from(agents).where(eq(agents.id, run.targetId));
+    const ag = await db
+      .select({ name: agents.name })
+      .from(agents)
+      .where(eq(agents.id, run.targetId));
     targetName = ag[0]?.name;
   }
 

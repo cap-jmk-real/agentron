@@ -54,10 +54,14 @@ export async function runHeapFromDAG(
     const level = dag.levels[levelIndex];
     if (level.length === 0) continue;
 
-    log?.("[assistant] heap DAG level", { traceId, phase: "heap", levelIndex, specialistIds: level, depth });
-    const results = await Promise.all(
-      level.map((id) => runSpecialist(id, refinedTask, context))
-    );
+    log?.("[assistant] heap DAG level", {
+      traceId,
+      phase: "heap",
+      levelIndex,
+      specialistIds: level,
+      depth,
+    });
+    const results = await Promise.all(level.map((id) => runSpecialist(id, refinedTask, context)));
 
     for (let i = 0; i < level.length; i++) {
       const id = level[i];
@@ -75,11 +79,17 @@ export async function runHeapFromDAG(
             delegateHeap: r.delegateHeap,
             depth: depth + 1,
           });
-          const sub = await runHeapFromDAG(subDag, r.delegateTask ?? refinedTask, runSpecialist, registry, {
-            ...options,
-            depth: depth + 1,
-            initialContext: context,
-          });
+          const sub = await runHeapFromDAG(
+            subDag,
+            r.delegateTask ?? refinedTask,
+            runSpecialist,
+            registry,
+            {
+              ...options,
+              depth: depth + 1,
+              initialContext: context,
+            }
+          );
           context = sub.context;
           outcomes.push(sub.summary);
         }

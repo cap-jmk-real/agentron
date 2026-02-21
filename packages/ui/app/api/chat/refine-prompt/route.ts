@@ -22,25 +22,45 @@ export async function POST() {
   if (configRows.length === 0) {
     return json({ error: "No LLM provider configured." }, { status: 400 });
   }
-  const llmConfig = configRows.find((c) => (typeof c.extra?.apiKey === "string" && c.extra.apiKey.length > 0) || (typeof c.apiKeyRef === "string" && c.apiKeyRef.length > 0)) ?? configRows[0];
+  const llmConfig =
+    configRows.find(
+      (c) =>
+        (typeof c.extra?.apiKey === "string" && c.extra.apiKey.length > 0) ||
+        (typeof c.apiKeyRef === "string" && c.apiKeyRef.length > 0)
+    ) ?? configRows[0];
 
   const manager = createDefaultLLMManager(async (ref) => (ref ? process.env[ref] : undefined));
 
   const [fbRows, convRows, settingsRows] = await Promise.all([
-    db.select().from(feedback).where(eq(feedback.targetType, "chat")).orderBy(desc(feedback.createdAt)).limit(20),
+    db
+      .select()
+      .from(feedback)
+      .where(eq(feedback.targetType, "chat"))
+      .orderBy(desc(feedback.createdAt))
+      .limit(20),
     db.select().from(conversations).orderBy(desc(conversations.createdAt)).limit(30),
     db.select().from(chatAssistantSettings).where(eq(chatAssistantSettings.id, "default")),
   ]);
 
   const feedbackItems = fbRows.map(fromFeedbackRow);
   const ratedConversations = convRows.filter((c) => c.rating != null && c.rating > 0);
-  const currentPrompt = settingsRows.length > 0
-    ? (fromChatAssistantSettingsRow(settingsRows[0]).customSystemPrompt ?? SYSTEM_PROMPT)
-    : SYSTEM_PROMPT;
+  const currentPrompt =
+    settingsRows.length > 0
+      ? (fromChatAssistantSettingsRow(settingsRows[0]).customSystemPrompt ?? SYSTEM_PROMPT)
+      : SYSTEM_PROMPT;
 
-  const convDetails: { id: string; rating: number; note?: string; messages?: { role: string; content: string }[] }[] = [];
+  const convDetails: {
+    id: string;
+    rating: number;
+    note?: string;
+    messages?: { role: string; content: string }[];
+  }[] = [];
   for (const c of ratedConversations.slice(0, 10)) {
-    const msgs = await db.select().from(chatMessages).where(eq(chatMessages.conversationId, c.id)).orderBy(chatMessages.createdAt);
+    const msgs = await db
+      .select()
+      .from(chatMessages)
+      .where(eq(chatMessages.conversationId, c.id))
+      .orderBy(chatMessages.createdAt);
     convDetails.push({
       id: c.id,
       rating: c.rating ?? 0,
@@ -92,10 +112,10 @@ ${convBlock || "(none)"}
 Output the improved system prompt (plain text only, no markdown):`;
 
   try {
-    const res = await manager.chat(
-      llmConfig as import("@agentron-studio/core").LLMConfig,
-      { messages: [{ role: "user", content: user }], temperature: 0.3 }
-    );
+    const res = await manager.chat(llmConfig as import("@agentron-studio/core").LLMConfig, {
+      messages: [{ role: "user", content: user }],
+      temperature: 0.3,
+    });
     const suggested = (res.content ?? "").trim();
     return json({ suggestedPrompt: suggested || currentPrompt });
   } catch (err) {

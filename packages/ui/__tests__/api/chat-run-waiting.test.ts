@@ -34,9 +34,12 @@ describe("Chat run-waiting API", () => {
       const created = await createRes.json();
       agentId = created.id;
     }
-    const execRes = await executePost(new Request("http://localhost/api/agents/x/execute", { method: "POST" }), {
-      params: Promise.resolve({ id: agentId }),
-    });
+    const execRes = await executePost(
+      new Request("http://localhost/api/agents/x/execute", { method: "POST" }),
+      {
+        params: Promise.resolve({ id: agentId }),
+      }
+    );
     expect(execRes.status).toBe(202);
     const execBody = await execRes.json();
     runId = execBody.id;
@@ -52,11 +55,7 @@ describe("Chat run-waiting API", () => {
       }),
       { params: Promise.resolve({ id: runId }) }
     );
-    await db
-      .update(executions)
-      .set({ conversationId })
-      .where(eq(executions.id, runId))
-      .run();
+    await db.update(executions).set({ conversationId }).where(eq(executions.id, runId)).run();
   });
 
   it("GET /api/chat/run-waiting returns runWaiting false when no conversationId", async () => {
@@ -67,14 +66,18 @@ describe("Chat run-waiting API", () => {
   });
 
   it("GET /api/chat/run-waiting returns runWaiting false for unknown conversationId", async () => {
-    const res = await GET(new Request("http://localhost/api/chat/run-waiting?conversationId=unknown-conv-id"));
+    const res = await GET(
+      new Request("http://localhost/api/chat/run-waiting?conversationId=unknown-conv-id")
+    );
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.runWaiting).toBe(false);
   });
 
   it("GET /api/chat/run-waiting returns runWaiting true with runId and question when run exists", async () => {
-    const res = await GET(new Request(`http://localhost/api/chat/run-waiting?conversationId=${conversationId}`));
+    const res = await GET(
+      new Request(`http://localhost/api/chat/run-waiting?conversationId=${conversationId}`)
+    );
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.runWaiting).toBe(true);

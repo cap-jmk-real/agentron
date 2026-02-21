@@ -25,8 +25,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -47,13 +47,12 @@ jobs:
       - name: Build docs
         run: npm run build:docs
         env:
-          BASE_URL: /${{ github.event.repository.name }}/
-          URL: https://${{ github.repository_owner }}.github.io
+          BASE_PATH: /${{ github.event.repository.name }}/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/docs/build
+          path: apps/docs/out
         if: github.event_name == 'push'
 
   deploy:

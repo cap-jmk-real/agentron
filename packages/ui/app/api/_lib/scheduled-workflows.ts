@@ -85,7 +85,11 @@ function scheduleKey(workflowId: string, branchId?: string): string {
  * Start a continuous loop for a workflow or branch: run once, then when the run completes (not when it pauses for user),
  * wait delayMs and run again. Repeats until refreshScheduledWorkflows clears it.
  */
-function runContinuousLoop(workflowId: string, branchId: string | undefined, delayMs: number): void {
+function runContinuousLoop(
+  workflowId: string,
+  branchId: string | undefined,
+  delayMs: number
+): void {
   const key = scheduleKey(workflowId, branchId);
   const run = async () => {
     try {
@@ -102,7 +106,7 @@ function runContinuousLoop(workflowId: string, branchId: string | undefined, del
 
 function scheduleCalendarWorkflow(workflow: Workflow, branchId?: string): void {
   const schedule = branchId
-    ? (workflow.branches?.find((b) => b.id === branchId)?.schedule?.trim())
+    ? workflow.branches?.find((b) => b.id === branchId)?.schedule?.trim()
     : workflow.schedule?.trim();
   if (!schedule) return;
 
@@ -199,7 +203,10 @@ export function refreshScheduledWorkflows(): void {
                 { ...workflow, id: `${workflow.id}:${branch.id}` },
                 intervalMs,
                 async () => {
-                  const jobId = await enqueueScheduledWorkflow({ workflowId: workflow.id, branchId: branch.id });
+                  const jobId = await enqueueScheduledWorkflow({
+                    workflowId: workflow.id,
+                    branchId: branch.id,
+                  });
                   await waitForJob(jobId);
                 }
               );

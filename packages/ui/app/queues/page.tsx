@@ -3,7 +3,17 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Loader2, RefreshCw, MessageSquare, GitBranch, History, ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
+import {
+  Loader2,
+  RefreshCw,
+  MessageSquare,
+  GitBranch,
+  History,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Check,
+} from "lucide-react";
 
 type WorkflowQueueJob = {
   id: string;
@@ -23,7 +33,12 @@ type ChatTraceEntry = {
   messageId: string;
   createdAt: number;
   toolCalls: Array<{ name: string; args?: Record<string, unknown>; result?: unknown }>;
-  llmTrace: Array<{ phase?: string; messageCount?: number; responsePreview?: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }>;
+  llmTrace: Array<{
+    phase?: string;
+    messageCount?: number;
+    responsePreview?: string;
+    usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+  }>;
 };
 
 type MessageQueueLogEntry = {
@@ -48,7 +63,10 @@ type QueuesData = {
 function JobStatusBadge({ status }: { status: string }) {
   if (status === "running") {
     return (
-      <span className="run-status run-status-running" style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+      <span
+        className="run-status run-status-running"
+        style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+      >
         <Loader2 size={12} className="spin" /> running
       </span>
     );
@@ -76,55 +94,129 @@ function stepToCopyLines(s: MessageQueueLogEntry, formatTs: (ts: number) => stri
     try {
       const obj = JSON.parse(s.payload) as Record<string, unknown>;
       const requestMessages = Array.isArray(obj.requestMessages)
-        ? obj.requestMessages as Array<{ role?: string; content?: string }>
+        ? (obj.requestMessages as Array<{ role?: string; content?: string }>)
         : null;
       const responseContent = typeof obj.responseContent === "string" ? obj.responseContent : null;
       if (s.phase === "llm_request" && requestMessages && requestMessages.length > 0) {
         lines.push("  --- Full prompt (messages sent to LLM) ---");
         for (const m of requestMessages) {
           const role = (m.role ?? "unknown").toUpperCase();
-          const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
-          lines.push(`  [${role}]`, content.split("\n").map((l) => `    ${l}`).join("\n"), "");
+          const content =
+            typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
+          lines.push(
+            `  [${role}]`,
+            content
+              .split("\n")
+              .map((l) => `    ${l}`)
+              .join("\n"),
+            ""
+          );
         }
       } else if (s.phase === "llm_response" && responseContent !== null) {
-        lines.push("  --- Full LLM output ---", responseContent.split("\n").map((l) => `  ${l}`).join("\n"));
+        lines.push(
+          "  --- Full LLM output ---",
+          responseContent
+            .split("\n")
+            .map((l) => `  ${l}`)
+            .join("\n")
+        );
       } else if (obj.rephrasedPrompt && typeof obj.rephrasedPrompt === "string") {
         lines.push(`  Rephrased: ${obj.rephrasedPrompt}`);
       } else if (s.phase === "planner_request") {
         const prompt = obj.plannerPrompt != null ? String(obj.plannerPrompt) : "";
         lines.push("  --- Planner input (user message + specialist list + options) ---");
-        lines.push(prompt.split("\n").map((l) => `  ${l}`).join("\n"));
+        lines.push(
+          prompt
+            .split("\n")
+            .map((l) => `  ${l}`)
+            .join("\n")
+        );
       } else if (s.phase === "planner_response") {
         if (obj.parsedPlan != null) {
           lines.push("  --- Derived plan ---");
-          lines.push(JSON.stringify(obj.parsedPlan, null, 2).split("\n").map((l) => `  ${l}`).join("\n"));
+          lines.push(
+            JSON.stringify(obj.parsedPlan, null, 2)
+              .split("\n")
+              .map((l) => `  ${l}`)
+              .join("\n")
+          );
         }
         if (obj.noPlanReason != null && typeof obj.noPlanReason === "string") {
           lines.push("  --- No plan reason ---");
           lines.push(`  ${obj.noPlanReason}`);
         }
-        if (obj.extractedTextForParsing != null && typeof obj.extractedTextForParsing === "string") {
+        if (
+          obj.extractedTextForParsing != null &&
+          typeof obj.extractedTextForParsing === "string"
+        ) {
           lines.push("  --- Text used for parsing ---");
-          lines.push(obj.extractedTextForParsing.split("\n").map((l) => `  ${l}`).join("\n"));
+          lines.push(
+            obj.extractedTextForParsing
+              .split("\n")
+              .map((l) => `  ${l}`)
+              .join("\n")
+          );
         }
         const raw = obj.rawResponse != null ? String(obj.rawResponse) : "";
         lines.push("  --- Planner raw LLM output ---");
-        lines.push(raw.split("\n").map((l) => `  ${l}`).join("\n"));
+        lines.push(
+          raw
+            .split("\n")
+            .map((l) => `  ${l}`)
+            .join("\n")
+        );
         if (obj.rawPreview != null && typeof obj.rawPreview === "string") {
           lines.push("  --- Provider raw preview ---");
-          lines.push(obj.rawPreview.split("\n").map((l) => `  ${l}`).join("\n"));
+          lines.push(
+            obj.rawPreview
+              .split("\n")
+              .map((l) => `  ${l}`)
+              .join("\n")
+          );
         }
       } else if (s.phase === "heap_tool" || s.phase === "heap_tool_done") {
-        if (obj.toolInput != null) lines.push("  toolInput:", JSON.stringify(obj.toolInput, null, 2).split("\n").map((l) => `  ${l}`).join("\n"));
-        if (obj.toolOutput != null) lines.push("  toolOutput:", JSON.stringify(obj.toolOutput, null, 2).split("\n").map((l) => `  ${l}`).join("\n"));
+        if (obj.toolInput != null)
+          lines.push(
+            "  toolInput:",
+            JSON.stringify(obj.toolInput, null, 2)
+              .split("\n")
+              .map((l) => `  ${l}`)
+              .join("\n")
+          );
+        if (obj.toolOutput != null)
+          lines.push(
+            "  toolOutput:",
+            JSON.stringify(obj.toolOutput, null, 2)
+              .split("\n")
+              .map((l) => `  ${l}`)
+              .join("\n")
+          );
       } else if (s.phase === "heap_route") {
         const task = typeof obj.refinedTask === "string" ? obj.refinedTask : "";
         const order = Array.isArray(obj.priorityOrder) ? JSON.stringify(obj.priorityOrder) : "";
-        lines.push([task && `Task: ${task}`, order && `Order: ${order}`].filter(Boolean).join(" | "));
+        lines.push(
+          [task && `Task: ${task}`, order && `Order: ${order}`].filter(Boolean).join(" | ")
+        );
         if (obj.extractedContext && typeof obj.extractedContext === "object") {
-          lines.push("  Extracted context:", JSON.stringify(obj.extractedContext, null, 2).split("\n").map((l) => `  ${l}`).join("\n"));
+          lines.push(
+            "  Extracted context:",
+            JSON.stringify(obj.extractedContext, null, 2)
+              .split("\n")
+              .map((l) => `  ${l}`)
+              .join("\n")
+          );
         }
-        ["instructionsForGeneral", "instructionsForAgent", "instructionsForWorkflow", "instructionsForImproveRun", "instructionsForImproveHeap", "instructionsForImproveAgentsWorkflows", "instructionsForImprovement", "instructionsForImprovementSession", "instructionsForImprovementHeap"].forEach((key) => {
+        [
+          "instructionsForGeneral",
+          "instructionsForAgent",
+          "instructionsForWorkflow",
+          "instructionsForImproveRun",
+          "instructionsForImproveHeap",
+          "instructionsForImproveAgentsWorkflows",
+          "instructionsForImprovement",
+          "instructionsForImprovementSession",
+          "instructionsForImprovementHeap",
+        ].forEach((key) => {
           const v = obj[key];
           if (typeof v === "string" && v.trim()) lines.push(`  ${key}: ${v}`);
         });
@@ -133,11 +225,14 @@ function stepToCopyLines(s: MessageQueueLogEntry, formatTs: (ts: number) => stri
         const msg = typeof obj.error === "string" ? obj.error : "";
         lines.push([code && `Code: ${code}`, msg && `Message: ${msg}`].filter(Boolean).join(" | "));
       } else {
-        const preview = obj.inputPreview && typeof obj.inputPreview === "string"
-          ? `In: ${obj.inputPreview}`
-          : obj.contentPreview && typeof obj.contentPreview === "string"
-            ? `Out: ${obj.contentPreview}`
-            : s.payload.length > 500 ? `${s.payload.slice(0, 500)}…` : s.payload;
+        const preview =
+          obj.inputPreview && typeof obj.inputPreview === "string"
+            ? `In: ${obj.inputPreview}`
+            : obj.contentPreview && typeof obj.contentPreview === "string"
+              ? `Out: ${obj.contentPreview}`
+              : s.payload.length > 500
+                ? `${s.payload.slice(0, 500)}…`
+                : s.payload;
         lines.push(`  ${preview}`);
       }
     } catch {
@@ -179,51 +274,154 @@ function renderQueueLogStep(s: MessageQueueLogEntry, formatTs: (ts: number) => s
     s.type === "rephrased_prompt" && payloadObj && typeof payloadObj.rephrasedPrompt === "string"
       ? payloadObj.rephrasedPrompt
       : null;
-  const requestMessages = payloadObj && Array.isArray(payloadObj.requestMessages)
-    ? payloadObj.requestMessages as Array<{ role?: string; content?: string }>
-    : null;
-  const responseContent = payloadObj && typeof payloadObj.responseContent === "string" ? payloadObj.responseContent : null;
-  const llmInputPreview = payloadObj && typeof payloadObj.inputPreview === "string" ? payloadObj.inputPreview : null;
-  const llmOutputPreview = payloadObj && typeof payloadObj.contentPreview === "string" ? payloadObj.contentPreview : null;
-  const showFullLlmRequest = s.phase === "llm_request" && requestMessages && requestMessages.length > 0;
+  const requestMessages =
+    payloadObj && Array.isArray(payloadObj.requestMessages)
+      ? (payloadObj.requestMessages as Array<{ role?: string; content?: string }>)
+      : null;
+  const responseContent =
+    payloadObj && typeof payloadObj.responseContent === "string"
+      ? payloadObj.responseContent
+      : null;
+  const llmInputPreview =
+    payloadObj && typeof payloadObj.inputPreview === "string" ? payloadObj.inputPreview : null;
+  const llmOutputPreview =
+    payloadObj && typeof payloadObj.contentPreview === "string" ? payloadObj.contentPreview : null;
+  const showFullLlmRequest =
+    s.phase === "llm_request" && requestMessages && requestMessages.length > 0;
   const showFullLlmResponse = s.phase === "llm_response" && responseContent !== null;
-  const showLlmPreview = !showFullLlmRequest && !showFullLlmResponse && ((s.phase === "llm_request" && llmInputPreview) || (s.phase === "llm_response" && llmOutputPreview));
-  const plannerPrompt = s.phase === "planner_request" && payloadObj && payloadObj.plannerPrompt != null ? String(payloadObj.plannerPrompt) : null;
-  const plannerRawResponse = s.phase === "planner_response" && payloadObj && payloadObj.rawResponse != null ? String(payloadObj.rawResponse) : null;
-  const plannerParsedPlan = s.phase === "planner_response" && payloadObj && payloadObj.parsedPlan != null ? payloadObj.parsedPlan : null;
-  const plannerNoPlanReason = s.phase === "planner_response" && payloadObj && typeof payloadObj.noPlanReason === "string" ? payloadObj.noPlanReason : null;
-  const plannerExtractedText = s.phase === "planner_response" && payloadObj && typeof payloadObj.extractedTextForParsing === "string" ? payloadObj.extractedTextForParsing : null;
-  const heapToolInput = (s.phase === "heap_tool" || s.phase === "heap_tool_done") && payloadObj && payloadObj.toolInput !== undefined ? payloadObj.toolInput : null;
-  const heapToolOutput = (s.phase === "heap_tool" || s.phase === "heap_tool_done") && payloadObj && payloadObj.toolOutput !== undefined ? payloadObj.toolOutput : null;
-  const heapRouteRefinedTask = s.phase === "heap_route" && payloadObj && typeof payloadObj.refinedTask === "string" ? payloadObj.refinedTask : null;
-  const heapRouteOrder = s.phase === "heap_route" && payloadObj && Array.isArray(payloadObj.priorityOrder) ? payloadObj.priorityOrder : null;
-  const heapRouteExtractedContext = s.phase === "heap_route" && payloadObj && payloadObj.extractedContext && typeof payloadObj.extractedContext === "object" ? payloadObj.extractedContext as Record<string, unknown> : null;
-  const heapRouteInstructions = s.phase === "heap_route" && payloadObj
-    ? [
-        payloadObj.instructionsForGeneral != null && typeof payloadObj.instructionsForGeneral === "string" ? { id: "general", text: payloadObj.instructionsForGeneral } : null,
-        payloadObj.instructionsForAgent != null && typeof payloadObj.instructionsForAgent === "string" ? { id: "agent", text: payloadObj.instructionsForAgent } : null,
-        payloadObj.instructionsForWorkflow != null && typeof payloadObj.instructionsForWorkflow === "string" ? { id: "workflow", text: payloadObj.instructionsForWorkflow } : null,
-        payloadObj.instructionsForImproveRun != null && typeof payloadObj.instructionsForImproveRun === "string" ? { id: "improve_run", text: payloadObj.instructionsForImproveRun } : null,
-        payloadObj.instructionsForImproveHeap != null && typeof payloadObj.instructionsForImproveHeap === "string" ? { id: "improve_heap", text: payloadObj.instructionsForImproveHeap } : null,
-        payloadObj.instructionsForImproveAgentsWorkflows != null && typeof payloadObj.instructionsForImproveAgentsWorkflows === "string" ? { id: "improve_agents_workflows", text: payloadObj.instructionsForImproveAgentsWorkflows } : null,
-        payloadObj.instructionsForImprovement != null && typeof payloadObj.instructionsForImprovement === "string" ? { id: "improvement", text: payloadObj.instructionsForImprovement } : null,
-        payloadObj.instructionsForImprovementSession != null && typeof payloadObj.instructionsForImprovementSession === "string" ? { id: "improvement_session", text: payloadObj.instructionsForImprovementSession } : null,
-        payloadObj.instructionsForImprovementHeap != null && typeof payloadObj.instructionsForImprovementHeap === "string" ? { id: "improvement_heap", text: payloadObj.instructionsForImprovementHeap } : null,
-      ].filter((x): x is { id: string; text: string } => x != null)
-    : [];
-  const userInputPreview = s.phase === "user_input" && payloadObj && typeof payloadObj.inputPreview === "string" ? payloadObj.inputPreview : null;
-  const errorMsg = s.type === "error" && payloadObj && typeof payloadObj.error === "string" ? payloadObj.error : null;
-  const errorCode = s.type === "error" && payloadObj && typeof payloadObj.errorCode === "string" ? payloadObj.errorCode : null;
+  const showLlmPreview =
+    !showFullLlmRequest &&
+    !showFullLlmResponse &&
+    ((s.phase === "llm_request" && llmInputPreview) ||
+      (s.phase === "llm_response" && llmOutputPreview));
+  const plannerPrompt =
+    s.phase === "planner_request" && payloadObj && payloadObj.plannerPrompt != null
+      ? String(payloadObj.plannerPrompt)
+      : null;
+  const plannerRawResponse =
+    s.phase === "planner_response" && payloadObj && payloadObj.rawResponse != null
+      ? String(payloadObj.rawResponse)
+      : null;
+  const plannerParsedPlan =
+    s.phase === "planner_response" && payloadObj && payloadObj.parsedPlan != null
+      ? payloadObj.parsedPlan
+      : null;
+  const plannerNoPlanReason =
+    s.phase === "planner_response" && payloadObj && typeof payloadObj.noPlanReason === "string"
+      ? payloadObj.noPlanReason
+      : null;
+  const plannerExtractedText =
+    s.phase === "planner_response" &&
+    payloadObj &&
+    typeof payloadObj.extractedTextForParsing === "string"
+      ? payloadObj.extractedTextForParsing
+      : null;
+  const heapToolInput =
+    (s.phase === "heap_tool" || s.phase === "heap_tool_done") &&
+    payloadObj &&
+    payloadObj.toolInput !== undefined
+      ? payloadObj.toolInput
+      : null;
+  const heapToolOutput =
+    (s.phase === "heap_tool" || s.phase === "heap_tool_done") &&
+    payloadObj &&
+    payloadObj.toolOutput !== undefined
+      ? payloadObj.toolOutput
+      : null;
+  const heapRouteRefinedTask =
+    s.phase === "heap_route" && payloadObj && typeof payloadObj.refinedTask === "string"
+      ? payloadObj.refinedTask
+      : null;
+  const heapRouteOrder =
+    s.phase === "heap_route" && payloadObj && Array.isArray(payloadObj.priorityOrder)
+      ? payloadObj.priorityOrder
+      : null;
+  const heapRouteExtractedContext =
+    s.phase === "heap_route" &&
+    payloadObj &&
+    payloadObj.extractedContext &&
+    typeof payloadObj.extractedContext === "object"
+      ? (payloadObj.extractedContext as Record<string, unknown>)
+      : null;
+  const heapRouteInstructions =
+    s.phase === "heap_route" && payloadObj
+      ? [
+          payloadObj.instructionsForGeneral != null &&
+          typeof payloadObj.instructionsForGeneral === "string"
+            ? { id: "general", text: payloadObj.instructionsForGeneral }
+            : null,
+          payloadObj.instructionsForAgent != null &&
+          typeof payloadObj.instructionsForAgent === "string"
+            ? { id: "agent", text: payloadObj.instructionsForAgent }
+            : null,
+          payloadObj.instructionsForWorkflow != null &&
+          typeof payloadObj.instructionsForWorkflow === "string"
+            ? { id: "workflow", text: payloadObj.instructionsForWorkflow }
+            : null,
+          payloadObj.instructionsForImproveRun != null &&
+          typeof payloadObj.instructionsForImproveRun === "string"
+            ? { id: "improve_run", text: payloadObj.instructionsForImproveRun }
+            : null,
+          payloadObj.instructionsForImproveHeap != null &&
+          typeof payloadObj.instructionsForImproveHeap === "string"
+            ? { id: "improve_heap", text: payloadObj.instructionsForImproveHeap }
+            : null,
+          payloadObj.instructionsForImproveAgentsWorkflows != null &&
+          typeof payloadObj.instructionsForImproveAgentsWorkflows === "string"
+            ? {
+                id: "improve_agents_workflows",
+                text: payloadObj.instructionsForImproveAgentsWorkflows,
+              }
+            : null,
+          payloadObj.instructionsForImprovement != null &&
+          typeof payloadObj.instructionsForImprovement === "string"
+            ? { id: "improvement", text: payloadObj.instructionsForImprovement }
+            : null,
+          payloadObj.instructionsForImprovementSession != null &&
+          typeof payloadObj.instructionsForImprovementSession === "string"
+            ? { id: "improvement_session", text: payloadObj.instructionsForImprovementSession }
+            : null,
+          payloadObj.instructionsForImprovementHeap != null &&
+          typeof payloadObj.instructionsForImprovementHeap === "string"
+            ? { id: "improvement_heap", text: payloadObj.instructionsForImprovementHeap }
+            : null,
+        ].filter((x): x is { id: string; text: string } => x != null)
+      : [];
+  const userInputPreview =
+    s.phase === "user_input" && payloadObj && typeof payloadObj.inputPreview === "string"
+      ? payloadObj.inputPreview
+      : null;
+  const errorMsg =
+    s.type === "error" && payloadObj && typeof payloadObj.error === "string"
+      ? payloadObj.error
+      : null;
+  const errorCode =
+    s.type === "error" && payloadObj && typeof payloadObj.errorCode === "string"
+      ? payloadObj.errorCode
+      : null;
   return (
-    <li key={s.id} style={{ padding: "0.2rem 0", display: "flex", flexDirection: "column", gap: "0.15rem", flexWrap: "wrap" }}>
+    <li
+      key={s.id}
+      style={{
+        padding: "0.2rem 0",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.15rem",
+        flexWrap: "wrap",
+      }}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-        <span style={{ color: "var(--text-muted)", minWidth: "4.5rem" }}>{formatTs(s.createdAt)}</span>
+        <span style={{ color: "var(--text-muted)", minWidth: "4.5rem" }}>
+          {formatTs(s.createdAt)}
+        </span>
         <span style={{ fontWeight: s.type === "done" ? 600 : undefined }}>{s.label ?? s.type}</span>
         {s.phase && s.phase !== s.label && (
           <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>({s.phase})</span>
         )}
         {payloadObj && typeof payloadObj.specialistId === "string" && (
-          <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>{payloadObj.specialistId}</span>
+          <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+            {payloadObj.specialistId}
+          </span>
         )}
       </div>
       {rephrasedPrompt != null && <div style={detailBlockStyle}>{rephrasedPrompt}</div>}
@@ -232,8 +430,12 @@ function renderQueueLogStep(s: MessageQueueLogEntry, formatTs: (ts: number) => s
           <strong>Full prompt (messages sent to LLM)</strong>
           {requestMessages!.map((m, i) => (
             <div key={i} style={{ marginTop: i > 0 ? "0.5rem" : "0.25rem" }}>
-              <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>[{(m.role ?? "unknown").toUpperCase()}]</span>
-              <div style={{ marginLeft: "0.5rem" }}>{typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "")}</div>
+              <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
+                [{(m.role ?? "unknown").toUpperCase()}]
+              </span>
+              <div style={{ marginLeft: "0.5rem" }}>
+                {typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "")}
+              </div>
             </div>
           ))}
         </div>
@@ -246,38 +448,87 @@ function renderQueueLogStep(s: MessageQueueLogEntry, formatTs: (ts: number) => s
       )}
       {showLlmPreview && (
         <div style={detailBlockStyle}>
-          {llmInputPreview != null && <div><strong>In:</strong> {llmInputPreview}</div>}
-          {llmOutputPreview != null && <div><strong>Out:</strong> {llmOutputPreview}</div>}
+          {llmInputPreview != null && (
+            <div>
+              <strong>In:</strong> {llmInputPreview}
+            </div>
+          )}
+          {llmOutputPreview != null && (
+            <div>
+              <strong>Out:</strong> {llmOutputPreview}
+            </div>
+          )}
         </div>
       )}
       {plannerPrompt != null && (
         <div style={fullLlmBlockStyle}>
           <strong>Planner input (user message + specialists + options)</strong>
-          <pre style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{plannerPrompt}</pre>
+          <pre
+            style={{
+              margin: "0.25rem 0 0",
+              fontSize: "0.75rem",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+            }}
+          >
+            {plannerPrompt}
+          </pre>
         </div>
       )}
-      {(plannerRawResponse != null || plannerParsedPlan != null || plannerNoPlanReason != null || plannerExtractedText != null) && (
+      {(plannerRawResponse != null ||
+        plannerParsedPlan != null ||
+        plannerNoPlanReason != null ||
+        plannerExtractedText != null) && (
         <div style={fullLlmBlockStyle}>
           {(plannerParsedPlan != null || plannerNoPlanReason != null) && (
             <div style={{ marginBottom: "0.5rem" }}>
               <strong>Derived plan</strong>
               {plannerParsedPlan != null ? (
-                <pre style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{JSON.stringify(plannerParsedPlan, null, 2)}</pre>
+                <pre
+                  style={{
+                    margin: "0.25rem 0 0",
+                    fontSize: "0.75rem",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {JSON.stringify(plannerParsedPlan, null, 2)}
+                </pre>
               ) : (
-                <p style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", color: "var(--text-muted)" }}>{plannerNoPlanReason ?? "No plan could be derived."}</p>
+                <p
+                  style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", color: "var(--text-muted)" }}
+                >
+                  {plannerNoPlanReason ?? "No plan could be derived."}
+                </p>
               )}
             </div>
           )}
           {plannerExtractedText != null && (
             <div style={{ marginBottom: "0.5rem" }}>
               <strong>Text used for parsing</strong>
-              <pre style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{plannerExtractedText}</pre>
+              <pre
+                style={{
+                  margin: "0.25rem 0 0",
+                  fontSize: "0.75rem",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                }}
+              >
+                {plannerExtractedText}
+              </pre>
             </div>
           )}
           {plannerRawResponse != null && (
             <>
               <strong>Planner raw output</strong>
-              <pre style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+              <pre
+                style={{
+                  margin: "0.25rem 0 0",
+                  fontSize: "0.75rem",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                }}
+              >
                 {plannerRawResponse.trim() ? plannerRawResponse : "(No raw output captured)"}
               </pre>
             </>
@@ -289,41 +540,88 @@ function renderQueueLogStep(s: MessageQueueLogEntry, formatTs: (ts: number) => s
           {heapToolInput !== null && (
             <div style={{ marginBottom: "0.25rem" }}>
               <strong>Tool input:</strong>
-              <pre style={{ margin: "0.15rem 0 0", fontSize: "0.75rem", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 200, overflow: "auto" }}>{typeof heapToolInput === "string" ? heapToolInput : JSON.stringify(heapToolInput, null, 2)}</pre>
+              <pre
+                style={{
+                  margin: "0.15rem 0 0",
+                  fontSize: "0.75rem",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  maxHeight: 200,
+                  overflow: "auto",
+                }}
+              >
+                {typeof heapToolInput === "string"
+                  ? heapToolInput
+                  : JSON.stringify(heapToolInput, null, 2)}
+              </pre>
             </div>
           )}
           {heapToolOutput !== null && (
             <div>
               <strong>Tool output:</strong>
-              <pre style={{ margin: "0.15rem 0 0", fontSize: "0.75rem", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 200, overflow: "auto" }}>{typeof heapToolOutput === "string" ? heapToolOutput : JSON.stringify(heapToolOutput, null, 2)}</pre>
-            </div>
-          )}
-        </div>
-      )}
-      {s.phase === "heap_route" && (heapRouteRefinedTask != null || heapRouteOrder != null || heapRouteExtractedContext != null || heapRouteInstructions.length > 0) && (
-        <div style={detailBlockStyle}>
-          {heapRouteRefinedTask != null && <div><strong>Task:</strong> {heapRouteRefinedTask}</div>}
-          {heapRouteOrder != null && <div><strong>Order:</strong> {JSON.stringify(heapRouteOrder)}</div>}
-          {heapRouteExtractedContext != null && Object.keys(heapRouteExtractedContext).length > 0 && (
-            <div style={{ marginTop: "0.25rem" }}>
-              <strong>Extracted context:</strong>
-              <pre style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                {JSON.stringify(heapRouteExtractedContext, null, 2)}
+              <pre
+                style={{
+                  margin: "0.15rem 0 0",
+                  fontSize: "0.75rem",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  maxHeight: 200,
+                  overflow: "auto",
+                }}
+              >
+                {typeof heapToolOutput === "string"
+                  ? heapToolOutput
+                  : JSON.stringify(heapToolOutput, null, 2)}
               </pre>
             </div>
           )}
-          {heapRouteInstructions.length > 0 && (
-            <div style={{ marginTop: "0.25rem" }}>
-              <strong>Plan instructions:</strong>
-              {heapRouteInstructions.map(({ id, text }) => (
-                <div key={id} style={{ marginTop: "0.2rem" }}>
-                  <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{id}:</span> {text}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
+      {s.phase === "heap_route" &&
+        (heapRouteRefinedTask != null ||
+          heapRouteOrder != null ||
+          heapRouteExtractedContext != null ||
+          heapRouteInstructions.length > 0) && (
+          <div style={detailBlockStyle}>
+            {heapRouteRefinedTask != null && (
+              <div>
+                <strong>Task:</strong> {heapRouteRefinedTask}
+              </div>
+            )}
+            {heapRouteOrder != null && (
+              <div>
+                <strong>Order:</strong> {JSON.stringify(heapRouteOrder)}
+              </div>
+            )}
+            {heapRouteExtractedContext != null &&
+              Object.keys(heapRouteExtractedContext).length > 0 && (
+                <div style={{ marginTop: "0.25rem" }}>
+                  <strong>Extracted context:</strong>
+                  <pre
+                    style={{
+                      margin: "0.25rem 0 0",
+                      fontSize: "0.75rem",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {JSON.stringify(heapRouteExtractedContext, null, 2)}
+                  </pre>
+                </div>
+              )}
+            {heapRouteInstructions.length > 0 && (
+              <div style={{ marginTop: "0.25rem" }}>
+                <strong>Plan instructions:</strong>
+                {heapRouteInstructions.map(({ id, text }) => (
+                  <div key={id} style={{ marginTop: "0.2rem" }}>
+                    <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{id}:</span>{" "}
+                    {text}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       {userInputPreview != null && (
         <div style={detailBlockStyle}>
           <strong>In:</strong> {userInputPreview}
@@ -331,8 +629,16 @@ function renderQueueLogStep(s: MessageQueueLogEntry, formatTs: (ts: number) => s
       )}
       {(errorMsg != null || errorCode != null) && (
         <div style={{ ...detailBlockStyle, borderLeftColor: "var(--error-border, #dc2626)" }}>
-          {errorCode != null && <div><strong>Code:</strong> <code>{errorCode}</code></div>}
-          {errorMsg != null && <div><strong>Message:</strong> {errorMsg}</div>}
+          {errorCode != null && (
+            <div>
+              <strong>Code:</strong> <code>{errorCode}</code>
+            </div>
+          )}
+          {errorMsg != null && (
+            <div>
+              <strong>Message:</strong> {errorMsg}
+            </div>
+          )}
         </div>
       )}
     </li>
@@ -346,7 +652,9 @@ export default function QueuesPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [historyConversations, setHistoryConversations] = useState<Array<{ conversationId: string; lastAt: number; stepCount: number }>>([]);
+  const [historyConversations, setHistoryConversations] = useState<
+    Array<{ conversationId: string; lastAt: number; stepCount: number }>
+  >([]);
   const [historyNextOffset, setHistoryNextOffset] = useState<number | null>(null);
   const [historyLoadingConvs, setHistoryLoadingConvs] = useState(false);
   const [selectedHistoryConvId, setSelectedHistoryConvId] = useState<string | null>(null);
@@ -354,19 +662,27 @@ export default function QueuesPage() {
   const [historyStepsNextCursor, setHistoryStepsNextCursor] = useState<string | null>(null);
   const [historyStepsLoading, setHistoryStepsLoading] = useState(false);
   const [historySectionOpen, setHistorySectionOpen] = useState(!!convFromUrl);
-  const [copiedSection, setCopiedSection] = useState<"workflow" | "active" | "history" | null>(null);
+  const [copiedSection, setCopiedSection] = useState<"workflow" | "active" | "history" | null>(
+    null
+  );
 
-  const copyToClipboard = useCallback((text: string, section: "workflow" | "active" | "history") => {
-    void navigator.clipboard.writeText(text).then(() => {
-      setCopiedSection(section);
-      setTimeout(() => setCopiedSection(null), 2000);
-    });
-  }, []);
+  const copyToClipboard = useCallback(
+    (text: string, section: "workflow" | "active" | "history") => {
+      void navigator.clipboard.writeText(text).then(() => {
+        setCopiedSection(section);
+        setTimeout(() => setCopiedSection(null), 2000);
+      });
+    },
+    []
+  );
 
   const loadHistoryConversations = useCallback(async (offset: number) => {
     setHistoryLoadingConvs(true);
     try {
-      const res = await fetch(`/api/queues/message-log?limit=${HISTORY_PAGE_SIZE}&offset=${offset}`, { cache: "no-store" });
+      const res = await fetch(
+        `/api/queues/message-log?limit=${HISTORY_PAGE_SIZE}&offset=${offset}`,
+        { cache: "no-store" }
+      );
       const json = await res.json();
       if (res.ok && Array.isArray(json.conversations)) {
         if (offset === 0) setHistoryConversations(json.conversations);
@@ -405,10 +721,21 @@ export default function QueuesPage() {
   }, [convFromUrl]);
 
   useEffect(() => {
-    if (selectedHistoryConvId != null && historySteps.length === 0 && historyStepsNextCursor === null && !historyStepsLoading) {
+    if (
+      selectedHistoryConvId != null &&
+      historySteps.length === 0 &&
+      historyStepsNextCursor === null &&
+      !historyStepsLoading
+    ) {
       loadHistorySteps(selectedHistoryConvId);
     }
-  }, [selectedHistoryConvId, historySteps.length, historyStepsNextCursor, historyStepsLoading, loadHistorySteps]);
+  }, [
+    selectedHistoryConvId,
+    historySteps.length,
+    historyStepsNextCursor,
+    historyStepsLoading,
+    loadHistorySteps,
+  ]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -475,7 +802,12 @@ export default function QueuesPage() {
     if (historySectionOpen && historyConversations.length === 0 && !historyLoadingConvs) {
       loadHistoryConversations(0);
     }
-  }, [historySectionOpen, historyConversations.length, historyLoadingConvs, loadHistoryConversations]);
+  }, [
+    historySectionOpen,
+    historyConversations.length,
+    historyLoadingConvs,
+    loadHistoryConversations,
+  ]);
 
   if (loading && !data) {
     return (
@@ -497,12 +829,18 @@ export default function QueuesPage() {
       <div className="page-header">
         <h1 className="page-title">Queues</h1>
         <p className="page-description">
-          Track workflow run queue and active chat turns. All jobs are stored in the database; nothing is kept only in memory.
+          Track workflow run queue and active chat turns. All jobs are stored in the database;
+          nothing is kept only in memory.
         </p>
         <button
           type="button"
           className="button button-secondary"
-          style={{ marginTop: "0.5rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+          style={{
+            marginTop: "0.5rem",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.35rem",
+          }}
           onClick={() => void load()}
           disabled={loading}
         >
@@ -510,27 +848,58 @@ export default function QueuesPage() {
           Refresh
         </button>
         {loadError ? (
-          <p style={{ marginTop: "0.5rem", color: "var(--text-error, #c00)", fontSize: "0.9rem" }}>{loadError}</p>
+          <p style={{ marginTop: "0.5rem", color: "var(--text-error, #c00)", fontSize: "0.9rem" }}>
+            {loadError}
+          </p>
         ) : null}
       </div>
 
       <section style={{ marginBottom: "2rem" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
-          <h2 style={{ fontSize: "1.1rem", margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "0.5rem",
+            marginBottom: "0.75rem",
+          }}
+        >
+          <h2
+            style={{
+              fontSize: "1.1rem",
+              margin: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+            }}
+          >
             <GitBranch size={18} />
             Workflow queue
           </h2>
           <button
             type="button"
             className="button button-secondary"
-            style={{ fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+            style={{
+              fontSize: "0.8rem",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.35rem",
+            }}
             onClick={() => {
               const lines = [
                 "Workflow queue",
                 `Queued: ${wq.status.queued} · Running: ${wq.status.running} · Concurrency: ${wq.status.concurrency}`,
                 "",
                 ...wq.jobs.map((j) =>
-                  [j.status, j.type, j.runId ?? j.payload.slice(0, 60), formatTs(j.enqueuedAt), j.finishedAt != null ? formatTs(j.finishedAt) : "", j.error ?? ""].join("\t")
+                  [
+                    j.status,
+                    j.type,
+                    j.runId ?? j.payload.slice(0, 60),
+                    formatTs(j.enqueuedAt),
+                    j.finishedAt != null ? formatTs(j.finishedAt) : "",
+                    j.error ?? "",
+                  ].join("\t")
                 ),
                 "",
                 "--- JSON ---",
@@ -545,10 +914,13 @@ export default function QueuesPage() {
           </button>
         </div>
         <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "0.75rem" }}>
-          Queued: {wq.status.queued} · Running: {wq.status.running} · Concurrency: {wq.status.concurrency}
+          Queued: {wq.status.queued} · Running: {wq.status.running} · Concurrency:{" "}
+          {wq.status.concurrency}
         </p>
         {wq.jobs.length === 0 ? (
-          <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>No jobs in the workflow queue.</p>
+          <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
+            No jobs in the workflow queue.
+          </p>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
@@ -574,15 +946,29 @@ export default function QueuesPage() {
                           {job.runId.slice(0, 8)}…
                         </Link>
                       ) : (
-                        <span style={{ color: "var(--text-muted)" }}>{job.payload.slice(0, 40)}…</span>
+                        <span style={{ color: "var(--text-muted)" }}>
+                          {job.payload.slice(0, 40)}…
+                        </span>
                       )}
                     </td>
-                    <td style={{ padding: "0.5rem 0.75rem", color: "var(--text-muted)" }}>{formatTs(job.enqueuedAt)}</td>
-                    <td style={{ padding: "0.5rem 0.75rem", color: "var(--text-muted)", maxWidth: 200 }}>
+                    <td style={{ padding: "0.5rem 0.75rem", color: "var(--text-muted)" }}>
+                      {formatTs(job.enqueuedAt)}
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        color: "var(--text-muted)",
+                        maxWidth: 200,
+                      }}
+                    >
                       {job.finishedAt != null ? formatTs(job.finishedAt) : ""}
                       {job.error ? (
-                        <span className="run-status run-status-failed" style={{ display: "block", marginTop: "0.25rem", fontSize: "0.8rem" }}>
-                          {job.error.slice(0, 80)}{job.error.length > 80 ? "…" : ""}
+                        <span
+                          className="run-status run-status-failed"
+                          style={{ display: "block", marginTop: "0.25rem", fontSize: "0.8rem" }}
+                        >
+                          {job.error.slice(0, 80)}
+                          {job.error.length > 80 ? "…" : ""}
                         </span>
                       ) : null}
                     </td>
@@ -595,15 +981,37 @@ export default function QueuesPage() {
       </section>
 
       <section>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
-          <h2 style={{ fontSize: "1.1rem", margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "0.5rem",
+            marginBottom: "0.75rem",
+          }}
+        >
+          <h2
+            style={{
+              fontSize: "1.1rem",
+              margin: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+            }}
+          >
             <MessageSquare size={18} />
             Active chat turns (conversation locks)
           </h2>
           <button
             type="button"
             className="button button-secondary"
-            style={{ fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+            style={{
+              fontSize: "0.8rem",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.35rem",
+            }}
             onClick={() => {
               const lines: string[] = ["Active chat turns (conversation locks)", ""];
               for (const lock of locks) {
@@ -613,15 +1021,29 @@ export default function QueuesPage() {
                 lines.push(`  started ${formatTs(lock.startedAt)}`);
                 if (steps.length > 0) {
                   lines.push("  Message queue steps:");
-                  for (const s of steps) lines.push(...stepToCopyLines(s, formatTs).map((l) => "    " + l));
+                  for (const s of steps)
+                    lines.push(...stepToCopyLines(s, formatTs).map((l) => "    " + l));
                 }
                 if (trace && (trace.toolCalls.length > 0 || trace.llmTrace.length > 0)) {
-                  if (trace.toolCalls.length > 0) lines.push(`  Tools: ${trace.toolCalls.map((t) => t.name).join(", ")}`);
-                  if (trace.llmTrace.length > 0) lines.push(`  LLM calls: ${trace.llmTrace.length}`);
+                  if (trace.toolCalls.length > 0)
+                    lines.push(`  Tools: ${trace.toolCalls.map((t) => t.name).join(", ")}`);
+                  if (trace.llmTrace.length > 0)
+                    lines.push(`  LLM calls: ${trace.llmTrace.length}`);
                 }
                 lines.push("");
               }
-              lines.push("--- JSON ---", JSON.stringify({ conversationLocks: data?.conversationLocks ?? locks, activeChatTraces: data?.activeChatTraces ?? [], messageQueueLog: data?.messageQueueLog ?? [] }, null, 2));
+              lines.push(
+                "--- JSON ---",
+                JSON.stringify(
+                  {
+                    conversationLocks: data?.conversationLocks ?? locks,
+                    activeChatTraces: data?.activeChatTraces ?? [],
+                    messageQueueLog: data?.messageQueueLog ?? [],
+                  },
+                  null,
+                  2
+                )
+              );
               copyToClipboard(lines.join("\n"), "active");
             }}
             title="Copy active chat turns (readable + JSON)"
@@ -631,7 +1053,8 @@ export default function QueuesPage() {
           </button>
         </div>
         <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "0.75rem" }}>
-          One turn at a time per conversation; these rows show which conversations are currently processing.
+          One turn at a time per conversation; these rows show which conversations are currently
+          processing.
         </p>
         {locks.length === 0 ? (
           <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>No active chat turns.</p>
@@ -650,31 +1073,58 @@ export default function QueuesPage() {
                     marginBottom: "0.5rem",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.75rem",
+                      flexWrap: "wrap",
+                    }}
+                  >
                     <Loader2 size={14} className="spin" />
-                    <Link href={`/chat?conversation=${encodeURIComponent(lock.conversationId)}`} style={{ color: "var(--link)" }}>
+                    <Link
+                      href={`/chat?conversation=${encodeURIComponent(lock.conversationId)}`}
+                      style={{ color: "var(--link)" }}
+                    >
                       {lock.conversationId.slice(0, 8)}…
                     </Link>
-                    <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>started {formatTs(lock.startedAt)}</span>
+                    <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                      started {formatTs(lock.startedAt)}
+                    </span>
                   </div>
                   {steps.length > 0 && (
-                    <div style={{ marginTop: "0.5rem", paddingTop: "0.5rem", borderTop: "1px solid var(--border)", fontSize: "0.85rem" }}>
-                      <div style={{ color: "var(--text-muted)", marginBottom: "0.25rem" }}>Message queue steps:</div>
+                    <div
+                      style={{
+                        marginTop: "0.5rem",
+                        paddingTop: "0.5rem",
+                        borderTop: "1px solid var(--border)",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      <div style={{ color: "var(--text-muted)", marginBottom: "0.25rem" }}>
+                        Message queue steps:
+                      </div>
                       <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
                         {steps.map((s) => renderQueueLogStep(s, formatTs))}
                       </ul>
                     </div>
                   )}
                   {trace && (trace.toolCalls.length > 0 || trace.llmTrace.length > 0) && (
-                    <div style={{ marginTop: "0.5rem", paddingTop: "0.5rem", borderTop: "1px solid var(--border)", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                    <div
+                      style={{
+                        marginTop: "0.5rem",
+                        paddingTop: "0.5rem",
+                        borderTop: "1px solid var(--border)",
+                        fontSize: "0.85rem",
+                        color: "var(--text-muted)",
+                      }}
+                    >
                       {trace.toolCalls.length > 0 && (
                         <span style={{ marginRight: "1rem" }}>
                           Tools: {trace.toolCalls.map((t) => t.name).join(", ")}
                         </span>
                       )}
-                      {trace.llmTrace.length > 0 && (
-                        <span>LLM calls: {trace.llmTrace.length}</span>
-                      )}
+                      {trace.llmTrace.length > 0 && <span>LLM calls: {trace.llmTrace.length}</span>}
                     </div>
                   )}
                 </li>
@@ -698,7 +1148,12 @@ export default function QueuesPage() {
           onClick={() => setHistorySectionOpen((o) => !o)}
           role="button"
           tabIndex={0}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setHistorySectionOpen((o) => !o); } }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setHistorySectionOpen((o) => !o);
+            }
+          }}
           aria-expanded={historySectionOpen}
         >
           {historySectionOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
@@ -707,19 +1162,36 @@ export default function QueuesPage() {
         </h2>
         {historySectionOpen && (
           <>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "0.5rem",
+                marginBottom: "0.75rem",
+              }}
+            >
               <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", margin: 0 }}>
-                Browse queue log by conversation. Scroll the list and use &quot;Load more conversations&quot; to see more.
+                Browse queue log by conversation. Scroll the list and use &quot;Load more
+                conversations&quot; to see more.
               </p>
               {!selectedHistoryConvId && historyConversations.length > 0 && (
                 <button
                   type="button"
                   className="button button-secondary"
-                  style={{ fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                  style={{
+                    fontSize: "0.8rem",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                  }}
                   onClick={() => {
                     const lines = ["Message queue history (conversations)", ""];
                     for (const c of historyConversations) {
-                      lines.push(`${c.conversationId}\t${formatTs(c.lastAt)}\t${c.stepCount} step${c.stepCount !== 1 ? "s" : ""}`);
+                      lines.push(
+                        `${c.conversationId}\t${formatTs(c.lastAt)}\t${c.stepCount} step${c.stepCount !== 1 ? "s" : ""}`
+                      );
                     }
                     lines.push("", "--- JSON ---", JSON.stringify(historyConversations, null, 2));
                     copyToClipboard(lines.join("\n"), "history");
@@ -733,27 +1205,57 @@ export default function QueuesPage() {
             </div>
             {selectedHistoryConvId ? (
               <div style={{ marginBottom: "0.75rem" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
-                  <span style={{ fontWeight: 600 }}>Steps for {selectedHistoryConvId.slice(0, 8)}…</span>
-                  <Link href={`/chat?conversation=${encodeURIComponent(selectedHistoryConvId)}`} style={{ fontSize: "0.9rem", color: "var(--link)" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    flexWrap: "wrap",
+                    marginBottom: "0.5rem",
+                  }}
+                >
+                  <span style={{ fontWeight: 600 }}>
+                    Steps for {selectedHistoryConvId.slice(0, 8)}…
+                  </span>
+                  <Link
+                    href={`/chat?conversation=${encodeURIComponent(selectedHistoryConvId)}`}
+                    style={{ fontSize: "0.9rem", color: "var(--link)" }}
+                  >
                     Open in Chat
                   </Link>
                   <button
                     type="button"
                     className="button button-secondary"
                     style={{ fontSize: "0.85rem" }}
-                    onClick={() => { setSelectedHistoryConvId(null); setHistorySteps([]); setHistoryStepsNextCursor(null); }}
+                    onClick={() => {
+                      setSelectedHistoryConvId(null);
+                      setHistorySteps([]);
+                      setHistoryStepsNextCursor(null);
+                    }}
                   >
                     Back to list
                   </button>
                   <button
                     type="button"
                     className="button button-secondary"
-                    style={{ fontSize: "0.85rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                    style={{
+                      fontSize: "0.85rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.35rem",
+                    }}
                     onClick={() => {
                       const lines = [`Message queue steps: ${selectedHistoryConvId}`, ""];
                       for (const s of historySteps) lines.push(...stepToCopyLines(s, formatTs));
-                      lines.push("", "--- JSON ---", JSON.stringify({ conversationId: selectedHistoryConvId, steps: historySteps }, null, 2));
+                      lines.push(
+                        "",
+                        "--- JSON ---",
+                        JSON.stringify(
+                          { conversationId: selectedHistoryConvId, steps: historySteps },
+                          null,
+                          2
+                        )
+                      );
                       copyToClipboard(lines.join("\n"), "history");
                     }}
                     title="Copy steps for this queue"
@@ -762,10 +1264,27 @@ export default function QueuesPage() {
                     {copiedSection === "history" ? "Copied" : "Copy steps"}
                   </button>
                 </div>
-                <ul style={{ listStyle: "none", margin: 0, fontSize: "0.85rem", border: "1px solid var(--border)", borderRadius: 6, padding: "0.5rem", maxHeight: 400, overflowY: "auto" }}>
+                <ul
+                  style={{
+                    listStyle: "none",
+                    margin: 0,
+                    fontSize: "0.85rem",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    padding: "0.5rem",
+                    maxHeight: 400,
+                    overflowY: "auto",
+                  }}
+                >
                   {historySteps.map((s) => renderQueueLogStep(s, formatTs))}
                 </ul>
-                {historyStepsLoading && <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "0.5rem" }}>Loading…</p>}
+                {historyStepsLoading && (
+                  <p
+                    style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "0.5rem" }}
+                  >
+                    Loading…
+                  </p>
+                )}
                 {historyStepsNextCursor && !historyStepsLoading && (
                   <button
                     type="button"
@@ -780,7 +1299,9 @@ export default function QueuesPage() {
             ) : (
               <>
                 {historyLoadingConvs && historyConversations.length === 0 && (
-                  <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Loading conversations…</p>
+                  <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
+                    Loading conversations…
+                  </p>
                 )}
                 {historyConversations.length > 0 && (
                   <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
@@ -799,8 +1320,18 @@ export default function QueuesPage() {
                           gap: "0.5rem",
                         }}
                       >
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-                          <Link href={`/chat?conversation=${encodeURIComponent(c.conversationId)}`} style={{ color: "var(--link)" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.75rem",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <Link
+                            href={`/chat?conversation=${encodeURIComponent(c.conversationId)}`}
+                            style={{ color: "var(--link)" }}
+                          >
                             {c.conversationId.slice(0, 8)}…
                           </Link>
                           <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
@@ -811,7 +1342,11 @@ export default function QueuesPage() {
                           type="button"
                           className="button button-secondary"
                           style={{ fontSize: "0.85rem" }}
-                          onClick={() => { setSelectedHistoryConvId(c.conversationId); setHistorySteps([]); setHistoryStepsNextCursor(null); }}
+                          onClick={() => {
+                            setSelectedHistoryConvId(c.conversationId);
+                            setHistorySteps([]);
+                            setHistoryStepsNextCursor(null);
+                          }}
                         >
                           View steps
                         </button>
@@ -831,7 +1366,9 @@ export default function QueuesPage() {
                   </button>
                 )}
                 {!historyLoadingConvs && historyConversations.length === 0 && (
-                  <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>No message queue history yet. Send a message in Chat to see steps here.</p>
+                  <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
+                    No message queue history yet. Send a message in Chat to see steps here.
+                  </p>
                 )}
               </>
             )}

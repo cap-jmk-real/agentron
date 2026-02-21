@@ -20,11 +20,20 @@ export async function POST(request: Request, { params }: Params) {
 
   let versionRow: { id: string; agentId: string; version: number; snapshot: string } | undefined;
   if (versionId) {
-    const rows = await db.select().from(agentVersions).where(eq(agentVersions.id, versionId)).limit(1);
-    versionRow = rows.length > 0 && rows[0].agentId === agentId ? (rows[0] as { id: string; agentId: string; version: number; snapshot: string }) : undefined;
+    const rows = await db
+      .select()
+      .from(agentVersions)
+      .where(eq(agentVersions.id, versionId))
+      .limit(1);
+    versionRow =
+      rows.length > 0 && rows[0].agentId === agentId
+        ? (rows[0] as { id: string; agentId: string; version: number; snapshot: string })
+        : undefined;
   } else if (versionNum != null) {
     const rows = await db.select().from(agentVersions).where(eq(agentVersions.agentId, agentId));
-    versionRow = (rows.find((r) => r.version === versionNum) as { id: string; agentId: string; version: number; snapshot: string } | undefined);
+    versionRow = rows.find((r) => r.version === versionNum) as
+      | { id: string; agentId: string; version: number; snapshot: string }
+      | undefined;
   }
   if (!versionRow) {
     return json({ error: "Version not found (use versionId or version)" }, { status: 404 });
@@ -40,6 +49,10 @@ export async function POST(request: Request, { params }: Params) {
     return json({ error: "Snapshot does not match agent" }, { status: 400 });
   }
 
-  await db.update(agents).set(snapshot as Record<string, unknown>).where(eq(agents.id, agentId)).run();
+  await db
+    .update(agents)
+    .set(snapshot as Record<string, unknown>)
+    .where(eq(agents.id, agentId))
+    .run();
   return json({ id: agentId, version: versionRow.version, message: "Agent rolled back" });
 }

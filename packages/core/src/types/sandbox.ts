@@ -6,6 +6,8 @@ export interface SandboxConfig {
   network?: boolean;
   env?: Record<string, string>;
   ports?: Record<string, number>;
+  /** If true, run the image default CMD instead of "sleep infinity". Use for images that run a service (e.g. OpenClaw gateway). */
+  useImageCmd?: boolean;
 }
 
 export interface Sandbox {
@@ -19,11 +21,11 @@ export interface Sandbox {
 }
 
 export const PRESET_IMAGES: Record<string, string> = {
-  "node": "node:22-slim",
-  "python": "python:3.12-slim",
-  "go": "golang:1.22-alpine",
-  "rust": "rust:1.78-slim",
-  "ubuntu": "ubuntu:24.04",
-  "postgres": "postgres:16-alpine",
-  "redis": "redis:7-alpine",
+  node: "node:22-slim",
+  python: "python:3.12-slim",
+  go: "golang:1.22-alpine",
+  rust: "rust:1.78-slim",
+  ubuntu: "ubuntu:24.04",
+  postgres: "postgres:16-alpine",
+  redis: "redis:7-alpine",
 };

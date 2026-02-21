@@ -55,10 +55,45 @@ describe("Feedback API", () => {
     expect(Array.isArray(data)).toBe(true);
   });
 
+  it("GET /api/feedback filters by executionId when provided", async () => {
+    const execId = "exec-filter-" + Date.now();
+    await listPost(
+      new Request("http://localhost/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          executionId: execId,
+          targetType: "agent",
+          targetId: "a1",
+          input: "",
+          output: "",
+          label: "good",
+        }),
+      })
+    );
+    const res = await listGet(
+      new Request(`http://localhost/api/feedback?executionId=${encodeURIComponent(execId)}`)
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.every((f: { executionId: string }) => f.executionId === execId)).toBe(true);
+  });
+
+  it("GET /api/feedback with empty executionId uses other params", async () => {
+    const res = await listGet(new Request("http://localhost/api/feedback?executionId=&targetId=x"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+  });
+
   it("DELETE /api/feedback/:id removes entry", async () => {
-    const res = await deleteOne(new Request("http://localhost/api/feedback/x", { method: "DELETE" }), {
-      params: Promise.resolve({ id: createdId }),
-    });
+    const res = await deleteOne(
+      new Request("http://localhost/api/feedback/x", { method: "DELETE" }),
+      {
+        params: Promise.resolve({ id: createdId }),
+      }
+    );
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.ok).toBe(true);

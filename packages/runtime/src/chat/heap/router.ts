@@ -69,8 +69,14 @@ export function parseRouterOutput(text: string): RouterOutput | null {
     for (const item of order) {
       if (typeof item === "string") {
         priorityOrder.push(item);
-      } else if (item && typeof item === "object" && Array.isArray((item as { parallel?: unknown }).parallel)) {
-        const arr = (item as { parallel: unknown[] }).parallel.filter((x): x is string => typeof x === "string");
+      } else if (
+        item &&
+        typeof item === "object" &&
+        Array.isArray((item as { parallel?: unknown }).parallel)
+      ) {
+        const arr = (item as { parallel: unknown[] }).parallel.filter(
+          (x): x is string => typeof x === "string"
+        );
         if (arr.length > 0) priorityOrder.push({ parallel: arr });
       }
     }

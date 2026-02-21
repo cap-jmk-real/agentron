@@ -14,7 +14,8 @@ export async function POST(request: Request) {
     }
     const result = await openclawSend(content, {
       sessionKey: typeof body?.sessionKey === "string" ? body.sessionKey : undefined,
-      waitForResponseMs: typeof body?.waitForResponseMs === "number" ? body.waitForResponseMs : undefined,
+      waitForResponseMs:
+        typeof body?.waitForResponseMs === "number" ? body.waitForResponseMs : undefined,
     });
     return json(result);
   } catch (e) {

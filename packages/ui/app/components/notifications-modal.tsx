@@ -50,7 +50,12 @@ function formatTime(ts: number): string {
   if (diff < 60_000) return "Just now";
   if (diff < 3600_000) return `${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86400_000) return `${Math.floor(diff / 3600_000)}h ago`;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export default function NotificationsModal({
@@ -146,7 +151,9 @@ export default function NotificationsModal({
               <Bell size={32} strokeWidth={1.2} />
               <p>No notifications</p>
               <p className="notifications-empty-hint">
-                {activeFilter === "all" ? "Runs and chats will appear here." : `No ${activeFilter} notifications yet.`}
+                {activeFilter === "all"
+                  ? "Runs and chats will appear here."
+                  : `No ${activeFilter} notifications yet.`}
               </p>
             </div>
           )}
@@ -160,7 +167,13 @@ export default function NotificationsModal({
                     onClick={() => onClose()}
                   >
                     <span className="notifications-item-icon">
-                      {item.type === "run" ? <Play size={14} /> : item.type === "chat" ? <MessageCircle size={14} /> : <Bell size={14} />}
+                      {item.type === "run" ? (
+                        <Play size={14} />
+                      ) : item.type === "chat" ? (
+                        <MessageCircle size={14} />
+                      ) : (
+                        <Bell size={14} />
+                      )}
                     </span>
                     <span className="notifications-item-content">
                       <span className="notifications-item-title">{item.title}</span>
@@ -168,12 +181,14 @@ export default function NotificationsModal({
                         {item.type === "run" && item.targetName
                           ? item.targetName
                           : item.type === "chat"
-                            ? (item.conversationTitle || item.message || "Open conversation")
+                            ? item.conversationTitle || item.message || "Open conversation"
                             : item.message || ""}
                       </span>
                       <span className="notifications-item-time">{formatTime(item.createdAt)}</span>
                     </span>
-                    <span className={`notifications-item-severity severity-${item.severity}`}>{item.severity}</span>
+                    <span className={`notifications-item-severity severity-${item.severity}`}>
+                      {item.severity}
+                    </span>
                   </Link>
                   <button
                     type="button"

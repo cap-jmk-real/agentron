@@ -11,7 +11,11 @@ export type WorkflowNodeHandler = (
 export type WorkflowDAGLevels = string[][];
 
 function isParallelStep(step: WorkflowExecutionStep): step is { parallel: string[] } {
-  return typeof step === "object" && step !== null && Array.isArray((step as { parallel: string[] }).parallel);
+  return (
+    typeof step === "object" &&
+    step !== null &&
+    Array.isArray((step as { parallel: string[] }).parallel)
+  );
 }
 
 function getStepNodeIds(step: WorkflowExecutionStep): string[] {
@@ -74,7 +78,10 @@ export async function runWorkflowDAGLevels(
         if (!node) return undefined;
         const handler = handlers[node.type];
         if (!handler) throw new Error(`No handler for workflow node type ${node.type}`);
-        const nodeParams = node as { parameters?: Record<string, unknown>; config?: Record<string, unknown> };
+        const nodeParams = node as {
+          parameters?: Record<string, unknown>;
+          config?: Record<string, unknown>;
+        };
         const config = nodeParams.parameters ?? nodeParams.config ?? {};
         const output = await handler(node.id, config, sharedContext);
         sharedContext.set(`__output_${node.id}`, output);
@@ -102,7 +109,8 @@ export class WorkflowEngine {
     const nodes = Array.isArray(workflow.nodes) ? workflow.nodes : [];
     const edges = Array.isArray(workflow.edges) ? workflow.edges : [];
     const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-    const maxRounds = workflow.maxRounds != null && workflow.maxRounds > 0 ? workflow.maxRounds : null;
+    const maxRounds =
+      workflow.maxRounds != null && workflow.maxRounds > 0 ? workflow.maxRounds : null;
     const hasEdges = edges.length > 0;
 
     if (hasEdges && maxRounds != null) {
@@ -128,7 +136,10 @@ export class WorkflowEngine {
           if (!node) break;
           const handler = handlers[node.type];
           if (!handler) throw new Error(`No handler for workflow node type ${node.type}`);
-          const nodeParams = node as { parameters?: Record<string, unknown>; config?: Record<string, unknown> };
+          const nodeParams = node as {
+            parameters?: Record<string, unknown>;
+            config?: Record<string, unknown>;
+          };
           const config = nodeParams.parameters ?? nodeParams.config ?? {};
           lastOutput = await handler(node.id, config, sharedContext);
           sharedContext.set(`__output_${node.id}`, lastOutput);

@@ -36,7 +36,8 @@ export default function ChatWrapper() {
   useEffect(() => {
     const handler = async (e: Event) => {
       const detail = (e as CustomEvent<{ attachedContext?: string }>).detail;
-      const context = typeof detail?.attachedContext === "string" ? detail.attachedContext.trim() : "";
+      const context =
+        typeof detail?.attachedContext === "string" ? detail.attachedContext.trim() : "";
       if (context) {
         setAttachedContext(context);
         try {
@@ -70,7 +71,13 @@ export default function ChatWrapper() {
           aria-label={open ? "Minimize assistant" : "Open assistant"}
         >
           <span className="chat-fab-icon-wrap">
-            <img src="/icon-circle.svg" alt="" className="chat-fab-icon-circle" width={28} height={28} />
+            <img
+              src="/icon-circle.svg"
+              alt=""
+              className="chat-fab-icon-circle"
+              width={28}
+              height={28}
+            />
             <span className={`chat-fab-icon-flip ${open ? "chat-fab-icon-flip-open" : ""}`}>
               <span className="chat-fab-icon-face chat-fab-icon-a">
                 <img src="/icon-a-letter.svg" alt="" width={28} height={28} />

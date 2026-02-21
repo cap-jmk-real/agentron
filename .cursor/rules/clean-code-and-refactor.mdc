@@ -12,14 +12,33 @@ When writing or editing code in this repo:
 
 - **Keep files under 500 lines** when possible. If a file is approaching or over 500 lines, refactor: extract modules, hooks, utilities, or components into separate files and import them. Prefer many focused files over few large ones.
 
+## Function size and clarity
+
+- **Prefer small functions:** a few lines; if you have to study a block to know what it does, extract it and name it after that intention.
+- **Treat functions over ~6–10 lines as a smell;** consider extracting helper functions or moving logic to a separate module.
+- **Hard cap:** method/function body should fit in one or two screens (~50–100 lines); if longer, split (private helpers or new module).
+- **Naming:** names should reveal intention; small functions only work if names are good.
+- **Single responsibility:** each function does one thing; each file/module has a clear, focused responsibility.
+- **Classes/components:** consider splitting when you have more than ~10 public methods or the file still grows past 500 lines after extracting helpers.
+
 ## Maintainability and reuse
 
 - **Write reusable code.** Before adding logic, check if something similar already exists in the project (shared utils, hooks, components, types). Reuse it instead of duplicating.
 - **Extract and reuse.** When you add logic that could be used elsewhere, put it in a shared place (e.g. `packages/core`, `packages/ui/lib`, or a `_lib/` next to the feature) and call it from multiple call sites rather than copying code.
 - **Refactor cleanly.** When touching a large or messy file, improve structure: extract functions, constants, or types; split into smaller modules; keep functions and components focused and short. Leave the codebase in a better state than you found it when it’s reasonable to do so.
 
+## Fallbacks
+
+- **Use fallbacks consciously.** When you add a fallback path (defaults, alternate logic on failure), do it intentionally, aware that it adds branches and makes tests more complex. See `testing-strategy` for test-impact guidance.
+
 ## In practice
 
 - New features: small, focused modules and reuse of existing helpers.
 - Bug fixes or changes: consider a quick refactor if the file is already long or hard to follow.
 - No vanity refactors: don’t rewrite working code for style only; do extract and deduplicate when it aids clarity and reuse.
+
+## Principles (reference)
+
+- File: < 500 lines (target), 2000+ = too large.
+- Function: prefer < ~6–10 lines; max ~50–100 lines per body.
+- Class/component: ~7–10 methods as a soft cap; split when complexity grows.

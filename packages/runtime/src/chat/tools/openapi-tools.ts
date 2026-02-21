@@ -14,11 +14,13 @@ export const OPENAPI_TOOLS: AssistantToolDef[] = [
         },
         spec: {
           type: "object",
-          description: "OpenAPI 3.x spec as an object (e.g. from pasted JSON). Use when the user pastes the spec instead of providing a URL.",
+          description:
+            "OpenAPI 3.x spec as an object (e.g. from pasted JSON). Use when the user pastes the spec instead of providing a URL.",
         },
         baseUrlOverride: {
           type: "string",
-          description: "Override the API base URL from the spec (optional). Use when the spec's servers[0].url is wrong or missing.",
+          description:
+            "Override the API base URL from the spec (optional). Use when the spec's servers[0].url is wrong or missing.",
         },
       },
       required: [],

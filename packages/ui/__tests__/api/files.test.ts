@@ -45,4 +45,18 @@ describe("Files API", () => {
     expect(data.name).toBe("hello.txt");
     expect(data.mimeType).toBe("text/plain");
   });
+
+  it("POST /api/files with file without extension or mimeType uses defaults", async () => {
+    const form = new FormData();
+    const blob = new Blob(["data"]);
+    form.append("file", blob, "noext");
+
+    const res = await listPost(
+      new Request("http://localhost/api/files", { method: "POST", body: form })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.name).toBe("noext");
+    expect(data.mimeType).toBe("application/octet-stream");
+  });
 });

@@ -29,23 +29,36 @@ export class PodmanManager {
     if (isWin) {
       // On Windows, run via PowerShell with PATH refreshed from registry so podman/docker
       // in user PATH (e.g. from PowerShell) is found.
-      const pathRefresh = "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')";
+      const pathRefresh =
+        "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')";
       const binArg = escapePsArg(this.bin);
       const argList = args.map(escapePsArg).join(" ");
       const cmd = `${pathRefresh}; & ${binArg} ${argList}`;
       return new Promise((resolve, reject) => {
-        const proc = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd], {
-          stdio: ["ignore", "pipe", "pipe"],
-        });
+        const proc = spawn(
+          "powershell.exe",
+          ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd],
+          {
+            stdio: ["ignore", "pipe", "pipe"],
+          }
+        );
         let stdout = "";
         let stderr = "";
-        proc.stdout?.on("data", (d: Buffer) => { stdout += d.toString(); });
-        proc.stderr?.on("data", (d: Buffer) => { stderr += d.toString(); });
+        proc.stdout?.on("data", (d: Buffer) => {
+          stdout += d.toString();
+        });
+        proc.stderr?.on("data", (d: Buffer) => {
+          stderr += d.toString();
+        });
         proc.on("error", reject);
         proc.on("close", (code, signal) => {
           if (code === 0) resolve({ stdout, stderr });
           else {
-            const err = new Error(stderr || stdout || `exit ${code ?? signal}`) as Error & { stdout?: string; stderr?: string; code?: number };
+            const err = new Error(stderr || stdout || `exit ${code ?? signal}`) as Error & {
+              stdout?: string;
+              stderr?: string;
+              code?: number;
+            };
             err.stdout = stdout;
             err.stderr = stderr;
             err.code = code ?? (signal === "SIGKILL" ? 137 : 1);
@@ -74,13 +87,20 @@ export class PodmanManager {
       }
     }
 
-    args.push(image, "sleep", "infinity");
+    if (config?.useImageCmd) {
+      args.push(image);
+    } else {
+      args.push(image, "sleep", "infinity");
+    }
 
     const { stdout } = await this.podman(...args);
     return stdout.trim();
   }
 
-  async exec(containerId: string, command: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  async exec(
+    containerId: string,
+    command: string
+  ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     try {
       const { stdout, stderr } = await this.podman("exec", containerId, "sh", "-c", command);
       return { stdout, stderr, exitCode: 0 };
@@ -89,7 +109,7 @@ export class PodmanManager {
       return {
         stdout: e.stdout ?? "",
         stderr: e.stderr ?? e.message ?? String(err),
-        exitCode: e.code ?? 1
+        exitCode: e.code ?? 1,
       };
     }
   }
@@ -107,11 +127,16 @@ export class PodmanManager {
     const args = ["exec", containerId, "sh", "-c", command];
     let proc: ReturnType<typeof spawn>;
     if (isWin) {
-      const pathRefresh = "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')";
+      const pathRefresh =
+        "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')";
       const binArg = escapePsArg(this.bin);
       const argList = args.map(escapePsArg).join(" ");
       const cmd = `${pathRefresh}; & ${binArg} ${argList}`;
-      proc = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd], { stdio: ["ignore", "pipe", "pipe"] });
+      proc = spawn(
+        "powershell.exe",
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd],
+        { stdio: ["ignore", "pipe", "pipe"] }
+      );
     } else {
       proc = spawn(this.bin, args, { shell: true });
     }
@@ -130,13 +155,18 @@ export class PodmanManager {
       proc.on("close", (code, signal) => {
         const stdout = Buffer.concat(stdoutChunks).toString("utf8");
         const stderr = Buffer.concat(stderrChunks).toString("utf8");
-        const exitCode = code !== null && code !== undefined ? code : signal === "SIGKILL" ? 137 : 1;
+        const exitCode =
+          code !== null && code !== undefined ? code : signal === "SIGKILL" ? 137 : 1;
         resolve({ stdout, stderr, exitCode });
       });
     });
   }
 
-  async copyToContainer(containerId: string, hostPath: string, containerPath: string): Promise<void> {
+  async copyToContainer(
+    containerId: string,
+    hostPath: string,
+    containerPath: string
+  ): Promise<void> {
     await this.podman("cp", hostPath, `${containerId}:${containerPath}`);
   }
 
@@ -170,7 +200,14 @@ export class PodmanManager {
   }
 
   async list(): Promise<string[]> {
-    const { stdout } = await this.podman("ps", "-a", "--filter", `label=${LABEL}`, "--format", "{{.ID}}");
+    const { stdout } = await this.podman(
+      "ps",
+      "-a",
+      "--filter",
+      `label=${LABEL}`,
+      "--format",
+      "{{.ID}}"
+    );
     return stdout.trim().split("\n").filter(Boolean);
   }
 

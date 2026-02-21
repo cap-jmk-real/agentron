@@ -12,7 +12,9 @@ describe("Chat settings API", () => {
     expect(data).toHaveProperty("historyCompressAfter");
     expect(data).toHaveProperty("historyKeepRecent");
     expect(data).toHaveProperty("plannerRecentMessages");
-    expect(typeof data.plannerRecentMessages === "number" || data.plannerRecentMessages === null).toBe(true);
+    expect(
+      typeof data.plannerRecentMessages === "number" || data.plannerRecentMessages === null
+    ).toBe(true);
   });
 
   it("PATCH /api/chat/settings updates settings", async () => {

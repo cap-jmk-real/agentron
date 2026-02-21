@@ -27,7 +27,11 @@ export async function POST(request: Request) {
       method: "GET",
       headers: { Accept: "application/json" },
     });
-    const data = (await res.json()) as { ok?: boolean; result?: { username?: string }; description?: string };
+    const data = (await res.json()) as {
+      ok?: boolean;
+      result?: { username?: string };
+      description?: string;
+    };
     if (!res.ok || !data.ok) {
       const err = data.description || res.statusText || "Telegram API error";
       return json({ ok: false, error: err });

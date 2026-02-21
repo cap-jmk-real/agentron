@@ -34,30 +34,40 @@ export default function SandboxesPage() {
   }, [load]);
 
   if (loading) {
-    return (
-      <div style={{ padding: "2rem", color: "var(--text-muted)" }}>
-        Loading sandboxes…
-      </div>
-    );
+    return <div style={{ padding: "2rem", color: "var(--text-muted)" }}>Loading sandboxes…</div>;
   }
 
   return (
     <div style={{ padding: "1.5rem", maxWidth: 960 }}>
       <h1 style={{ margin: "0 0 1rem", fontSize: "1.5rem" }}>Sandboxes</h1>
       <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "1.5rem" }}>
-        Podman/Docker containers for code execution. Open a terminal to interact with a running sandbox.
+        Podman/Docker containers for code execution. Open a terminal to interact with a running
+        sandbox.
       </p>
 
       {sandboxes.length === 0 ? (
-        <div className="card" style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>
+        <div
+          className="card"
+          style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}
+        >
           <Box size={40} style={{ margin: "0 auto 0.75rem", opacity: 0.5 }} />
           <p style={{ margin: 0 }}>No sandboxes yet.</p>
           <p style={{ margin: "0.35rem 0 0", fontSize: "0.9rem" }}>
-            Create one from Agentron chat (e.g. &quot;create a podman sandbox with ubuntu&quot;) or via the API.
+            Create one from Agentron chat (e.g. &quot;create a podman sandbox with ubuntu&quot;) or
+            via the API.
           </p>
         </div>
       ) : (
-        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul
+          style={{
+            listStyle: "none",
+            padding: 0,
+            margin: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.5rem",
+          }}
+        >
           {sandboxes.map((sb) => (
             <li key={sb.id}>
               <div
@@ -71,7 +81,9 @@ export default function SandboxesPage() {
               >
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: "0.95rem" }}>{sb.name}</div>
-                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
+                  <div
+                    style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}
+                  >
                     {sb.image} · {sb.status}
                   </div>
                 </div>

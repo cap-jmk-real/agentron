@@ -30,9 +30,12 @@ describe("Runs for-improvement API", () => {
       const created = await createRes.json();
       agentId = created.id;
     }
-    const execRes = await executePost(new Request("http://localhost/api/agents/x/execute", { method: "POST" }), {
-      params: Promise.resolve({ id: agentId }),
-    });
+    const execRes = await executePost(
+      new Request("http://localhost/api/agents/x/execute", { method: "POST" }),
+      {
+        params: Promise.resolve({ id: agentId }),
+      }
+    );
     expect(execRes.status).toBe(202);
     const execBody = await execRes.json();
     runId = execBody.id;
@@ -58,9 +61,12 @@ describe("Runs for-improvement API", () => {
   });
 
   it("GET /api/runs/:id/for-improvement accepts includeFullLogs param", async () => {
-    const res = await GET(new Request(`http://localhost/api/runs/x/for-improvement?includeFullLogs=true`), {
-      params: Promise.resolve({ id: runId }),
-    });
+    const res = await GET(
+      new Request(`http://localhost/api/runs/x/for-improvement?includeFullLogs=true`),
+      {
+        params: Promise.resolve({ id: runId }),
+      }
+    );
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.id).toBe(runId);

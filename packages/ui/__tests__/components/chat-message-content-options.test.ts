@@ -56,7 +56,9 @@ describe("options from ask_user only (LLM-formatted, no regex parsing)", () => {
 
     it("returns empty for undefined or non-array toolResults", () => {
       expect(getSuggestedOptionsFromToolResults(undefined, "a) One")).toEqual([]);
-      expect(getSuggestedOptionsFromToolResults(null as unknown as undefined, "a) One")).toEqual([]);
+      expect(getSuggestedOptionsFromToolResults(null as unknown as undefined, "a) One")).toEqual(
+        []
+      );
     });
 
     it("returns empty for empty or whitespace-only fallback", () => {

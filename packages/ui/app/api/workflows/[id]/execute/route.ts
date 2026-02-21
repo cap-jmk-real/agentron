@@ -1,7 +1,12 @@
 import { json } from "../../../_lib/response";
 import { db, executions, runLogs, toExecutionRow, fromExecutionRow } from "../../../_lib/db";
 import { executionOutputSuccess, executionOutputFailure } from "../../../_lib/db";
-import { runWorkflow, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE, WaitingForUserError } from "../../../_lib/run-workflow";
+import {
+  runWorkflow,
+  RUN_CANCELLED_MESSAGE,
+  WAITING_FOR_USER_MESSAGE,
+  WaitingForUserError,
+} from "../../../_lib/run-workflow";
 import { withContainerInstallHint } from "../../../_lib/container-manager";
 import { enqueueWorkflowStart, waitForJob } from "../../../_lib/workflow-queue";
 import { getAppSettings } from "../../../_lib/app-settings";
@@ -18,7 +23,11 @@ export async function POST(request: Request, { params }: Params) {
   let maxSelfFixRetries: number | undefined;
   try {
     const body = await request.json().catch(() => ({}));
-    if (body && typeof body === "object" && typeof (body as { maxSelfFixRetries?: unknown }).maxSelfFixRetries === "number") {
+    if (
+      body &&
+      typeof body === "object" &&
+      typeof (body as { maxSelfFixRetries?: unknown }).maxSelfFixRetries === "number"
+    ) {
       const v = (body as { maxSelfFixRetries: number }).maxSelfFixRetries;
       if (!Number.isNaN(v)) maxSelfFixRetries = Math.max(0, Math.min(10, Math.floor(v)));
     }
@@ -39,7 +48,18 @@ export async function POST(request: Request, { params }: Params) {
 
   const vaultKey = getVaultKeyFromRequest(request);
   // #region agent log
-  if (vaultKey) fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'workflows/[id]/execute/route.ts',message:'workflow start with vault',data:{runId,hasVaultKey:true},hypothesisId:'vault_access',timestamp:Date.now()})}).catch(()=>{});
+  if (vaultKey)
+    fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "workflows/[id]/execute/route.ts",
+        message: "workflow start with vault",
+        data: { runId, hasVaultKey: true },
+        hypothesisId: "vault_access",
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
   // #endregion
 
   try {
@@ -52,10 +72,22 @@ export async function POST(request: Request, { params }: Params) {
     if (rawMessage === WAITING_FOR_USER_MESSAGE) {
       if (err instanceof WaitingForUserError && err.trail.length > 0) {
         try {
-          const runRows = await db.select({ output: executions.output }).from(executions).where(eq(executions.id, runId));
+          const runRows = await db
+            .select({ output: executions.output })
+            .from(executions)
+            .where(eq(executions.id, runId));
           const raw = runRows[0]?.output;
-          const parsed = raw == null ? {} : (typeof raw === "string" ? JSON.parse(raw) as Record<string, unknown> : raw as Record<string, unknown>);
-          await db.update(executions).set({ output: JSON.stringify({ ...parsed, trail: err.trail }) }).where(eq(executions.id, runId)).run();
+          const parsed =
+            raw == null
+              ? {}
+              : typeof raw === "string"
+                ? (JSON.parse(raw) as Record<string, unknown>)
+                : (raw as Record<string, unknown>);
+          await db
+            .update(executions)
+            .set({ output: JSON.stringify({ ...parsed, trail: err.trail }) })
+            .where(eq(executions.id, runId))
+            .run();
         } catch {
           // ignore
         }
@@ -65,15 +97,26 @@ export async function POST(request: Request, { params }: Params) {
     }
     const cancelled = rawMessage === RUN_CANCELLED_MESSAGE;
     if (cancelled) {
-      await db.update(executions).set({ status: "cancelled", finishedAt: Date.now() }).where(eq(executions.id, runId)).run();
+      await db
+        .update(executions)
+        .set({ status: "cancelled", finishedAt: Date.now() })
+        .where(eq(executions.id, runId))
+        .run();
     } else {
       const message = withContainerInstallHint(rawMessage);
-      const payload = executionOutputFailure(message, { message, stack: err instanceof Error ? err.stack : undefined });
-      await db.update(executions).set({
-        status: "failed",
-        finishedAt: Date.now(),
-        output: JSON.stringify(payload),
-      }).where(eq(executions.id, runId)).run();
+      const payload = executionOutputFailure(message, {
+        message,
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+      await db
+        .update(executions)
+        .set({
+          status: "failed",
+          finishedAt: Date.now(),
+          output: JSON.stringify(payload),
+        })
+        .where(eq(executions.id, runId))
+        .run();
     }
     const updated = await db.select().from(executions).where(eq(executions.id, runId));
     return json(fromExecutionRow(updated[0]), { status: 200 });

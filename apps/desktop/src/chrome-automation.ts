@@ -39,7 +39,11 @@ function getChromePath(): string {
 }
 
 export function launchChromeForAutomation(): void {
-  if (process.platform !== "darwin" && process.platform !== "win32" && process.platform !== "linux") {
+  if (
+    process.platform !== "darwin" &&
+    process.platform !== "win32" &&
+    process.platform !== "linux"
+  ) {
     return;
   }
   const chromePath = getChromePath();

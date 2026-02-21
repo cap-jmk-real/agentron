@@ -20,7 +20,10 @@ type RefineResult = {
 
 type Props = {
   agentId: string;
-  onApplyRefinement?: (systemPrompt: string, steps?: { name: string; type: string; content: string }[]) => void;
+  onApplyRefinement?: (
+    systemPrompt: string,
+    steps?: { name: string; type: string; content: string }[]
+  ) => void;
 };
 
 export default function FeedbackPanel({ agentId, onApplyRefinement }: Props) {
@@ -33,11 +36,15 @@ export default function FeedbackPanel({ agentId, onApplyRefinement }: Props) {
     setLoading(true);
     fetch(`/api/feedback?targetId=${agentId}`)
       .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setItems(data); })
+      .then((data) => {
+        if (Array.isArray(data)) setItems(data);
+      })
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [agentId]);
+  useEffect(() => {
+    load();
+  }, [agentId]);
 
   const removeFeedback = async (id: string) => {
     await fetch(`/api/feedback/${id}`, { method: "DELETE" });
@@ -70,11 +77,23 @@ export default function FeedbackPanel({ agentId, onApplyRefinement }: Props) {
   const goodCount = items.filter((f) => f.label === "good").length;
   const badCount = items.filter((f) => f.label === "bad").length;
 
-  if (loading) return <div className="card"><p style={{ color: "var(--text-muted)" }}>Loading feedback...</p></div>;
+  if (loading)
+    return (
+      <div className="card">
+        <p style={{ color: "var(--text-muted)" }}>Loading feedback...</p>
+      </div>
+    );
 
   return (
     <div className="card">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "0.75rem",
+        }}
+      >
         <div>
           <h3 style={{ margin: 0 }}>Feedback &amp; Learning</h3>
           <p style={{ margin: "0.1rem 0 0", fontSize: "0.78rem", color: "var(--text-muted)" }}>
@@ -103,7 +122,15 @@ export default function FeedbackPanel({ agentId, onApplyRefinement }: Props) {
       </div>
 
       {refineResult && (
-        <div style={{ marginBottom: "0.75rem", padding: "0.75rem", borderRadius: "6px", border: "1px solid var(--primary)", background: "var(--sidebar-active-bg)" }}>
+        <div
+          style={{
+            marginBottom: "0.75rem",
+            padding: "0.75rem",
+            borderRadius: "6px",
+            border: "1px solid var(--primary)",
+            background: "var(--sidebar-active-bg)",
+          }}
+        >
           <div className="section-label">Suggested Improvement</div>
           <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", margin: "0 0 0.5rem" }}>
             {refineResult.reasoning}
@@ -124,7 +151,9 @@ export default function FeedbackPanel({ agentId, onApplyRefinement }: Props) {
       {items.length === 0 ? (
         <div className="empty-state">
           <p style={{ fontSize: "0.88rem" }}>No feedback yet</p>
-          <p style={{ fontSize: "0.78rem" }}>Run the agent and label outputs as good or bad to start learning.</p>
+          <p style={{ fontSize: "0.78rem" }}>
+            Run the agent and label outputs as good or bad to start learning.
+          </p>
         </div>
       ) : (
         <div className="feedback-list">
@@ -135,13 +164,23 @@ export default function FeedbackPanel({ agentId, onApplyRefinement }: Props) {
                   {fb.label === "good" ? <ThumbsUp size={10} /> : <ThumbsDown size={10} />}
                   {fb.label}
                 </span>
-                <button className="step-action-btn" onClick={() => removeFeedback(fb.id)} title="Remove">
+                <button
+                  className="step-action-btn"
+                  onClick={() => removeFeedback(fb.id)}
+                  title="Remove"
+                >
                   <Trash2 size={12} />
                 </button>
               </div>
-              <div className="feedback-io">In: {typeof fb.input === "string" ? fb.input : JSON.stringify(fb.input)}</div>
-              <div className="feedback-io">Out: {typeof fb.output === "string" ? fb.output : JSON.stringify(fb.output)}</div>
-              {fb.notes && <div style={{ fontSize: "0.75rem", color: "var(--text)" }}>Note: {fb.notes}</div>}
+              <div className="feedback-io">
+                In: {typeof fb.input === "string" ? fb.input : JSON.stringify(fb.input)}
+              </div>
+              <div className="feedback-io">
+                Out: {typeof fb.output === "string" ? fb.output : JSON.stringify(fb.output)}
+              </div>
+              {fb.notes && (
+                <div style={{ fontSize: "0.75rem", color: "var(--text)" }}>Note: {fb.notes}</div>
+              )}
             </div>
           ))}
         </div>

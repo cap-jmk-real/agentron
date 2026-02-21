@@ -8,7 +8,10 @@ export const runtime = "nodejs";
 
 /** HTTP GET is not used; clients connect via WebSocket upgrade. Return 426 so the route is valid for Next.js. */
 export function GET() {
-  return new Response("Use WebSocket to connect to the sandbox shell.", { status: 426, headers: { "Upgrade": "websocket" } });
+  return new Response("Use WebSocket to connect to the sandbox shell.", {
+    status: 426,
+    headers: { Upgrade: "websocket" },
+  });
 }
 
 function getSandboxIdFromRequest(request: NextRequest): string | null {
@@ -100,7 +103,11 @@ export function UPGRADE(
         try {
           if (raw.startsWith("{")) {
             const msg = JSON.parse(raw) as { type?: string; cols?: number; rows?: number };
-            if (msg.type === "resize" && typeof msg.cols === "number" && typeof msg.rows === "number") {
+            if (
+              msg.type === "resize" &&
+              typeof msg.cols === "number" &&
+              typeof msg.rows === "number"
+            ) {
               pty.resize(msg.cols, msg.rows);
             }
             return;

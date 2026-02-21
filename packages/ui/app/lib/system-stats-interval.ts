@@ -7,7 +7,10 @@ const STORAGE_KEY = "agentron-studio/system-stats-interval-ms";
 export const SYSTEM_STATS_INTERVAL_CHANGED_EVENT = "system-stats-interval-changed";
 
 function clamp(ms: number): number {
-  return Math.max(SYSTEM_STATS_INTERVAL_MIN_MS, Math.min(SYSTEM_STATS_INTERVAL_MAX_MS, Math.round(ms)));
+  return Math.max(
+    SYSTEM_STATS_INTERVAL_MIN_MS,
+    Math.min(SYSTEM_STATS_INTERVAL_MAX_MS, Math.round(ms))
+  );
 }
 
 /** Read interval from localStorage (clamped). Uses default if missing or invalid. */

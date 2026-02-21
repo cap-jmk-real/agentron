@@ -16,7 +16,14 @@ describe("Backup API", () => {
         new Request("http://localhost/api/agents", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: "Backup Test Agent", kind: "node", type: "internal", protocol: "native", capabilities: [], scopes: [] }),
+          body: JSON.stringify({
+            name: "Backup Test Agent",
+            kind: "node",
+            type: "internal",
+            protocol: "native",
+            capabilities: [],
+            scopes: [],
+          }),
         })
       );
     }
@@ -35,6 +42,24 @@ describe("Backup API", () => {
     expect(String.fromCharCode(...header.slice(0, 16))).toBe(magic);
   });
 
+  it("GET /api/backup/export returns 500 when runBackup throws", async () => {
+    vi.spyOn(db, "runBackup").mockRejectedValueOnce(new Error("backup failed"));
+    const res = await exportGet();
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.error).toBe("backup failed");
+    vi.restoreAllMocks();
+  });
+
+  it("GET /api/backup/export returns 500 with generic message when thrown value is not Error", async () => {
+    vi.spyOn(db, "runBackup").mockRejectedValueOnce("string throw");
+    const res = await exportGet();
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.error).toBe("Export failed");
+    vi.restoreAllMocks();
+  });
+
   it("POST /api/backup/restore accepts file and restores", async () => {
     const exportRes = await exportGet();
     expect(exportRes.ok).toBe(true);
@@ -42,7 +67,9 @@ describe("Backup API", () => {
     const form = new FormData();
     form.append("file", blob, "backup.sqlite");
 
-    const restoreRes = await restorePost(new Request("http://localhost/api/backup/restore", { method: "POST", body: form }));
+    const restoreRes = await restorePost(
+      new Request("http://localhost/api/backup/restore", { method: "POST", body: form })
+    );
     const data = await restoreRes.json();
     expect(restoreRes.ok).toBe(true);
     expect(data.ok).toBe(true);
@@ -50,10 +77,23 @@ describe("Backup API", () => {
   });
 
   it("POST /api/backup/restore without file returns 400", async () => {
-    const res = await restorePost(new Request("http://localhost/api/backup/restore", { method: "POST", body: new FormData() }));
+    const res = await restorePost(
+      new Request("http://localhost/api/backup/restore", { method: "POST", body: new FormData() })
+    );
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toBeDefined();
+  });
+
+  it("POST /api/backup/restore returns 400 when file field is not a File", async () => {
+    const form = new FormData();
+    form.append("file", "not-a-file");
+    const res = await restorePost(
+      new Request("http://localhost/api/backup/restore", { method: "POST", body: form })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("file");
   });
 
   it("POST /api/backup/reset returns ok and message", async () => {

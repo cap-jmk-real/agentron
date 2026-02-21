@@ -5,18 +5,18 @@
  * Default: patch
  */
 
-import { readFileSync, writeFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { readFileSync, writeFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, '..');
+const root = join(__dirname, "..");
 
 const PACKAGES = [
-  'package.json',
-  'packages/ui/package.json',
-  'apps/desktop/package.json',
-  'apps/docs/package.json',
+  "package.json",
+  "packages/ui/package.json",
+  "apps/desktop/package.json",
+  "apps/docs/package.json",
 ];
 
 function parseVersion(ver) {
@@ -28,24 +28,24 @@ function parseVersion(ver) {
 function bump(version, kind) {
   const [major, minor, patch] = parseVersion(version);
   switch (kind) {
-    case 'major':
+    case "major":
       return `${major + 1}.0.0`;
-    case 'minor':
+    case "minor":
       return `${major}.${minor + 1}.0`;
-    case 'patch':
+    case "patch":
     default:
       return `${major}.${minor}.${patch + 1}`;
   }
 }
 
-const kind = (process.argv[2] || 'patch').toLowerCase();
-if (!['patch', 'minor', 'major'].includes(kind)) {
-  console.error('Usage: node scripts/bump-version.mjs [patch|minor|major]');
+const kind = (process.argv[2] || "patch").toLowerCase();
+if (!["patch", "minor", "major"].includes(kind)) {
+  console.error("Usage: node scripts/bump-version.mjs [patch|minor|major]");
   process.exit(1);
 }
 
-const rootPkgPath = join(root, 'package.json');
-const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf-8'));
+const rootPkgPath = join(root, "package.json");
+const rootPkg = JSON.parse(readFileSync(rootPkgPath, "utf-8"));
 const current = rootPkg.version;
 const next = bump(current, kind);
 
@@ -53,9 +53,9 @@ console.log(`Bumping ${current} → ${next} (${kind})`);
 
 for (const rel of PACKAGES) {
   const p = join(root, rel);
-  const pkg = JSON.parse(readFileSync(p, 'utf-8'));
+  const pkg = JSON.parse(readFileSync(p, "utf-8"));
   pkg.version = next;
-  writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
+  writeFileSync(p, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
   console.log(`  Updated ${rel}`);
 }
 

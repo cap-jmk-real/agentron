@@ -46,12 +46,16 @@ export async function queryQdrant(
     const err = await res.text();
     throw new Error(`Qdrant search failed: ${res.status} ${err}`);
   }
-  const data = (await res.json()) as { result?: Array<{ id?: unknown; score?: number; payload?: { text?: string } }> };
+  const data = (await res.json()) as {
+    result?: Array<{ id?: unknown; score?: number; payload?: { text?: string } }>;
+  };
   const result = data.result || [];
-  return result.map((r) => ({
-    text: r.payload?.text ?? "",
-    score: r.score,
-  })).filter((c) => c.text);
+  return result
+    .map((r) => ({
+      text: r.payload?.text ?? "",
+      score: r.score,
+    }))
+    .filter((c) => c.text);
 }
 
 /**

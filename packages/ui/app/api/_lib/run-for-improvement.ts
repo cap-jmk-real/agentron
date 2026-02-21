@@ -12,20 +12,32 @@ const RUN_LOG_LINES_CAP_FULL = 200;
 
 type RunLogRow = { level: string; message: string; payload: string | null; createdAt: number };
 
-function trailSummary(trail: Array<{ order: number; nodeId?: string; agentName?: string; error?: string; toolCalls?: unknown[] }>): string[] {
+function trailSummary(
+  trail: Array<{
+    order: number;
+    nodeId?: string;
+    agentName?: string;
+    error?: string;
+    toolCalls?: unknown[];
+  }>
+): string[] {
   if (!Array.isArray(trail) || trail.length === 0) return [];
   const sorted = trail.slice().sort((a, b) => a.order - b.order);
   return sorted.map((s) => {
     const name = s.agentName ?? s.nodeId ?? "?";
     const status = s.error && s.error !== "WAITING_FOR_USER" ? "error" : "ok";
-    const lastTool = Array.isArray(s.toolCalls) && s.toolCalls.length > 0
-      ? (s.toolCalls[s.toolCalls.length - 1] as { name?: string })?.name ?? ""
-      : "";
+    const lastTool =
+      Array.isArray(s.toolCalls) && s.toolCalls.length > 0
+        ? ((s.toolCalls[s.toolCalls.length - 1] as { name?: string })?.name ?? "")
+        : "";
     return `${name}: ${status}${lastTool ? ` (last: ${lastTool})` : ""}`;
   });
 }
 
-function recentErrorsFromLogs(logRows: RunLogRow[], bounded: boolean): Array<{ source: string; message: string; payload?: string }> {
+function recentErrorsFromLogs(
+  logRows: RunLogRow[],
+  bounded: boolean
+): Array<{ source: string; message: string; payload?: string }> {
   const cap = bounded ? RUN_LOG_LINES_CAP_BOUNDED : RUN_LOG_LINES_CAP_FULL;
   const take = bounded ? Math.min(RECENT_ERRORS_N, logRows.length) : logRows.length;
   const slice = logRows.slice(-take).slice(-cap);
@@ -38,7 +50,10 @@ function recentErrorsFromLogs(logRows: RunLogRow[], bounded: boolean): Array<{ s
         const s = JSON.stringify(p);
         payloadTrimmed = s.length > PAYLOAD_MAX_CHARS ? s.slice(0, PAYLOAD_MAX_CHARS) + "…" : s;
       } catch {
-        payloadTrimmed = payloadStr.length > PAYLOAD_MAX_CHARS ? payloadStr.slice(0, PAYLOAD_MAX_CHARS) + "…" : payloadStr;
+        payloadTrimmed =
+          payloadStr.length > PAYLOAD_MAX_CHARS
+            ? payloadStr.slice(0, PAYLOAD_MAX_CHARS) + "…"
+            : payloadStr;
       }
     } else if (payloadStr) {
       payloadTrimmed = payloadStr;
@@ -74,10 +89,23 @@ export async function getRunForImprovement(
   if (rows.length === 0) return { error: "Run not found" };
   const run = fromExecutionRow(rows[0]);
   const output = run.output as Record<string, unknown> | undefined;
-  const trail = Array.isArray(output?.trail) ? (output.trail as Array<{ order: number; nodeId?: string; agentName?: string; error?: string; toolCalls?: unknown[] }>) : [];
+  const trail = Array.isArray(output?.trail)
+    ? (output.trail as Array<{
+        order: number;
+        nodeId?: string;
+        agentName?: string;
+        error?: string;
+        toolCalls?: unknown[];
+      }>)
+    : [];
 
   const logRows = await db
-    .select({ level: runLogs.level, message: runLogs.message, payload: runLogs.payload, createdAt: runLogs.createdAt })
+    .select({
+      level: runLogs.level,
+      message: runLogs.message,
+      payload: runLogs.payload,
+      createdAt: runLogs.createdAt,
+    })
     .from(runLogs)
     .where(eq(runLogs.executionId, runId))
     .orderBy(asc(runLogs.createdAt));
@@ -115,8 +143,12 @@ export async function getRunForImprovement(
 /**
  * Build a one-line "what went wrong" summary from run logs (for UI).
  */
-export function buildWhatWentWrongOneLiner(logs: Array<{ level: string; message: string; payload?: string | null }>): string {
-  const errOrStderr = logs.filter((e) => e.level === "stderr" || (e.message && /\[.*\]/.test(e.message)));
+export function buildWhatWentWrongOneLiner(
+  logs: Array<{ level: string; message: string; payload?: string | null }>
+): string {
+  const errOrStderr = logs.filter(
+    (e) => e.level === "stderr" || (e.message && /\[.*\]/.test(e.message))
+  );
   if (errOrStderr.length === 0) return "";
   const parts = errOrStderr.slice(-10).map((e) => {
     const m = e.message.replace(/\n/g, " ").trim();

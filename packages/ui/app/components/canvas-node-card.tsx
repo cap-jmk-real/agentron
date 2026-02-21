@@ -50,7 +50,6 @@ const labelStyle: React.CSSProperties = {
   textTransform: "uppercase",
 };
 
-
 /**
  * Shared card shell for canvas nodes (agent graph and workflow canvases).
  * Provides consistent styling: padding, border, header with icon + label + remove button,
@@ -70,8 +69,8 @@ export function CanvasNodeCard({
   maxWidth,
 }: Props) {
   const horizontal = handleLeft !== undefined || handleRight !== undefined;
-  const showTargetLeft = horizontal && (handleLeft !== false);
-  const showSourceRight = horizontal && (handleRight !== false);
+  const showTargetLeft = horizontal && handleLeft !== false;
+  const showSourceRight = horizontal && handleRight !== false;
   const showTargetTop = !horizontal && handleTop;
   const showSourceBottom = !horizontal && handleBottom;
 
@@ -94,7 +93,10 @@ export function CanvasNodeCard({
       {/* Drag handle: only icon+label start node drag; rest is nodrag so click works on controls */}
       <div className="nopan">
         <div style={headerStyle}>
-          <div className="drag-handle" style={{ display: "flex", alignItems: "center", gap: "0.35rem", minWidth: 0 }}>
+          <div
+            className="drag-handle"
+            style={{ display: "flex", alignItems: "center", gap: "0.35rem", minWidth: 0 }}
+          >
             {icon}
             <span style={labelStyle}>{label}</span>
           </div>
@@ -128,7 +130,11 @@ export function CanvasNodeCard({
         <Handle type="source" position={Position.Right} style={{ width: 10, height: 10 }} />
       )}
       {showSourceBottom && (
-        <Handle type="source" position={Position.Bottom} style={{ bottom: 0, width: 10, height: 10 }} />
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          style={{ bottom: 0, width: 10, height: 10 }}
+        />
       )}
     </div>
   );

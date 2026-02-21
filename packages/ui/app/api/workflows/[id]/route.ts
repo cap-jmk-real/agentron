@@ -20,7 +20,11 @@ export async function PUT(request: Request, { params }: Params) {
   const { id } = await params;
   const payload = await request.json();
   const workflow = { ...payload, id };
-  await db.update(workflowsTable).set(toWorkflowRow(workflow)).where(eq(workflowsTable.id, id)).run();
+  await db
+    .update(workflowsTable)
+    .set(toWorkflowRow(workflow))
+    .where(eq(workflowsTable.id, id))
+    .run();
   refreshScheduledWorkflows();
   return json(workflow);
 }

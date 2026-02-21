@@ -65,6 +65,14 @@ export interface ChatAssistantSettings {
   historyKeepRecent: number | null;
   /** Number of past messages to include in recent conversation for the planner (heap mode). Default 12. */
   plannerRecentMessages: number | null;
+  /** Override for RAG retrieve limit (chunks) for studio chat. Null = use system default. */
+  ragRetrieveLimit: number | null;
+  /** Fallback: how many feedback items to use when not using similarity (last N by time). */
+  feedbackLastN: number | null;
+  /** When using similarity, max number of feedback items to retrieve. */
+  feedbackRetrieveCap: number | null;
+  /** Optional minimum similarity score (0–1) for retrieved feedback. */
+  feedbackMinScore: number | null;
   updatedAt: number;
 }
 

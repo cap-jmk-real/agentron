@@ -1,5 +1,11 @@
 import { json } from "../../../_lib/response";
-import { db, customFunctions, sandboxes, fromCustomFunctionRow, fromSandboxRow } from "../../../_lib/db";
+import {
+  db,
+  customFunctions,
+  sandboxes,
+  fromCustomFunctionRow,
+  fromSandboxRow,
+} from "../../../_lib/db";
 import { getContainerManager } from "../../../_lib/container-manager";
 import { eq } from "drizzle-orm";
 
@@ -28,7 +34,10 @@ export async function POST(request: Request, { params }: Params) {
   }
 
   if (!containerId) {
-    return json({ error: "No sandbox assigned to this function. Create a sandbox first." }, { status: 400 });
+    return json(
+      { error: "No sandbox assigned to this function. Create a sandbox first." },
+      { status: 400 }
+    );
   }
 
   // Build execution command based on language

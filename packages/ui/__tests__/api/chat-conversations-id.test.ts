@@ -48,9 +48,12 @@ describe("Chat conversations [id] API", () => {
   });
 
   it("DELETE /api/chat/conversations/:id removes conversation", async () => {
-    const res = await DELETE(new Request("http://localhost/api/chat/conversations/x", { method: "DELETE" }), {
-      params: Promise.resolve({ id: conversationId }),
-    });
+    const res = await DELETE(
+      new Request("http://localhost/api/chat/conversations/x", { method: "DELETE" }),
+      {
+        params: Promise.resolve({ id: conversationId }),
+      }
+    );
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.ok).toBe(true);

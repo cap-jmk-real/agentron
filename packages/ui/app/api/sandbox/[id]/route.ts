@@ -22,7 +22,9 @@ export async function DELETE(_: Request, { params }: Params) {
   const sb = fromSandboxRow(rows[0]);
   if (sb.containerId) {
     const podman = getContainerManager();
-    try { await podman.destroy(sb.containerId); } catch {}
+    try {
+      await podman.destroy(sb.containerId);
+    } catch {}
   }
 
   await db.update(sandboxes).set({ status: "destroyed" }).where(eq(sandboxes.id, id)).run();

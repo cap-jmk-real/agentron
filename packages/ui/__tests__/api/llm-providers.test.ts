@@ -32,7 +32,11 @@ describe("LLM Providers API", () => {
     expect(created.apiKeyRef).toBe("OPENAI_API_KEY");
 
     const listRes = await listGet();
-    const list = (await listRes.json()) as Array<{ id: string; apiKey?: string; apiKeyRef?: string }>;
+    const list = (await listRes.json()) as Array<{
+      id: string;
+      apiKey?: string;
+      apiKeyRef?: string;
+    }>;
     const found = list.find((p) => p.id === createdId);
     expect(found).toBeDefined();
     expect(found!.apiKey).toBeUndefined();

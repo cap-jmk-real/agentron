@@ -6,8 +6,20 @@ import {
   createChatNotification,
   clearActiveBySourceId,
   clearAll,
+  clearBulk,
+  clearOne,
   listNotifications,
 } from "../../app/api/_lib/notifications-store";
+import {
+  db,
+  executions,
+  workflows,
+  agents,
+  conversations,
+  toExecutionRow,
+} from "../../app/api/_lib/db";
+import { POST as workflowsPost } from "../../app/api/workflows/route";
+import { POST as agentsPost } from "../../app/api/agents/route";
 
 describe("Notifications API", () => {
   beforeEach(async () => {
@@ -52,7 +64,12 @@ describe("Notifications API", () => {
 
   it("GET /api/notifications filters by types=run", async () => {
     await createNotification({ type: "run", sourceId: "r1", title: "Run done", severity: "info" });
-    await createNotification({ type: "chat", sourceId: "c1", title: "New reply", severity: "info" });
+    await createNotification({
+      type: "chat",
+      sourceId: "c1",
+      title: "New reply",
+      severity: "info",
+    });
 
     const res = await GET(new Request("http://localhost/api/notifications?types=run"));
     expect(res.status).toBe(200);
@@ -76,6 +93,19 @@ describe("Notifications API", () => {
     expect(data.totalActiveCount).toBe(2);
   });
 
+  it("GET /api/notifications filters by types=run,chat", async () => {
+    await createChatNotification("conv-1");
+    await createNotification({ type: "run", sourceId: "r1", title: "Run done", severity: "info" });
+
+    const res = await GET(new Request("http://localhost/api/notifications?types=run,chat"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.items.length).toBe(2);
+    expect(data.totalActiveCount).toBe(2);
+    const types = data.items.map((i: { type: string }) => i.type).sort();
+    expect(types).toEqual(["chat", "run"]);
+  });
+
   it("GET /api/notifications respects limit and offset", async () => {
     await createNotification({ type: "run", sourceId: "r1", title: "A", severity: "info" });
     await createNotification({ type: "run", sourceId: "r2", title: "B", severity: "info" });
@@ -88,8 +118,131 @@ describe("Notifications API", () => {
     expect(data.totalActiveCount).toBe(3);
   });
 
+  it("listNotifications with status cleared returns cleared items", async () => {
+    const n = await createNotification({
+      type: "run",
+      sourceId: "r1",
+      title: "Done",
+      severity: "info",
+    });
+    await clearAll();
+    const { items, totalActiveCount } = await listNotifications({ status: "cleared" });
+    expect(items.length).toBeGreaterThanOrEqual(1);
+    const found = items.find((i: { id: string }) => i.id === n.id);
+    expect(found).toBeDefined();
+    expect(found!.status).toBe("cleared");
+    expect(totalActiveCount).toBe(0);
+  });
+
+  it("GET /api/notifications?status=cleared returns cleared notifications", async () => {
+    const n = await createNotification({
+      type: "run",
+      sourceId: "r1",
+      title: "Old",
+      severity: "info",
+    });
+    await clearAll();
+    const res = await GET(new Request("http://localhost/api/notifications?status=cleared"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.items.length).toBeGreaterThanOrEqual(1);
+    const found = data.items.find((i: { id: string }) => i.id === n.id);
+    expect(found).toBeDefined();
+    expect(found.status).toBe("cleared");
+  });
+
+  it("GET /api/notifications accepts limit and offset query params", async () => {
+    const res = await GET(new Request("http://localhost/api/notifications?limit=10&offset=0"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.items.length).toBeLessThanOrEqual(10);
+  });
+
+  it("clearBulk with empty array returns 0", async () => {
+    const cleared = await clearBulk([]);
+    expect(cleared).toBe(0);
+  });
+
+  it("clearOne with non-existent id returns false", async () => {
+    const ok = await clearOne("00000000-0000-0000-0000-000000000000");
+    expect(ok).toBe(false);
+  });
+
+  it("clearAll with types filter clears only matching types", async () => {
+    await createNotification({ type: "run", sourceId: "r1", title: "Run", severity: "info" });
+    await createChatNotification("conv-1");
+    const cleared = await clearAll(["run"]);
+    expect(cleared).toBe(1);
+    const { items } = await listNotifications({ status: "active" });
+    expect(items.length).toBe(1);
+    expect(items[0].type).toBe("chat");
+  });
+
+  it("GET /api/notifications enriches run notifications with targetName from workflow/agent", async () => {
+    const wfRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Notif Workflow",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    const wf = await wfRes.json();
+    const runId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: runId,
+          targetType: "workflow",
+          targetId: wf.id,
+          status: "completed",
+        })
+      )
+      .run();
+    await createNotification({
+      type: "run",
+      sourceId: runId,
+      title: "Run completed",
+      severity: "success",
+    });
+    const res = await GET(new Request("http://localhost/api/notifications"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.items.length).toBe(1);
+    expect(data.items[0].type).toBe("run");
+    expect(data.items[0].targetName).toBe("Notif Workflow");
+  });
+
+  it("GET /api/notifications enriches chat notifications with conversationTitle when conversation exists", async () => {
+    const convId = crypto.randomUUID();
+    await db
+      .insert(conversations)
+      .values({
+        id: convId,
+        title: "Test conversation",
+        createdAt: Date.now(),
+      })
+      .run();
+    await createChatNotification(convId);
+    const res = await GET(new Request("http://localhost/api/notifications?types=chat"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.items.length).toBe(1);
+    expect(data.items[0].conversationTitle).toBe("Test conversation");
+  });
+
   it("POST /api/notifications/clear with id clears one notification", async () => {
-    const n = await createNotification({ type: "run", sourceId: "r1", title: "Run completed", severity: "success" });
+    const n = await createNotification({
+      type: "run",
+      sourceId: "r1",
+      title: "Run completed",
+      severity: "success",
+    });
 
     const res = await clearPost(
       new Request("http://localhost/api/notifications/clear", {
@@ -108,8 +261,18 @@ describe("Notifications API", () => {
   });
 
   it("POST /api/notifications/clear with ids clears multiple", async () => {
-    const n1 = await createNotification({ type: "run", sourceId: "r1", title: "One", severity: "info" });
-    const n2 = await createNotification({ type: "run", sourceId: "r2", title: "Two", severity: "info" });
+    const n1 = await createNotification({
+      type: "run",
+      sourceId: "r1",
+      title: "One",
+      severity: "info",
+    });
+    const n2 = await createNotification({
+      type: "run",
+      sourceId: "r2",
+      title: "Two",
+      severity: "info",
+    });
 
     const res = await clearPost(
       new Request("http://localhost/api/notifications/clear", {
@@ -122,6 +285,25 @@ describe("Notifications API", () => {
     const data = await res.json();
     expect(data.cleared).toBe(2);
     expect((await listNotifications({ status: "active" })).items.length).toBe(0);
+  });
+
+  it("POST /api/notifications/clear with ids array filters non-strings", async () => {
+    const n = await createNotification({
+      type: "run",
+      sourceId: "r1",
+      title: "One",
+      severity: "info",
+    });
+    const res = await clearPost(
+      new Request("http://localhost/api/notifications/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [n.id, 123, null] }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.cleared).toBe(1);
   });
 
   it("POST /api/notifications/clear with empty body clears all active", async () => {
@@ -219,7 +401,12 @@ describe("Notifications API", () => {
     });
 
     it("GET /api/notifications returns run and chat items with correct type and sourceId for client links", async () => {
-      await createNotification({ type: "run", sourceId: "run-abc", title: "Run completed", severity: "success" });
+      await createNotification({
+        type: "run",
+        sourceId: "run-abc",
+        title: "Run completed",
+        severity: "success",
+      });
       await createChatNotification("conv-xyz");
       const res = await GET(new Request("http://localhost/api/notifications"));
       expect(res.status).toBe(200);

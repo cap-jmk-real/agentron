@@ -7,7 +7,8 @@ import type { AssistantToolDef } from "./types";
 export const STORE_TOOLS: AssistantToolDef[] = [
   {
     name: "create_store",
-    description: "Create a named store (key-value) scoped to an agent or job. The agent uses this for its own persistence (eval sets, run metadata, etc.) without touching the app's core schema.",
+    description:
+      "Create a named store (key-value) scoped to an agent or job. The agent uses this for its own persistence (eval sets, run metadata, etc.) without touching the app's core schema.",
     parameters: {
       type: "object",
       properties: {

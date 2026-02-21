@@ -10,20 +10,24 @@ export const REMINDER_TOOLS: AssistantToolDef[] = [
       properties: {
         message: {
           type: "string",
-          description: "The reminder text. For message: shown as 'Reminder: …'. For assistant_task: sent as the user message so the assistant runs (e.g. 'Summarize my calendar', 'Check the weather').",
+          description:
+            "The reminder text. For message: shown as 'Reminder: …'. For assistant_task: sent as the user message so the assistant runs (e.g. 'Summarize my calendar', 'Check the weather').",
         },
         at: {
           type: "string",
-          description: "ISO 8601 date/time when the reminder should fire (e.g. '2026-02-16T15:00:00Z'). Use when the user specifies an exact time.",
+          description:
+            "ISO 8601 date/time when the reminder should fire (e.g. '2026-02-16T15:00:00Z'). Use when the user specifies an exact time.",
         },
         inMinutes: {
           type: "number",
-          description: "Minutes from now when the reminder should fire. Use when the user says 'in 20 minutes', 'in 1 hour' (use 60), etc.",
+          description:
+            "Minutes from now when the reminder should fire. Use when the user says 'in 20 minutes', 'in 1 hour' (use 60), etc.",
         },
         taskType: {
           type: "string",
           enum: ["message", "assistant_task"],
-          description: "Default: message. Use assistant_task when the user wants the assistant to do something at that time (e.g. 'at 9am have the assistant check my calendar').",
+          description:
+            "Default: message. Use assistant_task when the user wants the assistant to do something at that time (e.g. 'at 9am have the assistant check my calendar').",
         },
       },
       required: ["message"],

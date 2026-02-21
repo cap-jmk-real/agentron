@@ -22,8 +22,11 @@ export async function PATCH(request: Request, { params }: Params) {
     const v = payload.rating;
     updates.rating = v === null || v === "" ? null : Number(v);
   }
-  if (payload.note !== undefined) updates.note = payload.note === null || payload.note === "" ? null : String(payload.note);
-  if (payload.title !== undefined) updates.title = payload.title === null || payload.title === "" ? null : String(payload.title).trim();
+  if (payload.note !== undefined)
+    updates.note = payload.note === null || payload.note === "" ? null : String(payload.note);
+  if (payload.title !== undefined)
+    updates.title =
+      payload.title === null || payload.title === "" ? null : String(payload.title).trim();
 
   if (Object.keys(updates).length === 0) return json(fromConversationRow(rows[0]));
 

@@ -27,7 +27,9 @@ export default function PromptsEditor({ definition, onDefinitionChange }: Props)
         <div className="field">
           <label>System Prompt</label>
           <p style={{ margin: "0 0 0.25rem", fontSize: "0.82rem", color: "var(--text-muted)" }}>
-            The core instructions that define this agent&apos;s personality, role, and behavior. Execution flow is defined by the <strong>Agent graph</strong> in the Visual tab (nodes and edges).
+            The core instructions that define this agent&apos;s personality, role, and behavior.
+            Execution flow is defined by the <strong>Agent graph</strong> in the Visual tab (nodes
+            and edges).
           </p>
           <textarea
             className="textarea"

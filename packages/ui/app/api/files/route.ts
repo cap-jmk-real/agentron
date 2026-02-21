@@ -20,7 +20,10 @@ export async function POST(request: Request) {
 
   const maxBytes = getMaxFileUploadBytes();
   if (file.size > maxBytes) {
-    return json({ error: `File too large (max ${formatMaxFileUploadMb(maxBytes)})` }, { status: 413 });
+    return json(
+      { error: `File too large (max ${formatMaxFileUploadMb(maxBytes)})` },
+      { status: 413 }
+    );
   }
 
   const id = crypto.randomUUID();
@@ -38,7 +41,7 @@ export async function POST(request: Request) {
     mimeType: file.type || "application/octet-stream",
     size: file.size,
     path: storedName,
-    createdAt: Date.now()
+    createdAt: Date.now(),
   };
 
   await db.insert(files).values(toFileRow(entry)).run();

@@ -40,7 +40,10 @@ const PROVIDER_PRESETS: Record<string, { model: string; endpoint?: string }> = {
   openai: { model: "gpt-4o", endpoint: "https://api.openai.com/v1" },
   anthropic: { model: "claude-sonnet-4-20250514", endpoint: "https://api.anthropic.com" },
   openrouter: { model: "openrouter/free" },
-  huggingface: { model: "meta-llama/Llama-3.1-8B-Instruct", endpoint: "https://api-inference.huggingface.co" },
+  huggingface: {
+    model: "meta-llama/Llama-3.1-8B-Instruct",
+    endpoint: "https://api-inference.huggingface.co",
+  },
   azure: { model: "gpt-4o", endpoint: "" },
   gcp: { model: "gemini-2.5-pro", endpoint: "" },
   custom_http: { model: "", endpoint: "" },
@@ -65,8 +68,15 @@ export default function LlmSettingsPage() {
   const [rateLimitTPM, setRateLimitTPM] = useState<string>("");
   const [contextLengthInput, setContextLengthInput] = useState<string>("");
   const [defaultLimits, setDefaultLimits] = useState<Record<string, RateLimitConfig>>({});
-  const [catalogModels, setCatalogModels] = useState<Array<{ id: string; name: string; contextLength?: number }>>([]);
-  const [openrouterKeyInfo, setOpenrouterKeyInfo] = useState<Record<string, { loading: boolean; error?: string; envVar?: string; hint?: string; data?: OpenRouterKeyData }>>({});
+  const [catalogModels, setCatalogModels] = useState<
+    Array<{ id: string; name: string; contextLength?: number }>
+  >([]);
+  const [openrouterKeyInfo, setOpenrouterKeyInfo] = useState<
+    Record<
+      string,
+      { loading: boolean; error?: string; envVar?: string; hint?: string; data?: OpenRouterKeyData }
+    >
+  >({});
 
   const loadProviders = useCallback(async () => {
     try {
@@ -80,17 +90,20 @@ export default function LlmSettingsPage() {
     }
   }, []);
 
-  useEffect(() => { loadProviders(); }, [loadProviders]);
+  useEffect(() => {
+    loadProviders();
+  }, [loadProviders]);
 
   useEffect(() => {
-    fetch("/api/llm/rate-limit-defaults").then((r) => r.json()).then(setDefaultLimits).catch(() => ({}));
+    fetch("/api/llm/rate-limit-defaults")
+      .then((r) => r.json())
+      .then(setDefaultLimits)
+      .catch(() => ({}));
   }, []);
 
   // Fetch OpenRouter key/limits for OpenRouter providers (uses stored key server-side)
   useEffect(() => {
-    const openrouterIds = providers
-      .filter((p) => p.provider === "openrouter")
-      .map((p) => p.id);
+    const openrouterIds = providers.filter((p) => p.provider === "openrouter").map((p) => p.id);
     if (openrouterIds.length === 0) {
       setOpenrouterKeyInfo({});
       return;
@@ -118,9 +131,15 @@ export default function LlmSettingsPage() {
           }));
           return;
         }
-        setOpenrouterKeyInfo((prev) => ({ ...prev, [id]: { loading: false, data: data as OpenRouterKeyData } }));
+        setOpenrouterKeyInfo((prev) => ({
+          ...prev,
+          [id]: { loading: false, data: data as OpenRouterKeyData },
+        }));
       } catch {
-        setOpenrouterKeyInfo((prev) => ({ ...prev, [id]: { loading: false, error: "Failed to fetch" } }));
+        setOpenrouterKeyInfo((prev) => ({
+          ...prev,
+          [id]: { loading: false, error: "Failed to fetch" },
+        }));
       }
     });
   }, [providers]);
@@ -146,7 +165,8 @@ export default function LlmSettingsPage() {
   const selectedCatalogModel = catalogModels.find((m) => m.id === model);
   useEffect(() => {
     if (editingId != null) return;
-    if (selectedCatalogModel?.contextLength != null) setContextLengthInput(String(selectedCatalogModel.contextLength));
+    if (selectedCatalogModel?.contextLength != null)
+      setContextLengthInput(String(selectedCatalogModel.contextLength));
   }, [editingId, selectedCatalogModel?.id, selectedCatalogModel?.contextLength]);
 
   const onProviderChange = (val: string) => {
@@ -154,7 +174,7 @@ export default function LlmSettingsPage() {
     const preset = PROVIDER_PRESETS[val];
     if (preset) {
       setModel(preset.model);
-      setEndpoint(PROVIDERS_WITHOUT_ENDPOINT.includes(val) ? "" : preset.endpoint ?? "");
+      setEndpoint(PROVIDERS_WITHOUT_ENDPOINT.includes(val) ? "" : (preset.endpoint ?? ""));
     }
     const d = defaultLimits[val];
     setRateLimitRPM(d?.requestsPerMinute != null ? String(d.requestsPerMinute) : "");
@@ -199,7 +219,12 @@ export default function LlmSettingsPage() {
       setRateLimitTPM("");
       setContextLengthInput("");
       // Add the created provider from response so list updates even if GET fails (e.g. desktop app)
-      if (data && typeof data.id === "string" && typeof data.provider === "string" && typeof data.model === "string") {
+      if (
+        data &&
+        typeof data.id === "string" &&
+        typeof data.provider === "string" &&
+        typeof data.model === "string"
+      ) {
         setProviders((prev) => [...prev, data as LlmProvider]);
       } else {
         await loadProviders();
@@ -217,13 +242,21 @@ export default function LlmSettingsPage() {
     setModel(p.model);
     setEndpoint(p.endpoint ?? PROVIDER_PRESETS[p.provider]?.endpoint ?? "");
     setApiKey(""); // Never show or send existing key; leave blank to keep current
-    setRateLimitRPM(p.extra?.rateLimit?.requestsPerMinute != null ? String(p.extra.rateLimit.requestsPerMinute) : "");
-    setRateLimitTPM(p.extra?.rateLimit?.tokensPerMinute != null ? String(p.extra.rateLimit.tokensPerMinute) : "");
+    setRateLimitRPM(
+      p.extra?.rateLimit?.requestsPerMinute != null
+        ? String(p.extra.rateLimit.requestsPerMinute)
+        : ""
+    );
+    setRateLimitTPM(
+      p.extra?.rateLimit?.tokensPerMinute != null ? String(p.extra.rateLimit.tokensPerMinute) : ""
+    );
     setContextLengthInput(p.extra?.contextLength != null ? String(p.extra.contextLength) : "");
     loadCatalog(p.provider);
     const d = defaultLimits[p.provider];
-    if (p.extra?.rateLimit?.requestsPerMinute == null && d?.requestsPerMinute != null) setRateLimitRPM(String(d.requestsPerMinute));
-    if (p.extra?.rateLimit?.tokensPerMinute == null && d?.tokensPerMinute != null) setRateLimitTPM(String(d.tokensPerMinute));
+    if (p.extra?.rateLimit?.requestsPerMinute == null && d?.requestsPerMinute != null)
+      setRateLimitRPM(String(d.requestsPerMinute));
+    if (p.extra?.rateLimit?.tokensPerMinute == null && d?.tokensPerMinute != null)
+      setRateLimitTPM(String(d.tokensPerMinute));
   };
 
   const updateProvider = async (e: React.FormEvent) => {
@@ -277,16 +310,28 @@ export default function LlmSettingsPage() {
 
   const providerLabel = (p: string) => {
     const labels: Record<string, string> = {
-      local: "Local (Ollama)", openai: "OpenAI", anthropic: "Anthropic",
-      openrouter: "OpenRouter", huggingface: "Hugging Face",
-      azure: "Azure OpenAI", gcp: "Google Cloud", custom_http: "Custom HTTP",
+      local: "Local (Ollama)",
+      openai: "OpenAI",
+      anthropic: "Anthropic",
+      openrouter: "OpenRouter",
+      huggingface: "Hugging Face",
+      azure: "Azure OpenAI",
+      gcp: "Google Cloud",
+      custom_http: "Custom HTTP",
     };
     return labels[p] || p;
   };
 
   return (
     <div style={{ maxWidth: 680 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "1.25rem",
+        }}
+      >
         <div>
           <h1 style={{ margin: 0 }}>LLM Providers</h1>
           <p style={{ margin: "0.25rem 0 0", fontSize: "0.82rem", color: "var(--text-muted)" }}>
@@ -314,12 +359,42 @@ export default function LlmSettingsPage() {
       {/* Add provider form */}
       {showForm && !editingId && (
         <div className="card" style={{ marginBottom: "1rem" }}>
-          <div style={{ padding: "0.85rem 1rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div
+            style={{
+              padding: "0.85rem 1rem",
+              borderBottom: "1px solid var(--border)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
             <span style={{ fontWeight: 600, fontSize: "0.85rem" }}>New Provider</span>
-            <button type="button" className="button button-ghost button-small" onClick={() => { setShowForm(false); setSaveError(null); }}>Cancel</button>
+            <button
+              type="button"
+              className="button button-ghost button-small"
+              onClick={() => {
+                setShowForm(false);
+                setSaveError(null);
+              }}
+            >
+              Cancel
+            </button>
           </div>
           {saveError && !editingId && (
-            <div style={{ padding: "0.6rem 1rem", background: "#fef2f2", color: "#dc2626", fontSize: "0.85rem", borderBottom: "1px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap" }}>
+            <div
+              style={{
+                padding: "0.6rem 1rem",
+                background: "#fef2f2",
+                color: "#dc2626",
+                fontSize: "0.85rem",
+                borderBottom: "1px solid #fecaca",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                flexWrap: "wrap",
+              }}
+            >
               <span style={{ flex: "1 1 200px" }}>{saveError}</span>
               <CopyDebugInfoButton label="Copy debug info" variant="ghost" size="small" />
             </div>
@@ -327,7 +402,11 @@ export default function LlmSettingsPage() {
           <form onSubmit={addProvider} className="form" style={{ padding: "1rem" }}>
             <div className="field">
               <label>Provider</label>
-              <select className="select" value={provider} onChange={(e) => onProviderChange(e.target.value)}>
+              <select
+                className="select"
+                value={provider}
+                onChange={(e) => onProviderChange(e.target.value)}
+              >
                 <option value="openai">OpenAI</option>
                 <option value="anthropic">Anthropic</option>
                 <option value="openrouter">OpenRouter</option>
@@ -343,15 +422,24 @@ export default function LlmSettingsPage() {
               {catalogModels.length > 0 ? (
                 <select
                   className="select"
-                  value={catalogModels.some((m) => m.id === model) ? model : catalogModels[0]?.id ?? ""}
+                  value={
+                    catalogModels.some((m) => m.id === model) ? model : (catalogModels[0]?.id ?? "")
+                  }
                   onChange={(e) => setModel(e.target.value)}
                 >
                   {catalogModels.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
                   ))}
                 </select>
               ) : (
-                <input className="input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="e.g. model-id (no catalog for this provider)" />
+                <input
+                  className="input"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder="e.g. model-id (no catalog for this provider)"
+                />
               )}
             </div>
             <div className="field">
@@ -363,22 +451,34 @@ export default function LlmSettingsPage() {
                 step={1}
                 value={contextLengthInput}
                 onChange={(e) => setContextLengthInput(e.target.value)}
-                placeholder={selectedCatalogModel?.contextLength != null ? `Default for model: ${selectedCatalogModel.contextLength.toLocaleString()}` : "e.g. 128000 (optional)"}
+                placeholder={
+                  selectedCatalogModel?.contextLength != null
+                    ? `Default for model: ${selectedCatalogModel.contextLength.toLocaleString()}`
+                    : "e.g. 128000 (optional)"
+                }
                 list="context-length-presets"
               />
               <datalist id="context-length-presets">
-                {[4096, 8192, 16384, 32768, 64000, 128000, 131072, 200000, 262000, 1000000].map((n) => (
-                  <option key={n} value={n} />
-                ))}
+                {[4096, 8192, 16384, 32768, 64000, 128000, 131072, 200000, 262000, 1000000].map(
+                  (n) => (
+                    <option key={n} value={n} />
+                  )
+                )}
               </datalist>
               <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                Max context window for this model. Used to cap workflow memory and RAG. Leave blank to use model default when available.
+                Max context window for this model. Used to cap workflow memory and RAG. Leave blank
+                to use model default when available.
               </span>
             </div>
             {!PROVIDERS_WITHOUT_ENDPOINT.includes(provider) && (
               <div className="field">
                 <label>Endpoint</label>
-                <input className="input" value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="https://api.openai.com/v1" />
+                <input
+                  className="input"
+                  value={endpoint}
+                  onChange={(e) => setEndpoint(e.target.value)}
+                  placeholder="https://api.openai.com/v1"
+                />
               </div>
             )}
             {provider !== "local" && (
@@ -386,7 +486,15 @@ export default function LlmSettingsPage() {
                 <label>API Key</label>
                 {editingId ? (
                   <>
-                    <div style={{ fontSize: "0.9rem", letterSpacing: "0.15em", color: "var(--text-muted)", marginBottom: "0.35rem" }} aria-hidden="true">
+                    <div
+                      style={{
+                        fontSize: "0.9rem",
+                        letterSpacing: "0.15em",
+                        color: "var(--text-muted)",
+                        marginBottom: "0.35rem",
+                      }}
+                      aria-hidden="true"
+                    >
                       ••••••••••••••••••••••••
                     </div>
                     <input
@@ -409,7 +517,9 @@ export default function LlmSettingsPage() {
                   />
                 )}
                 <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                  {editingId ? "Key is never loaded or shown. Enter a new value only to replace it." : "Stored securely and never shown again. Used only for API requests."}
+                  {editingId
+                    ? "Key is never loaded or shown. Enter a new value only to replace it."
+                    : "Stored securely and never shown again. Used only for API requests."}
                 </span>
               </div>
             )}
@@ -422,7 +532,11 @@ export default function LlmSettingsPage() {
                   min={1}
                   value={rateLimitRPM}
                   onChange={(e) => setRateLimitRPM(e.target.value)}
-                  placeholder={defaultLimits[provider]?.requestsPerMinute != null ? `Default: ${defaultLimits[provider].requestsPerMinute}` : "Default by provider"}
+                  placeholder={
+                    defaultLimits[provider]?.requestsPerMinute != null
+                      ? `Default: ${defaultLimits[provider].requestsPerMinute}`
+                      : "Default by provider"
+                  }
                 />
               </div>
               <div className="field">
@@ -433,7 +547,11 @@ export default function LlmSettingsPage() {
                   min={0}
                   value={rateLimitTPM}
                   onChange={(e) => setRateLimitTPM(e.target.value)}
-                  placeholder={defaultLimits[provider]?.tokensPerMinute != null ? `Default: ${defaultLimits[provider].tokensPerMinute}` : "Optional"}
+                  placeholder={
+                    defaultLimits[provider]?.tokensPerMinute != null
+                      ? `Default: ${defaultLimits[provider].tokensPerMinute}`
+                      : "Optional"
+                  }
                 />
               </div>
             </div>
@@ -449,11 +567,21 @@ export default function LlmSettingsPage() {
         <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Loading...</p>
       ) : providers.length === 0 && !showForm ? (
         <div className="card" style={{ padding: "2rem", textAlign: "center" }}>
-          <p style={{ fontSize: "0.88rem", fontWeight: 500, margin: "0 0 0.4rem" }}>No providers configured</p>
+          <p style={{ fontSize: "0.88rem", fontWeight: 500, margin: "0 0 0.4rem" }}>
+            No providers configured
+          </p>
           <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", margin: "0 0 1rem" }}>
             Add an LLM provider to start using agents and the AI assistant.
           </p>
-          <button className="button" onClick={() => { setShowForm(true); loadCatalog(provider); }}>+ Add Provider</button>
+          <button
+            className="button"
+            onClick={() => {
+              setShowForm(true);
+              loadCatalog(provider);
+            }}
+          >
+            + Add Provider
+          </button>
         </div>
       ) : (
         <div style={{ display: "grid", gap: "0.5rem" }}>
@@ -461,12 +589,42 @@ export default function LlmSettingsPage() {
             <div key={p.id}>
               {editingId === p.id ? (
                 <div className="card" style={{ marginBottom: "0.5rem" }}>
-                  <div style={{ padding: "0.85rem 1rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div
+                    style={{
+                      padding: "0.85rem 1rem",
+                      borderBottom: "1px solid var(--border)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
                     <span style={{ fontWeight: 600, fontSize: "0.85rem" }}>Edit Provider</span>
-                    <button type="button" className="button button-ghost button-small" onClick={() => { setEditingId(null); setSaveError(null); }}>Cancel</button>
+                    <button
+                      type="button"
+                      className="button button-ghost button-small"
+                      onClick={() => {
+                        setEditingId(null);
+                        setSaveError(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
                   </div>
                   {saveError && (
-                    <div style={{ padding: "0.6rem 1rem", background: "#fef2f2", color: "#dc2626", fontSize: "0.85rem", borderBottom: "1px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap" }}>
+                    <div
+                      style={{
+                        padding: "0.6rem 1rem",
+                        background: "#fef2f2",
+                        color: "#dc2626",
+                        fontSize: "0.85rem",
+                        borderBottom: "1px solid #fecaca",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "0.75rem",
+                        flexWrap: "wrap",
+                      }}
+                    >
                       <span style={{ flex: "1 1 200px" }}>{saveError}</span>
                       <CopyDebugInfoButton label="Copy debug info" variant="ghost" size="small" />
                     </div>
@@ -474,7 +632,11 @@ export default function LlmSettingsPage() {
                   <form onSubmit={updateProvider} className="form" style={{ padding: "1rem" }}>
                     <div className="field">
                       <label>Provider</label>
-                      <select className="select" value={provider} onChange={(e) => onProviderChange(e.target.value)}>
+                      <select
+                        className="select"
+                        value={provider}
+                        onChange={(e) => onProviderChange(e.target.value)}
+                      >
                         <option value="openai">OpenAI</option>
                         <option value="anthropic">Anthropic</option>
                         <option value="openrouter">OpenRouter</option>
@@ -490,15 +652,26 @@ export default function LlmSettingsPage() {
                       {catalogModels.length > 0 ? (
                         <select
                           className="select"
-                          value={catalogModels.some((m) => m.id === model) ? model : catalogModels[0]?.id ?? ""}
+                          value={
+                            catalogModels.some((m) => m.id === model)
+                              ? model
+                              : (catalogModels[0]?.id ?? "")
+                          }
                           onChange={(e) => setModel(e.target.value)}
                         >
                           {catalogModels.map((m) => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
+                            <option key={m.id} value={m.id}>
+                              {m.name}
+                            </option>
                           ))}
                         </select>
                       ) : (
-                        <input className="input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="e.g. model-id (no catalog for this provider)" />
+                        <input
+                          className="input"
+                          value={model}
+                          onChange={(e) => setModel(e.target.value)}
+                          placeholder="e.g. model-id (no catalog for this provider)"
+                        />
                       )}
                     </div>
                     <div className="field">
@@ -510,11 +683,17 @@ export default function LlmSettingsPage() {
                         step={1}
                         value={contextLengthInput}
                         onChange={(e) => setContextLengthInput(e.target.value)}
-                        placeholder={selectedCatalogModel?.contextLength != null ? `Default for model: ${selectedCatalogModel.contextLength.toLocaleString()}` : "e.g. 128000 (optional)"}
+                        placeholder={
+                          selectedCatalogModel?.contextLength != null
+                            ? `Default for model: ${selectedCatalogModel.contextLength.toLocaleString()}`
+                            : "e.g. 128000 (optional)"
+                        }
                         list="context-length-presets-edit"
                       />
                       <datalist id="context-length-presets-edit">
-                        {[4096, 8192, 16384, 32768, 64000, 128000, 131072, 200000, 262000, 1000000].map((n) => (
+                        {[
+                          4096, 8192, 16384, 32768, 64000, 128000, 131072, 200000, 262000, 1000000,
+                        ].map((n) => (
                           <option key={n} value={n} />
                         ))}
                       </datalist>
@@ -525,14 +704,26 @@ export default function LlmSettingsPage() {
                     {!PROVIDERS_WITHOUT_ENDPOINT.includes(provider) && (
                       <div className="field">
                         <label>Endpoint</label>
-                        <input className="input" value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="https://api.openai.com/v1" />
+                        <input
+                          className="input"
+                          value={endpoint}
+                          onChange={(e) => setEndpoint(e.target.value)}
+                          placeholder="https://api.openai.com/v1"
+                        />
                       </div>
                     )}
                     {provider !== "local" && (
                       <div className="field">
                         <label>API Key</label>
-                        <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", margin: "0 0 0.35rem 0" }}>
-                          Current key is stored but not shown. Enter a new key below to change it, or leave blank to keep the current one.
+                        <p
+                          style={{
+                            fontSize: "0.8rem",
+                            color: "var(--text-muted)",
+                            margin: "0 0 0.35rem 0",
+                          }}
+                        >
+                          Current key is stored but not shown. Enter a new key below to change it,
+                          or leave blank to keep the current one.
                         </p>
                         <input
                           className="input"
@@ -545,7 +736,9 @@ export default function LlmSettingsPage() {
                         />
                       </div>
                     )}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                    <div
+                      style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}
+                    >
                       <div className="field">
                         <label>Rate limit: requests/min</label>
                         <input
@@ -554,7 +747,11 @@ export default function LlmSettingsPage() {
                           min={1}
                           value={rateLimitRPM}
                           onChange={(e) => setRateLimitRPM(e.target.value)}
-                          placeholder={defaultLimits[provider]?.requestsPerMinute != null ? `Default: ${defaultLimits[provider].requestsPerMinute}` : "Default by provider"}
+                          placeholder={
+                            defaultLimits[provider]?.requestsPerMinute != null
+                              ? `Default: ${defaultLimits[provider].requestsPerMinute}`
+                              : "Default by provider"
+                          }
                         />
                       </div>
                       <div className="field">
@@ -565,7 +762,11 @@ export default function LlmSettingsPage() {
                           min={0}
                           value={rateLimitTPM}
                           onChange={(e) => setRateLimitTPM(e.target.value)}
-                          placeholder={defaultLimits[provider]?.tokensPerMinute != null ? `Default: ${defaultLimits[provider].tokensPerMinute}` : "Optional"}
+                          placeholder={
+                            defaultLimits[provider]?.tokensPerMinute != null
+                              ? `Default: ${defaultLimits[provider].tokensPerMinute}`
+                              : "Optional"
+                          }
                         />
                       </div>
                     </div>
@@ -576,65 +777,141 @@ export default function LlmSettingsPage() {
                 </div>
               ) : (
                 <div className="card" style={{ padding: "0.75rem 1rem" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
                     <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-                      <div style={{
-                        width: 32, height: 32, borderRadius: 8,
-                        background: "var(--surface-muted)", border: "1px solid var(--border)",
-                        display: "grid", placeItems: "center",
-                        fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)",
-                      }}>
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 8,
+                          background: "var(--surface-muted)",
+                          border: "1px solid var(--border)",
+                          display: "grid",
+                          placeItems: "center",
+                          fontSize: "0.7rem",
+                          fontWeight: 700,
+                          color: "var(--text-muted)",
+                        }}
+                      >
                         {p.provider.slice(0, 2).toUpperCase()}
                       </div>
                       <div>
-                        <div style={{ fontSize: "0.85rem", fontWeight: 600 }}>{providerLabel(p.provider)}</div>
+                        <div style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+                          {providerLabel(p.provider)}
+                        </div>
                         <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
                           {p.model}
-                          {!PROVIDERS_WITHOUT_ENDPOINT.includes(p.provider) && p.endpoint ? ` · ${p.endpoint}` : ""}
-                          {(p.extra?.rateLimit?.requestsPerMinute != null || defaultLimits[p.provider]?.requestsPerMinute != null) && (
-                            <span style={{ display: "block", fontSize: "0.72rem", marginTop: "0.2rem" }}>
-                              Rate limit: {p.extra?.rateLimit?.requestsPerMinute ?? defaultLimits[p.provider]?.requestsPerMinute} RPM
-                              {(p.extra?.rateLimit?.tokensPerMinute ?? defaultLimits[p.provider]?.tokensPerMinute) != null && (
-                                <> \u00B7 {(p.extra?.rateLimit?.tokensPerMinute ?? defaultLimits[p.provider]?.tokensPerMinute)?.toLocaleString()} TPM</>
+                          {!PROVIDERS_WITHOUT_ENDPOINT.includes(p.provider) && p.endpoint
+                            ? ` · ${p.endpoint}`
+                            : ""}
+                          {(p.extra?.rateLimit?.requestsPerMinute != null ||
+                            defaultLimits[p.provider]?.requestsPerMinute != null) && (
+                            <span
+                              style={{ display: "block", fontSize: "0.72rem", marginTop: "0.2rem" }}
+                            >
+                              Rate limit:{" "}
+                              {p.extra?.rateLimit?.requestsPerMinute ??
+                                defaultLimits[p.provider]?.requestsPerMinute}{" "}
+                              RPM
+                              {(p.extra?.rateLimit?.tokensPerMinute ??
+                                defaultLimits[p.provider]?.tokensPerMinute) != null && (
+                                <>
+                                  {" "}
+                                  \u00B7{" "}
+                                  {(
+                                    p.extra?.rateLimit?.tokensPerMinute ??
+                                    defaultLimits[p.provider]?.tokensPerMinute
+                                  )?.toLocaleString()}{" "}
+                                  TPM
+                                </>
                               )}
                             </span>
                           )}
-                          {p.provider === "openrouter" && (() => {
-                            const info = openrouterKeyInfo[p.id];
-                            if (!info) return null;
-                            if (info.loading) return <span style={{ display: "block", fontSize: "0.72rem", marginTop: "0.2rem", color: "var(--text-muted)" }}>Credits: loading…</span>;
-                            if (info.error) {
+                          {p.provider === "openrouter" &&
+                            (() => {
+                              const info = openrouterKeyInfo[p.id];
+                              if (!info) return null;
+                              if (info.loading)
+                                return (
+                                  <span
+                                    style={{
+                                      display: "block",
+                                      fontSize: "0.72rem",
+                                      marginTop: "0.2rem",
+                                      color: "var(--text-muted)",
+                                    }}
+                                  >
+                                    Credits: loading…
+                                  </span>
+                                );
+                              if (info.error) {
+                                return (
+                                  <span
+                                    style={{
+                                      display: "block",
+                                      fontSize: "0.72rem",
+                                      marginTop: "0.2rem",
+                                      color: "#dc2626",
+                                    }}
+                                  >
+                                    Credits: {info.error}
+                                    {info.hint && (
+                                      <span
+                                        style={{
+                                          display: "block",
+                                          marginTop: "0.25rem",
+                                          color: "var(--text-muted)",
+                                          fontSize: "0.7rem",
+                                        }}
+                                      >
+                                        {info.hint}
+                                      </span>
+                                    )}
+                                  </span>
+                                );
+                              }
+                              const d = info.data?.data;
+                              if (!d) return null;
+                              const parts: string[] = [];
+                              if (d.limit_remaining != null)
+                                parts.push(`${d.limit_remaining} credits left`);
+                              else if (d.limit != null) parts.push(`limit ${d.limit}`);
+                              if (d.usage_daily != null && d.usage_daily > 0)
+                                parts.push(`$${d.usage_daily.toFixed(2)} today`);
+                              if (d.is_free_tier) parts.push("Free tier");
+                              if (parts.length === 0) parts.push("Unlimited");
                               return (
-                                <span style={{ display: "block", fontSize: "0.72rem", marginTop: "0.2rem", color: "#dc2626" }}>
-                                  Credits: {info.error}
-                                  {info.hint && (
-                                    <span style={{ display: "block", marginTop: "0.25rem", color: "var(--text-muted)", fontSize: "0.7rem" }}>
-                                      {info.hint}
-                                    </span>
-                                  )}
+                                <span
+                                  style={{
+                                    display: "block",
+                                    fontSize: "0.72rem",
+                                    marginTop: "0.2rem",
+                                    color: "var(--text-muted)",
+                                  }}
+                                >
+                                  OpenRouter: {parts.join(" · ")}
                                 </span>
                               );
-                            }
-                            const d = info.data?.data;
-                            if (!d) return null;
-                            const parts: string[] = [];
-                            if (d.limit_remaining != null) parts.push(`${d.limit_remaining} credits left`);
-                            else if (d.limit != null) parts.push(`limit ${d.limit}`);
-                            if (d.usage_daily != null && d.usage_daily > 0) parts.push(`$${d.usage_daily.toFixed(2)} today`);
-                            if (d.is_free_tier) parts.push("Free tier");
-                            if (parts.length === 0) parts.push("Unlimited");
-                            return <span style={{ display: "block", fontSize: "0.72rem", marginTop: "0.2rem", color: "var(--text-muted)" }}>OpenRouter: {parts.join(" · ")}</span>;
-                          })()}
+                            })()}
                         </div>
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
                       {testResult[p.id] && (
-                        <span style={{
-                          fontSize: "0.72rem", fontWeight: 500,
-                          color: testResult[p.id].ok ? "#16a34a" : "#dc2626",
-                          marginRight: "0.3rem",
-                        }}>
+                        <span
+                          style={{
+                            fontSize: "0.72rem",
+                            fontWeight: 500,
+                            color: testResult[p.id].ok ? "#16a34a" : "#dc2626",
+                            marginRight: "0.3rem",
+                          }}
+                        >
                           {testResult[p.id].msg}
                         </span>
                       )}

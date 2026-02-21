@@ -22,15 +22,17 @@ export type CanvasNode = {
 };
 
 /** Optional condition for conditional edges (e.g. steer by last message type or content). */
-export type EdgeCondition = {
-  /** "message_type": last message role or type must equal value. */
-  type: "message_type";
-  value: string;
-} | {
-  /** "content_contains": last output/message content must include value (case-insensitive). */
-  type: "content_contains";
-  value: string;
-};
+export type EdgeCondition =
+  | {
+      /** "message_type": last message role or type must equal value. */
+      type: "message_type";
+      value: string;
+    }
+  | {
+      /** "content_contains": last output/message content must include value (case-insensitive). */
+      type: "content_contains";
+      value: string;
+    };
 
 export type CanvasEdge = {
   id: string;

@@ -1,5 +1,12 @@
 import { json } from "../_lib/response";
-import { db, customFunctions, toCustomFunctionRow, fromCustomFunctionRow, tools, toToolRow } from "../_lib/db";
+import {
+  db,
+  customFunctions,
+  toCustomFunctionRow,
+  fromCustomFunctionRow,
+  tools,
+  toToolRow,
+} from "../_lib/db";
 
 export const runtime = "nodejs";
 
@@ -18,7 +25,7 @@ export async function POST(request: Request) {
     language: payload.language ?? "javascript",
     source: payload.source ?? "",
     sandboxId: payload.sandboxId ?? undefined,
-    createdAt: Date.now()
+    createdAt: Date.now(),
   };
 
   await db.insert(customFunctions).values(toCustomFunctionRow(fn)).run();
@@ -30,7 +37,7 @@ export async function POST(request: Request) {
     protocol: "native" as const,
     config: { functionId: id, language: fn.language },
     inputSchema: undefined,
-    outputSchema: undefined
+    outputSchema: undefined,
   };
   await db.insert(tools).values(toToolRow(tool)).run();
 

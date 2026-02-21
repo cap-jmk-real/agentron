@@ -16,7 +16,10 @@ export async function normalizeOptionsWithLLM(
     if (match) {
       const parsed = JSON.parse(match[0]) as unknown;
       if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
-        return parsed.map((s) => String(s).trim()).filter(Boolean).slice(0, 4);
+        return parsed
+          .map((s) => String(s).trim())
+          .filter(Boolean)
+          .slice(0, 4);
       }
     }
   } catch {
@@ -25,11 +28,14 @@ export async function normalizeOptionsWithLLM(
   return options;
 }
 
-/** Extract option labels from bullet/list lines when content clearly asks the user to choose. Used as fallback when LLM returns []. */
-function extractOptionsFromBulletList(content: string): string[] | null {
+/** Extract option labels from bullet/list lines when content clearly asks the user to choose. Exported for tests; also used as try-first before LLM in extractOptionsFromContentWithLLM. */
+export function extractOptionsFromBulletList(content: string): string[] | null {
   const trimmed = (content ?? "").trim();
   if (trimmed.length < 20) return null;
-  const asksToChoose = /\b(what would you like|pick one|choose one|choose an option|options?:|next steps?|please pick)\b/i.test(trimmed);
+  const asksToChoose =
+    /\b(what would you like|pick one|choose one|choose an option|options?:|next steps?|please pick)\b/i.test(
+      trimmed
+    );
   if (!asksToChoose) return null;
   // Match lines that look like bullet options: "- Option", "• Option", "* Option", or " - Option"
   const bulletRegex = /^\s*[-•*]\s+(.+)$/gm;
@@ -42,13 +48,15 @@ function extractOptionsFromBulletList(content: string): string[] | null {
   return options.length >= 1 ? options.slice(0, 4) : null;
 }
 
-/** Extract option labels from content via a strict-format LLM call. If the LLM returns [] or parsing fails, falls back to extracting bullet-list lines when the content clearly asks the user to choose. Use when we need to inject a synthetic ask_user and no ask_user is in toolResults. Returns null if content too short or no options found. */
+/** Extract option labels from content via a strict-format LLM call. Tries deterministic bullet extraction first; only calls LLM when that returns null. Use when we need to inject a synthetic ask_user and no ask_user is in toolResults. Returns null if content too short or no options found. */
 export async function extractOptionsFromContentWithLLM(
   content: string,
   callLLM: (prompt: string) => Promise<string>
 ): Promise<string[] | null> {
   const trimmed = (content ?? "").trim();
   if (trimmed.length < 20) return null;
+  const bulletOptions = extractOptionsFromBulletList(trimmed);
+  if (bulletOptions !== null) return bulletOptions;
   const prompt = `Output ONLY a JSON array of strings: at most 4 option labels the user can choose (2-8 words each). Extract from the message the exact labels for clickable options the user can pick. If there are no clear options or the message does not ask the user to choose, output []. No other text.
 
 Message:
@@ -61,7 +69,11 @@ JSON array only:`;
     if (match) {
       const parsed = JSON.parse(match[0]) as unknown;
       if (Array.isArray(parsed) && parsed.length >= 1) {
-        const labels = parsed.filter((x) => typeof x === "string").map((s) => String(s).trim()).filter(Boolean).slice(0, 4);
+        const labels = parsed
+          .filter((x) => typeof x === "string")
+          .map((s) => String(s).trim())
+          .filter(Boolean)
+          .slice(0, 4);
         if (labels.length >= 1) return labels;
       }
     }
@@ -71,7 +83,26 @@ JSON array only:`;
   return extractOptionsFromBulletList(trimmed);
 }
 
-/** Normalize ask_user options in tool results via strict LLM formatting. Returns new array with ask_user results having options replaced by LLM-normalized labels. */
+const NORMALIZE_OPTIONS_MAX_LENGTH = 50;
+const NORMALIZE_OPTIONS_MAX_COUNT = 4;
+
+/** True when options are already short and few enough to pass through without LLM normalization. */
+export function areOptionsSafeForPassThrough(options: string[]): boolean {
+  if (
+    !Array.isArray(options) ||
+    options.length === 0 ||
+    options.length > NORMALIZE_OPTIONS_MAX_COUNT
+  )
+    return false;
+  return options.every(
+    (s) =>
+      typeof s === "string" &&
+      s.trim().length > 0 &&
+      s.trim().length <= NORMALIZE_OPTIONS_MAX_LENGTH
+  );
+}
+
+/** Normalize ask_user options in tool results via strict LLM formatting. Skips LLM when options are already short (≤50 chars each, ≤4); pass-through for reliability. Returns new array with ask_user results having options replaced by LLM-normalized labels when needed. */
 export async function normalizeAskUserOptionsInToolResults(
   toolResults: { name: string; args: Record<string, unknown>; result: unknown }[],
   callLLM: (prompt: string) => Promise<string>
@@ -80,9 +111,16 @@ export async function normalizeAskUserOptionsInToolResults(
   for (const r of toolResults) {
     if (r.name === "ask_user" && r.result && typeof r.result === "object") {
       const obj = r.result as { question?: string; options?: unknown[] };
-      const options = Array.isArray(obj.options) ? obj.options.filter((x): x is string => typeof x === "string").map((s) => s.trim()).filter(Boolean) : [];
+      const options = Array.isArray(obj.options)
+        ? obj.options
+            .filter((x): x is string => typeof x === "string")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
       if (options.length > 0) {
-        const normalized = await normalizeOptionsWithLLM(callLLM, options);
+        const normalized = areOptionsSafeForPassThrough(options)
+          ? options
+          : await normalizeOptionsWithLLM(callLLM, options);
         out.push({ ...r, result: { ...obj, options: normalized } });
         continue;
       }
@@ -93,7 +131,11 @@ export async function normalizeAskUserOptionsInToolResults(
 }
 
 /** Build a one-line context prefix for stack traces: provider, model, endpoint. */
-export function llmContextPrefix(config: { provider: string; model: string; endpoint?: string | null }): string {
+export function llmContextPrefix(config: {
+  provider: string;
+  model: string;
+  endpoint?: string | null;
+}): string {
   const parts = [`Provider: ${config.provider}`, `Model: ${config.model}`];
   if (config.endpoint && config.endpoint.trim()) parts.push(`Endpoint: ${config.endpoint.trim()}`);
   return `[${parts.join(", ")}] `;
@@ -110,7 +152,8 @@ export function normalizeChatError(
   const msg = err instanceof Error ? err.message : String(err);
   let normalized: string;
   if (/fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|network/i.test(msg)) {
-    normalized = "Could not reach the LLM. Check that the provider endpoint in Settings → LLM Providers is correct and that the service is running.";
+    normalized =
+      "Could not reach the LLM. Check that the provider endpoint in Settings → LLM Providers is correct and that the service is running.";
   } else if (/Cannot convert undefined or null to object/i.test(msg)) {
     normalized = `${msg} (This is a tool execution bug, not a connection issue. If a tool name appears before the message, that tool failed.)`;
   } else {
@@ -130,7 +173,13 @@ export function getAskUserQuestionFromToolResults(
   if (!Array.isArray(toolResults)) return undefined;
   const askUser = toolResults.find((r) => r.name === "ask_user" || r.name === "ask_credentials");
   const res = askUser?.result;
-  if (res && typeof res === "object" && res !== null && "question" in res && typeof (res as { question: unknown }).question === "string") {
+  if (
+    res &&
+    typeof res === "object" &&
+    res !== null &&
+    "question" in res &&
+    typeof (res as { question: unknown }).question === "string"
+  ) {
     const q = (res as { question: string }).question.trim();
     return q || undefined;
   }
@@ -147,11 +196,21 @@ export function getAssistantDisplayContent(
   const usedAnswerQuestion = toolResults.some((r) => r.name === "answer_question");
   const contentTrimmed = content.trim();
 
-  if (res && typeof res === "object" && res !== null && "formatted" in res && (res as { formatted?: boolean }).formatted === true) {
+  if (
+    res &&
+    typeof res === "object" &&
+    res !== null &&
+    "formatted" in res &&
+    (res as { formatted?: boolean }).formatted === true
+  ) {
     const obj = res as { summary?: string; needsInput?: string };
     const summary = typeof obj.summary === "string" ? obj.summary.trim() : "";
     const needsInput = typeof obj.needsInput === "string" ? obj.needsInput.trim() : "";
-    if (usedAnswerQuestion && contentTrimmed.length > 150 && contentTrimmed.length > summary.length) {
+    if (
+      usedAnswerQuestion &&
+      contentTrimmed.length > 150 &&
+      contentTrimmed.length > summary.length
+    ) {
       return needsInput ? `${contentTrimmed}\n\n${needsInput}` : contentTrimmed;
     }
     if (summary) return needsInput ? `${summary}\n\n${needsInput}` : summary;
@@ -165,22 +224,52 @@ export function getAssistantDisplayContent(
 export function getTurnStatusFromToolResults(
   toolResults: { name: string; args: Record<string, unknown>; result: unknown }[],
   options?: { useLastAskUser?: boolean }
-): { status: "completed" | "waiting_for_input"; interactivePrompt?: { question: string; options?: string[]; stepIndex?: number; stepTotal?: number } } {
+): {
+  status: "completed" | "waiting_for_input";
+  interactivePrompt?: {
+    question: string;
+    options?: string[];
+    stepIndex?: number;
+    stepTotal?: number;
+  };
+} {
   const useLast = options?.useLastAskUser === true;
   const askUser = useLast
     ? [...toolResults].reverse().find((r) => r.name === "ask_user" || r.name === "ask_credentials")
     : toolResults.find((r) => r.name === "ask_user" || r.name === "ask_credentials");
   const askRes = askUser?.result;
   if (askRes && typeof askRes === "object" && askRes !== null) {
-    const obj = askRes as { waitingForUser?: boolean; question?: string; options?: unknown[]; stepIndex?: number; stepTotal?: number };
+    const obj = askRes as {
+      waitingForUser?: boolean;
+      question?: string;
+      options?: unknown[];
+      stepIndex?: number;
+      stepTotal?: number;
+    };
     if (obj.waitingForUser === true) {
-      const question = typeof obj.question === "string" ? obj.question.trim() : "Please provide the information or confirmation.";
+      const question =
+        typeof obj.question === "string"
+          ? obj.question.trim()
+          : "Please provide the information or confirmation.";
       const options = Array.isArray(obj.options)
-        ? obj.options.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim())
+        ? obj.options
+            .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+            .map((s) => s.trim())
         : undefined;
-      const stepIndex = typeof obj.stepIndex === "number" && Number.isInteger(obj.stepIndex) ? obj.stepIndex : undefined;
-      const stepTotal = typeof obj.stepTotal === "number" && Number.isInteger(obj.stepTotal) ? obj.stepTotal : undefined;
-      const interactivePrompt: { question: string; options?: string[]; stepIndex?: number; stepTotal?: number } = { question, options };
+      const stepIndex =
+        typeof obj.stepIndex === "number" && Number.isInteger(obj.stepIndex)
+          ? obj.stepIndex
+          : undefined;
+      const stepTotal =
+        typeof obj.stepTotal === "number" && Number.isInteger(obj.stepTotal)
+          ? obj.stepTotal
+          : undefined;
+      const interactivePrompt: {
+        question: string;
+        options?: string[];
+        stepIndex?: number;
+        stepTotal?: number;
+      } = { question, options };
       if (stepIndex != null) interactivePrompt.stepIndex = stepIndex;
       if (stepTotal != null) interactivePrompt.stepTotal = stepTotal;
       return { status: "waiting_for_input", interactivePrompt };
@@ -191,15 +280,23 @@ export function getTurnStatusFromToolResults(
     : toolResults.find((r) => r.name === "format_response");
   const fmtRes = formatResp?.result;
   if (fmtRes && typeof fmtRes === "object" && fmtRes !== null) {
-    const obj = fmtRes as { formatted?: boolean; summary?: string; needsInput?: string; options?: unknown[] };
+    const obj = fmtRes as {
+      formatted?: boolean;
+      summary?: string;
+      needsInput?: string;
+      options?: unknown[];
+    };
     if (obj.formatted === true) {
       const hasOptions = Array.isArray(obj.options) && obj.options.length > 0;
       const hasNeedsInput = typeof obj.needsInput === "string" && obj.needsInput.trim().length > 0;
       if (hasOptions || hasNeedsInput) {
         const options = hasOptions
-          ? (obj.options as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim())
+          ? (obj.options as unknown[])
+              .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+              .map((s) => s.trim())
           : [];
-        const question = [obj.summary, obj.needsInput].filter(Boolean).join("\n\n").trim() || "Choose an option:";
+        const question =
+          [obj.summary, obj.needsInput].filter(Boolean).join("\n\n").trim() || "Choose an option:";
         return { status: "waiting_for_input", interactivePrompt: { question, options } };
       }
     }
@@ -256,16 +353,39 @@ export function hasFormatResponseWithContent(
   const obj = fr.result as { summary?: string; needsInput?: string };
   return Boolean(
     (typeof obj.summary === "string" && obj.summary.trim() !== "") ||
-      (typeof obj.needsInput === "string" && obj.needsInput.trim() !== "")
+    (typeof obj.needsInput === "string" && obj.needsInput.trim() !== "")
   );
 }
 
 export type DerivedInteractivePrompt = { question: string; options: string[] };
 
+/** Deterministic extraction: find "Next steps" / "pick one" / "choose one" and collect the next 2–4 bullet lines as options. Returns null if pattern does not match or options count not 2–4. Exported for tests. */
+export function deriveInteractivePromptFromContentDeterministic(
+  content: string
+): DerivedInteractivePrompt | null {
+  const trimmed = (content ?? "").trim();
+  if (trimmed.length < 50) return null;
+  const sectionMatch = trimmed.match(
+    /\b(next steps?|pick one|choose one|choose an option)\s*[:\s]*/i
+  );
+  const question = sectionMatch ? sectionMatch[1].trim() : "Next steps";
+  const afterSection = sectionMatch
+    ? trimmed.slice(sectionMatch.index! + sectionMatch[0].length)
+    : trimmed;
+  const bulletRegex = /^\s*[-•*]\s+(.+)$/gm;
+  const options: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = bulletRegex.exec(afterSection)) !== null && options.length < 4) {
+    const label = m[1].trim();
+    if (label.length >= 2 && label.length <= 80) options.push(label);
+  }
+  if (options.length < 2 || options.length > 4) return null;
+  return { question, options };
+}
+
 /**
- * Derive interactivePrompt (question + options) from display content using a strict-format LLM call.
+ * Derive interactivePrompt (question + options) from display content. Tries deterministic extraction first (Next steps + bullets); only calls LLM when that returns null.
  * Use when the current ask_user in toolResults is for a different question (e.g. Q1) than what the user reads (e.g. "Next steps").
- * Returns null if parsing fails or options length is not 2–4. No heuristics; LLM must return JSON only.
  */
 export async function deriveInteractivePromptFromContentWithLLM(
   displayContent: string,
@@ -273,6 +393,8 @@ export async function deriveInteractivePromptFromContentWithLLM(
 ): Promise<DerivedInteractivePrompt | null> {
   const trimmed = (displayContent ?? "").trim();
   if (trimmed.length < 50) return null;
+  const deterministic = deriveInteractivePromptFromContentDeterministic(trimmed);
+  if (deterministic !== null) return deterministic;
   const prompt = `Given the assistant message below, output ONLY a JSON object with two keys: "question" (string, the single question the user should answer now, e.g. "Next steps") and "options" (array of 2–4 strings, the exact labels for clickable buttons the user can choose). Use the final choice list / Next steps if present. No other text.
 
 Message:
@@ -284,7 +406,12 @@ JSON object only:`;
     const match = out.trim().match(/\{[\s\S]*\}/);
     if (!match) return null;
     const parsed = JSON.parse(match[0]) as unknown;
-    if (parsed == null || typeof parsed !== "object" || !("question" in parsed) || !("options" in parsed))
+    if (
+      parsed == null ||
+      typeof parsed !== "object" ||
+      !("question" in parsed) ||
+      !("options" in parsed)
+    )
       return null;
     const question = String((parsed as { question: unknown }).question ?? "").trim();
     const options = Array.isArray((parsed as { options: unknown }).options)
@@ -322,15 +449,24 @@ export function getLastAssistantDeleteConfirmContext(
   const listWorkflows = toolResults.find((r) => r.name === "list_workflows");
   const askUser = toolResults.find((r) => r.name === "ask_user");
   const agentIds = Array.isArray(listAgents?.result)
-    ? (listAgents.result as { id?: string }[]).map((x) => x.id).filter((id): id is string => typeof id === "string")
+    ? (listAgents.result as { id?: string }[])
+        .map((x) => x.id)
+        .filter((id): id is string => typeof id === "string")
     : [];
   const workflowIds = Array.isArray(listWorkflows?.result)
-    ? (listWorkflows.result as { id?: string }[]).map((x) => x.id).filter((id): id is string => typeof id === "string")
+    ? (listWorkflows.result as { id?: string }[])
+        .map((x) => x.id)
+        .filter((id): id is string => typeof id === "string")
     : [];
   const options =
-    askUser?.result && typeof askUser.result === "object" && askUser.result !== null && "options" in askUser.result
+    askUser?.result &&
+    typeof askUser.result === "object" &&
+    askUser.result !== null &&
+    "options" in askUser.result
       ? Array.isArray((askUser.result as { options?: unknown }).options)
-        ? ((askUser.result as { options: unknown[] }).options.filter((o): o is string => typeof o === "string") as string[])
+        ? ((askUser.result as { options: unknown[] }).options.filter(
+            (o): o is string => typeof o === "string"
+          ) as string[])
         : []
       : [];
   const firstOption = options[0]?.trim();
@@ -347,12 +483,25 @@ export function buildSpecialistSummaryWithCreatedIds(
   content: string,
   toolResults: { name: string; result?: unknown }[]
 ): string {
-  let summary = (content ?? "").trim().slice(0, 16000) || (toolResults.length > 0 ? "Done." : "No output.");
+  let summary =
+    (content ?? "").trim().slice(0, 16000) || (toolResults.length > 0 ? "Done." : "No output.");
   for (const tr of toolResults) {
-    if (tr.name === "create_agent" && tr.result && typeof tr.result === "object" && "id" in tr.result && typeof (tr.result as { id: string }).id === "string") {
+    if (
+      tr.name === "create_agent" &&
+      tr.result &&
+      typeof tr.result === "object" &&
+      "id" in tr.result &&
+      typeof (tr.result as { id: string }).id === "string"
+    ) {
       summary += `\n[Created agent id: ${(tr.result as { id: string }).id}]`;
     }
-    if (tr.name === "create_workflow" && tr.result && typeof tr.result === "object" && "id" in tr.result && typeof (tr.result as { id: string }).id === "string") {
+    if (
+      tr.name === "create_workflow" &&
+      tr.result &&
+      typeof tr.result === "object" &&
+      "id" in tr.result &&
+      typeof (tr.result as { id: string }).id === "string"
+    ) {
       summary += `\n[Created workflow id: ${(tr.result as { id: string }).id}]`;
     }
   }
@@ -360,13 +509,28 @@ export function buildSpecialistSummaryWithCreatedIds(
 }
 
 /** Extract create_agent / create_workflow ids from tool results. */
-export function getCreatedIdsFromToolResults(toolResults: { name: string; result?: unknown }[]): { agentId?: string; workflowId?: string } {
+export function getCreatedIdsFromToolResults(toolResults: { name: string; result?: unknown }[]): {
+  agentId?: string;
+  workflowId?: string;
+} {
   const out: { agentId?: string; workflowId?: string } = {};
   for (const tr of toolResults) {
-    if (tr.name === "create_agent" && tr.result && typeof tr.result === "object" && "id" in tr.result && typeof (tr.result as { id: string }).id === "string") {
+    if (
+      tr.name === "create_agent" &&
+      tr.result &&
+      typeof tr.result === "object" &&
+      "id" in tr.result &&
+      typeof (tr.result as { id: string }).id === "string"
+    ) {
       out.agentId = (tr.result as { id: string }).id;
     }
-    if (tr.name === "create_workflow" && tr.result && typeof tr.result === "object" && "id" in tr.result && typeof (tr.result as { id: string }).id === "string") {
+    if (
+      tr.name === "create_workflow" &&
+      tr.result &&
+      typeof tr.result === "object" &&
+      "id" in tr.result &&
+      typeof (tr.result as { id: string }).id === "string"
+    ) {
       out.workflowId = (tr.result as { id: string }).id;
     }
   }
@@ -374,9 +538,16 @@ export function getCreatedIdsFromToolResults(toolResults: { name: string; result
 }
 
 /** Merge workflowId/agentId from tool results into a plan's extractedContext so the next turn (e.g. "Run it now") has ids. */
-export function mergeCreatedIdsIntoPlan<T extends { extractedContext?: Record<string, unknown> }>(plan: T, toolResults: { name: string; result?: unknown }[]): T {
+export function mergeCreatedIdsIntoPlan<T extends { extractedContext?: Record<string, unknown> }>(
+  plan: T,
+  toolResults: { name: string; result?: unknown }[]
+): T {
   const ids = getCreatedIdsFromToolResults(toolResults);
   if (!ids.agentId && !ids.workflowId) return plan;
-  const extractedContext = { ...(plan.extractedContext ?? {}), ...(ids.workflowId != null && { workflowId: ids.workflowId }), ...(ids.agentId != null && { agentId: ids.agentId }) };
+  const extractedContext = {
+    ...(plan.extractedContext ?? {}),
+    ...(ids.workflowId != null && { workflowId: ids.workflowId }),
+    ...(ids.agentId != null && { agentId: ids.agentId }),
+  };
   return { ...plan, extractedContext };
 }

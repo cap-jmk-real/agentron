@@ -5,17 +5,33 @@ import Link from "next/link";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
-import { Copy, Check, ChevronDown, ChevronUp, ExternalLink, Terminal, ShieldPlus, Play } from "lucide-react";
+import {
+  Copy,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  Terminal,
+  ShieldPlus,
+  Play,
+} from "lucide-react";
 
 /** Format reasoning text: split by "Task understanding:", "Approach:", "Step plan:" and render as sections with markdown. */
 export function ReasoningContent({ text }: { text: string }) {
   const trimmed = text.trim();
   const hasSections = /(Task understanding|Approach|Step plan)\s*:/i.test(trimmed);
-  const parts = hasSections ? trimmed.split(/(?=\s*(?:Task understanding|Approach|Step plan)\s*:)/i).filter((s) => s.trim().length > 0) : [];
+  const parts = hasSections
+    ? trimmed
+        .split(/(?=\s*(?:Task understanding|Approach|Step plan)\s*:)/i)
+        .filter((s) => s.trim().length > 0)
+    : [];
   if (!hasSections || parts.length === 0) {
     return (
       <div className="chat-section-reasoning-formatted chat-reasoning-markdown">
-        <ReactMarkdown remarkPlugins={[remarkBreaks, remarkGfm]} components={markdownComponents as unknown as Components}>
+        <ReactMarkdown
+          remarkPlugins={[remarkBreaks, remarkGfm]}
+          components={markdownComponents as unknown as Components}
+        >
           {trimmed}
         </ReactMarkdown>
       </div>
@@ -36,7 +52,10 @@ export function ReasoningContent({ text }: { text: string }) {
         <div key={i} className="chat-section-reasoning-section">
           {p.label ? <h3 className="chat-section-reasoning-heading">{p.label}</h3> : null}
           <div className="chat-section-reasoning-body chat-reasoning-markdown">
-            <ReactMarkdown remarkPlugins={[remarkBreaks, remarkGfm]} components={markdownComponents as unknown as Components}>
+            <ReactMarkdown
+              remarkPlugins={[remarkBreaks, remarkGfm]}
+              components={markdownComponents as unknown as Components}
+            >
               {p.body}
             </ReactMarkdown>
           </div>
@@ -46,7 +65,15 @@ export function ReasoningContent({ text }: { text: string }) {
   );
 }
 
-function CodeBlock({ content, lang, className }: { content: string; lang?: string; className?: string }) {
+function CodeBlock({
+  content,
+  lang,
+  className,
+}: {
+  content: string;
+  lang?: string;
+  className?: string;
+}) {
   const [copied, setCopied] = useState(false);
   const copy = useCallback(async () => {
     try {
@@ -59,7 +86,12 @@ function CodeBlock({ content, lang, className }: { content: string; lang?: strin
     <div className={`chat-code-block ${className ?? ""}`}>
       <div className="chat-code-block-header">
         {lang && <span className="chat-code-block-lang">{lang}</span>}
-        <button type="button" className="chat-code-block-copy" onClick={copy} title="Copy to clipboard">
+        <button
+          type="button"
+          className="chat-code-block-copy"
+          onClick={copy}
+          title="Copy to clipboard"
+        >
           {copied ? <Check size={12} /> : <Copy size={12} />}
         </button>
       </div>
@@ -80,15 +112,26 @@ const markdownComponents = {
   pre({ children }: { children?: React.ReactNode }) {
     const codeEl = Array.isArray(children) ? children[0] : children;
     if (React.isValidElement(codeEl) && codeEl.type === "code") {
-      const { className, children: codeChildren } = (codeEl.props ?? {}) as { className?: string; children?: unknown };
+      const { className, children: codeChildren } = (codeEl.props ?? {}) as {
+        className?: string;
+        children?: unknown;
+      };
       const lang = className?.replace(/^language-/, "");
       return (
-        <CodeBlock content={String(codeChildren ?? "").replace(/\n$/, "")} lang={lang || undefined} />
+        <CodeBlock
+          content={String(codeChildren ?? "").replace(/\n$/, "")}
+          lang={lang || undefined}
+        />
       );
     }
     return <pre>{children}</pre>;
   },
-  code(props: { inline?: boolean; className?: string; children?: React.ReactNode; [k: string]: unknown }) {
+  code(props: {
+    inline?: boolean;
+    className?: string;
+    children?: React.ReactNode;
+    [k: string]: unknown;
+  }) {
     const { inline, children, ...rest } = props;
     if (inline) {
       return (
@@ -103,9 +146,13 @@ const markdownComponents = {
   ul: ({ children }: { children?: React.ReactNode }) => <ul className="chat-md-ul">{children}</ul>,
   ol: ({ children }: { children?: React.ReactNode }) => <ol className="chat-md-ol">{children}</ol>,
   li: ({ children }: { children?: React.ReactNode }) => <li className="chat-md-li">{children}</li>,
-  strong: ({ children }: { children?: React.ReactNode }) => <strong className="chat-md-strong">{children}</strong>,
+  strong: ({ children }: { children?: React.ReactNode }) => (
+    <strong className="chat-md-strong">{children}</strong>
+  ),
   em: ({ children }: { children?: React.ReactNode }) => <em className="chat-md-em">{children}</em>,
-  blockquote: ({ children }: { children?: React.ReactNode }) => <blockquote className="chat-md-blockquote">{children}</blockquote>,
+  blockquote: ({ children }: { children?: React.ReactNode }) => (
+    <blockquote className="chat-md-blockquote">{children}</blockquote>
+  ),
   hr: () => <hr className="chat-md-hr" />,
   a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
     <a href={href} target="_blank" rel="noopener noreferrer" className="chat-md-link">
@@ -121,8 +168,12 @@ const markdownComponents = {
       <table className="chat-md-table">{children}</table>
     </div>
   ),
-  thead: ({ children }: { children?: React.ReactNode }) => <thead className="chat-md-thead">{children}</thead>,
-  tbody: ({ children }: { children?: React.ReactNode }) => <tbody className="chat-md-tbody">{children}</tbody>,
+  thead: ({ children }: { children?: React.ReactNode }) => (
+    <thead className="chat-md-thead">{children}</thead>
+  ),
+  tbody: ({ children }: { children?: React.ReactNode }) => (
+    <tbody className="chat-md-tbody">{children}</tbody>
+  ),
   tr: ({ children }: { children?: React.ReactNode }) => <tr className="chat-md-tr">{children}</tr>,
   th: ({ children }: { children?: React.ReactNode }) => <th className="chat-md-th">{children}</th>,
   td: ({ children }: { children?: React.ReactNode }) => <td className="chat-md-td">{children}</td>,
@@ -132,13 +183,19 @@ export function ChatMessageContent({ content, structuredContent }: Props) {
   if (structuredContent?.summary) {
     return (
       <div className="chat-msg-content chat-msg-content-markdown">
-        <ReactMarkdown remarkPlugins={[remarkBreaks, remarkGfm]} components={markdownComponents as unknown as Components}>
+        <ReactMarkdown
+          remarkPlugins={[remarkBreaks, remarkGfm]}
+          components={markdownComponents as unknown as Components}
+        >
           {structuredContent.summary}
         </ReactMarkdown>
         {structuredContent.needsInput && (
           <div className="chat-needs-input">
             <span className="chat-needs-input-label">Input needed</span>
-            <ReactMarkdown remarkPlugins={[remarkBreaks, remarkGfm]} components={markdownComponents as unknown as Components}>
+            <ReactMarkdown
+              remarkPlugins={[remarkBreaks, remarkGfm]}
+              components={markdownComponents as unknown as Components}
+            >
               {structuredContent.needsInput}
             </ReactMarkdown>
           </div>
@@ -162,7 +219,10 @@ export function ChatMessageContent({ content, structuredContent }: Props) {
   }
   return (
     <div className="chat-msg-content chat-msg-content-markdown">
-      <ReactMarkdown remarkPlugins={[remarkBreaks, remarkGfm]} components={markdownComponents as unknown as Components}>
+      <ReactMarkdown
+        remarkPlugins={[remarkBreaks, remarkGfm]}
+        components={markdownComponents as unknown as Components}
+      >
         {content}
       </ReactMarkdown>
     </div>
@@ -176,13 +236,20 @@ export function normalizeToolResults(
   raw: unknown
 ): { name: string; args: Record<string, unknown>; result: unknown }[] {
   if (!Array.isArray(raw) || raw.length === 0) return [];
-  return raw.map((r) => {
-    const item = r as { name?: string; args?: Record<string, unknown>; arguments?: Record<string, unknown>; result?: unknown };
-    const name = typeof item.name === "string" ? item.name : "";
-    const args = item.args ?? item.arguments ?? {};
-    const result = item.result;
-    return { name, args: typeof args === "object" && args !== null ? args : {}, result };
-  }).filter((r) => r.name);
+  return raw
+    .map((r) => {
+      const item = r as {
+        name?: string;
+        args?: Record<string, unknown>;
+        arguments?: Record<string, unknown>;
+        result?: unknown;
+      };
+      const name = typeof item.name === "string" ? item.name : "";
+      const args = item.args ?? item.arguments ?? {};
+      const result = item.result;
+      return { name, args: typeof args === "object" && args !== null ? args : {}, result };
+    })
+    .filter((r) => r.name);
 }
 
 /** Extract options array from a tool result (ask_user — only tool that supplies options). Returns undefined if no options. */
@@ -213,7 +280,9 @@ export function getSuggestedOptionsFromToolResults(
   if (!Array.isArray(toolResults)) return [];
   const fromAskUser = optionsFromToolResult(toolResults.find((r) => r.name === "ask_user")?.result);
   if (fromAskUser && fromAskUser.length > 0) return fromAskUser;
-  const fromCredentials = optionsFromToolResult(toolResults.find((r) => r.name === "ask_credentials")?.result);
+  const fromCredentials = optionsFromToolResult(
+    toolResults.find((r) => r.name === "ask_credentials")?.result
+  );
   return fromCredentials && fromCredentials.length > 0 ? fromCredentials : [];
 }
 
@@ -223,10 +292,18 @@ export function messageHasSuccessfulToolResults(
 ): boolean {
   if (!Array.isArray(toolResults) || toolResults.length === 0) return false;
   const successTools = [
-    "create_agent", "update_agent", "get_agent",
-    "create_workflow", "update_workflow", "get_workflow",
-    "format_response", "list_tools", "list_agents", "list_llm_providers",
-    "execute_workflow", "execute_agent",
+    "create_agent",
+    "update_agent",
+    "get_agent",
+    "create_workflow",
+    "update_workflow",
+    "get_workflow",
+    "format_response",
+    "list_tools",
+    "list_agents",
+    "list_llm_providers",
+    "execute_workflow",
+    "execute_agent",
   ];
   return toolResults.some((r) => successTools.includes(r.name));
 }
@@ -237,7 +314,17 @@ export function messageContentIndicatesSuccess(content: string | undefined): boo
   const t = content.trim();
   if (t.length < 20) return false;
   const lower = t.toLowerCase();
-  const successPhrases = ["created", "summary", "i have created", "what would you like", "would you like me to", "run the agent", "run it now", "id:", "container echo"];
+  const successPhrases = [
+    "created",
+    "summary",
+    "i have created",
+    "what would you like",
+    "would you like me to",
+    "run the agent",
+    "run it now",
+    "id:",
+    "container echo",
+  ];
   return successPhrases.some((p) => lower.includes(p));
 }
 
@@ -251,8 +338,11 @@ export function getAgentRequestFromToolResults(
   if (!result || typeof result !== "object") return null;
   const obj = result as { status?: string; id?: string; question?: string; options?: string[] };
   if (obj.status !== "waiting_for_user" || typeof obj.id !== "string") return null;
-  const question = typeof obj.question === "string" && obj.question.trim() ? obj.question.trim() : "";
-  const options = Array.isArray(obj.options) ? obj.options.map((o) => String(o)).filter(Boolean) : [];
+  const question =
+    typeof obj.question === "string" && obj.question.trim() ? obj.question.trim() : "";
+  const options = Array.isArray(obj.options)
+    ? obj.options.map((o) => String(o)).filter(Boolean)
+    : [];
   return { question, options, runId: obj.id };
 }
 
@@ -284,7 +374,13 @@ export function hasAskUserWaitingForInput(
 
 /** Shared message display state for modal and section. */
 export function getMessageDisplayState(
-  msg: { role: string; content: string; toolResults?: { name: string; result?: unknown }[]; status?: string; interactivePrompt?: { question: string; options?: string[] } },
+  msg: {
+    role: string;
+    content: string;
+    toolResults?: { name: string; result?: unknown }[];
+    status?: string;
+    interactivePrompt?: { question: string; options?: string[] };
+  },
   options: { isLast: boolean; loading: boolean }
 ) {
   const list = msg.toolResults ?? [];
@@ -292,52 +388,81 @@ export function getMessageDisplayState(
     msg.status === "waiting_for_input" ||
     msg.interactivePrompt != null ||
     hasAskUserWaitingForInput(list);
-  const displayContent = msg.role === "assistant"
-    ? (hasAskUserWaiting && msg.content.startsWith("Error: ")
-      ? (getAssistantMessageDisplayContent("", list) || msg.content)
-      : getAssistantMessageDisplayContent(msg.content, list))
-    : msg.content;
+  const displayContent =
+    msg.role === "assistant"
+      ? hasAskUserWaiting && msg.content.startsWith("Error: ")
+        ? getAssistantMessageDisplayContent("", list) || msg.content
+        : getAssistantMessageDisplayContent(msg.content, list)
+      : msg.content;
   const formatResp = list.find((r) => r.name === "format_response");
-  const fmtRes = formatResp?.result as { formatted?: boolean; summary?: string; needsInput?: string } | undefined;
-  const hasStructuredContent = !!(fmtRes?.formatted && typeof fmtRes.summary === "string" && fmtRes.summary.trim());
-  const structuredContent = hasStructuredContent && fmtRes?.summary
-    ? { summary: fmtRes.summary.trim(), needsInput: typeof fmtRes.needsInput === "string" ? fmtRes.needsInput.trim() : undefined }
-    : undefined;
+  const fmtRes = formatResp?.result as
+    | { formatted?: boolean; summary?: string; needsInput?: string }
+    | undefined;
+  const hasStructuredContent = !!(
+    fmtRes?.formatted &&
+    typeof fmtRes.summary === "string" &&
+    fmtRes.summary.trim()
+  );
+  const structuredContent =
+    hasStructuredContent && fmtRes?.summary
+      ? {
+          summary: fmtRes.summary.trim(),
+          needsInput: typeof fmtRes.needsInput === "string" ? fmtRes.needsInput.trim() : undefined,
+        }
+      : undefined;
   const traceSteps = (msg as { traceSteps?: { phase: string }[] }).traceSteps;
   const lastPhase = traceSteps?.length ? traceSteps[traceSteps.length - 1].phase : undefined;
   const hasDonePhase = lastPhase === "done";
   const hasFinalResponseContent =
-    (options.isLast && msg.role === "assistant" && !options.loading && (displayContent.trim() !== "" || !!hasStructuredContent)) ||
+    (options.isLast &&
+      msg.role === "assistant" &&
+      !options.loading &&
+      (displayContent.trim() !== "" || !!hasStructuredContent)) ||
     (options.isLast && msg.role === "assistant" && hasDonePhase);
   const todos = (msg as { todos?: unknown[] }).todos;
-  const isEmptyPlaceholder = msg.role === "assistant" && options.loading && options.isLast
-    && displayContent.trim() === ""
-    && list.filter((r) => r.name !== "ask_user" && r.name !== "ask_credentials").length === 0
-    && !msg.content.startsWith("Error: ")
-    && (todos?.length ?? 0) === 0;
-  return { displayContent, structuredContent, hasAskUserWaiting, hasFinalResponseContent, isEmptyPlaceholder };
+  const isEmptyPlaceholder =
+    msg.role === "assistant" &&
+    options.loading &&
+    options.isLast &&
+    displayContent.trim() === "" &&
+    list.filter((r) => r.name !== "ask_user" && r.name !== "ask_credentials").length === 0 &&
+    !msg.content.startsWith("Error: ") &&
+    (todos?.length ?? 0) === 0;
+  return {
+    displayContent,
+    structuredContent,
+    hasAskUserWaiting,
+    hasFinalResponseContent,
+    isEmptyPlaceholder,
+  };
 }
 
 /** Status string for loading indicator (modal and section). */
-export function getLoadingStatus(
-  msg: {
-    traceSteps?: { phase: string; label?: string; specialistId?: string; toolName?: string }[];
-    todos?: string[];
-    completedStepIndices?: number[];
-    executingStepIndex?: number;
-    executingToolName?: string;
-    executingSubStepLabel?: string;
-  }
-): string {
-  const lastTrace = (msg.traceSteps?.length ?? 0) > 0 ? msg.traceSteps![msg.traceSteps!.length - 1] : undefined;
+export function getLoadingStatus(msg: {
+  traceSteps?: { phase: string; label?: string; specialistId?: string; toolName?: string }[];
+  todos?: string[];
+  completedStepIndices?: number[];
+  executingStepIndex?: number;
+  executingToolName?: string;
+  executingSubStepLabel?: string;
+}): string {
+  const lastTrace =
+    (msg.traceSteps?.length ?? 0) > 0 ? msg.traceSteps![msg.traceSteps!.length - 1] : undefined;
   const isCallingLlm = lastTrace?.phase === "llm_request";
-  if (isCallingLlm) return lastTrace?.specialistId ? `Calling LLM… (${lastTrace.specialistId})` : "Calling LLM…";
+  if (isCallingLlm)
+    return lastTrace?.specialistId ? `Calling LLM… (${lastTrace.specialistId})` : "Calling LLM…";
   const isLlmResponse = lastTrace?.phase === "llm_response";
-  if (isLlmResponse) return lastTrace?.specialistId ? `Response received (${lastTrace.specialistId})` : "Response received";
+  if (isLlmResponse)
+    return lastTrace?.specialistId
+      ? `Response received (${lastTrace.specialistId})`
+      : "Response received";
   const heapTool = lastTrace?.phase === "heap_tool" || lastTrace?.phase === "heap_tool_done";
-  if (heapTool && lastTrace && "specialistId" in lastTrace && "toolName" in lastTrace) return `${(lastTrace as { specialistId: string }).specialistId} → ${(lastTrace as { toolName: string }).toolName}`;
-  const heapSpecialist = lastTrace?.phase === "heap_specialist" || lastTrace?.phase === "heap_specialist_done";
-  if (heapSpecialist && lastTrace && "specialistId" in lastTrace) return `Specialist ${(lastTrace as { specialistId: string }).specialistId}…`;
+  if (heapTool && lastTrace && "specialistId" in lastTrace && "toolName" in lastTrace)
+    return `${(lastTrace as { specialistId: string }).specialistId} → ${(lastTrace as { toolName: string }).toolName}`;
+  const heapSpecialist =
+    lastTrace?.phase === "heap_specialist" || lastTrace?.phase === "heap_specialist_done";
+  if (heapSpecialist && lastTrace && "specialistId" in lastTrace)
+    return `Specialist ${(lastTrace as { specialistId: string }).specialistId}…`;
   const total = msg.todos?.length ?? 0;
   const allDone = total > 0 && (msg.completedStepIndices?.length ?? 0) === total;
   if (allDone) return "Completing…";
@@ -345,15 +470,25 @@ export function getLoadingStatus(
   if (toolName) {
     const subStep = msg.executingSubStepLabel;
     const toolLabel = toolName === "execute_workflow" ? "workflow" : toolName;
-    return subStep ? `${subStep} (${toolLabel})…` : toolName === "execute_workflow" ? "Running workflow…" : `Running ${toolName}…`;
+    return subStep
+      ? `${subStep} (${toolLabel})…`
+      : toolName === "execute_workflow"
+        ? "Running workflow…"
+        : `Running ${toolName}…`;
   }
   const stepIndex = msg.executingStepIndex;
   const todos = msg.todos ?? [];
   if (stepIndex !== undefined && total > 0 && todos[stepIndex] != null) {
-    return total > 1 ? `Step ${stepIndex + 1} of ${total}: ${todos[stepIndex]}` : String(todos[stepIndex]);
+    return total > 1
+      ? `Step ${stepIndex + 1} of ${total}: ${todos[stepIndex]}`
+      : String(todos[stepIndex]);
   }
   if ((msg.traceSteps?.length ?? 0) > 0) {
-    return msg.traceSteps![msg.traceSteps!.length - 1].label ?? msg.traceSteps![msg.traceSteps!.length - 1].phase ?? "Thinking…";
+    return (
+      msg.traceSteps![msg.traceSteps!.length - 1].label ??
+      msg.traceSteps![msg.traceSteps!.length - 1].phase ??
+      "Thinking…"
+    );
   }
   if (todos.length > 0 || (msg as { reasoning?: string }).reasoning != null) return "Planning…";
   return "Thinking…";
@@ -376,7 +511,13 @@ function getAskUserQuestionFromToolResults(
   if (!Array.isArray(toolResults)) return undefined;
   const askUser = toolResults.find((r) => r.name === "ask_user" || r.name === "ask_credentials");
   const res = askUser?.result;
-  if (res && typeof res === "object" && res !== null && "question" in res && typeof (res as { question: unknown }).question === "string") {
+  if (
+    res &&
+    typeof res === "object" &&
+    res !== null &&
+    "question" in res &&
+    typeof (res as { question: unknown }).question === "string"
+  ) {
     const q = (res as { question: string }).question.trim();
     return q || undefined;
   }
@@ -387,7 +528,11 @@ function getAskUserQuestionFromToolResults(
 function extractResourceLinks(
   toolName: string,
   result: unknown
-): { runs: { id: string; label: string }[]; workflows: { id: string; name?: string }[]; agents: { id: string; name?: string }[] } {
+): {
+  runs: { id: string; label: string }[];
+  workflows: { id: string; name?: string }[];
+  agents: { id: string; name?: string }[];
+} {
   const runs: { id: string; label: string }[] = [];
   const workflows: { id: string; name?: string }[] = [];
   const agents: { id: string; name?: string }[] = [];
@@ -398,7 +543,11 @@ function extractResourceLinks(
     const id = typeof obj.id === "string" ? obj.id : undefined;
     if (id) runs.push({ id, label: "View run" });
   }
-  if (toolName === "create_workflow" || toolName === "update_workflow" || toolName === "get_workflow") {
+  if (
+    toolName === "create_workflow" ||
+    toolName === "update_workflow" ||
+    toolName === "get_workflow"
+  ) {
     const id = typeof obj.id === "string" ? obj.id : undefined;
     const name = typeof obj.name === "string" ? obj.name : undefined;
     if (id) workflows.push({ id, name: name || undefined });
@@ -408,25 +557,29 @@ function extractResourceLinks(
     const name = typeof obj.name === "string" ? obj.name : undefined;
     if (id) agents.push({ id, name: name || undefined });
   }
-  const wfList = Array.isArray(obj) && (toolName === "list_workflows" || toolName === "list_workflow")
-    ? obj
-    : obj.workflows;
+  const wfList =
+    Array.isArray(obj) && (toolName === "list_workflows" || toolName === "list_workflow")
+      ? obj
+      : obj.workflows;
   if (Array.isArray(wfList)) {
     for (const item of wfList) {
       if (item && typeof item === "object" && typeof (item as { id?: string }).id === "string") {
         const row = item as { id: string; name?: string };
-        if (!workflows.some((w) => w.id === row.id)) workflows.push({ id: row.id, name: typeof row.name === "string" ? row.name : undefined });
+        if (!workflows.some((w) => w.id === row.id))
+          workflows.push({ id: row.id, name: typeof row.name === "string" ? row.name : undefined });
       }
     }
   }
-  const agList = Array.isArray(obj) && (toolName === "list_agents" || toolName === "list_agent")
-    ? obj
-    : obj.agents;
+  const agList =
+    Array.isArray(obj) && (toolName === "list_agents" || toolName === "list_agent")
+      ? obj
+      : obj.agents;
   if (Array.isArray(agList)) {
     for (const item of agList) {
       if (item && typeof item === "object" && typeof (item as { id?: string }).id === "string") {
         const row = item as { id: string; name?: string };
-        if (!agents.some((a) => a.id === row.id)) agents.push({ id: row.id, name: typeof row.name === "string" ? row.name : undefined });
+        if (!agents.some((a) => a.id === row.id))
+          agents.push({ id: row.id, name: typeof row.name === "string" ? row.name : undefined });
       }
     }
   }
@@ -434,9 +587,11 @@ function extractResourceLinks(
 }
 
 /** Aggregate runs, workflows, and agents from all tool results in a message (deduped by id). */
-export function aggregateResourceLinksFromResults(
-  results: { name: string; result?: unknown }[]
-): { runs: { id: string; label: string }[]; workflows: { id: string; name?: string }[]; agents: { id: string; name?: string }[] } {
+export function aggregateResourceLinksFromResults(results: { name: string; result?: unknown }[]): {
+  runs: { id: string; label: string }[];
+  workflows: { id: string; name?: string }[];
+  agents: { id: string; name?: string }[];
+} {
   const runs: { id: string; label: string }[] = [];
   const workflows: { id: string; name?: string }[] = [];
   const agents: { id: string; name?: string }[] = [];
@@ -469,10 +624,13 @@ export function aggregateResourceLinksFromResults(
 }
 
 /** Standalone link list for runs/workflows/agents from this message's tool results. Render outside the tool results element. */
-export function ChatMessageResourceLinks({ results }: { results: { name: string; result?: unknown }[] }) {
+export function ChatMessageResourceLinks({
+  results,
+}: {
+  results: { name: string; result?: unknown }[];
+}) {
   const links = aggregateResourceLinksFromResults(results);
-  const hasAny =
-    links.runs.length > 0 || links.workflows.length > 0 || links.agents.length > 0;
+  const hasAny = links.runs.length > 0 || links.workflows.length > 0 || links.agents.length > 0;
   if (!hasAny) return null;
   return (
     <div className="chat-message-resource-links" aria-label="Resources from this message">
@@ -517,10 +675,20 @@ function getToolResultDisplayText(result: unknown): string {
   if (typeof result === "object" && result !== null) {
     const obj = result as Record<string, unknown>;
     // Special-case ask_user and ask_credentials so the chip shows the actual question instead of a generic "done".
-    if ("waitingForUser" in obj && (obj as { waitingForUser?: boolean }).waitingForUser === true && typeof obj.question === "string" && obj.question.trim()) {
+    if (
+      "waitingForUser" in obj &&
+      (obj as { waitingForUser?: boolean }).waitingForUser === true &&
+      typeof obj.question === "string" &&
+      obj.question.trim()
+    ) {
       return obj.question.trim();
     }
-    if ("credentialRequest" in obj && (obj as { credentialRequest?: boolean }).credentialRequest === true && typeof obj.question === "string" && obj.question.trim()) {
+    if (
+      "credentialRequest" in obj &&
+      (obj as { credentialRequest?: boolean }).credentialRequest === true &&
+      typeof obj.question === "string" &&
+      obj.question.trim()
+    ) {
       return obj.question.trim();
     }
     if ("message" in obj) {
@@ -538,7 +706,9 @@ function getToolResultCopyText(result: unknown): string {
 }
 
 /** Parse user message from shell command approval to extract command, stdout, stderr, exitCode. */
-function parseShellOutputMessage(content: string): { command: string; stdout: string; stderr: string; exitCode?: number } | null {
+function parseShellOutputMessage(
+  content: string
+): { command: string; stdout: string; stderr: string; exitCode?: number } | null {
   const m = content.match(/The user approved and ran: `([^`]+)`/);
   if (!m) return null;
   const command = m[1] ?? "";
@@ -624,7 +794,11 @@ export function ShellCommandBlock({
   disabled?: boolean;
 }) {
   return (
-    <div className="chat-shell-command-block" role="group" aria-label="Shell command pending approval">
+    <div
+      className="chat-shell-command-block"
+      role="group"
+      aria-label="Shell command pending approval"
+    >
       <div className="chat-shell-command-label">
         <Terminal size={14} />
         <span>Command</span>
@@ -678,9 +852,7 @@ export function ChatToolResults({
     async (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      const text = results
-        .map((r) => `${r.name}: ${getToolResultCopyText(r.result)}`)
-        .join("\n");
+      const text = results.map((r) => `${r.name}: ${getToolResultCopyText(r.result)}`).join("\n");
       try {
         await navigator.clipboard.writeText(text);
         setCopiedAll(true);
@@ -691,17 +863,37 @@ export function ChatToolResults({
   );
 
   const pendingShellCommands: { index: number; command: string }[] = [];
-  const executedShellCommands: { command: string; stdout: string; stderr: string; exitCode?: number }[] = [];
+  const executedShellCommands: {
+    command: string;
+    stdout: string;
+    stderr: string;
+    exitCode?: number;
+  }[] = [];
   const otherResults: ToolResult[] = [];
   results.forEach((tr, i) => {
     if (tr.name === "run_shell_command" && tr.result && typeof tr.result === "object") {
-      const res = tr.result as { needsApproval?: boolean; command?: string; stdout?: string; stderr?: string; exitCode?: number };
-      const cmd = (typeof res.command === "string" ? res.command : typeof tr.args?.command === "string" ? tr.args.command : "").trim();
+      const res = tr.result as {
+        needsApproval?: boolean;
+        command?: string;
+        stdout?: string;
+        stderr?: string;
+        exitCode?: number;
+      };
+      const cmd = (
+        typeof res.command === "string"
+          ? res.command
+          : typeof tr.args?.command === "string"
+            ? tr.args.command
+            : ""
+      ).trim();
       if (res.needsApproval && cmd) {
         pendingShellCommands.push({ index: i, command: cmd });
         return;
       }
-      if (cmd && (res.stdout !== undefined || res.stderr !== undefined || res.exitCode !== undefined)) {
+      if (
+        cmd &&
+        (res.stdout !== undefined || res.stderr !== undefined || res.exitCode !== undefined)
+      ) {
         executedShellCommands.push({
           command: cmd,
           stdout: (res.stdout ?? "").trim(),
@@ -725,7 +917,9 @@ export function ChatToolResults({
               key={`pending-${index}`}
               command={command}
               onAddToAllowlist={
-                onShellCommandAddToAllowlist ? () => onShellCommandAddToAllowlist(command) : undefined
+                onShellCommandAddToAllowlist
+                  ? () => onShellCommandAddToAllowlist(command)
+                  : undefined
               }
               onApprove={onShellCommandApprove ? () => onShellCommandApprove(command) : undefined}
               disabled={shellCommandLoading}
@@ -767,7 +961,14 @@ export function ChatToolResults({
   );
 }
 
-type TrailStep = { order: number; nodeId: string; agentName: string; input?: unknown; output?: unknown; error?: string };
+type TrailStep = {
+  order: number;
+  nodeId: string;
+  agentName: string;
+  input?: unknown;
+  output?: unknown;
+  error?: string;
+};
 
 /** Extract shell/console log from trail steps (stdout, stderr from tools). */
 function buildShellLogFromTrail(trail: TrailStep[]): string {
@@ -781,7 +982,8 @@ function buildShellLogFromTrail(trail: TrailStep[]): string {
     } else if (typeof raw === "string") {
       try {
         const parsed = JSON.parse(raw) as unknown;
-        if (parsed != null && typeof parsed === "object" && !Array.isArray(parsed)) o = parsed as Record<string, unknown>;
+        if (parsed != null && typeof parsed === "object" && !Array.isArray(parsed))
+          o = parsed as Record<string, unknown>;
       } catch {
         /* not JSON */
       }
@@ -790,17 +992,33 @@ function buildShellLogFromTrail(trail: TrailStep[]): string {
     const stderr = o && typeof o.stderr === "string" ? o.stderr : undefined;
     const err = o && typeof o.error === "string" ? o.error : undefined;
     const exitCode = o && o.exitCode !== undefined ? String(o.exitCode) : undefined;
-    const hasOutput = stdout || stderr || err || (exitCode !== undefined && exitCode !== "0") || !!step.error;
+    const hasOutput =
+      stdout || stderr || err || (exitCode !== undefined && exitCode !== "0") || !!step.error;
     const hasStringOutput = !hasOutput && typeof raw === "string" && (raw as string).trim() !== "";
     if (hasOutput || hasStringOutput) {
       if (lines.length) lines.push("");
       lines.push(`# ${step.agentName} (step ${step.order + 1})`);
-      if (stdout) { lines.push("--- stdout ---"); lines.push(stdout); }
-      if (stderr) { lines.push("--- stderr ---"); lines.push(stderr); }
-      if (err) { lines.push("--- error ---"); lines.push(err); }
+      if (stdout) {
+        lines.push("--- stdout ---");
+        lines.push(stdout);
+      }
+      if (stderr) {
+        lines.push("--- stderr ---");
+        lines.push(stderr);
+      }
+      if (err) {
+        lines.push("--- error ---");
+        lines.push(err);
+      }
       if (exitCode !== undefined && exitCode !== "0") lines.push(`--- exit code: ${exitCode} ---`);
-      if (step.error) { lines.push("--- step error ---"); lines.push(step.error); }
-      if (hasStringOutput) { lines.push("--- output ---"); lines.push(raw as string); }
+      if (step.error) {
+        lines.push("--- step error ---");
+        lines.push(step.error);
+      }
+      if (hasStringOutput) {
+        lines.push("--- output ---");
+        lines.push(raw as string);
+      }
     }
   }
   return lines.join("\n");
@@ -817,7 +1035,15 @@ const linkRowStyle = {
   fontSize: "0.8rem",
 };
 
-function ToolResultChip({ name, args, result }: { name: string; args: Record<string, unknown>; result: unknown }) {
+function ToolResultChip({
+  name,
+  args,
+  result,
+}: {
+  name: string;
+  args: Record<string, unknown>;
+  result: unknown;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [showConsole, setShowConsole] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -832,9 +1058,19 @@ function ToolResultChip({ name, args, result }: { name: string; args: Record<str
     resourceLinks.agents.length > 0;
 
   const isExecuteWorkflow = name === "execute_workflow" && isObject;
-  const runId = isExecuteWorkflow && typeof (result as { id?: string }).id === "string" ? (result as { id: string }).id : undefined;
-  const runOutput = isExecuteWorkflow ? (result as { output?: { trail?: TrailStep[] } }).output : undefined;
-  const trail = runOutput && typeof runOutput === "object" && Array.isArray((runOutput as { trail?: TrailStep[] }).trail) ? (runOutput as { trail: TrailStep[] }).trail : [];
+  const runId =
+    isExecuteWorkflow && typeof (result as { id?: string }).id === "string"
+      ? (result as { id: string }).id
+      : undefined;
+  const runOutput = isExecuteWorkflow
+    ? (result as { output?: { trail?: TrailStep[] } }).output
+    : undefined;
+  const trail =
+    runOutput &&
+    typeof runOutput === "object" &&
+    Array.isArray((runOutput as { trail?: TrailStep[] }).trail)
+      ? (runOutput as { trail: TrailStep[] }).trail
+      : [];
   const shellLog = trail.length > 0 ? buildShellLogFromTrail(trail) : "";
   const hasConsoleOutput = shellLog.trim() !== "";
 
@@ -875,7 +1111,13 @@ function ToolResultChip({ name, args, result }: { name: string; args: Record<str
               key={r.id}
               href={`/runs/${r.id}`}
               className="chat-tool-chip-link"
-              style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--primary)", textDecoration: "none" }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                color: "var(--primary)",
+                textDecoration: "none",
+              }}
             >
               {r.label} <ExternalLink size={11} />
             </Link>
@@ -885,7 +1127,13 @@ function ToolResultChip({ name, args, result }: { name: string; args: Record<str
               key={w.id}
               href={`/workflows/${w.id}`}
               className="chat-tool-chip-link"
-              style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--primary)", textDecoration: "none" }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                color: "var(--primary)",
+                textDecoration: "none",
+              }}
             >
               Workflow{w.name ? `: ${w.name}` : ""} <ExternalLink size={11} />
             </Link>
@@ -895,7 +1143,13 @@ function ToolResultChip({ name, args, result }: { name: string; args: Record<str
               key={a.id}
               href={`/agents/${a.id}`}
               className="chat-tool-chip-link"
-              style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--primary)", textDecoration: "none" }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                color: "var(--primary)",
+                textDecoration: "none",
+              }}
             >
               Agent{a.name ? `: ${a.name}` : ""} <ExternalLink size={11} />
             </Link>
@@ -905,11 +1159,21 @@ function ToolResultChip({ name, args, result }: { name: string; args: Record<str
       {expanded && isObject && (
         <>
           {isExecuteWorkflow && runId && (
-            <div className="chat-tool-chip-run-link" style={{ marginTop: 8, marginBottom: hasConsoleOutput ? 8 : 0 }}>
+            <div
+              className="chat-tool-chip-run-link"
+              style={{ marginTop: 8, marginBottom: hasConsoleOutput ? 8 : 0 }}
+            >
               <Link
                 href={`/runs/${runId}`}
                 className="chat-tool-chip-view-run"
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "0.875rem", color: "var(--primary)", textDecoration: "none" }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: "0.875rem",
+                  color: "var(--primary)",
+                  textDecoration: "none",
+                }}
               >
                 <ExternalLink size={14} />
                 View run
@@ -918,7 +1182,17 @@ function ToolResultChip({ name, args, result }: { name: string; args: Record<str
                 <button
                   type="button"
                   onClick={() => setShowConsole((c) => !c)}
-                  style={{ marginLeft: 12, display: "inline-flex", alignItems: "center", gap: 6, fontSize: "0.875rem", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}
+                  style={{
+                    marginLeft: 12,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: "0.875rem",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--text-muted)",
+                  }}
                 >
                   <Terminal size={14} />
                   {showConsole ? "Hide console" : "Show console output"}

@@ -2,11 +2,15 @@ import vm from "node:vm";
 import type { CodeAgent, AgentExecutionContext } from "@agentron-studio/core";
 
 export class CodeAgentExecutor {
-  async execute(agent: CodeAgent, input: unknown, context: AgentExecutionContext): Promise<unknown> {
+  async execute(
+    agent: CodeAgent,
+    input: unknown,
+    context: AgentExecutionContext
+  ): Promise<unknown> {
     const sandbox = {
       module: { exports: {} },
       exports: {},
-      require
+      require,
     };
 
     const script = new vm.Script(agent.source, { filename: "code-agent.js" });

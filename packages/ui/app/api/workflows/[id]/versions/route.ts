@@ -14,7 +14,11 @@ export async function GET(_: Request, { params }: Params) {
     return json({ error: "Workflow not found" }, { status: 404 });
   }
   const rows = await db
-    .select({ id: workflowVersions.id, version: workflowVersions.version, createdAt: workflowVersions.createdAt })
+    .select({
+      id: workflowVersions.id,
+      version: workflowVersions.version,
+      createdAt: workflowVersions.createdAt,
+    })
     .from(workflowVersions)
     .where(eq(workflowVersions.workflowId, id))
     .orderBy(desc(workflowVersions.version));

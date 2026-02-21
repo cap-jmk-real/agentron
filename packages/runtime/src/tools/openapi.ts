@@ -53,10 +53,12 @@ type OpenApiSpec = {
 const HTTP_METHODS = ["get", "post", "put", "patch", "delete", "head", "options"] as const;
 
 function slugify(str: string): string {
-  return str
-    .replace(/[^a-zA-Z0-9]+/g, "_")
-    .replace(/^_|_$/g, "")
-    .toLowerCase() || "op";
+  return (
+    str
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .replace(/^_|_$/g, "")
+      .toLowerCase() || "op"
+  );
 }
 
 function pathToSlugSegment(path: string): string {
@@ -67,7 +69,12 @@ function pathToSlugSegment(path: string): string {
     .join("_");
 }
 
-function makeId(method: string, path: string, operationId?: string, existingIds?: Set<string>): string {
+function makeId(
+  method: string,
+  path: string,
+  operationId?: string,
+  existingIds?: Set<string>
+): string {
   const base = operationId ? slugify(operationId) : `${method}_${pathToSlugSegment(path)}`;
   const ids = existingIds ?? new Set<string>();
   if (!ids.has(base)) return base;
@@ -155,9 +162,7 @@ export function openApiSpecToToolDefinitions(
       const id = makeId(method, path, op.operationId, usedIds);
       usedIds.add(id);
       const name =
-        (op.summary as string)?.trim() ||
-        op.operationId ||
-        `${method.toUpperCase()} ${fullPath}`;
+        (op.summary as string)?.trim() || op.operationId || `${method.toUpperCase()} ${fullPath}`;
 
       results.push({
         id,
@@ -188,7 +193,9 @@ export function parseOpenApiSpecFromString(raw: string): OpenApiSpec {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error("OpenAPI spec must be valid JSON. YAML is not supported in this parser; parse YAML externally and pass the object.");
+    throw new Error(
+      "OpenAPI spec must be valid JSON. YAML is not supported in this parser; parse YAML externally and pass the object."
+    );
   }
   if (parsed == null || typeof parsed !== "object") {
     throw new Error("OpenAPI spec must be an object.");

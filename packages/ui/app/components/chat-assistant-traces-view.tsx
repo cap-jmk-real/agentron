@@ -3,7 +3,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { MessageCircle, ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
 
-type ConversationItem = { id: string; title: string | null; rating: number | null; note: string | null; createdAt: number; lastUsedProvider?: string | null; lastUsedModel?: string | null };
+type ConversationItem = {
+  id: string;
+  title: string | null;
+  rating: number | null;
+  note: string | null;
+  createdAt: number;
+  lastUsedProvider?: string | null;
+  lastUsedModel?: string | null;
+};
 
 type LLMTraceCall = {
   phase?: string;
@@ -19,7 +27,12 @@ type ChatMessage = {
   id: string;
   role: string;
   content: string;
-  toolCalls?: Array<{ id?: string; name: string; arguments?: Record<string, unknown>; result?: unknown }>;
+  toolCalls?: Array<{
+    id?: string;
+    name: string;
+    arguments?: Record<string, unknown>;
+    result?: unknown;
+  }>;
   llmTrace?: LLMTraceCall[];
   rephrasedPrompt?: string | null;
   createdAt?: number;
@@ -38,7 +51,11 @@ function formatValue(v: unknown): string {
 /** Copy to clipboard; works in HTTP/insecure context via execCommand fallback. */
 async function copyToClipboard(text: string): Promise<boolean> {
   try {
-    if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    if (
+      typeof navigator !== "undefined" &&
+      navigator.clipboard &&
+      typeof navigator.clipboard.writeText === "function"
+    ) {
       await navigator.clipboard.writeText(text);
       return true;
     }
@@ -131,13 +148,25 @@ function TurnCard({ turn, index }: { turn: Turn; index: number }) {
         }}
       >
         {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        <span style={{ fontWeight: 600, color: "var(--text-muted)", minWidth: 24 }}>#{index + 1}</span>
-        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span style={{ fontWeight: 600, color: "var(--text-muted)", minWidth: 24 }}>
+          #{index + 1}
+        </span>
+        <span
+          style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        >
           {userText.slice(0, 50) || "User message"}
           {userText.length > 50 ? "…" : ""}
         </span>
         {(hasTools || hasLlmTrace) && (
-          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", background: "var(--surface)", padding: "0.1rem 0.35rem", borderRadius: 4 }}>
+          <span
+            style={{
+              fontSize: "0.75rem",
+              color: "var(--text-muted)",
+              background: "var(--surface)",
+              padding: "0.1rem 0.35rem",
+              borderRadius: 4,
+            }}
+          >
             {hasTools && `${turn.assistant!.toolCalls!.length} tool call(s)`}
             {hasTools && hasLlmTrace && " · "}
             {hasLlmTrace && `${turn.assistant!.llmTrace!.length} LLM call(s)`}
@@ -145,66 +174,182 @@ function TurnCard({ turn, index }: { turn: Turn; index: number }) {
         )}
       </button>
       {expanded && (
-        <div style={{ padding: "0 0.75rem 0.75rem", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+        <div
+          style={{
+            padding: "0 0.75rem 0.75rem",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.6rem",
+          }}
+        >
           <div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.25rem" }}>
-              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)" }}>User input</span>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "0.25rem",
+              }}
+            >
+              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)" }}>
+                User input
+              </span>
             </div>
-            <pre style={{ margin: 0, padding: "0.5rem", background: "var(--surface)", borderRadius: 6, fontSize: "0.8rem", overflow: "auto", maxHeight: 180, whiteSpace: "pre-wrap" }}>
+            <pre
+              style={{
+                margin: 0,
+                padding: "0.5rem",
+                background: "var(--surface)",
+                borderRadius: 6,
+                fontSize: "0.8rem",
+                overflow: "auto",
+                maxHeight: 180,
+                whiteSpace: "pre-wrap",
+              }}
+            >
               {userText || "—"}
             </pre>
           </div>
           {hasAssistant && (
             <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.25rem" }}>
-                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)" }}>Model output</span>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "0.25rem",
+                }}
+              >
+                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)" }}>
+                  Model output
+                </span>
                 <CopyBtn text={turnSectionText} label="Copy this turn" />
               </div>
               {turn.assistant?.content?.trim() && (
-                <pre style={{ margin: 0, padding: "0.5rem", background: "var(--surface)", borderRadius: 6, fontSize: "0.8rem", overflow: "auto", maxHeight: 200, whiteSpace: "pre-wrap" }}>
+                <pre
+                  style={{
+                    margin: 0,
+                    padding: "0.5rem",
+                    background: "var(--surface)",
+                    borderRadius: 6,
+                    fontSize: "0.8rem",
+                    overflow: "auto",
+                    maxHeight: 200,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
                   {turn.assistant?.content}
                 </pre>
               )}
               {hasTools &&
                 turn.assistant!.toolCalls!.map((tc, i) => (
-                  <div key={i} style={{ borderLeft: "3px solid var(--border)", paddingLeft: "0.5rem", marginTop: "0.35rem" }}>
-                    <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)" }}>Tool: {tc.name}</div>
+                  <div
+                    key={i}
+                    style={{
+                      borderLeft: "3px solid var(--border)",
+                      paddingLeft: "0.5rem",
+                      marginTop: "0.35rem",
+                    }}
+                  >
+                    <div
+                      style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)" }}
+                    >
+                      Tool: {tc.name}
+                    </div>
                     {tc.arguments != null && Object.keys(tc.arguments).length > 0 && (
-                      <pre style={{ margin: "0.2rem 0 0 0", padding: "0.35rem", background: "var(--surface)", borderRadius: 4, fontSize: "0.75rem", overflow: "auto", maxHeight: 120 }}>
+                      <pre
+                        style={{
+                          margin: "0.2rem 0 0 0",
+                          padding: "0.35rem",
+                          background: "var(--surface)",
+                          borderRadius: 4,
+                          fontSize: "0.75rem",
+                          overflow: "auto",
+                          maxHeight: 120,
+                        }}
+                      >
                         {formatValue(tc.arguments)}
                       </pre>
                     )}
                     {tc.result !== undefined && (
-                      <pre style={{ margin: "0.2rem 0 0 0", padding: "0.35rem", background: "var(--surface)", borderRadius: 4, fontSize: "0.75rem", overflow: "auto", maxHeight: 120 }}>
+                      <pre
+                        style={{
+                          margin: "0.2rem 0 0 0",
+                          padding: "0.35rem",
+                          background: "var(--surface)",
+                          borderRadius: 4,
+                          fontSize: "0.75rem",
+                          overflow: "auto",
+                          maxHeight: 120,
+                        }}
+                      >
                         {formatValue(tc.result)}
                       </pre>
                     )}
                   </div>
                 ))}
-        {hasLlmTrace && (
-            <div style={{ marginTop: "0.6rem" }}>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.35rem" }}>LLM calls</div>
-              {turn.assistant!.llmTrace!.map((call, i) => (
-                <div key={i} style={{ borderLeft: "3px solid var(--primary-muted, var(--border))", paddingLeft: "0.5rem", marginBottom: "0.5rem" }}>
-                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
-                    Call #{i + 1}
-                    {call.messageCount != null && ` · ${call.messageCount} message(s)`}
-                    {call.usage && ` · ${call.usage.promptTokens ?? 0} in / ${call.usage.completionTokens ?? 0} out`}
+              {hasLlmTrace && (
+                <div style={{ marginTop: "0.6rem" }}>
+                  <div
+                    style={{
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      color: "var(--text-muted)",
+                      marginBottom: "0.35rem",
+                    }}
+                  >
+                    LLM calls
                   </div>
-                  {call.lastUserContent && (
-                    <pre style={{ margin: "0.2rem 0 0 0", padding: "0.35rem", background: "var(--surface)", borderRadius: 4, fontSize: "0.7rem", overflow: "auto", maxHeight: 80 }}>
-                      Last user: {call.lastUserContent.slice(0, 200)}{call.lastUserContent.length > 200 ? "…" : ""}
-                    </pre>
-                  )}
-                  {call.responsePreview && (
-                    <pre style={{ margin: "0.2rem 0 0 0", padding: "0.35rem", background: "var(--surface)", borderRadius: 4, fontSize: "0.7rem", overflow: "auto", maxHeight: 120 }}>
-                      {call.responsePreview}
-                    </pre>
-                  )}
+                  {turn.assistant!.llmTrace!.map((call, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        borderLeft: "3px solid var(--primary-muted, var(--border))",
+                        paddingLeft: "0.5rem",
+                        marginBottom: "0.5rem",
+                      }}
+                    >
+                      <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                        Call #{i + 1}
+                        {call.messageCount != null && ` · ${call.messageCount} message(s)`}
+                        {call.usage &&
+                          ` · ${call.usage.promptTokens ?? 0} in / ${call.usage.completionTokens ?? 0} out`}
+                      </div>
+                      {call.lastUserContent && (
+                        <pre
+                          style={{
+                            margin: "0.2rem 0 0 0",
+                            padding: "0.35rem",
+                            background: "var(--surface)",
+                            borderRadius: 4,
+                            fontSize: "0.7rem",
+                            overflow: "auto",
+                            maxHeight: 80,
+                          }}
+                        >
+                          Last user: {call.lastUserContent.slice(0, 200)}
+                          {call.lastUserContent.length > 200 ? "…" : ""}
+                        </pre>
+                      )}
+                      {call.responsePreview && (
+                        <pre
+                          style={{
+                            margin: "0.2rem 0 0 0",
+                            padding: "0.35rem",
+                            background: "var(--surface)",
+                            borderRadius: 4,
+                            fontSize: "0.7rem",
+                            overflow: "auto",
+                            maxHeight: 120,
+                          }}
+                        >
+                          {call.responsePreview}
+                        </pre>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+              )}
             </div>
           )}
         </div>
@@ -229,7 +374,13 @@ function messagesToTurns(messages: ChatMessage[]): Turn[] {
 }
 
 function turnToTraceSection(turn: Turn, index: number): string {
-  const lines: string[] = [`--- Turn #${index + 1} ---`, "User input:", (turn.user.content ?? "").trim(), "", "Model output:"];
+  const lines: string[] = [
+    `--- Turn #${index + 1} ---`,
+    "User input:",
+    (turn.user.content ?? "").trim(),
+    "",
+    "Model output:",
+  ];
   if (turn.assistant?.rephrasedPrompt?.trim()) {
     lines.push("Rephrased:", turn.assistant.rephrasedPrompt.trim(), "");
   }
@@ -240,7 +391,11 @@ function turnToTraceSection(turn: Turn, index: number): string {
     const planCall = toolCalls.find((tc) => tc.name === "__plan__");
     const realToolCalls = toolCalls.filter((tc) => tc.name !== "__plan__");
     if (planCall && planCall.arguments && typeof planCall.arguments === "object") {
-      const args = planCall.arguments as { reasoning?: unknown; todos?: unknown; completedStepIndices?: unknown };
+      const args = planCall.arguments as {
+        reasoning?: unknown;
+        todos?: unknown;
+        completedStepIndices?: unknown;
+      };
       if (typeof args.reasoning === "string" && args.reasoning.trim()) {
         lines.push("", "Plan (reasoning):", args.reasoning.trim());
       }
@@ -259,11 +414,20 @@ function turnToTraceSection(turn: Turn, index: number): string {
         }
         if (tc.result !== undefined) {
           const res = tc.result;
-          if (res != null && typeof res === "object" && !Array.isArray(res) && Array.isArray((res as Record<string, unknown>).tools)) {
+          if (
+            res != null &&
+            typeof res === "object" &&
+            !Array.isArray(res) &&
+            Array.isArray((res as Record<string, unknown>).tools)
+          ) {
             const tools = (res as { tools: Array<{ id: string; name: string }> }).tools;
-            lines.push("  Tools (agent has): " + tools.map((t) => `${t.name} (${t.id})`).join(", "));
+            lines.push(
+              "  Tools (agent has): " + tools.map((t) => `${t.name} (${t.id})`).join(", ")
+            );
           }
-          lines.push("  Result: " + (typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result)));
+          lines.push(
+            "  Result: " + (typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result))
+          );
         }
       });
     }
@@ -274,19 +438,30 @@ function turnToTraceSection(turn: Turn, index: number): string {
     llmTrace.forEach((call, i) => {
       lines.push(`  --- LLM call #${i + 1} ---`);
       if (call.messageCount != null) lines.push(`  Request: ${call.messageCount} message(s)`);
-      if (call.lastUserContent) lines.push(`  Last user: ${call.lastUserContent.slice(0, 300)}${call.lastUserContent.length > 300 ? "…" : ""}`);
+      if (call.lastUserContent)
+        lines.push(
+          `  Last user: ${call.lastUserContent.slice(0, 300)}${call.lastUserContent.length > 300 ? "…" : ""}`
+        );
       if (Array.isArray(call.requestMessages) && call.requestMessages.length > 0) {
         call.requestMessages.forEach((m, j) => {
           const content = (m.content ?? "").slice(0, 400);
-          lines.push(`  Message ${j + 1} (${m.role}): ${content}${(m.content ?? "").length > 400 ? "…" : ""}`);
+          lines.push(
+            `  Message ${j + 1} (${m.role}): ${content}${(m.content ?? "").length > 400 ? "…" : ""}`
+          );
         });
       }
       if (call.responseContent != null && call.responseContent.trim()) {
-        lines.push("  Response:", call.responseContent.trim().slice(0, 2000) + (call.responseContent.length > 2000 ? "\n  …" : ""));
+        lines.push(
+          "  Response:",
+          call.responseContent.trim().slice(0, 2000) +
+            (call.responseContent.length > 2000 ? "\n  …" : "")
+        );
       }
       if (call.usage) {
         const u = call.usage;
-        lines.push(`  Usage: prompt ${u.promptTokens ?? "—"}, completion ${u.completionTokens ?? "—"}, total ${u.totalTokens ?? "—"}`);
+        lines.push(
+          `  Usage: prompt ${u.promptTokens ?? "—"}, completion ${u.completionTokens ?? "—"}, total ${u.totalTokens ?? "—"}`
+        );
       }
     });
   }
@@ -294,11 +469,17 @@ function turnToTraceSection(turn: Turn, index: number): string {
   return lines.join("\n");
 }
 
-function buildTraceText(conversationTitle: string | null, turns: Turn[], modelInfo?: { provider: string; model: string } | null): string {
+function buildTraceText(
+  conversationTitle: string | null,
+  turns: Turn[],
+  modelInfo?: { provider: string; model: string } | null
+): string {
   const lines: string[] = [
     "[Chat Assistant Trace]",
     `Conversation: ${(conversationTitle && conversationTitle.trim()) || "New chat"}`,
-    ...(modelInfo?.provider && modelInfo?.model ? [`Model: ${modelInfo.provider} / ${modelInfo.model}`] : []),
+    ...(modelInfo?.provider && modelInfo?.model
+      ? [`Model: ${modelInfo.provider} / ${modelInfo.model}`]
+      : []),
     "",
   ];
   turns.forEach((turn, i) => {
@@ -307,7 +488,6 @@ function buildTraceText(conversationTitle: string | null, turns: Turn[], modelIn
   return lines.join("\n");
 }
 
-
 type ChatAssistantTracesViewProps = {
   /** When set, this conversation is selected so the user lands on the right trace (e.g. after "View stack trace" from a chat error). */
   initialConversationId?: string | null;
@@ -315,7 +495,10 @@ type ChatAssistantTracesViewProps = {
   clearInitialConversationId?: () => void;
 };
 
-export default function ChatAssistantTracesView({ initialConversationId, clearInitialConversationId }: ChatAssistantTracesViewProps = {}) {
+export default function ChatAssistantTracesView({
+  initialConversationId,
+  clearInitialConversationId,
+}: ChatAssistantTracesViewProps = {}) {
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -349,7 +532,9 @@ export default function ChatAssistantTracesView({ initialConversationId, clearIn
         clearInitialConversationId?.();
       }
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [initialConversationId, clearInitialConversationId, loadConversations]);
 
   useEffect(() => {
@@ -370,9 +555,10 @@ export default function ChatAssistantTracesView({ initialConversationId, clearIn
   const turns = messagesToTurns(messages);
   const selectedConv = selectedId ? conversations.find((c) => c.id === selectedId) : null;
 
-  const modelInfo = selectedConv?.lastUsedProvider && selectedConv?.lastUsedModel
-    ? { provider: selectedConv.lastUsedProvider, model: selectedConv.lastUsedModel }
-    : null;
+  const modelInfo =
+    selectedConv?.lastUsedProvider && selectedConv?.lastUsedModel
+      ? { provider: selectedConv.lastUsedProvider, model: selectedConv.lastUsedModel }
+      : null;
 
   const handleCopyTrace = useCallback(() => {
     const text = buildTraceText(selectedConv?.title ?? null, turns, modelInfo);
@@ -385,11 +571,28 @@ export default function ChatAssistantTracesView({ initialConversationId, clearIn
   }, [selectedConv?.title, turns, modelInfo]);
 
   return (
-    <div className="chat-assistant-traces-view" style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-      <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+    <div
+      className="chat-assistant-traces-view"
+      style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}
+    >
+      <div
+        style={{
+          padding: "0.75rem 1rem",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+          flexShrink: 0,
+        }}
+      >
         <MessageCircle size={18} style={{ color: "var(--text-muted)" }} />
         <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>Chat assistant traces</h2>
-        <button type="button" className="button button-secondary" onClick={loadConversations} style={{ marginLeft: "auto", fontSize: "0.8rem" }}>
+        <button
+          type="button"
+          className="button button-secondary"
+          onClick={loadConversations}
+          style={{ marginLeft: "auto", fontSize: "0.8rem" }}
+        >
           Refresh
         </button>
         {selectedId && turns.length > 0 && (
@@ -397,7 +600,12 @@ export default function ChatAssistantTracesView({ initialConversationId, clearIn
             type="button"
             className="button button-secondary"
             onClick={handleCopyTrace}
-            style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", fontSize: "0.8rem" }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.35rem",
+              fontSize: "0.8rem",
+            }}
             title="Copy full stack trace (user inputs + model outputs + tool calls)"
           >
             {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -416,7 +624,9 @@ export default function ChatAssistantTracesView({ initialConversationId, clearIn
             padding: "0.5rem",
           }}
         >
-          {loadingConvs && <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Loading…</p>}
+          {loadingConvs && (
+            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Loading…</p>
+          )}
           {!loadingConvs && conversations.length === 0 && (
             <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>No conversations yet.</p>
           )}
@@ -441,7 +651,9 @@ export default function ChatAssistantTracesView({ initialConversationId, clearIn
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {(c.title && c.title.trim()) || "Chat"}
                 </div>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.15rem" }}>
+                <div
+                  style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.15rem" }}
+                >
                   {new Date(c.createdAt).toLocaleString()}
                 </div>
               </button>
@@ -449,26 +661,51 @@ export default function ChatAssistantTracesView({ initialConversationId, clearIn
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "1rem", minWidth: 0 }}>
           {!selectedId && (
-            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Select a conversation to view the full stack trace (user input, model output, tool calls).</p>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
+              Select a conversation to view the full stack trace (user input, model output, tool
+              calls).
+            </p>
           )}
-          {selectedId && loadingMessages && <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Loading…</p>}
+          {selectedId && loadingMessages && (
+            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Loading…</p>
+          )}
           {selectedId && !loadingMessages && (
             <>
               {selectedConv && (
-                <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
-                  {(selectedConv.title && selectedConv.title.trim()) || "Chat"} — {turns.length} turn(s).
+                <p
+                  style={{
+                    fontSize: "0.85rem",
+                    color: "var(--text-muted)",
+                    marginBottom: "0.75rem",
+                  }}
+                >
+                  {(selectedConv.title && selectedConv.title.trim()) || "Chat"} — {turns.length}{" "}
+                  turn(s).
                   {selectedConv.lastUsedProvider && selectedConv.lastUsedModel && (
-                    <> Model: <strong>{selectedConv.lastUsedProvider} / {selectedConv.lastUsedModel}</strong>.</>
+                    <>
+                      {" "}
+                      Model:{" "}
+                      <strong>
+                        {selectedConv.lastUsedProvider} / {selectedConv.lastUsedModel}
+                      </strong>
+                      .
+                    </>
                   )}{" "}
                   Copy the full trace above or copy each section per turn.
                 </p>
               )}
               {turns.length === 0 ? (
-                <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>No messages in this conversation.</p>
+                <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
+                  No messages in this conversation.
+                </p>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
                   {turns.map((turn, i) => (
-                    <TurnCard key={`${turn.user.id}-${turn.assistant?.id ?? "none"}`} turn={turn} index={i} />
+                    <TurnCard
+                      key={`${turn.user.id}-${turn.assistant?.id ?? "none"}`}
+                      turn={turn}
+                      index={i}
+                    />
                   ))}
                 </div>
               )}

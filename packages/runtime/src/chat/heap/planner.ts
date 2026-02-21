@@ -7,6 +7,7 @@ import type { PlannerOutput } from "./types";
 import type { SpecialistRegistry } from "./registry";
 import { getSpecialistOptions } from "./registry";
 import { ROUTER_OPTIONS_CAP } from "./router";
+import { planImpliesCreateAgentAndWorkflow } from "./heap-dag";
 
 /** Retry instruction appended when planner returns empty or invalid. */
 export const PLANNER_RETRY_INSTRUCTION = "\n\nOutput only a single JSON object, no other text.";
@@ -120,22 +121,36 @@ export function parsePlanOutput(text: string): PlannerOutput | null {
     for (const item of order) {
       if (typeof item === "string") {
         priorityOrder.push(item);
-      } else if (item && typeof item === "object" && Array.isArray((item as { parallel?: unknown }).parallel)) {
-        const arr = (item as { parallel: unknown[] }).parallel.filter((x): x is string => typeof x === "string");
+      } else if (
+        item &&
+        typeof item === "object" &&
+        Array.isArray((item as { parallel?: unknown }).parallel)
+      ) {
+        const arr = (item as { parallel: unknown[] }).parallel.filter(
+          (x): x is string => typeof x === "string"
+        );
         if (arr.length > 0) priorityOrder.push({ parallel: arr });
       }
     }
     const extractedContext =
-      obj.extractedContext && typeof obj.extractedContext === "object" && obj.extractedContext !== null
+      obj.extractedContext &&
+      typeof obj.extractedContext === "object" &&
+      obj.extractedContext !== null
         ? (obj.extractedContext as Record<string, unknown>)
         : undefined;
-    const instructionsForGeneral = typeof obj.instructionsForGeneral === "string" ? obj.instructionsForGeneral : undefined;
-    const instructionsForAgent = typeof obj.instructionsForAgent === "string" ? obj.instructionsForAgent : undefined;
-    const instructionsForWorkflow = typeof obj.instructionsForWorkflow === "string" ? obj.instructionsForWorkflow : undefined;
+    const instructionsForGeneral =
+      typeof obj.instructionsForGeneral === "string" ? obj.instructionsForGeneral : undefined;
+    const instructionsForAgent =
+      typeof obj.instructionsForAgent === "string" ? obj.instructionsForAgent : undefined;
+    const instructionsForWorkflow =
+      typeof obj.instructionsForWorkflow === "string" ? obj.instructionsForWorkflow : undefined;
     const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-    const instructionsForImproveRun = str(obj.instructionsForImproveRun) ?? str(obj.instructionsForImprovementSession);
-    const instructionsForImproveHeap = str(obj.instructionsForImproveHeap) ?? str(obj.instructionsForImprovementHeap);
-    const instructionsForImproveAgentsWorkflows = str(obj.instructionsForImproveAgentsWorkflows) ?? str(obj.instructionsForImprovement);
+    const instructionsForImproveRun =
+      str(obj.instructionsForImproveRun) ?? str(obj.instructionsForImprovementSession);
+    const instructionsForImproveHeap =
+      str(obj.instructionsForImproveHeap) ?? str(obj.instructionsForImprovementHeap);
+    const instructionsForImproveAgentsWorkflows =
+      str(obj.instructionsForImproveAgentsWorkflows) ?? str(obj.instructionsForImprovement);
     const instructionsForImprovement = str(obj.instructionsForImprovement);
     const instructionsForImprovementSession = str(obj.instructionsForImprovementSession);
     const instructionsForImprovementHeap = str(obj.instructionsForImprovementHeap);
@@ -158,7 +173,10 @@ export function parsePlanOutput(text: string): PlannerOutput | null {
   }
 }
 
-function getInstructionForSpecialist(plan: PlannerOutput, specialistId: string): string | undefined {
+function getInstructionForSpecialist(
+  plan: PlannerOutput,
+  specialistId: string
+): string | undefined {
   switch (specialistId) {
     case "general":
       return plan.instructionsForGeneral;
@@ -179,8 +197,10 @@ function getInstructionForSpecialist(plan: PlannerOutput, specialistId: string):
     case "improvement_heap":
       return plan.instructionsForImproveHeap ?? plan.instructionsForImprovementHeap;
     default:
-      if (specialistId.startsWith("improve_agents_workflows__")) return plan.instructionsForImproveAgentsWorkflows ?? plan.instructionsForImprovement;
-      if (specialistId.startsWith("improvement__")) return plan.instructionsForImproveAgentsWorkflows ?? plan.instructionsForImprovement;
+      if (specialistId.startsWith("improve_agents_workflows__"))
+        return plan.instructionsForImproveAgentsWorkflows ?? plan.instructionsForImprovement;
+      if (specialistId.startsWith("improvement__"))
+        return plan.instructionsForImproveAgentsWorkflows ?? plan.instructionsForImprovement;
       if (specialistId.startsWith("workflow__")) return plan.instructionsForWorkflow;
       return undefined;
   }
@@ -219,15 +239,84 @@ export function inferFallbackPriorityOrder(
   registry: SpecialistRegistry
 ): string[] {
   const text = [message, recentContext ?? ""].join(" ").toLowerCase();
-  const hasAgent = /\b(create|add|build|make)\s+(an?\s+)?agent\b|\bagent\s+(create|add)\b/i.test(text);
+  const hasAgent = /\b(create|add|build|make)\s+(an?\s+)?agent\b|\bagent\s+(create|add)\b/i.test(
+    text
+  );
   const hasWorkflow =
-    /\b(create|add|build|make|run|execute)\s+(a\s+)?workflow\b|\bworkflow\s+(create|run|execute)\b|\brun\s+the\s+workflow\b/i.test(text);
+    /\b(create|add|build|make|run|execute)\s+(a\s+)?workflow\b|\bworkflow\s+(create|run|execute)\b|\brun\s+the\s+workflow\b/i.test(
+      text
+    );
   const order: string[] = [];
   if (hasAgent && "agent" in registry.specialists) order.push("agent");
   if (hasWorkflow && "workflow" in registry.specialists) order.push("workflow");
   if (order.length > 0) return order;
   const first = registry.topLevelIds[0];
   return first ? [first] : [];
+}
+
+/** Known confirmation strings for "improvement type" (prompt/workflow only vs model training). */
+const PROMPT_AND_WORKFLOW_PATTERNS = [
+  "prompt and workflow only",
+  "1 — prompt and workflow only",
+  "1 - prompt and workflow only",
+];
+const MODEL_TRAINING_PATTERNS = [
+  "also model training",
+  "2 — also model training",
+  "2 - also model training",
+];
+const EXPLAIN_PATTERNS = [
+  "explain the difference",
+  "3 — explain the difference",
+  "3 - explain the difference",
+];
+
+/**
+ * When the previous plan implies create-agent + create-workflow and the user's reply is a short
+ * confirmation of the improvement-type option, returns a merged plan (previous plan + selfImprovementType
+ * in extractedContext). Otherwise returns null so the caller can use the planner LLM.
+ */
+export function mergePlanOnImprovementTypeConfirmation(
+  previousPlan: PlannerOutput,
+  userReply: string
+): PlannerOutput | null {
+  if (!planImpliesCreateAgentAndWorkflow(previousPlan)) return null;
+  const normalized = userReply.trim().toLowerCase();
+  if (normalized.length === 0) return null;
+
+  let selfImprovementType: string | undefined;
+  if (
+    normalized === "1" ||
+    normalized.startsWith("1 —") ||
+    normalized.startsWith("1 -") ||
+    PROMPT_AND_WORKFLOW_PATTERNS.some((p) => normalized.includes(p))
+  ) {
+    selfImprovementType = "prompt_and_workflow_only";
+  } else if (
+    normalized === "2" ||
+    normalized.startsWith("2 —") ||
+    normalized.startsWith("2 -") ||
+    MODEL_TRAINING_PATTERNS.some((p) => normalized.includes(p))
+  ) {
+    selfImprovementType = "model_training";
+  } else if (
+    normalized === "3" ||
+    normalized.startsWith("3 —") ||
+    normalized.startsWith("3 -") ||
+    EXPLAIN_PATTERNS.some((p) => normalized.includes(p))
+  ) {
+    selfImprovementType = "explain_difference";
+  } else {
+    return null;
+  }
+
+  return {
+    ...previousPlan,
+    extractedContext: {
+      ...previousPlan.extractedContext,
+      selfImprovementType,
+    },
+  };
 }
 
 /**

@@ -23,11 +23,20 @@ import "@xyflow/react/dist/style.css";
 import { User, LayoutGrid, X } from "lucide-react";
 import { CanvasNodeCard } from "../../components/canvas-node-card";
 import { CanvasLabelEdge } from "../../components/canvas-label-edge";
-import { getGridPosition, getWorkflowGridOptions, layoutNodesByGraph } from "../../lib/canvas-layout";
+import {
+  getGridPosition,
+  getWorkflowGridOptions,
+  layoutNodesByGraph,
+} from "../../lib/canvas-layout";
 
 type Agent = { id: string; name: string };
 
-type WfNode = { id: string; type: string; position: [number, number]; parameters?: Record<string, unknown> };
+type WfNode = {
+  id: string;
+  type: string;
+  position: [number, number];
+  parameters?: Record<string, unknown>;
+};
 export type WfEdge = { id: string; source: string; target: string; data?: { label?: string } };
 
 type FlowNodeData = {
@@ -62,7 +71,9 @@ function AgentNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
       >
         <option value="">Select agent</option>
         {agents.map((a) => (
-          <option key={a.id} value={a.id}>{a.name}</option>
+          <option key={a.id} value={a.id}>
+            {a.name}
+          </option>
         ))}
       </select>
     </CanvasNodeCard>
@@ -79,9 +90,13 @@ function toFlowNodes(
 ): Node<FlowNodeData>[] {
   const gridOpts = getWorkflowGridOptions();
   return wfNodes.map((n, i) => {
-    const pos = Array.isArray(n.position) && n.position.length >= 2 && Number.isFinite(n.position[0]) && Number.isFinite(n.position[1])
-      ? { x: n.position[0], y: n.position[1] }
-      : getGridPosition(i, gridOpts);
+    const pos =
+      Array.isArray(n.position) &&
+      n.position.length >= 2 &&
+      Number.isFinite(n.position[0]) &&
+      Number.isFinite(n.position[1])
+        ? { x: n.position[0], y: n.position[1] }
+        : getGridPosition(i, gridOpts);
     const params = n.parameters ?? {};
     const agentId = (params.agentId as string) ?? "";
     const agent = agents.find((a) => a.id === agentId);
@@ -128,9 +143,15 @@ function fromFlowEdges(edges: Edge[]): WfEdge[] {
     id: e.id ?? `e-${e.source}-${e.target}`,
     source: e.source,
     target: e.target,
-    data: e.data && typeof e.data === "object" && "label" in e.data
-      ? { label: typeof (e.data as { label?: unknown }).label === "string" ? (e.data as { label: string }).label : undefined }
-      : undefined,
+    data:
+      e.data && typeof e.data === "object" && "label" in e.data
+        ? {
+            label:
+              typeof (e.data as { label?: unknown }).label === "string"
+                ? (e.data as { label: string }).label
+                : undefined,
+          }
+        : undefined,
   }));
 }
 
@@ -143,7 +164,14 @@ type Props = {
   onAddNodeAt?: (position: { x: number; y: number }, agentId?: string) => void;
 };
 
-function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onAddNode, onAddNodeAt }: Props) {
+function WorkflowCanvasInner({
+  wfNodes,
+  wfEdges,
+  agents,
+  onNodesEdgesChange,
+  onAddNode,
+  onAddNodeAt,
+}: Props) {
   const { screenToFlowPosition } = useReactFlow();
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
@@ -178,7 +206,12 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
   useEffect(() => {
     setNodes(toFlowNodes(wfNodes, agents, onAgentChange, onRemove));
     setEdges(toFlowEdges(wfEdges));
-  }, [wfNodes.length, wfEdges.length, JSON.stringify(wfNodes.map((n) => [n.id, n.type, n.parameters, n.position])), JSON.stringify(wfEdges.map((e) => [e.id, e.source, e.target, e.data]))]);
+  }, [
+    wfNodes.length,
+    wfEdges.length,
+    JSON.stringify(wfNodes.map((n) => [n.id, n.type, n.parameters, n.position])),
+    JSON.stringify(wfEdges.map((e) => [e.id, e.source, e.target, e.data])),
+  ]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -282,7 +315,16 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
           gap: "0.35rem",
         }}
       >
-        <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>Agents</span>
+        <span
+          style={{
+            fontSize: "0.7rem",
+            fontWeight: 600,
+            color: "var(--text-muted)",
+            textTransform: "uppercase",
+          }}
+        >
+          Agents
+        </span>
         <p style={{ margin: 0, fontSize: "0.75rem", color: "var(--text-muted)" }}>
           Drag onto canvas to add. Connect from bottom handle to another&apos;s top.
         </p>
@@ -293,7 +335,9 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
             <div
               key={a.id}
               draggable
-              onDragStart={(ev) => ev.dataTransfer.setData(DRAG_TYPE_AGENT, JSON.stringify({ agentId: a.id }))}
+              onDragStart={(ev) =>
+                ev.dataTransfer.setData(DRAG_TYPE_AGENT, JSON.stringify({ agentId: a.id }))
+              }
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -311,7 +355,12 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
             </div>
           ))
         )}
-        <button type="button" className="button" onClick={onAddNode} style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+        <button
+          type="button"
+          className="button"
+          onClick={onAddNode}
+          style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}
+        >
           + Add agent
         </button>
         <button
@@ -334,7 +383,15 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
             });
             onNodesEdgesChange(arranged, wfEdges);
           }}
-          style={{ fontSize: "0.82rem", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem", marginTop: "0.25rem" }}
+          style={{
+            fontSize: "0.82rem",
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "0.35rem",
+            marginTop: "0.25rem",
+          }}
           title="Arrange nodes by flow (left to right; cycles supported)"
         >
           <LayoutGrid size={14} /> Arrange
@@ -352,19 +409,43 @@ function WorkflowCanvasInner({ wfNodes, wfEdges, agents, onNodesEdgesChange, onA
               background: "var(--background)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.35rem" }}>
-              <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>Edge</span>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "0.35rem",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "0.7rem",
+                  fontWeight: 600,
+                  color: "var(--text-muted)",
+                  textTransform: "uppercase",
+                }}
+              >
+                Edge
+              </span>
               <button
                 type="button"
                 className="nopan nodrag"
                 onClick={() => setSelectedEdgeId(null)}
-                style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 2,
+                  display: "flex",
+                }}
                 title="Close"
               >
                 <X size={14} style={{ color: "var(--text-muted)" }} />
               </button>
             </div>
-            <label style={{ fontSize: "0.75rem", display: "block", marginBottom: "0.25rem" }}>Label</label>
+            <label style={{ fontSize: "0.75rem", display: "block", marginBottom: "0.25rem" }}>
+              Label
+            </label>
             <input
               type="text"
               className="input nodrag nopan"

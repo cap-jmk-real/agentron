@@ -16,5 +16,5 @@ export const openaiProvider: LLMProviderAdapter = {
       { Authorization: `Bearer ${config.apiKey}` },
       { useMaxCompletionTokens: true }
     );
-  }
+  },
 };

@@ -109,7 +109,10 @@ export default function CopyDebugInfoButton({
 
   return (
     <>
-      <div style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }} className={className}>
+      <div
+        style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+        className={className}
+      >
         <button
           type="button"
           className={`${btnClass} ${sizeClass}`.trim()}
@@ -129,9 +132,13 @@ export default function CopyDebugInfoButton({
           {status === "copying" ? (
             <span style={{ fontSize: isSmall ? "0.8rem" : "0.85rem" }}>Copying…</span>
           ) : status === "copied" ? (
-            <span style={{ fontSize: isSmall ? "0.8rem" : "0.85rem", color: "var(--primary)" }}>Copied!</span>
+            <span style={{ fontSize: isSmall ? "0.8rem" : "0.85rem", color: "var(--primary)" }}>
+              Copied!
+            </span>
           ) : status === "error" ? (
-            <span style={{ fontSize: isSmall ? "0.8rem" : "0.85rem", color: "#dc2626" }}>Failed to copy</span>
+            <span style={{ fontSize: isSmall ? "0.8rem" : "0.85rem", color: "#dc2626" }}>
+              Failed to copy
+            </span>
           ) : (
             <>
               <Bug size={iconSize} style={{ marginRight: "0.35rem" }} />
@@ -153,10 +160,23 @@ export default function CopyDebugInfoButton({
         >
           <div
             className="card confirm-modal-card"
-            style={{ maxWidth: "min(90vw, 560px)", maxHeight: "85vh", display: "flex", flexDirection: "column" }}
+            style={{
+              maxWidth: "min(90vw, 560px)",
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "column",
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem", flexShrink: 0 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "0.75rem",
+                flexShrink: 0,
+              }}
+            >
               <h3 id="debug-modal-title" style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>
                 Debug info
               </h3>
@@ -177,7 +197,11 @@ export default function CopyDebugInfoButton({
                     </>
                   )}
                 </button>
-                <button type="button" className="button button-ghost button-small" onClick={closeModal}>
+                <button
+                  type="button"
+                  className="button button-ghost button-small"
+                  onClick={closeModal}
+                >
                   Close
                 </button>
               </div>

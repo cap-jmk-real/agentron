@@ -100,7 +100,9 @@ function main() {
   }
 
   if (!targetDir || !fs.existsSync(path.join(targetDir, "binding.gyp"))) {
-    console.log("better-sqlite3 (with binding.gyp) not found in .next/node_modules, skipping rebuild.");
+    console.log(
+      "better-sqlite3 (with binding.gyp) not found in .next/node_modules, skipping rebuild."
+    );
     return;
   }
 
@@ -128,7 +130,12 @@ function main() {
   const arch = process.arch;
   const headerURL = "https://www.electronjs.org/headers";
 
-  console.log("Rebuilding better-sqlite3 for Electron", electronVersion, "in:", betterSqlite3DirForRebuild);
+  console.log(
+    "Rebuilding better-sqlite3 for Electron",
+    electronVersion,
+    "in:",
+    betterSqlite3DirForRebuild
+  );
   try {
     execSync(
       `node "${nodeGypPath}" rebuild --runtime=electron --target=${electronVersion} --dist-url=${headerURL} --arch=${arch} --build-from-source`,

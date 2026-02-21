@@ -60,7 +60,9 @@ export function getTelegramBotToken(): string | undefined {
  */
 export function getTelegramSettings(): TelegramSettingsPublic {
   const raw = loadRaw();
-  const hasToken = !!(raw.botTokenEnvVar?.trim() && process.env[raw.botTokenEnvVar.trim()]) || !!(raw.botToken?.trim());
+  const hasToken =
+    !!(raw.botTokenEnvVar?.trim() && process.env[raw.botTokenEnvVar.trim()]) ||
+    !!raw.botToken?.trim();
   return {
     enabled: raw.enabled === true,
     hasToken,
@@ -81,15 +83,22 @@ export function updateTelegramSettings(updates: Partial<TelegramSettings>): Tele
   };
 
   if (updates.botToken !== undefined) {
-    next.botToken = typeof updates.botToken === "string" ? updates.botToken.trim() || undefined : undefined;
+    next.botToken =
+      typeof updates.botToken === "string" ? updates.botToken.trim() || undefined : undefined;
     next.botTokenEnvVar = undefined;
   }
   if (updates.botTokenEnvVar !== undefined) {
-    next.botTokenEnvVar = typeof updates.botTokenEnvVar === "string" ? updates.botTokenEnvVar.trim() || undefined : undefined;
+    next.botTokenEnvVar =
+      typeof updates.botTokenEnvVar === "string"
+        ? updates.botTokenEnvVar.trim() || undefined
+        : undefined;
     next.botToken = undefined;
   }
   if (updates.notificationChatId !== undefined) {
-    next.notificationChatId = typeof updates.notificationChatId === "string" ? updates.notificationChatId.trim() || undefined : undefined;
+    next.notificationChatId =
+      typeof updates.notificationChatId === "string"
+        ? updates.notificationChatId.trim() || undefined
+        : undefined;
   }
   if (updates.usePolling !== undefined) {
     next.usePolling = updates.usePolling === true;

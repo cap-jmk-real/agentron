@@ -12,15 +12,20 @@ export async function POST(request: Request) {
   const payload = await request.json().catch(() => ({}));
   const title = typeof payload.title === "string" ? payload.title.trim() || null : null;
   const id = crypto.randomUUID();
-  await db.insert(conversations).values(toConversationRow({
-    id,
-    title,
-    rating: null,
-    note: null,
-    summary: null,
-    lastUsedProvider: null,
-    lastUsedModel: null,
-    createdAt: Date.now(),
-  })).run();
+  await db
+    .insert(conversations)
+    .values(
+      toConversationRow({
+        id,
+        title,
+        rating: null,
+        note: null,
+        summary: null,
+        lastUsedProvider: null,
+        lastUsedModel: null,
+        createdAt: Date.now(),
+      })
+    )
+    .run();
   return json({ id, title });
 }

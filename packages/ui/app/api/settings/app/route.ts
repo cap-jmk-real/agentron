@@ -1,5 +1,5 @@
 import { json } from "../../_lib/response";
-import { getAppSettings, updateAppSettings } from "../../_lib/app-settings";
+import { getAppSettings, updateAppSettings, type WebSearchProvider } from "../../_lib/app-settings";
 import { verifyContainerEngine } from "../../_lib/container-manager";
 import { logApiError } from "../../_lib/api-logger";
 import { platform } from "node:os";
@@ -16,7 +16,8 @@ function splitShellCommands(command: string): string[] {
     let earliest = { index: -1, len: 0 };
     for (const sep of separators) {
       const idx = indexOfOutsideQuotes(remaining, sep);
-      if (idx >= 0 && (earliest.index < 0 || idx < earliest.index)) earliest = { index: idx, len: sep.length };
+      if (idx >= 0 && (earliest.index < 0 || idx < earliest.index))
+        earliest = { index: idx, len: sep.length };
     }
     if (earliest.index < 0) {
       const t = remaining.trim();
@@ -30,7 +31,9 @@ function splitShellCommands(command: string): string[] {
   return result;
 }
 function indexOfOutsideQuotes(str: string, sub: string): number {
-  let i = 0, inSingle = false, inDouble = false;
+  let i = 0,
+    inSingle = false,
+    inDouble = false;
   while (i <= str.length - sub.length) {
     const c = str[i];
     if (c === "'" && !inDouble) inSingle = !inSingle;
@@ -62,23 +65,70 @@ export async function GET() {
 export async function PATCH(request: Request) {
   try {
     const payload = await request.json().catch(() => ({}));
-    const updates: { maxFileUploadBytes?: number; containerEngine?: "podman" | "docker"; shellCommandAllowlist?: string[]; workflowMaxSelfFixRetries?: number } = {};
+    const updates: {
+      maxFileUploadBytes?: number;
+      containerEngine?: "podman" | "docker";
+      shellCommandAllowlist?: string[];
+      workflowMaxSelfFixRetries?: number;
+      webSearchProvider?: WebSearchProvider;
+      braveSearchApiKey?: string;
+      googleCseKey?: string;
+      googleCseCx?: string;
+    } = {};
     if (payload.maxFileUploadBytes !== undefined) {
       const v = Number(payload.maxFileUploadBytes);
       if (!Number.isNaN(v)) updates.maxFileUploadBytes = v;
     }
-    if (payload.containerEngine !== undefined && (payload.containerEngine === "podman" || payload.containerEngine === "docker")) {
+    if (
+      payload.containerEngine !== undefined &&
+      (payload.containerEngine === "podman" || payload.containerEngine === "docker")
+    ) {
       updates.containerEngine = payload.containerEngine;
     }
-    if (payload.shellCommandAllowlist !== undefined && Array.isArray(payload.shellCommandAllowlist)) {
-      updates.shellCommandAllowlist = payload.shellCommandAllowlist.filter((x: unknown) => typeof x === "string" && x.trim().length > 0).map((s: string) => s.trim());
+    if (
+      payload.shellCommandAllowlist !== undefined &&
+      Array.isArray(payload.shellCommandAllowlist)
+    ) {
+      updates.shellCommandAllowlist = payload.shellCommandAllowlist
+        .filter((x: unknown) => typeof x === "string" && x.trim().length > 0)
+        .map((s: string) => s.trim());
     }
     if (payload.workflowMaxSelfFixRetries !== undefined) {
       const v = Number(payload.workflowMaxSelfFixRetries);
       if (!Number.isNaN(v) && v >= 0 && v <= 10) updates.workflowMaxSelfFixRetries = Math.floor(v);
     }
+    if (
+      payload.webSearchProvider !== undefined &&
+      (payload.webSearchProvider === "duckduckgo" ||
+        payload.webSearchProvider === "brave" ||
+        payload.webSearchProvider === "google")
+    ) {
+      updates.webSearchProvider = payload.webSearchProvider as WebSearchProvider;
+    }
+    if (payload.braveSearchApiKey !== undefined) {
+      updates.braveSearchApiKey =
+        typeof payload.braveSearchApiKey === "string"
+          ? payload.braveSearchApiKey.trim() || undefined
+          : undefined;
+    }
+    if (payload.googleCseKey !== undefined) {
+      updates.googleCseKey =
+        typeof payload.googleCseKey === "string"
+          ? payload.googleCseKey.trim() || undefined
+          : undefined;
+    }
+    if (payload.googleCseCx !== undefined) {
+      updates.googleCseCx =
+        typeof payload.googleCseCx === "string"
+          ? payload.googleCseCx.trim() || undefined
+          : undefined;
+    }
     const addedCommands: string[] = [];
-    if (payload.addShellCommand !== undefined && typeof payload.addShellCommand === "string" && payload.addShellCommand.trim()) {
+    if (
+      payload.addShellCommand !== undefined &&
+      typeof payload.addShellCommand === "string" &&
+      payload.addShellCommand.trim()
+    ) {
       const settings = getAppSettings();
       const raw = payload.addShellCommand.trim();
       const commands = splitShellCommands(raw);

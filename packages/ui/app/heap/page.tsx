@@ -33,7 +33,13 @@ type HeapSnapshot = {
 
 const HEAP_ROOT_ID = "__heap_root__";
 
-type HeapNodeData = { id: string; isTopLevel: boolean; isOverlay: boolean; toolNames: string[]; isRoot?: boolean };
+type HeapNodeData = {
+  id: string;
+  isTopLevel: boolean;
+  isOverlay: boolean;
+  toolNames: string[];
+  isRoot?: boolean;
+};
 
 function HeapFlowNode({ data, selected }: NodeProps<Node<HeapNodeData>>) {
   const tools = data.toolNames ?? [];
@@ -57,10 +63,14 @@ function HeapFlowNode({ data, selected }: NodeProps<Node<HeapNodeData>>) {
       )}
       {!isRoot && tools.length > 0 && (
         <div className="heap-flow-node-tools" title={tools.join(", ")}>
-          <span className="heap-flow-node-tools-label">{tools.length} tool{tools.length !== 1 ? "s" : ""}</span>
+          <span className="heap-flow-node-tools-label">
+            {tools.length} tool{tools.length !== 1 ? "s" : ""}
+          </span>
           <div className="heap-flow-node-tools-list">
             {tools.map((t) => (
-              <code key={t} className="heap-list-card-tool-tag">{t}</code>
+              <code key={t} className="heap-list-card-tool-tag">
+                {t}
+              </code>
             ))}
           </div>
         </div>
@@ -81,6 +91,7 @@ function getParentInTopLevel(id: string, topLevelIds: string[]): string | null {
 
 function HeapCanvas({ data }: { data: HeapSnapshot }) {
   const specialistsById = new Map(data.specialists.map((s) => [s.id, s]));
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- layout depends on data shape; compiler cannot preserve this useMemo
   const allIds = useMemo(() => {
     const set = new Set<string>([HEAP_ROOT_ID]);
     function add(id: string) {
@@ -92,6 +103,7 @@ function HeapCanvas({ data }: { data: HeapSnapshot }) {
     data.topLevelIds.forEach(add);
     return [...set];
   }, [data.topLevelIds, data.specialists]);
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- derived from allIds and data; compiler cannot preserve this useMemo
   const edges = useMemo(() => {
     const out: { source: string; target: string }[] = [];
     const topLevelIds = data.topLevelIds;
@@ -134,7 +146,13 @@ function HeapCanvas({ data }: { data: HeapSnapshot }) {
         id: HEAP_ROOT_ID,
         type: "heap",
         position: { x: n.x ?? 0, y: n.y ?? 0 },
-        data: { id: HEAP_ROOT_ID, isTopLevel: false, isOverlay: false, toolNames: [], isRoot: true },
+        data: {
+          id: HEAP_ROOT_ID,
+          isTopLevel: false,
+          isOverlay: false,
+          toolNames: [],
+          isRoot: true,
+        },
       };
     }
     const entry = specialistsById.get(n.id);
@@ -150,7 +168,11 @@ function HeapCanvas({ data }: { data: HeapSnapshot }) {
       },
     };
   });
-  const initialEdges: Edge[] = edges.map((e, i) => ({ id: `e-${i}-${e.source}-${e.target}`, source: e.source, target: e.target }));
+  const initialEdges: Edge[] = edges.map((e, i) => ({
+    id: `e-${i}-${e.source}-${e.target}`,
+    source: e.source,
+    target: e.target,
+  }));
   const [nodes, , onNodesChange] = useNodesState(initialNodes);
   const [edgesState, , onEdgesChange] = useEdgesState(initialEdges);
   return (
@@ -210,7 +232,8 @@ export default function HeapPage() {
   }, [load]);
 
   const specialistsById = useMemo(
-    () => (data ? new Map(data.specialists.map((s) => [s.id, s])) : new Map<string, SpecialistEntry>()),
+    () =>
+      data ? new Map(data.specialists.map((s) => [s.id, s])) : new Map<string, SpecialistEntry>(),
     [data]
   );
 
@@ -291,7 +314,9 @@ export default function HeapPage() {
           <h2 className="heap-section-title">
             Specialists ({data.specialists.length})
             {data.overlayIds.length > 0 && (
-              <span className="heap-section-title-meta">(overlay: {data.overlayIds.join(", ")})</span>
+              <span className="heap-section-title-meta">
+                (overlay: {data.overlayIds.join(", ")})
+              </span>
             )}
           </h2>
           <div className="heap-list">
@@ -329,7 +354,9 @@ export default function HeapPage() {
                     <div className="heap-list-card-body">
                       {s.toolNames && s.toolNames.length > 0 && (
                         <div className="heap-list-card-body-section">
-                          <div className="heap-list-card-body-title">Tools ({s.toolNames.length})</div>
+                          <div className="heap-list-card-body-title">
+                            Tools ({s.toolNames.length})
+                          </div>
                           <div className="heap-list-card-tools">
                             {s.toolNames.map((t) => (
                               <code key={t} className="heap-list-card-tool-tag">
@@ -364,7 +391,9 @@ export default function HeapPage() {
                           <div className="heap-list-card-body-title">Delegates</div>
                           <div className="heap-list-card-delegates">
                             {s.delegateTargets.map((d) => (
-                              <code key={d} className="heap-list-card-delegate-id">{d}</code>
+                              <code key={d} className="heap-list-card-delegate-id">
+                                {d}
+                              </code>
                             ))}
                           </div>
                         </div>

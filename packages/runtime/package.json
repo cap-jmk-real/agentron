@@ -17,9 +17,5 @@
     "@openrouter/sdk": "^0.4.0",
     "playwright": "^1.49.0"
   },
-  "devDependencies": {
-    "@next/swc-darwin-arm64": "^16.1.6",
-    "@rollup/rollup-darwin-arm64": "4.57.1",
-    "@rollup/rollup-darwin-x64": "4.57.1"
-  }
+  "devDependencies": {}
 }

@@ -13,7 +13,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const payload = await request.json();
   const id = payload.id ?? crypto.randomUUID();
-  const name = (payload.name && String(payload.name).trim()) ? payload.name : randomWorkflowName();
+  const name = payload.name && String(payload.name).trim() ? payload.name : randomWorkflowName();
   const workflow = { ...payload, id, name };
   await db.insert(workflowsTable).values(toWorkflowRow(workflow)).run();
   refreshScheduledWorkflows();

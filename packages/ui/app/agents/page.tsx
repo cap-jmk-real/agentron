@@ -47,7 +47,9 @@ export default function AgentsPage() {
         if (cancelled) return;
         if (Array.isArray(data.workflows) && data.workflows.length > 0) {
           const names = data.workflows.map((w: { name: string }) => w.name).join(", ");
-          setWorkflowWarning(`This agent is used in ${data.workflows.length} workflow(s): ${names}. Deleting may break them.`);
+          setWorkflowWarning(
+            `This agent is used in ${data.workflows.length} workflow(s): ${names}. Deleting may break them.`
+          );
         } else {
           setWorkflowWarning("");
         }
@@ -55,7 +57,9 @@ export default function AgentsPage() {
       .catch(() => {
         if (!cancelled) setWorkflowWarning("");
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [agentToDelete]);
 
   const createAgent = async (event: React.FormEvent) => {
@@ -69,8 +73,8 @@ export default function AgentsPage() {
         type: "internal",
         protocol,
         capabilities: [],
-        scopes: []
-      })
+        scopes: [],
+      }),
     });
     setName("");
     await load();
@@ -120,7 +124,15 @@ export default function AgentsPage() {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: "0.5rem",
+        }}
+      >
         <h1 style={{ margin: 0 }}>Agents</h1>
         <a
           href="/api/export?type=agents"
@@ -132,7 +144,9 @@ export default function AgentsPage() {
             if (!res.ok) return;
             const blob = await res.blob();
             const disposition = res.headers.get("Content-Disposition");
-            const name = disposition?.match(/filename="?([^";]+)"?/)?.[1] ?? `agentron-agents-${new Date().toISOString().slice(0, 10)}.json`;
+            const name =
+              disposition?.match(/filename="?([^";]+)"?/)?.[1] ??
+              `agentron-agents-${new Date().toISOString().slice(0, 10)}.json`;
             const a = document.createElement("a");
             a.href = URL.createObjectURL(blob);
             a.download = name;
@@ -164,7 +178,11 @@ export default function AgentsPage() {
             </div>
             <div className="field">
               <label>Protocol</label>
-              <select className="select" value={protocol} onChange={(e) => setProtocol(e.target.value)}>
+              <select
+                className="select"
+                value={protocol}
+                onChange={(e) => setProtocol(e.target.value)}
+              >
                 <option value="native">native</option>
                 <option value="mcp">mcp</option>
                 <option value="http">http</option>
@@ -177,8 +195,24 @@ export default function AgentsPage() {
         </form>
       </div>
       {agents.length > 0 && (
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "1.5rem", flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.875rem", cursor: "pointer" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            marginTop: "1.5rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.35rem",
+              fontSize: "0.875rem",
+              cursor: "pointer",
+            }}
+          >
             <input
               type="checkbox"
               checked={agents.length > 0 && selectedIds.size === agents.length}
@@ -209,12 +243,24 @@ export default function AgentsPage() {
               checked={selectedIds.has(agent.id)}
               onChange={() => toggleSelect(agent.id)}
               onClick={(e) => e.stopPropagation()}
-              style={{ width: "1rem", height: "1rem", flexShrink: 0, accentColor: "var(--primary)" }}
+              style={{
+                width: "1rem",
+                height: "1rem",
+                flexShrink: 0,
+                accentColor: "var(--primary)",
+              }}
             />
             <Link
               href={agent.id ? `/agents/${encodeURIComponent(agent.id)}` : "/agents"}
               className="list-item"
-              style={{ flex: 1, display: "flex", alignItems: "center", gap: "0.6rem", textDecoration: "none", color: "inherit" }}
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                gap: "0.6rem",
+                textDecoration: "none",
+                color: "inherit",
+              }}
             >
               <Bot size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
               <div>

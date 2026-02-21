@@ -16,10 +16,16 @@ export async function GET(_: Request, { params }: Params) {
 
   const totalPrompt = rows.reduce((s, r) => s + r.promptTokens, 0);
   const totalCompletion = rows.reduce((s, r) => s + r.completionTokens, 0);
-  const totalCost = rows.reduce((s, r) => s + (r.estimatedCost ? parseFloat(r.estimatedCost) : 0), 0);
+  const totalCost = rows.reduce(
+    (s, r) => s + (r.estimatedCost ? parseFloat(r.estimatedCost) : 0),
+    0
+  );
 
   // Group by day for time series
-  const byDay: Record<string, { promptTokens: number; completionTokens: number; cost: number; count: number }> = {};
+  const byDay: Record<
+    string,
+    { promptTokens: number; completionTokens: number; cost: number; count: number }
+  > = {};
   for (const r of rows) {
     const day = new Date(r.createdAt).toISOString().slice(0, 10);
     if (!byDay[day]) byDay[day] = { promptTokens: 0, completionTokens: 0, cost: 0, count: 0 };

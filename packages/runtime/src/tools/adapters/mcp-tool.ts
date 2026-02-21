@@ -17,7 +17,7 @@ export const mcpToolAdapter: ToolAdapter = {
     const client = new MCPClient(config.endpoint);
     return client.callTool({
       toolName: config.toolName,
-      input: input ?? {}
+      input: input ?? {},
     });
-  }
+  },
 };

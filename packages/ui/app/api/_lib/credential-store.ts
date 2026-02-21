@@ -42,8 +42,14 @@ export async function setStoredCredential(
   const key = credentialKey.trim().toLowerCase().replace(/\s+/g, "_") || "credential";
   const plaintext = value.trim();
   const encrypted = encryptWithVaultKey(plaintext, vaultKey);
-  await db.insert(savedCredentials).values({ key, value: encrypted, createdAt: Date.now() })
-    .onConflictDoUpdate({ target: savedCredentials.key, set: { value: encrypted, createdAt: Date.now() } }).run();
+  await db
+    .insert(savedCredentials)
+    .values({ key, value: encrypted, createdAt: Date.now() })
+    .onConflictDoUpdate({
+      target: savedCredentials.key,
+      set: { value: encrypted, createdAt: Date.now() },
+    })
+    .run();
 }
 
 /** Normalize credential key for storage (lowercase, spaces to underscores). */
@@ -54,9 +60,12 @@ export function normalizeCredentialKey(credentialKey: string): string {
 /**
  * List stored credential keys (and createdAt). Does not return values. Requires vault unlocked.
  */
-export async function listStoredCredentialKeys(vaultKey: Buffer | null): Promise<{ key: string; createdAt: number }[]> {
+export async function listStoredCredentialKeys(
+  vaultKey: Buffer | null
+): Promise<{ key: string; createdAt: number }[]> {
   if (!vaultKey) return [];
-  const rows = await db.select({ key: savedCredentials.key, createdAt: savedCredentials.createdAt })
+  const rows = await db
+    .select({ key: savedCredentials.key, createdAt: savedCredentials.createdAt })
     .from(savedCredentials)
     .orderBy(asc(savedCredentials.createdAt));
   return rows.map((r) => ({ key: r.key, createdAt: r.createdAt }));
@@ -73,7 +82,8 @@ export async function updateStoredCredential(
   if (!vaultKey || !value.trim()) return false;
   const key = normalizeCredentialKey(credentialKey);
   const encrypted = encryptWithVaultKey(value.trim(), vaultKey);
-  const result = await db.update(savedCredentials)
+  const result = await db
+    .update(savedCredentials)
     .set({ value: encrypted, createdAt: Date.now() })
     .where(eq(savedCredentials.key, key))
     .run();
@@ -83,7 +93,10 @@ export async function updateStoredCredential(
 /**
  * Delete one stored credential by key. Requires vault unlocked.
  */
-export async function deleteStoredCredential(credentialKey: string, vaultKey: Buffer | null): Promise<boolean> {
+export async function deleteStoredCredential(
+  credentialKey: string,
+  vaultKey: Buffer | null
+): Promise<boolean> {
   if (!vaultKey) return false;
   const key = normalizeCredentialKey(credentialKey);
   const result = await db.delete(savedCredentials).where(eq(savedCredentials.key, key)).run();

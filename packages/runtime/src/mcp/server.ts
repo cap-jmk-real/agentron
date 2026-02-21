@@ -17,7 +17,7 @@ export class MCPServer {
       name,
       {
         description: `AgentOS tool ${name}`,
-        inputSchema: z.any()
+        inputSchema: z.any(),
       },
       async (input) => {
         const output = await handler(input);
@@ -25,10 +25,10 @@ export class MCPServer {
           content: [
             {
               type: "text",
-              text: JSON.stringify(output ?? {})
-            }
+              text: JSON.stringify(output ?? {}),
+            },
           ],
-          structuredContent: output ?? {}
+          structuredContent: output ?? {},
         };
       }
     );
@@ -36,14 +36,21 @@ export class MCPServer {
 
   createExpressApp() {
     const app = createMcpExpressApp();
-    app.post("/mcp", async (req, res) => {
-      const resObj = res as { on(event: string, cb: () => void): void; headersSent: boolean; status(n: number): { json: (x: unknown) => void }; };
+    type Req = { body: unknown };
+    type Res = {
+      on(event: string, cb: () => void): void;
+      headersSent: boolean;
+      status(n: number): { json: (x: unknown) => void };
+    };
+    app.post("/mcp", async (req: unknown, res: unknown) => {
+      const reqTyped = req as Req;
+      const resObj = res as Res;
       try {
         const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: undefined
+          sessionIdGenerator: undefined,
         });
         await this.server.connect(transport);
-        await transport.handleRequest(req, res, (req as { body: unknown }).body);
+        await transport.handleRequest(reqTyped, resObj, reqTyped.body);
         resObj.on("close", () => {
           transport.close();
           this.server.close();
@@ -54,9 +61,9 @@ export class MCPServer {
             jsonrpc: "2.0",
             error: {
               code: -32603,
-              message: "Internal server error"
+              message: "Internal server error",
             },
-            id: null
+            id: null,
           });
         }
       }

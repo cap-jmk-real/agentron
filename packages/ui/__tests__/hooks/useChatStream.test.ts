@@ -52,7 +52,9 @@ describe("useChatStream", () => {
         { type: "rephrased_prompt", rephrasedPrompt: "Rephrased user intent" },
         ctx
       );
-      expect(ctx.updatePlaceholder).toHaveBeenCalledWith({ rephrasedPrompt: "Rephrased user intent" });
+      expect(ctx.updatePlaceholder).toHaveBeenCalledWith({
+        rephrasedPrompt: "Rephrased user intent",
+      });
     });
 
     it("plan updates placeholder with reasoning and todos", () => {
@@ -105,9 +107,7 @@ describe("useChatStream", () => {
     it("todo_done appends index to completedStepIndices on placeholder", () => {
       const ctx = mockCtx();
       ctx.setMessages.mockImplementation((fn: (prev: ChatStreamMessage[]) => ChatStreamMessage[]) =>
-        fn([
-          { id: "ph", role: "assistant", content: "", completedStepIndices: [0] },
-        ])
+        fn([{ id: "ph", role: "assistant", content: "", completedStepIndices: [0] }])
       );
       processChatStreamEvent({ type: "todo_done", index: 1 }, ctx);
       expect(ctx.setMessages).toHaveBeenCalled();
@@ -205,10 +205,7 @@ describe("useChatStream", () => {
 
     it("done with empty toolResults does not call onRunFinished", () => {
       const ctx = mockCtx();
-      processChatStreamEvent(
-        { type: "done", content: "Done.", toolResults: [] },
-        ctx
-      );
+      processChatStreamEvent({ type: "done", content: "Done.", toolResults: [] }, ctx);
       expect(ctx.onRunFinished).not.toHaveBeenCalled();
     });
 
@@ -235,7 +232,11 @@ describe("useChatStream", () => {
           type: "done",
           content: "Run failed",
           toolResults: [
-            { name: "execute_workflow", args: {}, result: { id: "run-1", status: "failed", error: "Workflow error" } },
+            {
+              name: "execute_workflow",
+              args: {},
+              result: { id: "run-1", status: "failed", error: "Workflow error" },
+            },
           ],
         },
         ctx
@@ -250,7 +251,11 @@ describe("useChatStream", () => {
           type: "done",
           content: "Run was stopped",
           toolResults: [
-            { name: "execute_workflow", args: {}, result: { id: "run-2", status: "cancelled", message: "Run was stopped by the user." } },
+            {
+              name: "execute_workflow",
+              args: {},
+              result: { id: "run-2", status: "cancelled", message: "Run was stopped by the user." },
+            },
           ],
         },
         ctx
@@ -264,9 +269,7 @@ describe("useChatStream", () => {
         {
           type: "done",
           content: "",
-          toolResults: [
-            { name: "execute_workflow", args: {}, result: { status: "completed" } },
-          ],
+          toolResults: [{ name: "execute_workflow", args: {}, result: { status: "completed" } }],
         },
         ctx
       );
@@ -276,10 +279,7 @@ describe("useChatStream", () => {
     it("done with toolResults undefined does not throw and does not call onRunFinished", () => {
       const ctx = mockCtx();
       expect(() => {
-        processChatStreamEvent(
-          { type: "done", content: "Ok" },
-          ctx
-        );
+        processChatStreamEvent({ type: "done", content: "Ok" }, ctx);
       }).not.toThrow();
       expect(ctx.onRunFinished).not.toHaveBeenCalled();
     });
@@ -292,13 +292,11 @@ describe("useChatStream", () => {
 
     it("error event updates placeholder with error content when done not received", () => {
       const ctx = mockCtx();
-      processChatStreamEvent(
-        { type: "error", error: "Something broke" },
-        ctx
-      );
-      expect(ctx.updatePlaceholder).toHaveBeenCalledWith(
-        { content: "Error: Something broke", traceSteps: [] }
-      );
+      processChatStreamEvent({ type: "error", error: "Something broke" }, ctx);
+      expect(ctx.updatePlaceholder).toHaveBeenCalledWith({
+        content: "Error: Something broke",
+        traceSteps: [],
+      });
     });
 
     it("error event with messageId updates message id and content via setMessages", () => {
@@ -306,10 +304,7 @@ describe("useChatStream", () => {
       ctx.setMessages.mockImplementation((fn: (prev: ChatStreamMessage[]) => ChatStreamMessage[]) =>
         fn([{ id: "ph", role: "assistant", content: "" }])
       );
-      processChatStreamEvent(
-        { type: "error", error: "Fail", messageId: "err-msg-1" },
-        ctx
-      );
+      processChatStreamEvent({ type: "error", error: "Fail", messageId: "err-msg-1" }, ctx);
       expect(ctx.setMessages).toHaveBeenCalled();
       const updater = ctx.setMessages.mock.calls[0][0];
       const next = updater([{ id: "ph", role: "assistant", content: "" }]);
@@ -318,8 +313,16 @@ describe("useChatStream", () => {
   });
 
   describe("mapApiMessagesToMessage", () => {
-    const noopNormalize = (raw: unknown): { name: string; args: Record<string, unknown>; result: unknown }[] =>
-      Array.isArray(raw) ? raw.map((t: { name?: string; args?: unknown; result?: unknown }) => ({ name: t.name ?? "", args: (t.args ?? {}) as Record<string, unknown>, result: t.result })) : [];
+    const noopNormalize = (
+      raw: unknown
+    ): { name: string; args: Record<string, unknown>; result: unknown }[] =>
+      Array.isArray(raw)
+        ? raw.map((t: { name?: string; args?: unknown; result?: unknown }) => ({
+            name: t.name ?? "",
+            args: (t.args ?? {}) as Record<string, unknown>,
+            result: t.result,
+          }))
+        : [];
 
     it("returns empty array for non-array input", () => {
       expect(mapApiMessagesToMessage(null as unknown as unknown[], noopNormalize)).toEqual([]);

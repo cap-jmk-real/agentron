@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeAll } from "vitest";
 import { getDeploymentCollectionId, retrieveChunks } from "../../../app/api/_lib/rag";
 import { db } from "../../../app/api/_lib/db";
-import { ragCollections, ragVectors } from "@agentron-studio/core";
+import { ragCollections, ragVectors, ragVectorStores } from "@agentron-studio/core";
 import { eq } from "drizzle-orm";
 import { GET as encListGet, POST as encPost } from "../../../app/api/rag/encoding-config/route";
 import { GET as storeListGet, POST as storePost } from "../../../app/api/rag/document-store/route";
 import { POST as collPost } from "../../../app/api/rag/collections/route";
+import { POST as vectorStorePost } from "../../../app/api/rag/vector-store/route";
 import { embed } from "../../../app/api/_lib/embeddings";
+import * as vectorStoreQuery from "../../../app/api/_lib/vector-store-query";
 
 vi.mock("../../../app/api/_lib/embeddings", () => ({
   embed: vi.fn().mockResolvedValue([[0.1, 0.1, 0.1]]),
@@ -200,6 +202,126 @@ describe("rag", () => {
       const chunks = await retrieveChunks(collectionId, "query", 10);
       expect(chunks.every((c) => c.text !== "invalid embedding row")).toBe(true);
       expect(chunks.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("returns empty array when collection has Qdrant store and queryQdrant throws", async () => {
+      const vsRes = await vectorStorePost(
+        new Request("http://localhost/api/rag/vector-store", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Qdrant test",
+            type: "qdrant",
+            config: { endpoint: "http://localhost:6333" },
+          }),
+        })
+      );
+      const vsData = await vsRes.json();
+      const encRes = await encPost(
+        new Request("http://localhost/api/rag/encoding-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Enc qdrant",
+            provider: "openai",
+            modelOrEndpoint: "text-embedding-3-small",
+            dimensions: 3,
+          }),
+        })
+      );
+      const encData = await encRes.json();
+      const storeRes = await storePost(
+        new Request("http://localhost/api/rag/document-store", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Store qdrant",
+            type: "minio",
+            bucket: "b",
+            endpoint: "http://localhost:9000",
+          }),
+        })
+      );
+      const storeData = await storeRes.json();
+      const collRes = await collPost(
+        new Request("http://localhost/api/rag/collections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Coll qdrant",
+            scope: "agent",
+            encodingConfigId: encData.id,
+            documentStoreId: storeData.id,
+            vectorStoreId: vsData.id,
+          }),
+        })
+      );
+      const collData = await collRes.json();
+      vi.spyOn(vectorStoreQuery, "queryQdrant").mockRejectedValueOnce(new Error("Qdrant down"));
+      const chunks = await retrieveChunks(collData.id, "query", 5);
+      expect(chunks).toEqual([]);
+      vi.restoreAllMocks();
+    });
+
+    it("returns empty array when collection has pgvector store and queryPgvector throws", async () => {
+      const vsRes = await vectorStorePost(
+        new Request("http://localhost/api/rag/vector-store", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Pgvector test",
+            type: "pgvector",
+            config: { connectionStringRef: "PG_TEST_REF" },
+          }),
+        })
+      );
+      const vsData = await vsRes.json();
+      const encRes = await encPost(
+        new Request("http://localhost/api/rag/encoding-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Enc pgvector",
+            provider: "openai",
+            modelOrEndpoint: "text-embedding-3-small",
+            dimensions: 3,
+          }),
+        })
+      );
+      const encData = await encRes.json();
+      const storeRes = await storePost(
+        new Request("http://localhost/api/rag/document-store", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Store pgvector",
+            type: "minio",
+            bucket: "b",
+            endpoint: "http://localhost:9000",
+          }),
+        })
+      );
+      const storeData = await storeRes.json();
+      const collRes = await collPost(
+        new Request("http://localhost/api/rag/collections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Coll pgvector",
+            scope: "agent",
+            encodingConfigId: encData.id,
+            documentStoreId: storeData.id,
+            vectorStoreId: vsData.id,
+          }),
+        })
+      );
+      const collData = await collRes.json();
+      vi.spyOn(vectorStoreQuery, "queryPgvector").mockRejectedValueOnce(
+        new Error("pg connection failed")
+      );
+      const chunks = await retrieveChunks(collData.id, "query", 5);
+      expect(chunks).toEqual([]);
+      vi.restoreAllMocks();
     });
   });
 });

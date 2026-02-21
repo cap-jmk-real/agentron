@@ -36,7 +36,10 @@ async function proxy(request: Request, params: { path?: string[] }) {
   if (!host) {
     return new Response("Missing X-Sandbox-Host header", { status: 400 });
   }
-  const rows = await db.select().from(sandboxSiteBindings).where(eq(sandboxSiteBindings.host, host.toLowerCase().trim()));
+  const rows = await db
+    .select()
+    .from(sandboxSiteBindings)
+    .where(eq(sandboxSiteBindings.host, host.toLowerCase().trim()));
   if (rows.length === 0) {
     return new Response("No binding for this host", { status: 404 });
   }

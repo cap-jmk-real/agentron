@@ -25,15 +25,21 @@ export async function POST(request: Request) {
   const key = deriveVaultKey(masterPassword.trim(), salt);
   const check = encryptWithVaultKey(VAULT_CHECK_PLAIN, key);
 
-  await db.insert(vaultMeta).values({
-    id: "default",
-    salt,
-    check,
-    createdAt: Date.now(),
-  }).run();
+  await db
+    .insert(vaultMeta)
+    .values({
+      id: "default",
+      salt,
+      check,
+      createdAt: Date.now(),
+    })
+    .run();
 
   const cookieHeader = buildVaultCookieHeader(key);
-  return json({ ok: true }, {
-    headers: { "Set-Cookie": cookieHeader },
-  });
+  return json(
+    { ok: true },
+    {
+      headers: { "Set-Cookie": cookieHeader },
+    }
+  );
 }

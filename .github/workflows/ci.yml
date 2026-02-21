@@ -24,6 +24,13 @@ jobs:
       - name: Install optional deps (Vitest/coverage)
         run: npm install --include=optional
 
+      - name: Security audit (fail on critical)
+        run: npm audit --audit-level=critical
+        continue-on-error: true
+
+      - name: Check formatting
+        run: npm run format:check
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -32,6 +39,12 @@ jobs:
 
       - name: Test (UI) with coverage
         run: npm run test:coverage
+
+      - name: Check file lengths (max 1000 lines)
+        run: npm run check:file-lengths
+
+      - name: Build docs
+        run: npm run build:docs
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -60,6 +73,9 @@ jobs:
 
       - name: Rebuild better-sqlite3
         run: pnpm rebuild better-sqlite3
+
+      - name: Check formatting
+        run: pnpm run format:check
 
       - name: Typecheck
         run: pnpm run typecheck

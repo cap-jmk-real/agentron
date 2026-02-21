@@ -14,18 +14,33 @@ export async function POST(request: Request, { params }: Params) {
   const versionId = body.versionId as string | undefined;
   const versionNum = typeof body.version === "number" ? body.version : undefined;
 
-  const wfRows = await db.select({ id: workflows.id }).from(workflows).where(eq(workflows.id, workflowId));
+  const wfRows = await db
+    .select({ id: workflows.id })
+    .from(workflows)
+    .where(eq(workflows.id, workflowId));
   if (wfRows.length === 0) {
     return json({ error: "Workflow not found" }, { status: 404 });
   }
 
   let versionRow: { id: string; workflowId: string; version: number; snapshot: string } | undefined;
   if (versionId) {
-    const rows = await db.select().from(workflowVersions).where(eq(workflowVersions.id, versionId)).limit(1);
-    versionRow = rows.length > 0 && rows[0].workflowId === workflowId ? (rows[0] as { id: string; workflowId: string; version: number; snapshot: string }) : undefined;
+    const rows = await db
+      .select()
+      .from(workflowVersions)
+      .where(eq(workflowVersions.id, versionId))
+      .limit(1);
+    versionRow =
+      rows.length > 0 && rows[0].workflowId === workflowId
+        ? (rows[0] as { id: string; workflowId: string; version: number; snapshot: string })
+        : undefined;
   } else if (versionNum != null) {
-    const rows = await db.select().from(workflowVersions).where(eq(workflowVersions.workflowId, workflowId));
-    versionRow = (rows.find((r) => r.version === versionNum) as { id: string; workflowId: string; version: number; snapshot: string } | undefined);
+    const rows = await db
+      .select()
+      .from(workflowVersions)
+      .where(eq(workflowVersions.workflowId, workflowId));
+    versionRow = rows.find((r) => r.version === versionNum) as
+      | { id: string; workflowId: string; version: number; snapshot: string }
+      | undefined;
   }
   if (!versionRow) {
     return json({ error: "Version not found (use versionId or version)" }, { status: 404 });
@@ -41,7 +56,11 @@ export async function POST(request: Request, { params }: Params) {
     return json({ error: "Snapshot does not match workflow" }, { status: 400 });
   }
 
-  await db.update(workflows).set(snapshot as Record<string, unknown>).where(eq(workflows.id, workflowId)).run();
+  await db
+    .update(workflows)
+    .set(snapshot as Record<string, unknown>)
+    .where(eq(workflows.id, workflowId))
+    .run();
   refreshScheduledWorkflows();
   return json({ id: workflowId, version: versionRow.version, message: "Workflow rolled back" });
 }

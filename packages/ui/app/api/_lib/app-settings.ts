@@ -12,6 +12,8 @@ const MAX_SELF_FIX_RETRIES = 10;
 
 export type ContainerEngine = "podman" | "docker";
 
+export type WebSearchProvider = "duckduckgo" | "brave" | "google";
+
 export type AppSettings = {
   maxFileUploadBytes: number;
   containerEngine: ContainerEngine;
@@ -19,6 +21,14 @@ export type AppSettings = {
   shellCommandAllowlist: string[];
   /** Max automatic retries per workflow agent step when a tool fails and the agent would request_user_help. 0 = disabled. */
   workflowMaxSelfFixRetries: number;
+  /** Web search provider for std-web-search. Default duckduckgo. */
+  webSearchProvider?: WebSearchProvider;
+  /** Brave Search API key when webSearchProvider is brave. */
+  braveSearchApiKey?: string;
+  /** Google CSE API key when webSearchProvider is google. */
+  googleCseKey?: string;
+  /** Google CSE CX (search engine ID) when webSearchProvider is google. */
+  googleCseCx?: string;
 };
 
 function getSettingsPath(): string {
@@ -70,7 +80,9 @@ export function getContainerEngine(): ContainerEngine {
  */
 function normalizeShellCommandAllowlist(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
-  return v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim());
+  return v
+    .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    .map((s) => s.trim());
 }
 
 export function getShellCommandAllowlist(): string[] {
@@ -78,12 +90,26 @@ export function getShellCommandAllowlist(): string[] {
 }
 
 function normalizeWorkflowMaxSelfFixRetries(v: unknown): number {
-  const n = typeof v === "number" && !Number.isNaN(v) ? Math.floor(v) : DEFAULT_WORKFLOW_MAX_SELF_FIX_RETRIES;
+  const n =
+    typeof v === "number" && !Number.isNaN(v)
+      ? Math.floor(v)
+      : DEFAULT_WORKFLOW_MAX_SELF_FIX_RETRIES;
   return Math.min(MAX_SELF_FIX_RETRIES, Math.max(MIN_SELF_FIX_RETRIES, n));
 }
 
 export function getWorkflowMaxSelfFixRetries(): number {
   return normalizeWorkflowMaxSelfFixRetries(loadRaw().workflowMaxSelfFixRetries);
+}
+
+function normalizeWebSearchProvider(v: unknown): WebSearchProvider {
+  if (v === "brave" || v === "google") return v;
+  return "duckduckgo";
+}
+
+function normalizeOptionalString(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const s = v.trim();
+  return s.length > 0 ? s : undefined;
 }
 
 export function getAppSettings(): AppSettings {
@@ -95,8 +121,23 @@ export function getAppSettings(): AppSettings {
       : DEFAULT_MAX_FILE_UPLOAD_BYTES;
   const containerEngine = normalizeContainerEngine(raw.containerEngine);
   const shellCommandAllowlist = normalizeShellCommandAllowlist(raw.shellCommandAllowlist);
-  const workflowMaxSelfFixRetries = normalizeWorkflowMaxSelfFixRetries(raw.workflowMaxSelfFixRetries);
-  return { maxFileUploadBytes, containerEngine, shellCommandAllowlist, workflowMaxSelfFixRetries };
+  const workflowMaxSelfFixRetries = normalizeWorkflowMaxSelfFixRetries(
+    raw.workflowMaxSelfFixRetries
+  );
+  const webSearchProvider = normalizeWebSearchProvider(raw.webSearchProvider);
+  const braveSearchApiKey = normalizeOptionalString(raw.braveSearchApiKey);
+  const googleCseKey = normalizeOptionalString(raw.googleCseKey);
+  const googleCseCx = normalizeOptionalString(raw.googleCseCx);
+  return {
+    maxFileUploadBytes,
+    containerEngine,
+    shellCommandAllowlist,
+    workflowMaxSelfFixRetries,
+    webSearchProvider,
+    braveSearchApiKey,
+    googleCseKey,
+    googleCseCx,
+  };
 }
 
 /**
@@ -113,12 +154,43 @@ export function updateAppSettings(updates: Partial<AppSettings>): AppSettings {
     }
   }
   const containerEngine =
-    updates.containerEngine !== undefined ? normalizeContainerEngine(updates.containerEngine) : current.containerEngine;
+    updates.containerEngine !== undefined
+      ? normalizeContainerEngine(updates.containerEngine)
+      : current.containerEngine;
   const shellCommandAllowlist =
-    updates.shellCommandAllowlist !== undefined ? normalizeShellCommandAllowlist(updates.shellCommandAllowlist) : current.shellCommandAllowlist;
+    updates.shellCommandAllowlist !== undefined
+      ? normalizeShellCommandAllowlist(updates.shellCommandAllowlist)
+      : current.shellCommandAllowlist;
   const workflowMaxSelfFixRetries =
-    updates.workflowMaxSelfFixRetries !== undefined ? normalizeWorkflowMaxSelfFixRetries(updates.workflowMaxSelfFixRetries) : current.workflowMaxSelfFixRetries;
-  const next: AppSettings = { maxFileUploadBytes, containerEngine, shellCommandAllowlist, workflowMaxSelfFixRetries };
+    updates.workflowMaxSelfFixRetries !== undefined
+      ? normalizeWorkflowMaxSelfFixRetries(updates.workflowMaxSelfFixRetries)
+      : current.workflowMaxSelfFixRetries;
+  const webSearchProvider =
+    updates.webSearchProvider !== undefined
+      ? normalizeWebSearchProvider(updates.webSearchProvider)
+      : current.webSearchProvider;
+  const braveSearchApiKey =
+    updates.braveSearchApiKey !== undefined
+      ? normalizeOptionalString(updates.braveSearchApiKey)
+      : current.braveSearchApiKey;
+  const googleCseKey =
+    updates.googleCseKey !== undefined
+      ? normalizeOptionalString(updates.googleCseKey)
+      : current.googleCseKey;
+  const googleCseCx =
+    updates.googleCseCx !== undefined
+      ? normalizeOptionalString(updates.googleCseCx)
+      : current.googleCseCx;
+  const next: AppSettings = {
+    maxFileUploadBytes,
+    containerEngine,
+    shellCommandAllowlist,
+    workflowMaxSelfFixRetries,
+    webSearchProvider,
+    braveSearchApiKey,
+    googleCseKey,
+    googleCseCx,
+  };
   save(next);
   return next;
 }

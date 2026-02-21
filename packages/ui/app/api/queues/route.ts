@@ -14,7 +14,12 @@ export type ChatTraceEntry = {
   messageId: string;
   createdAt: number;
   toolCalls: Array<{ name: string; args?: Record<string, unknown>; result?: unknown }>;
-  llmTrace: Array<{ phase?: string; messageCount?: number; responsePreview?: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }>;
+  llmTrace: Array<{
+    phase?: string;
+    messageCount?: number;
+    responsePreview?: string;
+    usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+  }>;
 };
 
 export type MessageQueueLogEntry = {
@@ -93,10 +98,28 @@ export async function GET() {
       .filter((cid) => byConversation.has(cid))
       .map((conversationId) => {
         const row = byConversation.get(conversationId)!;
-        const toolCallsRaw = parseJson<Array<{ name?: string; args?: Record<string, unknown>; arguments?: Record<string, unknown>; result?: unknown }>>(row.toolCalls);
-        const llmTraceRaw = parseJson<Array<{ phase?: string; messageCount?: number; responsePreview?: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }>>(row.llmTrace);
+        const toolCallsRaw = parseJson<
+          Array<{
+            name?: string;
+            args?: Record<string, unknown>;
+            arguments?: Record<string, unknown>;
+            result?: unknown;
+          }>
+        >(row.toolCalls);
+        const llmTraceRaw = parseJson<
+          Array<{
+            phase?: string;
+            messageCount?: number;
+            responsePreview?: string;
+            usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+          }>
+        >(row.llmTrace);
         const toolCalls = Array.isArray(toolCallsRaw)
-          ? toolCallsRaw.map((t) => ({ name: typeof t.name === "string" ? t.name : "", args: t.args ?? t.arguments, result: t.result }))
+          ? toolCallsRaw.map((t) => ({
+              name: typeof t.name === "string" ? t.name : "",
+              args: t.args ?? t.arguments,
+              result: t.result,
+            }))
           : [];
         const llmTrace = Array.isArray(llmTraceRaw) ? llmTraceRaw : [];
         return {

@@ -33,20 +33,33 @@ export async function POST(request: Request) {
 
   const maxBytes = getMaxFileUploadBytes();
   if (file.size > maxBytes) {
-    return json({ error: `File too large (max ${formatMaxFileUploadMb(maxBytes)})` }, { status: 413 });
+    return json(
+      { error: `File too large (max ${formatMaxFileUploadMb(maxBytes)})` },
+      { status: 413 }
+    );
   }
 
-  let collectionId = (formData.get("collectionId") as string) || (await getDeploymentCollectionId());
+  let collectionId =
+    (formData.get("collectionId") as string) || (await getDeploymentCollectionId());
   if (!collectionId) {
-    return json({ error: "No collection specified and no deployment collection configured" }, { status: 400 });
+    return json(
+      { error: "No collection specified and no deployment collection configured" },
+      { status: 400 }
+    );
   }
 
-  const collRows = await db.select().from(ragCollections).where(eq(ragCollections.id, collectionId));
+  const collRows = await db
+    .select()
+    .from(ragCollections)
+    .where(eq(ragCollections.id, collectionId));
   if (collRows.length === 0) {
     return json({ error: "Collection not found" }, { status: 404 });
   }
   const collection = collRows[0];
-  const storeRows = await db.select().from(ragDocumentStores).where(eq(ragDocumentStores.id, collection.documentStoreId));
+  const storeRows = await db
+    .select()
+    .from(ragDocumentStores)
+    .where(eq(ragDocumentStores.id, collection.documentStoreId));
   const store = storeRows[0];
 
   const id = crypto.randomUUID();
@@ -73,7 +86,12 @@ export async function POST(request: Request) {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return json({ error: `Bucket upload failed: ${msg}. Check document store credentials (credentialsRef env var).` }, { status: 502 });
+      return json(
+        {
+          error: `Bucket upload failed: ${msg}. Check document store credentials (credentialsRef env var).`,
+        },
+        { status: 502 }
+      );
     }
   } else {
     const uploadsDir = ensureRagUploadsDir(collectionId);

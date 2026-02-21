@@ -13,13 +13,23 @@ export async function GET() {
       provider: r.provider,
       modelOrEndpoint: r.modelOrEndpoint,
       dimensions: r.dimensions,
+      embeddingProviderId: r.embeddingProviderId ?? undefined,
+      endpoint: r.endpoint ?? undefined,
       createdAt: r.createdAt,
     }))
   );
 }
 
 export async function POST(request: Request) {
-  let body: { id?: string; name: string; provider: string; modelOrEndpoint: string; dimensions: number };
+  let body: {
+    id?: string;
+    name: string;
+    provider?: string;
+    modelOrEndpoint: string;
+    dimensions: number;
+    embeddingProviderId?: string | null;
+    endpoint?: string | null;
+  };
   try {
     body = await request.json();
   } catch {
@@ -27,14 +37,17 @@ export async function POST(request: Request) {
   }
   const id = body.id ?? crypto.randomUUID();
   const now = Date.now();
+  const provider = body.embeddingProviderId != null ? "openai" : (body.provider ?? "openai");
   await db
     .insert(ragEncodingConfigs)
     .values({
       id,
       name: body.name,
-      provider: body.provider,
+      provider,
       modelOrEndpoint: body.modelOrEndpoint,
       dimensions: body.dimensions,
+      embeddingProviderId: body.embeddingProviderId ?? null,
+      endpoint: body.endpoint ?? null,
       createdAt: now,
     })
     .run();
@@ -42,9 +55,11 @@ export async function POST(request: Request) {
     {
       id,
       name: body.name,
-      provider: body.provider,
+      provider: body.embeddingProviderId != null ? undefined : provider,
       modelOrEndpoint: body.modelOrEndpoint,
       dimensions: body.dimensions,
+      embeddingProviderId: body.embeddingProviderId ?? undefined,
+      endpoint: body.endpoint ?? undefined,
       createdAt: now,
     },
     { status: 201 }

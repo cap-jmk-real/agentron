@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       id,
       name: body.name,
       scope: body.scope,
-      agentId: body.scope === "agent" ? body.agentId ?? null : null,
+      agentId: body.scope === "agent" ? (body.agentId ?? null) : null,
       encodingConfigId: body.encodingConfigId,
       documentStoreId: body.documentStoreId,
       vectorStoreId: body.vectorStoreId ?? null,

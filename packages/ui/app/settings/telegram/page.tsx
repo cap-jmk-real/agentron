@@ -31,7 +31,11 @@ export default function TelegramSettingsPage() {
   const [enabled, setEnabled] = useState(false);
   const [usePolling, setUsePolling] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; username?: string; error?: string } | null>(null);
+  const [testResult, setTestResult] = useState<{
+    ok: boolean;
+    username?: string;
+    error?: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -124,25 +128,60 @@ export default function TelegramSettingsPage() {
       <div className="card" style={{ padding: "1.25rem", marginBottom: "1rem" }}>
         <h1 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "0.5rem" }}>Telegram</h1>
         <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
-          Use Telegram to delegate tasks and reply when Agentron needs your input. Same as the in-app chat, from your phone or desktop.
+          Use Telegram to delegate tasks and reply when Agentron needs your input. Same as the
+          in-app chat, from your phone or desktop.
         </p>
 
         <div style={{ marginBottom: "1.25rem" }}>
-          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.35rem" }}>Step 1: Create a bot</div>
-          <ol style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: "0 0 0 1.25rem", padding: 0 }}>
-            <li>Open Telegram and search for <strong>@BotFather</strong>.</li>
-            <li>Send <code style={{ background: "var(--bg-muted)", padding: "0.1rem 0.3rem", borderRadius: 4 }}>/newbot</code>.</li>
+          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.35rem" }}>
+            Step 1: Create a bot
+          </div>
+          <ol
+            style={{
+              fontSize: "0.85rem",
+              color: "var(--text-muted)",
+              margin: "0 0 0 1.25rem",
+              padding: 0,
+            }}
+          >
+            <li>
+              Open Telegram and search for <strong>@BotFather</strong>.
+            </li>
+            <li>
+              Send{" "}
+              <code
+                style={{ background: "var(--bg-muted)", padding: "0.1rem 0.3rem", borderRadius: 4 }}
+              >
+                /newbot
+              </code>
+              .
+            </li>
             <li>Choose a name and a username (e.g. MyAgentronBot).</li>
             <li>Copy the token BotFather sends you.</li>
           </ol>
-          <a href={BOTFATHER_URL} target="_blank" rel="noopener noreferrer" style={{ fontSize: "0.85rem", color: "var(--primary)" }}>
+          <a
+            href={BOTFATHER_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: "0.85rem", color: "var(--primary)" }}
+          >
             Open @BotFather in Telegram →
           </a>
         </div>
 
         <div style={{ marginBottom: "1.25rem" }}>
-          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.35rem" }}>Step 2: Bot token</div>
-          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", fontSize: "0.85rem" }}>
+          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.35rem" }}>
+            Step 2: Bot token
+          </div>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              marginBottom: "0.5rem",
+              fontSize: "0.85rem",
+            }}
+          >
             <input
               type="checkbox"
               checked={useEnvVar}
@@ -163,7 +202,9 @@ export default function TelegramSettingsPage() {
             <input
               type="password"
               className="input"
-              placeholder={settings?.hasToken ? "•••••••• (already set)" : "Paste your bot token here"}
+              placeholder={
+                settings?.hasToken ? "•••••••• (already set)" : "Paste your bot token here"
+              }
               value={botToken}
               onChange={(e) => setBotToken(e.target.value)}
               style={{ width: "100%", maxWidth: 400 }}
@@ -181,37 +222,89 @@ export default function TelegramSettingsPage() {
             {testing ? "Testing…" : "Test connection"}
           </button>
           {testResult && (
-            <span style={{ marginLeft: "0.75rem", fontSize: "0.85rem", color: testResult.ok ? "var(--success)" : "var(--danger)" }}>
+            <span
+              style={{
+                marginLeft: "0.75rem",
+                fontSize: "0.85rem",
+                color: testResult.ok ? "var(--success)" : "var(--danger)",
+              }}
+            >
               {testResult.ok ? `Connected as ${testResult.username ?? "bot"}` : testResult.error}
             </span>
           )}
         </div>
 
         <div style={{ marginBottom: "1.25rem" }}>
-          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.35rem" }}>Step 3: How to receive messages</div>
+          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.35rem" }}>
+            Step 3: How to receive messages
+          </div>
           <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
-            <strong>Polling</strong> (recommended if you run on localhost): the app fetches new messages from Telegram periodically. No webhook or public URL needed. Just enable Telegram below and save.
+            <strong>Polling</strong> (recommended if you run on localhost): the app fetches new
+            messages from Telegram periodically. No webhook or public URL needed. Just enable
+            Telegram below and save.
           </p>
           <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
-            <strong>Webhook</strong>: Telegram pushes messages to a public URL. Use this if your app is reachable from the internet (e.g. with a tunnel like ngrok or Cloudflare Tunnel).
+            <strong>Webhook</strong>: Telegram pushes messages to a public URL. Use this if your app
+            is reachable from the internet (e.g. with a tunnel like ngrok or Cloudflare Tunnel).
           </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "0.75rem" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}>
-              <input type="radio" name="delivery" checked={usePolling} onChange={() => setUsePolling(true)} />
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.5rem",
+              marginBottom: "0.75rem",
+            }}
+          >
+            <label
+              style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}
+            >
+              <input
+                type="radio"
+                name="delivery"
+                checked={usePolling}
+                onChange={() => setUsePolling(true)}
+              />
               Use polling (no webhook) — works on localhost
             </label>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}>
-              <input type="radio" name="delivery" checked={!usePolling} onChange={() => setUsePolling(false)} />
+            <label
+              style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}
+            >
+              <input
+                type="radio"
+                name="delivery"
+                checked={!usePolling}
+                onChange={() => setUsePolling(false)}
+              />
               Use webhook (set URL below)
             </label>
           </div>
           {!usePolling && (
             <>
               <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
-                Set your bot&apos;s webhook to this URL. In Telegram, send <code style={{ background: "var(--bg-muted)", padding: "0.1rem 0.3rem", borderRadius: 4 }}>/setwebhook</code> to @BotFather, then paste the URL.
+                Set your bot&apos;s webhook to this URL. In Telegram, send{" "}
+                <code
+                  style={{
+                    background: "var(--bg-muted)",
+                    padding: "0.1rem 0.3rem",
+                    borderRadius: 4,
+                  }}
+                >
+                  /setwebhook
+                </code>{" "}
+                to @BotFather, then paste the URL.
               </p>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                <code style={{ fontSize: "0.8rem", background: "var(--bg-muted)", padding: "0.35rem 0.5rem", borderRadius: 4, wordBreak: "break-all" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}
+              >
+                <code
+                  style={{
+                    fontSize: "0.8rem",
+                    background: "var(--bg-muted)",
+                    padding: "0.35rem 0.5rem",
+                    borderRadius: 4,
+                    wordBreak: "break-all",
+                  }}
+                >
                   {getWebhookUrl()}
                 </code>
                 <button
@@ -224,23 +317,53 @@ export default function TelegramSettingsPage() {
                 </button>
               </div>
               <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.5rem" }}>
-                Optional: set <code style={{ background: "var(--bg-muted)", padding: "0.1rem 0.2rem", borderRadius: 2 }}>TELEGRAM_WEBHOOK_SECRET</code> and add <code style={{ background: "var(--bg-muted)", padding: "0.1rem 0.2rem", borderRadius: 2 }}>?secret=YOUR_SECRET</code> to the webhook URL.
+                Optional: set{" "}
+                <code
+                  style={{
+                    background: "var(--bg-muted)",
+                    padding: "0.1rem 0.2rem",
+                    borderRadius: 2,
+                  }}
+                >
+                  TELEGRAM_WEBHOOK_SECRET
+                </code>{" "}
+                and add{" "}
+                <code
+                  style={{
+                    background: "var(--bg-muted)",
+                    padding: "0.1rem 0.2rem",
+                    borderRadius: 2,
+                  }}
+                >
+                  ?secret=YOUR_SECRET
+                </code>{" "}
+                to the webhook URL.
               </p>
             </>
           )}
         </div>
 
         <div style={{ marginBottom: "1.25rem" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}>
-            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+          <label
+            style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}
+          >
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+            />
             Enable Telegram (bot will accept messages when running)
           </label>
         </div>
 
         <div style={{ marginBottom: "1.25rem" }}>
-          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.35rem" }}>Notification chat ID (optional)</div>
+          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.35rem" }}>
+            Notification chat ID (optional)
+          </div>
           <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
-            When a run needs your input, the bot can send the question to this chat. Send any message to your bot (e.g. /start), then use a tool like @userinfobot to get your chat ID and paste it here.
+            When a run needs your input, the bot can send the question to this chat. Send any
+            message to your bot (e.g. /start), then use a tool like @userinfobot to get your chat ID
+            and paste it here.
           </p>
           <input
             type="text"
@@ -253,7 +376,9 @@ export default function TelegramSettingsPage() {
         </div>
 
         {saveError && (
-          <p style={{ fontSize: "0.85rem", color: "var(--danger)", marginBottom: "0.75rem" }}>{saveError}</p>
+          <p style={{ fontSize: "0.85rem", color: "var(--danger)", marginBottom: "0.75rem" }}>
+            {saveError}
+          </p>
         )}
         <button type="button" className="button primary" onClick={handleSave} disabled={saving}>
           {saving ? "Saving…" : "Save"}
@@ -261,7 +386,9 @@ export default function TelegramSettingsPage() {
       </div>
 
       <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
-        <Link href="/settings" style={{ color: "var(--primary)" }}>← General settings</Link>
+        <Link href="/settings" style={{ color: "var(--primary)" }}>
+          ← General settings
+        </Link>
       </p>
     </div>
   );

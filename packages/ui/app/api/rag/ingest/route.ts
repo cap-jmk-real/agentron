@@ -6,6 +6,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { embed } from "../../_lib/embeddings";
 import { getObject } from "../../_lib/s3";
+import { extractText } from "../../_lib/rag-extract";
 
 export const runtime = "nodejs";
 const CHUNK_SIZE = 500;
@@ -45,19 +46,25 @@ export async function POST(request: Request) {
   const doc = docRows[0];
   const collectionId = doc.collectionId;
 
-  const collRows = await db.select().from(ragCollections).where(eq(ragCollections.id, collectionId));
+  const collRows = await db
+    .select()
+    .from(ragCollections)
+    .where(eq(ragCollections.id, collectionId));
   if (collRows.length === 0) return json({ error: "Collection not found" }, { status: 404 });
   const collection = collRows[0];
   const encodingConfigId = collection.encodingConfigId;
 
-  const storeRows = await db.select().from(ragDocumentStores).where(eq(ragDocumentStores.id, collection.documentStoreId));
+  const storeRows = await db
+    .select()
+    .from(ragDocumentStores)
+    .where(eq(ragDocumentStores.id, collection.documentStoreId));
   const store = storeRows[0];
   const useS3 = store && (store.type === "s3" || store.type === "minio");
 
-  let raw: string;
+  let buffer: Buffer;
   if (useS3) {
     try {
-      const buf = await getObject(
+      buffer = await getObject(
         {
           id: store.id,
           type: store.type,
@@ -68,7 +75,6 @@ export async function POST(request: Request) {
         },
         doc.storePath
       );
-      raw = buf.toString("utf-8");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return json({ error: `Failed to fetch document from bucket: ${msg}` }, { status: 502 });
@@ -77,10 +83,14 @@ export async function POST(request: Request) {
     const fileName = doc.storePath.replace(/^uploads\//, "");
     const localPath = path.join(getRagUploadsDir(), collectionId, fileName);
     if (!fs.existsSync(localPath)) {
-      return json({ error: "Document file not found on disk. Use bundled storage or re-upload." }, { status: 404 });
+      return json(
+        { error: "Document file not found on disk. Use bundled storage or re-upload." },
+        { status: 404 }
+      );
     }
-    raw = fs.readFileSync(localPath, "utf-8");
+    buffer = fs.readFileSync(localPath);
   }
+  const raw = doc.mimeType ? await extractText(buffer, doc.mimeType) : buffer.toString("utf-8");
   const chunks = chunkText(raw);
   if (chunks.length === 0) return json({ error: "No text to embed" }, { status: 400 });
 

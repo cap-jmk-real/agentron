@@ -29,23 +29,42 @@ export async function testRemoteConnection(params: {
   if (params.authType === "password") {
     return {
       ok: false,
-      message: "Automated test with password is not supported for security. Ask the user to test manually: `ssh " + params.user + "@" + params.host + " -p " + port + "`. If it works, they can ask you to save the server (you will not store the password).",
+      message:
+        "Automated test with password is not supported for security. Ask the user to test manually: `ssh " +
+        params.user +
+        "@" +
+        params.host +
+        " -p " +
+        port +
+        "`. If it works, they can ask you to save the server (you will not store the password).",
       guidance: REMOTE_CONNECTION_GUIDANCE,
     };
   }
   if (!params.keyPath) {
     return {
       ok: false,
-      message: "To test from here the user must provide a key path (keyPath). Otherwise ask them to test manually with `ssh " + params.user + "@" + params.host + " -p " + port + "` and then ask if they want to save the server.",
+      message:
+        "To test from here the user must provide a key path (keyPath). Otherwise ask them to test manually with `ssh " +
+        params.user +
+        "@" +
+        params.host +
+        " -p " +
+        port +
+        "` and then ask if they want to save the server.",
       guidance: REMOTE_CONNECTION_GUIDANCE,
     };
   }
   const args = [
-    "-o", "BatchMode=yes",
-    "-o", "ConnectTimeout=10",
-    "-o", "StrictHostKeyChecking=accept-new",
-    "-i", params.keyPath,
-    "-p", String(port),
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=10",
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    "-i",
+    params.keyPath,
+    "-p",
+    String(port),
     `${params.user}@${params.host}`,
     "exit",
   ];
@@ -55,7 +74,11 @@ export async function testRemoteConnection(params: {
     let done = false;
     let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
       proc.kill("SIGTERM");
-      finish({ ok: false, message: "Connection timed out after 15s.", guidance: REMOTE_CONNECTION_GUIDANCE });
+      finish({
+        ok: false,
+        message: "Connection timed out after 15s.",
+        guidance: REMOTE_CONNECTION_GUIDANCE,
+      });
     }, 15000);
     const finish = (r: TestRemoteResult) => {
       if (!done) {
@@ -67,12 +90,25 @@ export async function testRemoteConnection(params: {
         resolve(r);
       }
     };
-    proc.stderr?.on("data", (d) => { stderr += d; });
+    proc.stderr?.on("data", (d) => {
+      stderr += d;
+    });
     proc.on("close", (code) => {
       if (code === 0) finish({ ok: true, message: "SSH connection succeeded." });
-      else finish({ ok: false, message: "SSH connection failed. " + (stderr || `Exit code ${code}`).trim(), guidance: REMOTE_CONNECTION_GUIDANCE });
+      else
+        finish({
+          ok: false,
+          message: "SSH connection failed. " + (stderr || `Exit code ${code}`).trim(),
+          guidance: REMOTE_CONNECTION_GUIDANCE,
+        });
     });
-    proc.on("error", (err) => finish({ ok: false, message: "Failed to run ssh: " + err.message, guidance: REMOTE_CONNECTION_GUIDANCE }));
+    proc.on("error", (err) =>
+      finish({
+        ok: false,
+        message: "Failed to run ssh: " + err.message,
+        guidance: REMOTE_CONNECTION_GUIDANCE,
+      })
+    );
   });
   return result;
 }

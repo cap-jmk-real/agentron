@@ -53,10 +53,7 @@ export async function GET(request: Request) {
       cursorCreatedAt != null && cursorId != null
         ? or(
             gt(messageQueueLog.createdAt, cursorCreatedAt),
-            and(
-              eq(messageQueueLog.createdAt, cursorCreatedAt),
-              gt(messageQueueLog.id, cursorId)
-            )
+            and(eq(messageQueueLog.createdAt, cursorCreatedAt), gt(messageQueueLog.id, cursorId))
           )
         : undefined;
 
@@ -77,18 +74,12 @@ export async function GET(request: Request) {
     }));
     const hasMore = rows.length > limitSafe;
     const last = steps[steps.length - 1];
-    const nextCursor =
-      hasMore && last
-        ? `${last.createdAt},${last.id}`
-        : null;
+    const nextCursor = hasMore && last ? `${last.createdAt},${last.id}` : null;
 
     return json({ steps, nextCursor });
   }
 
-  const limit = Math.min(
-    limitParam ? parseInt(limitParam, 10) : DEFAULT_CONVERSATIONS_LIMIT,
-    100
-  );
+  const limit = Math.min(limitParam ? parseInt(limitParam, 10) : DEFAULT_CONVERSATIONS_LIMIT, 100);
   const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
   const limitSafe = Math.max(1, Number.isNaN(limit) ? DEFAULT_CONVERSATIONS_LIMIT : limit);
   const offsetSafe = Math.max(0, Number.isNaN(offset) ? 0 : offset);

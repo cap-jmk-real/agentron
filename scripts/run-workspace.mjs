@@ -37,7 +37,13 @@ if (workspace === "all") {
     const args = ["-r", "run", script, ...(extraArgs.length ? ["--", ...extraArgs] : [])];
     run(`pnpm ${args.join(" ")}`);
   } else {
-    const args = ["run", script, "--workspaces", "--if-present", ...(extraArgs.length ? ["--", ...extraArgs] : [])];
+    const args = [
+      "run",
+      script,
+      "--workspaces",
+      "--if-present",
+      ...(extraArgs.length ? ["--", ...extraArgs] : []),
+    ];
     run(`npm ${args.join(" ")}`);
   }
   process.exit(0);
@@ -52,9 +58,20 @@ if (usePnpm) {
   }
   const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
   const pkgName = pkg.name;
-  const args = ["--filter", pkgName, "run", script, ...(extraArgs.length ? ["--", ...extraArgs] : [])];
+  const args = [
+    "--filter",
+    pkgName,
+    "run",
+    script,
+    ...(extraArgs.length ? ["--", ...extraArgs] : []),
+  ];
   run(`pnpm ${args.join(" ")}`);
 } else {
-  const args = ["run", script, `--workspace=${workspace}`, ...(extraArgs.length ? ["--", ...extraArgs] : [])];
+  const args = [
+    "run",
+    script,
+    `--workspace=${workspace}`,
+    ...(extraArgs.length ? ["--", ...extraArgs] : []),
+  ];
   run(`npm ${args.join(" ")}`);
 }

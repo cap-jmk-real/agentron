@@ -1,6 +1,11 @@
 import { json } from "../../../../_lib/response";
 import { db, getRagUploadsDir } from "../../../../_lib/db";
-import { ragConnectors, ragCollections, ragDocumentStores, ragDocuments } from "@agentron-studio/core";
+import {
+  ragConnectors,
+  ragCollections,
+  ragDocumentStores,
+  ragDocuments,
+} from "@agentron-studio/core";
 import { eq } from "drizzle-orm";
 import path from "node:path";
 import fs from "node:fs";
@@ -22,10 +27,16 @@ export async function POST(_: Request, { params }: Params) {
   const config = connector.config ? (JSON.parse(connector.config) as Record<string, unknown>) : {};
   const collectionId = connector.collectionId;
 
-  const collRows = await db.select().from(ragCollections).where(eq(ragCollections.id, collectionId));
+  const collRows = await db
+    .select()
+    .from(ragCollections)
+    .where(eq(ragCollections.id, collectionId));
   if (collRows.length === 0) return json({ error: "Collection not found" }, { status: 404 });
   const collection = collRows[0];
-  const storeRows = await db.select().from(ragDocumentStores).where(eq(ragDocumentStores.id, collection.documentStoreId));
+  const storeRows = await db
+    .select()
+    .from(ragDocumentStores)
+    .where(eq(ragDocumentStores.id, collection.documentStoreId));
   const store = storeRows[0];
   const useS3 = store && (store.type === "s3" || store.type === "minio");
 
@@ -33,16 +44,28 @@ export async function POST(_: Request, { params }: Params) {
     const folderId = (config.folderId as string) || "root";
     const serviceAccountKeyRef = config.serviceAccountKeyRef as string | undefined;
     if (!serviceAccountKeyRef || !process.env[serviceAccountKeyRef]) {
-      await db.update(ragConnectors).set({ status: "error", lastSyncAt: Date.now() }).where(eq(ragConnectors.id, id)).run();
-      return json({
-        error: "Google Drive sync requires serviceAccountKeyRef pointing to an env var with the service account JSON key.",
-      }, { status: 400 });
+      await db
+        .update(ragConnectors)
+        .set({ status: "error", lastSyncAt: Date.now() })
+        .where(eq(ragConnectors.id, id))
+        .run();
+      return json(
+        {
+          error:
+            "Google Drive sync requires serviceAccountKeyRef pointing to an env var with the service account JSON key.",
+        },
+        { status: 400 }
+      );
     }
     let credentials: unknown;
     try {
       credentials = JSON.parse(process.env[serviceAccountKeyRef]!);
     } catch {
-      await db.update(ragConnectors).set({ status: "error", lastSyncAt: Date.now() }).where(eq(ragConnectors.id, id)).run();
+      await db
+        .update(ragConnectors)
+        .set({ status: "error", lastSyncAt: Date.now() })
+        .where(eq(ragConnectors.id, id))
+        .run();
       return json({ error: "Invalid service account JSON in env var." }, { status: 400 });
     }
 
@@ -51,7 +74,10 @@ export async function POST(_: Request, { params }: Params) {
       scopes: ["https://www.googleapis.com/auth/drive.readonly"],
     });
     const drive = google.drive({ version: "v3", auth });
-    const q = folderId === "root" ? "'root' in parents and trashed = false" : `'${folderId}' in parents and trashed = false`;
+    const q =
+      folderId === "root"
+        ? "'root' in parents and trashed = false"
+        : `'${folderId}' in parents and trashed = false`;
     const listRes = await drive.files.list({
       q,
       pageSize: 50,
@@ -103,25 +129,39 @@ export async function POST(_: Request, { params }: Params) {
         }
 
         const now = Date.now();
-        await db.insert(ragDocuments).values({
-          id: docId,
-          collectionId,
-          externalId: file.id,
-          storePath: useS3 ? storePath : localStorePath,
-          mimeType,
-          metadata: JSON.stringify({ source: "google_drive", name: file.name }),
-          createdAt: now,
-        }).run();
+        await db
+          .insert(ragDocuments)
+          .values({
+            id: docId,
+            collectionId,
+            externalId: file.id,
+            storePath: useS3 ? storePath : localStorePath,
+            mimeType,
+            metadata: JSON.stringify({ source: "google_drive", name: file.name }),
+            createdAt: now,
+          })
+          .run();
         synced++;
       } catch (err) {
         // skip file on error, continue
       }
     }
 
-    await db.update(ragConnectors).set({ status: "synced", lastSyncAt: Date.now() }).where(eq(ragConnectors.id, id)).run();
+    await db
+      .update(ragConnectors)
+      .set({ status: "synced", lastSyncAt: Date.now() })
+      .where(eq(ragConnectors.id, id))
+      .run();
     return json({ ok: true, synced, total: files.length });
   }
 
-  await db.update(ragConnectors).set({ status: "error", lastSyncAt: Date.now() }).where(eq(ragConnectors.id, id)).run();
-  return json({ error: `Sync not implemented for connector type: ${connector.type}` }, { status: 400 });
+  await db
+    .update(ragConnectors)
+    .set({ status: "error", lastSyncAt: Date.now() })
+    .where(eq(ragConnectors.id, id))
+    .run();
+  return json(
+    { error: `Sync not implemented for connector type: ${connector.type}` },
+    { status: 400 }
+  );
 }

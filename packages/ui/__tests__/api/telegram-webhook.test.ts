@@ -14,7 +14,12 @@ describe("Telegram webhook API", () => {
       })
     );
     mockFetch = vi.fn(async (input: string | URL | Request) => {
-      const url = typeof input === "string" ? input : input instanceof Request ? input.url : (input as URL).href;
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : (input as URL).href;
       if (url.includes("/api/llm/providers")) {
         return new Response(JSON.stringify([{ id: "provider-1" }]), {
           status: 200,
@@ -35,7 +40,7 @@ describe("Telegram webhook API", () => {
       }
       return new Response(null, { status: 404 });
     });
-    globalThis.fetch = mockFetch;
+    globalThis.fetch = mockFetch as typeof fetch;
   });
 
   it("POST /api/telegram/webhook returns 503 when no token", async () => {
@@ -70,12 +75,16 @@ describe("Telegram webhook API", () => {
     const data = await res.json();
     expect(data.ok).toBe(true);
     const sendMessageCalls = mockFetch.mock.calls.filter(
-      (c) => (typeof c[0] === "string" && c[0].includes("sendMessage")) || (c[0] instanceof Request && c[0].url.includes("sendMessage"))
+      (c: unknown[]) =>
+        (typeof c[0] === "string" && (c[0] as string).includes("sendMessage")) ||
+        (c[0] instanceof Request && c[0].url.includes("sendMessage"))
     );
     expect(sendMessageCalls.length).toBeGreaterThanOrEqual(1);
     const lastCall = sendMessageCalls[sendMessageCalls.length - 1];
     const init = lastCall[1];
-    const body = init?.body ? JSON.parse(typeof init.body === "string" ? init.body : await (init.body as Blob).text()) : {};
+    const body = init?.body
+      ? JSON.parse(typeof init.body === "string" ? init.body : await (init.body as Blob).text())
+      : {};
     expect(body.text).toBe("Agentron reply");
     expect(body.chat_id).toBe(123);
   });
@@ -90,12 +99,42 @@ describe("Telegram webhook API", () => {
     );
     expect(res.status).toBe(200);
     const sendMessageCalls = mockFetch.mock.calls.filter(
-      (c) => (typeof c[0] === "string" && c[0].includes("sendMessage")) || (c[0] instanceof Request && c[0].url.includes("sendMessage"))
+      (c: unknown[]) =>
+        (typeof c[0] === "string" && (c[0] as string).includes("sendMessage")) ||
+        (c[0] instanceof Request && c[0].url.includes("sendMessage"))
     );
     expect(sendMessageCalls.length).toBe(1);
     const init = sendMessageCalls[0][1];
-    const body = init?.body ? JSON.parse(typeof init.body === "string" ? init.body : await (init.body as Blob).text()) : {};
+    const body = init?.body
+      ? JSON.parse(typeof init.body === "string" ? init.body : await (init.body as Blob).text())
+      : {};
     expect(body.text).toContain("text message");
+  });
+
+  it("POST /api/telegram/webhook returns ok true when message has no chat id", async () => {
+    const res = await POST(
+      new Request("http://localhost:3000/api/telegram/webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: { text: "hi" } }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+  });
+
+  it("POST /api/telegram/webhook returns 500 when body is invalid JSON", async () => {
+    const res = await POST(
+      new Request("http://localhost:3000/api/telegram/webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not json",
+      })
+    );
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.error).toBe("Internal error");
   });
 
   it("POST /api/telegram/webhook returns 401 when secret required and wrong", async () => {
@@ -112,6 +151,39 @@ describe("Telegram webhook API", () => {
       expect(res.status).toBe(401);
     } finally {
       process.env.TELEGRAM_WEBHOOK_SECRET = orig;
+    }
+  });
+
+  it("POST /api/telegram/webhook handles request with invalid url without crashing", async () => {
+    const req = new Request("http://localhost:3000/api/telegram/webhook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: { chat: { id: 123 }, text: "hi" } }),
+    });
+    Object.defineProperty(req, "url", { value: "relative", configurable: true });
+    const res = await POST(req);
+    expect([200, 500]).toContain(res.status);
+    const data = await res.json();
+    if (res.status === 500) expect(data.error).toBe("Internal error");
+    else expect(data.ok).toBe(true);
+  });
+
+  it("POST /api/telegram/webhook uses fallback origin when request url is invalid", async () => {
+    const origSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    delete process.env.TELEGRAM_WEBHOOK_SECRET;
+    try {
+      const req = new Request("http://localhost:3000/api/telegram/webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: { chat: { id: 123 }, text: "hi" } }),
+      });
+      Object.defineProperty(req, "url", { value: "relative", configurable: true });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+    } finally {
+      if (origSecret !== undefined) process.env.TELEGRAM_WEBHOOK_SECRET = origSecret;
     }
   });
 });

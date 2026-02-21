@@ -21,12 +21,16 @@ type OpenAIChatResponse = {
 };
 
 /** Normalize OpenAI-style content (string or array of parts) to a single string for LLMResponse.content */
-function normalizeContent(raw: string | Array<{ type?: string; text?: string }> | undefined): string {
+function normalizeContent(
+  raw: string | Array<{ type?: string; text?: string }> | undefined
+): string {
   if (raw == null) return "";
   if (typeof raw === "string") return raw;
   if (!Array.isArray(raw)) return String(raw);
   return raw
-    .map((part) => (part && typeof part === "object" && typeof part.text === "string" ? part.text : ""))
+    .map((part) =>
+      part && typeof part === "object" && typeof part.text === "string" ? part.text : ""
+    )
     .filter(Boolean)
     .join("");
 }
@@ -91,7 +95,7 @@ export const openAICompatibleChat = async (
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...headers
+      ...headers,
     },
     body: JSON.stringify(body),
   });
@@ -117,7 +121,8 @@ export const openAICompatibleChat = async (
     if (!response.ok) {
       let hint = "";
       if (response.status === 404) {
-        hint = " For 404: check that the model name is supported by your provider and that the endpoint URL in Settings → LLM Providers is correct.";
+        hint =
+          " For 404: check that the model name is supported by your provider and that the endpoint URL in Settings → LLM Providers is correct.";
       }
       throw new Error(`LLM request failed (${response.status}): ${errorText}${hint}`);
     }
@@ -146,9 +151,9 @@ export const openAICompatibleChat = async (
     usage: {
       promptTokens,
       completionTokens,
-      totalTokens: data.usage?.total_tokens ?? (promptTokens + completionTokens),
+      totalTokens: data.usage?.total_tokens ?? promptTokens + completionTokens,
     },
-    raw: data
+    raw: data,
   };
 };
 

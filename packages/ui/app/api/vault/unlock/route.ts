@@ -1,11 +1,7 @@
 import { json } from "../../_lib/response";
 import { db, vaultMeta } from "../../_lib/db";
 import { eq } from "drizzle-orm";
-import {
-  deriveVaultKey,
-  decryptWithVaultKey,
-  buildVaultCookieHeader,
-} from "../../_lib/vault";
+import { deriveVaultKey, decryptWithVaultKey, buildVaultCookieHeader } from "../../_lib/vault";
 
 export const runtime = "nodejs";
 
@@ -37,7 +33,10 @@ export async function POST(request: Request) {
   }
 
   const cookieHeader = buildVaultCookieHeader(key);
-  return json({ ok: true }, {
-    headers: { "Set-Cookie": cookieHeader },
-  });
+  return json(
+    { ok: true },
+    {
+      headers: { "Set-Cookie": cookieHeader },
+    }
+  );
 }

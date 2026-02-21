@@ -27,7 +27,13 @@ export async function PUT(request: Request, { params }: Params) {
   const { id } = await params;
   const rows = await db.select().from(skills).where(eq(skills.id, id));
   if (rows.length === 0) return json({ error: "Not found" }, { status: 404 });
-  let body: { name?: string; description?: string; type?: string; content?: string; config?: unknown };
+  let body: {
+    name?: string;
+    description?: string;
+    type?: string;
+    content?: string;
+    config?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -38,7 +44,8 @@ export async function PUT(request: Request, { params }: Params) {
   if (body.description !== undefined) updates.description = body.description;
   if (body.type !== undefined) updates.type = body.type;
   if (body.content !== undefined) updates.content = body.content;
-  if (body.config !== undefined) updates.config = body.config != null ? JSON.stringify(body.config) : null;
+  if (body.config !== undefined)
+    updates.config = body.config != null ? JSON.stringify(body.config) : null;
   if (Object.keys(updates).length > 0) {
     await db.update(skills).set(updates).where(eq(skills.id, id)).run();
   }

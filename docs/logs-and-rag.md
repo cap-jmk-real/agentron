@@ -28,12 +28,24 @@ RAG is supported at two levels:
 - **Per-agent** – a collection scoped to one agent (`scope: "agent"`, `agentId` set).
 - **Deployment-wide** – a shared collection (`scope: "deployment"`, `agentId` null).
 
-### Vector encoding (user-configured)
+### Embedding endpoints (Settings)
 
-Encoding is configured via **encoding config** (`/api/rag/encoding-config`). You choose:
+Configure embedding endpoints once in **Settings → Embedding** (`/api/rag/embedding-providers`). Supported types:
 
-- **Provider** – e.g. `openai`, `sentence-transformers`, or a custom embedding endpoint.
-- **Model or endpoint** – e.g. `text-embedding-3-small` or `http://localhost:8080/embed`.
+- **Local (Ollama)** – base URL (e.g. `http://localhost:11434`), no API key. Use with models such as `nomic-embed-text`, `all-minilm`.
+- **OpenAI** – API key (or ref), optional endpoint override.
+- **OpenRouter** – API key.
+- **Hugging Face** – API key for inference API.
+- **Custom HTTP** – base URL and optional API key for OpenAI-compatible `/embeddings` endpoints.
+
+Then in **Knowledge**, when creating an **encoding config**, you choose one of these embedding providers and the **model** (and dimensions). Encoding configs reference a provider by id; credentials and endpoints live only in Settings.
+
+### Vector encoding (encoding config)
+
+Encoding is configured via **encoding config** (`/api/rag/encoding-config`). Each config has:
+
+- **Embedding provider** (from Settings) **or** legacy: provider name + model/endpoint.
+- **Model** – e.g. `text-embedding-3-small`, `nomic-embed-text`.
 - **Dimensions** – vector size (must match the model).
 
 **When the user changes the encoding algorithm**, all vectors for collections using that config must be recomputed. The application should:
@@ -62,7 +74,8 @@ Documents can be added by:
 
 ### API summary
 
-- **Encoding config:** `GET/POST /api/rag/encoding-config`, `GET/PUT/DELETE /api/rag/encoding-config/{id}`.
+- **Embedding providers:** `GET/POST /api/rag/embedding-providers`, `GET/PUT/DELETE /api/rag/embedding-providers/{id}`, `GET /api/rag/embedding-providers/{id}/models` (for local type, returns model list from provider endpoint).
+- **Encoding config:** `GET/POST /api/rag/encoding-config`, `GET/PUT/DELETE /api/rag/encoding-config/{id}` (each config may reference `embeddingProviderId` or use legacy provider/model/endpoint).
 - **Document store:** `GET/POST /api/rag/document-store`, `GET/PUT/DELETE /api/rag/document-store/{id}`.
 - **Collections:** `GET/POST /api/rag/collections`, `GET/PUT/DELETE /api/rag/collections/{id}` (each collection has `encodingConfigId`, `documentStoreId`, and optional `agentId` for agent-scoped RAG).
 

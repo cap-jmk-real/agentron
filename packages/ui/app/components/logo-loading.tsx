@@ -1,7 +1,13 @@
 "use client";
 
 /** Agentron A→T→A logo loading animation. Circle stays fixed; only letters (A/T) rotate. */
-export default function LogoLoading({ size = 64, className = "" }: { size?: number; className?: string }) {
+export default function LogoLoading({
+  size = 64,
+  className = "",
+}: {
+  size?: number;
+  className?: string;
+}) {
   return (
     <div
       className={`logo-loading-stage ${className}`.trim()}

@@ -1,0 +1,29 @@
+# Dependencies and build
+node_modules
+**/node_modules
+.next
+out
+dist
+build
+release
+coverage
+*.min.js
+# Lockfiles and generated
+package-lock.json
+pnpm-lock.yaml
+*.lock
+# Data and logs
+.data
+*.log
+# Docs / assets that have their own formatting
+badges
+*.md
+*.mdx
+*.svg
+*.png
+*.ico
+# Config that may not be JSON
+.cursor
+
+# CSS partials (concatenated at build; not valid standalone)
+**/globals-part*.css

@@ -1,0 +1,217 @@
+﻿node.exe : npm warn config optional Use `--omit=optional` to exclude optional dependencies, or
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn config...ependencies, or:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+npm warn config `--include=optional` to include them.
+npm warn config
+npm warn config       Default value does install optional deps unless otherwise omitted.
+npm warn Unknown project config "node-linker". This will stop working in the next major version of npm.
+
+ RUN  v4.0.18 C:/Users/Julian/Documents/Programming/agentron/packages/ui
+      Coverage enabled with v8
+
+ Ô£ô __tests__/api/system-stats.test.ts (2 tests) 735ms
+     Ô£ô GET /api/system-stats returns snapshot with ram, process, cpu, disk, gpu  733ms
+ Ô£ô __tests__/api/feedback.test.ts (8 tests) 73ms
+ Ô£ô __tests__/api/functions.test.ts (6 tests) 97ms
+ Ô£ô __tests__/api/llm-providers-id.test.ts (2 tests) 66ms
+ Ô£ô __tests__/api/vault-create.test.ts (10 tests) 150ms
+ Ô£ô __tests__/api/_lib/credential-store.test.ts (13 tests) 101ms
+ Ô£ô __tests__/api/files.test.ts (5 tests) 126ms
+ Ô£ô __tests__/api/reminders-id.test.ts (5 tests) 104ms
+ Ô£ô __tests__/api/skills.test.ts (19 tests) 168ms
+ Ô£ô __tests__/api/chat-run-waiting.test.ts (3 tests) 112ms
+ Ô£ô __tests__/api/rag-connectors.test.ts (7 tests) 128ms
+ Ô£ô __tests__/api/rag-upload.test.ts (3 tests) 97ms
+ Ô£ô __tests__/api/settings-telegram.test.ts (13 tests) 212ms
+ Ô£ô __tests__/api/_lib/vault.test.ts (10 tests) 370ms
+ Ô£ô __tests__/api/_lib/execution-events.test.ts (13 tests) 350ms
+ Ô£ô __tests__/api/rag.test.ts (17 tests) 258ms
+ Ô£ô __tests__/api/vault-credentials.test.ts (29 tests) 441ms
+ Ô£ô __tests__/api/_lib/chat-queue.test.ts (7 tests) 554ms
+ Ô£ô __tests__/api/chat-conversations-id.test.ts (4 tests) 65ms
+ Ô£ô __tests__/api/tools.test.ts (10 tests) 614ms
+     Ô£ô GET /api/tools returns array  542ms
+ Ô£ô __tests__/api/backup.test.ts (5 tests) 871ms
+     Ô£ô POST /api/backup/restore accepts file and restores  497ms
+     Ô£ô POST /api/backup/reset returns ok and message  303ms
+ Ô£ô __tests__/hooks/useChatStream.test.ts (23 tests) 49ms
+ Ô£ô __tests__/api/rag-vector-store.test.ts (7 tests) 178ms
+'wmic' is not recognized as an internal or external command,
+operable program or batch file.
+ Ô£ô __tests__/api/agents.test.ts (26 tests) 328ms
+ Ô£ô __tests__/api/ollama.test.ts (2 tests) 118ms
+ Ô£ô __tests__/api/queues.test.ts (12 tests) 586ms
+ Ô£ô __tests__/api/workflows.test.ts (26 tests) 629ms
+ Ô£ô __tests__/api/update-check.test.ts (10 tests) 22ms
+ Ô£ô __tests__/api/stats.test.ts (19 tests) 807ms
+ Ô£ô __tests__/api/chat-stream.test.ts (4 tests) 26ms
+ Ô£ô __tests__/api/shell-command-execute.test.ts (6 tests) 27ms
+ Ô£ô __tests__/api/chat-settings.test.ts (4 tests) 86ms
+ Ô£ô __tests__/api/import.test.ts (8 tests) 1163ms
+     Ô£ô POST /api/import imports tools  1085ms
+ Ô£ô __tests__/api/ollama-pull.test.ts (5 tests) 26ms
+ Ô£ô __tests__/api/remote-servers.test.ts (10 tests) 262ms
+ Ô£ô __tests__/api/_lib/store.test.ts (4 tests) 23ms
+ Ô£ô __tests__/api/reminders.test.ts (17 tests) 271ms
+ Ô£ô __tests__/api/chat-conversations.test.ts (3 tests) 62ms
+ Ô£ô __tests__/api/tasks.test.ts (9 tests) 186ms
+ Ô£ô __tests__/api/_lib/response.test.ts (3 tests) 20ms
+ Ô£ô __tests__/api/_lib/rag.test.ts (7 tests) 194ms
+ Ô£ô __tests__/api/mcp.test.ts (1 test) 20ms
+ Ô£ô __tests__/api/files-id.test.ts (5 tests) 72ms
+ Ô£ô __tests__/api/notifications.test.ts (24 tests) 1589ms
+ Ô£ô __tests__/api/process-stats.test.ts (1 test) 26ms
+ Ô£ô __tests__/api/rag-ingest.test.ts (4 tests) 114ms
+ Ô£ô __tests__/api/_lib/chat-helpers.test.ts (69 tests) 15ms
+ Ô£ô __tests__/api/_lib/embeddings.test.ts (7 tests) 78ms
+ Ô£ô __tests__/api/telegram-webhook.test.ts (7 tests) 52ms
+ Ô£ô __tests__/api/_lib/execution-log.test.ts (5 tests) 97ms
+ Ô£ô __tests__/api/runs-for-improvement.test.ts (3 tests) 64ms
+ Ô£ô __tests__/api/llm-providers.test.ts (3 tests) 51ms
+ Ô£ô __tests__/api/_lib/vector-store-query.test.ts (7 tests) 11ms
+ Ô£ô __tests__/api/_lib/e2e-summary-reporter.test.ts (12 tests) 11ms
+ Ô£ô __tests__/api/export.test.ts (4 tests) 35ms
+ Ô£ô __tests__/api/_lib/chat-event-channel.test.ts (6 tests) 7ms
+ Ô£ô __tests__/lib/suggested-models.test.ts (8 tests) 6ms
+ Ô£ô __tests__/fixtures/agent-pattern-examples.test.ts (5 tests) 7ms
+ Ô£ô __tests__/lib/notifications-events.test.ts (3 tests) 6ms
+ Ô£ô __tests__/api/rag-documents.test.ts (2 tests) 32ms
+ Ô£ô __tests__/api/_lib/heap.test.ts (70 tests) 26ms
+ Ô£ô __tests__/api/feedback-for-scope.test.ts (3 tests) 32ms
+ Ô£ô __tests__/api/runs-logs.test.ts (67 tests) 2036ms
+ Ô£ô __tests__/lib/naming.test.ts (2 tests) 4ms
+ Ô£ô __tests__/api/rag-retrieve.test.ts (3 tests) 31ms
+ Ô£ô __tests__/lib/chat-state-cache.test.ts (5 tests) 4ms
+ Ô£ô __tests__/api/_lib/execute-tool.test.ts (72 tests) 1981ms
+       Ô£ô category improvement with no subset returns prompt_and_topology (production default)  1073ms
+ Ô£ô __tests__/api/chat-pending-input.test.ts (1 test) 28ms
+ Ô£ô __tests__/api/sandbox-shell.test.ts (1 test) 28ms
+ Ô£ô __tests__/lib/chat-url-params.test.ts (4 tests) 4ms
+ Ô£ô __tests__/api/chat.test.ts (1 test) 2ms
+ Ô£ô __tests__/components/notifications-modal.test.ts (3 tests) 2ms
+ Ô£ô __tests__/api/_lib/app-settings.test.ts (13 tests) 23ms
+ Ô£ô __tests__/api/_lib/workflow-queue.test.ts (5 tests) 39ms
+ Ô£ô __tests__/api/settings-pricing.test.ts (8 tests) 66ms
+ Ô£ô __tests__/components/chat-message-content-options.test.ts (8 tests) 6ms
+ Ô£ô __tests__/api/functions-execute.test.ts (2 tests) 30ms
+ Ô£ô __tests__/api/_lib/workflow-engine.test.ts (7 tests) 5ms
+ Ô£ô __tests__/api/rate-limit-queue.test.ts (1 test) 4ms
+ Ô£ô __tests__/api/llm-rate-limit-defaults.test.ts (1 test) 4ms
+ Ô£ô __tests__/api/_lib/telegram-sessions.test.ts (3 tests) 5ms
+stdout | __tests__/api/chat-api.test.ts > Chat API > heap mode done event includes execute_workflow toolResults so client can trigger run
+[assistant] heap DAG level {
+  traceId: '66495cb1-436f-421f-9eca-4e078577c048',
+  phase: 'heap',
+  levelIndex: 0,
+  specialistIds: [ 'workflow__part1' ],
+  depth: 0
+}
+
+ Ô£ô __tests__/api/chat/_lib/run-turn-helpers.test.ts (7 tests) 4ms
+ Ô£ô __tests__/api/heap-route.test.ts (1 test) 6ms
+ Ô£ô __tests__/api/_lib/scheduled-workflows.test.ts (10 tests) 4ms
+stdout | __tests__/api/chat-api.test.ts > Chat API > create agent then workflow flow: create_agent in toolResults and agent in DB
+[assistant] heap DAG level {
+  traceId: 'efd1709c-ffde-4b0c-8de2-1d9f9adfa1b7',
+  phase: 'heap',
+  levelIndex: 0,
+  specialistIds: [ 'agent_lifecycle' ],
+  depth: 0
+}
+
+ Ô£ô __tests__/api/workflow-queue-route.test.ts (1 test) 6ms
+stdout | __tests__/api/chat-api.test.ts > Chat API > create agent then workflow flow: create_agent in toolResults and agent in DB
+[assistant] heap DAG level {
+  traceId: 'efd1709c-ffde-4b0c-8de2-1d9f9adfa1b7',
+  phase: 'heap',
+  levelIndex: 1,
+  specialistIds: [ 'workflow__part1' ],
+  depth: 0
+}
+
+ Ô£ô __tests__/api/rag-connectors-sync.test.ts (1 test) 17ms
+ Ô£ô __tests__/api/_lib/run-workflow.test.ts (5 tests) 3ms
+ Ô£ô __tests__/api/chat-improve-agents.test.ts (1 test) 2ms
+ Ô£ô __tests__/api/chat-extract-content.test.ts (11 tests) 3ms
+ Ô£ô __tests__/api/settings-app.test.ts (20 tests) 5304ms
+     Ô£ô GET /api/settings/app returns default maxFileUploadBytes and workflowMaxSelfFixRetries  715ms
+     Ô£ô PATCH /api/settings/app updates maxFileUploadBytes  1316ms
+     Ô£ô PATCH /api/settings/app updates workflowMaxSelfFixRetries  870ms
+     Ô£ô PATCH /api/settings/app with invalid body leaves settings unchanged  643ms
+     Ô£ô PATCH /api/settings/app updates containerEngine  557ms
+     Ô£ô PATCH /api/settings/app ignores maxFileUploadBytes when NaN  585ms
+     Ô£ô PATCH /api/settings/app ignores workflowMaxSelfFixRetries out of range  595ms
+stdout | __tests__/api/chat-api.test.ts > Chat API > heap mode done event has toolResults array when specialist runs no tools
+[assistant] heap DAG level {
+  traceId: 'd02ff317-0dce-4b0b-8748-f45a5dc223e5',
+  phase: 'heap',
+  levelIndex: 0,
+  specialistIds: [ 'general' ],
+  depth: 0
+}
+
+ Ô£ô __tests__/api/chat-events-sse.test.ts (3 tests) 7279ms
+     Ô£ô second GET with same turnId receives events and does not get Connection issue when first GET took the job  1474ms
+     Ô£ô fallback runs job when no GET /api/chat/events connects (e.g. after Retry)  5801ms
+stdout | __tests__/api/chat-api.test.ts > Chat API > planner response.raw fallback: when content is empty but raw has OpenAI-like plan, plan is parsed and trace has parsedPlan
+[assistant] heap DAG level {
+  traceId: 'eef79456-06b4-4342-ad5f-98fd49ebdb91',
+  phase: 'heap',
+  levelIndex: 0,
+  specialistIds: [ 'agent_lifecycle' ],
+  depth: 0
+}
+
+stdout | __tests__/api/chat-api.test.ts > Chat API > planner response.raw fallback: when content is empty but raw has OpenAI-like plan, plan is parsed and trace has parsedPlan
+[assistant] heap DAG level {
+  traceId: 'eef79456-06b4-4342-ad5f-98fd49ebdb91',
+  phase: 'heap',
+  levelIndex: 1,
+  specialistIds: [ 'workflow__part1' ],
+  depth: 0
+}
+
+stdout | __tests__/api/chat-api.test.ts > Chat API > planner empty content and no usable raw: fallback order used and trace shows placeholder
+[assistant] heap DAG level {
+  traceId: 'fae8a0f5-0d62-4c16-b8e6-c252b08d402f',
+  phase: 'heap',
+  levelIndex: 0,
+  specialistIds: [ 'agent_lifecycle' ],
+  depth: 0
+}
+
+stdout | __tests__/api/chat-api.test.ts > Chat API > heap mode done event includes execute_workflow tool result when workflow not found (error result)
+[assistant] heap DAG level {
+  traceId: '982c7d69-b62c-49b5-bd4c-de4d7a38268d',
+  phase: 'heap',
+  levelIndex: 0,
+  specialistIds: [ 'workflow__part1' ],
+  depth: 0
+}
+
+ Ô£ô __tests__/api/chat-api.test.ts (15 tests) 20956ms
+     Ô£ô decoupled chat returns 202 and turnId; events stream runs job and releases lock  1837ms
+     Ô£ô multi-turn conversation: second assistant response is persisted and returned by GET  1064ms
+     Ô£ô heap mode done event includes execute_workflow toolResults so client can trigger run  694ms
+     Ô£ô create agent then workflow flow: create_agent in toolResults and agent in DB  787ms
+     Ô£ô heap mode done event has toolResults array when specialist runs no tools  2926ms
+     Ô£ô planner response.raw fallback: when content is empty but raw has OpenAI-like plan, plan is parsed and trace has parsedPlan  5433ms
+     Ô£ô planner empty content and no usable raw: fallback order used and trace shows placeholder  3756ms
+     Ô£ô heap mode done event includes execute_workflow tool result when workflow not found (error result)  4420ms
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ» Unhandled Rejection ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»
+Error: ENOENT: no such file or directory, open 
+'C:\Users\Julian\Documents\Programming\agentron\packages\ui\coverage\.tmp\coverage-91.json'
+ ÔØ» open node:internal/fs/promises:642:25
+ ÔØ» Object.writeFile node:internal/fs/promises:1249:14
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»
+Serialized Error: { errno: -4058, code: 'ENOENT', syscall: 'open', path: 
+'C:\Users\Julian\Documents\Programming\agentron\packages\ui\coverage\.tmp\coverage-91.json' }
+
+
+

@@ -15,7 +15,9 @@ export type DocumentStoreRow = {
  *   (2) two env var names comma-separated "ACCESS_KEY_ENV,SECRET_KEY_ENV",
  *   or (3) empty and we use AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.
  */
-function resolveCredentials(credentialsRef: string | null): { accessKeyId: string; secretAccessKey: string } | undefined {
+function resolveCredentials(
+  credentialsRef: string | null
+): { accessKeyId: string; secretAccessKey: string } | undefined {
   if (credentialsRef?.includes(",")) {
     const [accessRef, secretRef] = credentialsRef.split(",").map((s) => s.trim());
     const accessKey = accessRef ? process.env[accessRef] : undefined;

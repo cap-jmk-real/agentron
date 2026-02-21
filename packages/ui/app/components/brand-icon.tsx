@@ -8,13 +8,5 @@ export default function BrandIcon({
   size?: number;
   className?: string;
 }) {
-  return (
-    <img
-      src="/icon.svg"
-      alt=""
-      width={size}
-      height={size}
-      className={className}
-    />
-  );
+  return <img src="/icon.svg" alt="" width={size} height={size} className={className} />;
 }

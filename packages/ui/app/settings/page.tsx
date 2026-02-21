@@ -1,7 +1,18 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Download, Upload, Database, RotateCcw, FileJson, HardDrive, Terminal, Trash2, Plus } from "lucide-react";
+import {
+  Download,
+  Upload,
+  Database,
+  RotateCcw,
+  FileJson,
+  HardDrive,
+  Terminal,
+  Trash2,
+  Plus,
+  Search,
+} from "lucide-react";
 import ConfirmModal from "../components/confirm-modal";
 import CopyDebugInfoButton from "../components/copy-debug-info-button";
 import {
@@ -35,16 +46,47 @@ export default function SettingsPage() {
   const [shellAllowlistSaving, setShellAllowlistSaving] = useState(false);
   const [workflowMaxSelfFixRetries, setWorkflowMaxSelfFixRetries] = useState<number>(3);
   const [workflowMaxSelfFixSaving, setWorkflowMaxSelfFixSaving] = useState(false);
+  type WebSearchProvider = "duckduckgo" | "brave" | "google";
+  const [webSearchProvider, setWebSearchProvider] = useState<WebSearchProvider>("duckduckgo");
+  const [braveSearchApiKey, setBraveSearchApiKey] = useState("");
+  const [googleCseKey, setGoogleCseKey] = useState("");
+  const [googleCseCx, setGoogleCseCx] = useState("");
+  const [webSearchSaving, setWebSearchSaving] = useState(false);
 
   useEffect(() => {
     fetch("/api/settings/app")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data: { maxFileUploadBytes?: number; shellCommandAllowlist?: string[]; workflowMaxSelfFixRetries?: number } | null) => {
-        if (!data) return;
-        if (data.maxFileUploadBytes) setMaxFileUploadMb(Math.round(data.maxFileUploadBytes / (1024 * 1024)));
-        if (Array.isArray(data.shellCommandAllowlist)) setShellAllowlist(data.shellCommandAllowlist);
-        if (typeof data.workflowMaxSelfFixRetries === "number") setWorkflowMaxSelfFixRetries(data.workflowMaxSelfFixRetries);
-      })
+      .then((r) => (r.ok ? r.json() : null))
+      .then(
+        (
+          data: {
+            maxFileUploadBytes?: number;
+            shellCommandAllowlist?: string[];
+            workflowMaxSelfFixRetries?: number;
+            webSearchProvider?: WebSearchProvider;
+            braveSearchApiKey?: string;
+            googleCseKey?: string;
+            googleCseCx?: string;
+          } | null
+        ) => {
+          if (!data) return;
+          if (data.maxFileUploadBytes)
+            setMaxFileUploadMb(Math.round(data.maxFileUploadBytes / (1024 * 1024)));
+          if (Array.isArray(data.shellCommandAllowlist))
+            setShellAllowlist(data.shellCommandAllowlist);
+          if (typeof data.workflowMaxSelfFixRetries === "number")
+            setWorkflowMaxSelfFixRetries(data.workflowMaxSelfFixRetries);
+          if (
+            data.webSearchProvider === "duckduckgo" ||
+            data.webSearchProvider === "brave" ||
+            data.webSearchProvider === "google"
+          )
+            setWebSearchProvider(data.webSearchProvider);
+          if (typeof data.braveSearchApiKey === "string")
+            setBraveSearchApiKey(data.braveSearchApiKey);
+          if (typeof data.googleCseKey === "string") setGoogleCseKey(data.googleCseKey);
+          if (typeof data.googleCseCx === "string") setGoogleCseCx(data.googleCseCx);
+        }
+      )
       .catch(() => {});
   }, []);
 
@@ -63,9 +105,12 @@ export default function SettingsPage() {
       </p>
 
       <div className="card" style={{ padding: "1rem" }}>
-        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>System stats refresh</div>
+        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+          System stats refresh
+        </div>
         <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
-          How often CPU, RAM, disk and GPU are polled (sidebar and Statistics → Resources). Background tabs poll every 5 s. 0.2 s – 5 s.
+          How often CPU, RAM, disk and GPU are polled (sidebar and Statistics → Resources).
+          Background tabs poll every 5 s. 0.2 s – 5 s.
         </p>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
           <input
@@ -81,12 +126,23 @@ export default function SettingsPage() {
             }}
             style={{ flex: "1 1 200px", minWidth: 120, accentColor: "var(--primary)" }}
           />
-          <span style={{ fontSize: "0.85rem", fontWeight: 600, minWidth: 52 }}>{formatSystemStatsInterval(intervalMs)}</span>
+          <span style={{ fontSize: "0.85rem", fontWeight: 600, minWidth: 52 }}>
+            {formatSystemStatsInterval(intervalMs)}
+          </span>
         </div>
       </div>
 
       <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
-        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+        <div
+          style={{
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            marginBottom: "0.5rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+          }}
+        >
           <HardDrive size={16} /> Max file upload size
         </div>
         <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
@@ -116,7 +172,9 @@ export default function SettingsPage() {
                 });
                 if (res.ok) {
                   const data = await res.json();
-                  setMaxFileUploadMb(Math.round((data.maxFileUploadBytes as number) / (1024 * 1024)));
+                  setMaxFileUploadMb(
+                    Math.round((data.maxFileUploadBytes as number) / (1024 * 1024))
+                  );
                 }
               } finally {
                 setMaxFileUploadSaving(false);
@@ -129,18 +187,60 @@ export default function SettingsPage() {
       </div>
 
       <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
-        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+        <div
+          style={{
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            marginBottom: "0.5rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+          }}
+        >
           <Terminal size={16} /> Shell command allowlist
         </div>
-        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.75rem", lineHeight: 1.5 }}>
-          Commands the chat assistant can run without user approval. Useful for trusted commands like <code style={{ fontSize: "0.8em", background: "var(--surface-muted)", padding: "0.1em 0.3em", borderRadius: 4 }}>docker ps</code> or <code style={{ fontSize: "0.8em", background: "var(--surface-muted)", padding: "0.1em 0.3em", borderRadius: 4 }}>podman --version</code>. Add commands that you trust; others will require approval in the chat UI.
+        <p
+          style={{
+            fontSize: "0.82rem",
+            color: "var(--text-muted)",
+            margin: "0 0 0.75rem",
+            lineHeight: 1.5,
+          }}
+        >
+          Commands the chat assistant can run without user approval. Useful for trusted commands
+          like{" "}
+          <code
+            style={{
+              fontSize: "0.8em",
+              background: "var(--surface-muted)",
+              padding: "0.1em 0.3em",
+              borderRadius: 4,
+            }}
+          >
+            docker ps
+          </code>{" "}
+          or{" "}
+          <code
+            style={{
+              fontSize: "0.8em",
+              background: "var(--surface-muted)",
+              padding: "0.1em 0.3em",
+              borderRadius: 4,
+            }}
+          >
+            podman --version
+          </code>
+          . Add commands that you trust; others will require approval in the chat UI.
         </p>
         <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
           <input
             type="text"
             value={shellAllowlistNewCommand}
             onChange={(e) => setShellAllowlistNewCommand(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), document.getElementById("shell-allowlist-add")?.click())}
+            onKeyDown={(e) =>
+              e.key === "Enter" &&
+              (e.preventDefault(), document.getElementById("shell-allowlist-add")?.click())
+            }
             placeholder="e.g. docker ps"
             className="input"
             style={{ flex: "1 1 180px", minWidth: 120 }}
@@ -189,7 +289,16 @@ export default function SettingsPage() {
                   fontSize: "0.85rem",
                 }}
               >
-                <code style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cmd}</code>
+                <code
+                  style={{
+                    flex: 1,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {cmd}
+                </code>
                 <button
                   type="button"
                   className="button button-ghost button-small"
@@ -224,9 +333,20 @@ export default function SettingsPage() {
       </div>
 
       <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
-        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>Workflow self-fix attempts</div>
-        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.75rem", lineHeight: 1.5 }}>
-          When a workflow agent tool fails and would ask for confirmation to retry, the system can let the agent retry automatically. 0 = off (always pause). 1–10 = max automatic retries before pausing for user input.
+        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+          Workflow self-fix attempts
+        </div>
+        <p
+          style={{
+            fontSize: "0.82rem",
+            color: "var(--text-muted)",
+            margin: "0 0 0.75rem",
+            lineHeight: 1.5,
+          }}
+        >
+          When a workflow agent tool fails and would ask for confirmation to retry, the system can
+          let the agent retry automatically. 0 = off (always pause). 1–10 = max automatic retries
+          before pausing for user input.
         </p>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
           <input
@@ -234,7 +354,9 @@ export default function SettingsPage() {
             min={0}
             max={10}
             value={workflowMaxSelfFixRetries}
-            onChange={(e) => setWorkflowMaxSelfFixRetries(Math.min(10, Math.max(0, Number(e.target.value) || 0)))}
+            onChange={(e) =>
+              setWorkflowMaxSelfFixRetries(Math.min(10, Math.max(0, Number(e.target.value) || 0)))
+            }
             style={{ width: 64, padding: "0.35rem 0.5rem", fontSize: "0.9rem" }}
           />
           <button
@@ -251,7 +373,8 @@ export default function SettingsPage() {
                 });
                 if (res.ok) {
                   const data = await res.json();
-                  if (typeof data.workflowMaxSelfFixRetries === "number") setWorkflowMaxSelfFixRetries(data.workflowMaxSelfFixRetries);
+                  if (typeof data.workflowMaxSelfFixRetries === "number")
+                    setWorkflowMaxSelfFixRetries(data.workflowMaxSelfFixRetries);
                 }
               } finally {
                 setWorkflowMaxSelfFixSaving(false);
@@ -264,20 +387,165 @@ export default function SettingsPage() {
       </div>
 
       <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
+        <div
+          style={{
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            marginBottom: "0.5rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+          }}
+        >
+          <Search size={16} /> Web search
+        </div>
+        <p
+          style={{
+            fontSize: "0.82rem",
+            color: "var(--text-muted)",
+            margin: "0 0 0.75rem",
+            lineHeight: 1.5,
+          }}
+        >
+          Search provider used by the chat and workflows for web search. DuckDuckGo works without a
+          key. For Brave or Google, set the provider and optional API keys below.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+            <label style={{ fontSize: "0.85rem", fontWeight: 500 }}>Search provider</label>
+            <select
+              className="select"
+              value={webSearchProvider}
+              onChange={(e) => setWebSearchProvider(e.target.value as WebSearchProvider)}
+              style={{ width: "auto", minWidth: 160 }}
+            >
+              <option value="duckduckgo">DuckDuckGo</option>
+              <option value="brave">Brave</option>
+              <option value="google">Google</option>
+            </select>
+          </div>
+          {webSearchProvider === "brave" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              <label style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                Brave Search API key (optional)
+              </label>
+              <input
+                type="password"
+                className="input"
+                value={braveSearchApiKey}
+                onChange={(e) => setBraveSearchApiKey(e.target.value)}
+                placeholder="Leave empty to use env BRAVE_SEARCH_API_KEY"
+                style={{ maxWidth: 360 }}
+                autoComplete="off"
+              />
+            </div>
+          )}
+          {webSearchProvider === "google" && (
+            <>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                <label style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                  Google CSE API key (optional)
+                </label>
+                <input
+                  type="password"
+                  className="input"
+                  value={googleCseKey}
+                  onChange={(e) => setGoogleCseKey(e.target.value)}
+                  placeholder="Leave empty to use env GOOGLE_CSE_KEY"
+                  style={{ maxWidth: 360 }}
+                  autoComplete="off"
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                <label style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                  Google CSE CX – search engine ID (optional)
+                </label>
+                <input
+                  type="text"
+                  className="input"
+                  value={googleCseCx}
+                  onChange={(e) => setGoogleCseCx(e.target.value)}
+                  placeholder="Leave empty to use env GOOGLE_CSE_CX"
+                  style={{ maxWidth: 360 }}
+                  autoComplete="off"
+                />
+              </div>
+            </>
+          )}
+          <button
+            type="button"
+            className="button button-ghost button-small"
+            disabled={webSearchSaving}
+            onClick={async () => {
+              setWebSearchSaving(true);
+              try {
+                const body: Record<string, unknown> = {
+                  webSearchProvider,
+                  braveSearchApiKey: braveSearchApiKey.trim() || undefined,
+                  googleCseKey: googleCseKey.trim() || undefined,
+                  googleCseCx: googleCseCx.trim() || undefined,
+                };
+                const res = await fetch("/api/settings/app", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(body),
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  if (
+                    data.webSearchProvider === "duckduckgo" ||
+                    data.webSearchProvider === "brave" ||
+                    data.webSearchProvider === "google"
+                  )
+                    setWebSearchProvider(data.webSearchProvider);
+                  if (typeof data.braveSearchApiKey === "string")
+                    setBraveSearchApiKey(data.braveSearchApiKey);
+                  if (typeof data.googleCseKey === "string") setGoogleCseKey(data.googleCseKey);
+                  if (typeof data.googleCseCx === "string") setGoogleCseCx(data.googleCseCx);
+                }
+              } finally {
+                setWebSearchSaving(false);
+              }
+            }}
+          >
+            {webSearchSaving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
         <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>About</div>
         <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
           AgentOS Studio is a local-first platform for building, managing, and running AI agents.
-          Configure your LLM providers, create agents with custom prompts, chain them into workflows,
-          and use sandboxes for isolated code execution.
+          Configure your LLM providers, create agents with custom prompts, chain them into
+          workflows, and use sandboxes for isolated code execution.
         </p>
       </div>
 
       <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
-        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+        <div
+          style={{
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            marginBottom: "0.5rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+          }}
+        >
           <FileJson size={16} /> Export / Import definitions
         </div>
-        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 1rem", lineHeight: 1.5 }}>
-          Export tools, agents, and workflows as JSON. Use the same file to import into another Studio (or this one). Standard tools (e.g. Fetch URL) are omitted from export and never overwritten on import.
+        <p
+          style={{
+            fontSize: "0.82rem",
+            color: "var(--text-muted)",
+            margin: "0 0 1rem",
+            lineHeight: 1.5,
+          }}
+        >
+          Export tools, agents, and workflows as JSON. Use the same file to import into another
+          Studio (or this one). Standard tools (e.g. Fetch URL) are omitted from export and never
+          overwritten on import.
         </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
           <select
@@ -302,7 +570,8 @@ export default function SettingsPage() {
               const blob = await res.blob();
               const disposition = res.headers.get("Content-Disposition");
               const match = disposition?.match(/filename="?([^";]+)"?/);
-              const name = match?.[1] ?? `agentron-${type}-${new Date().toISOString().slice(0, 10)}.json`;
+              const name =
+                match?.[1] ?? `agentron-${type}-${new Date().toISOString().slice(0, 10)}.json`;
               const a = document.createElement("a");
               a.href = URL.createObjectURL(blob);
               a.download = name;
@@ -313,13 +582,29 @@ export default function SettingsPage() {
             <Download size={14} /> Download JSON
           </button>
         </div>
-        <div style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+        <div
+          style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--border)" }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: "0.75rem",
+              marginBottom: "0.5rem",
+            }}
+          >
             <input
               ref={defImportInputRef}
               type="file"
               accept=".json,application/json"
-              style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+              style={{
+                position: "absolute",
+                width: 1,
+                height: 1,
+                opacity: 0,
+                pointerEvents: "none",
+              }}
               onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
@@ -353,7 +638,16 @@ export default function SettingsPage() {
             >
               <Upload size={14} /> Import from JSON
             </button>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.82rem", color: "var(--text-muted)", cursor: "pointer" }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.35rem",
+                fontSize: "0.82rem",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+              }}
+            >
               <input
                 type="checkbox"
                 checked={defImportOverwrite}
@@ -363,25 +657,55 @@ export default function SettingsPage() {
             </label>
           </div>
           {defImportResult && (
-            <pre style={{ fontSize: "0.75rem", margin: "0.5rem 0 0", padding: "0.5rem", background: "var(--surface-muted)", borderRadius: 6, overflow: "auto" }}>
+            <pre
+              style={{
+                fontSize: "0.75rem",
+                margin: "0.5rem 0 0",
+                padding: "0.5rem",
+                background: "var(--surface-muted)",
+                borderRadius: 6,
+                overflow: "auto",
+              }}
+            >
               {JSON.stringify(defImportResult, null, 2)}
             </pre>
           )}
           {defImportError && (
-            <p style={{ fontSize: "0.82rem", color: "#dc2626", margin: "0.5rem 0 0" }}>{defImportError}</p>
+            <p style={{ fontSize: "0.82rem", color: "#dc2626", margin: "0.5rem 0 0" }}>
+              {defImportError}
+            </p>
           )}
         </div>
       </div>
 
       <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
-        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+        <div
+          style={{
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            marginBottom: "0.5rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+          }}
+        >
           <Database size={16} /> Backup &amp; Restore
         </div>
-        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 1rem", lineHeight: 1.5 }}>
-          Export a copy of your database for local or cloud backup (e.g. save the file to your drive or Dropbox).
-          Restore replaces all current data with the backup; refresh the app after restoring.
+        <p
+          style={{
+            fontSize: "0.82rem",
+            color: "var(--text-muted)",
+            margin: "0 0 1rem",
+            lineHeight: 1.5,
+          }}
+        >
+          Export a copy of your database for local or cloud backup (e.g. save the file to your drive
+          or Dropbox). Restore replaces all current data with the backup; refresh the app after
+          restoring.
         </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-start" }}>
+        <div
+          style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-start" }}
+        >
           <button
             type="button"
             className="button"
@@ -394,7 +718,8 @@ export default function SettingsPage() {
                 const blob = await res.blob();
                 const disposition = res.headers.get("Content-Disposition");
                 const match = disposition?.match(/filename="?([^";]+)"?/);
-                const name = match?.[1] ?? `agentron-backup-${new Date().toISOString().slice(0, 10)}.sqlite`;
+                const name =
+                  match?.[1] ?? `agentron-backup-${new Date().toISOString().slice(0, 10)}.sqlite`;
                 const a = document.createElement("a");
                 a.href = URL.createObjectURL(blob);
                 a.download = name;
@@ -414,7 +739,13 @@ export default function SettingsPage() {
               ref={fileInputRef}
               type="file"
               accept=".sqlite,.sqlite3,.db"
-              style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+              style={{
+                position: "absolute",
+                width: 1,
+                height: 1,
+                opacity: 0,
+                pointerEvents: "none",
+              }}
               onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
@@ -449,15 +780,31 @@ export default function SettingsPage() {
               >
                 <Upload size={14} /> {restoreLoading ? "Restoring…" : "Restore from file"}
               </button>
-              {restoreSuccess && <span style={{ fontSize: "0.78rem", color: "#22c55e", fontWeight: 500 }}>Restored. Refresh the page.</span>}
-              {restoreError && <span style={{ fontSize: "0.78rem", color: "#dc2626" }}>{restoreError}</span>}
+              {restoreSuccess && (
+                <span style={{ fontSize: "0.78rem", color: "#22c55e", fontWeight: 500 }}>
+                  Restored. Refresh the page.
+                </span>
+              )}
+              {restoreError && (
+                <span style={{ fontSize: "0.78rem", color: "#dc2626" }}>{restoreError}</span>
+              )}
             </div>
           </div>
         </div>
-        <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: "0.75rem 0 0", lineHeight: 1.4 }}>
-          Restore will replace all agents, workflows, LLM configs, and other data. Use a backup created by this app.
+        <p
+          style={{
+            fontSize: "0.75rem",
+            color: "var(--text-muted)",
+            margin: "0.75rem 0 0",
+            lineHeight: 1.4,
+          }}
+        >
+          Restore will replace all agents, workflows, LLM configs, and other data. Use a backup
+          created by this app.
         </p>
-        <div style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
+        <div
+          style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--border)" }}
+        >
           <button
             type="button"
             className="button button-ghost"
@@ -466,8 +813,16 @@ export default function SettingsPage() {
           >
             <RotateCcw size={14} /> Reset database
           </button>
-          <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: "0.35rem 0 0", lineHeight: 1.4 }}>
-            Drop all tables and re-create from the current schema. Clears all agents, workflows, LLM configs, and other data. Use if data is from an old schema or you want to start fresh.
+          <p
+            style={{
+              fontSize: "0.75rem",
+              color: "var(--text-muted)",
+              margin: "0.35rem 0 0",
+              lineHeight: 1.4,
+            }}
+          >
+            Drop all tables and re-create from the current schema. Clears all agents, workflows, LLM
+            configs, and other data. Use if data is from an old schema or you want to start fresh.
           </p>
         </div>
       </div>
@@ -508,27 +863,56 @@ export default function SettingsPage() {
       </div>
 
       <div className="card" style={{ padding: "1rem", marginTop: "0.75rem" }}>
-        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>Quick Links</div>
+        <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+          Quick Links
+        </div>
         <div style={{ display: "grid", gap: "0.4rem" }}>
-          <a href="/settings/vault" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+          <a
+            href="/settings/vault"
+            style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}
+          >
             Vault &rarr;
           </a>
-          <a href="/settings/llm" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+          <a
+            href="/settings/llm"
+            style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}
+          >
             LLM Providers &rarr;
           </a>
-          <a href="/settings/telegram" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+          <a
+            href="/settings/embedding"
+            style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}
+          >
+            Embedding &rarr;
+          </a>
+          <a
+            href="/settings/telegram"
+            style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}
+          >
             Telegram &rarr;
           </a>
-          <a href="/settings/container" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+          <a
+            href="/settings/container"
+            style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}
+          >
             Container Engine &rarr;
           </a>
-          <a href="/agents" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+          <a
+            href="/agents"
+            style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}
+          >
             Agents &rarr;
           </a>
-          <a href="/workflows" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+          <a
+            href="/workflows"
+            style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}
+          >
             Workflows &rarr;
           </a>
-          <a href="/tools" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+          <a
+            href="/tools"
+            style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}
+          >
             Tools &rarr;
           </a>
         </div>

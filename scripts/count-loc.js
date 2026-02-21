@@ -4,15 +4,15 @@
  * Writes badges/loc.json for shields.io endpoint when --write-badge is passed.
  */
 
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
-const EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.css', '.mjs', '.cjs']);
-const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', '.next', 'coverage', 'out']);
+const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".css", ".mjs", ".cjs"]);
+const IGNORED_DIRS = new Set(["node_modules", ".git", "dist", ".next", "coverage", "out"]);
 
 function countLines(filePath) {
   try {
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = fs.readFileSync(filePath, "utf8");
     return content.split(/\r?\n/).length;
   } catch {
     return 0;
@@ -38,7 +38,7 @@ function formatCount(n) {
   return String(n);
 }
 
-const root = path.resolve(__dirname, '..');
+const root = path.resolve(__dirname, "..");
 let total = 0;
 for (const file of walk(root)) {
   total += countLines(file);
@@ -46,15 +46,15 @@ for (const file of walk(root)) {
 
 console.log(total);
 
-const writeBadge = process.argv.includes('--write-badge');
+const writeBadge = process.argv.includes("--write-badge");
 if (writeBadge) {
-  const badgesDir = path.join(root, 'badges');
+  const badgesDir = path.join(root, "badges");
   if (!fs.existsSync(badgesDir)) fs.mkdirSync(badgesDir, { recursive: true });
   const badge = {
     schemaVersion: 1,
-    label: 'lines of code',
+    label: "lines of code",
     message: formatCount(total),
-    color: 'blue',
+    color: "blue",
   };
-  fs.writeFileSync(path.join(badgesDir, 'loc.json'), JSON.stringify(badge) + '\n', 'utf8');
+  fs.writeFileSync(path.join(badgesDir, "loc.json"), JSON.stringify(badge) + "\n", "utf8");
 }

@@ -32,7 +32,13 @@ export default function Topbar() {
           <input placeholder="Search..." />
         </div>
         <NotificationsButton />
-        <button type="button" className="icon-button" onClick={() => openChat()} title="Open chat" aria-label="Open chat">
+        <button
+          type="button"
+          className="icon-button"
+          onClick={() => openChat()}
+          title="Open chat"
+          aria-label="Open chat"
+        >
           <MessageCircle size={14} />
         </button>
         <button className="icon-button" onClick={toggleTheme} title="Toggle theme">

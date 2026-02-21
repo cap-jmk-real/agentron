@@ -66,9 +66,7 @@ describe("Import API", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tools: [
-            { id: "std-fetch-url", name: "Fetch", protocol: "native", config: {} },
-          ],
+          tools: [{ id: "std-fetch-url", name: "Fetch", protocol: "native", config: {} }],
         }),
       })
     );

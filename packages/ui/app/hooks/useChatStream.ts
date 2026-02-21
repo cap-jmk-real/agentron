@@ -11,7 +11,12 @@ export type ChatStreamMessage = {
   content: string;
   toolResults?: { name: string; args: Record<string, unknown>; result: unknown }[];
   status?: "completed" | "waiting_for_input";
-  interactivePrompt?: { question: string; options?: string[]; stepIndex?: number; stepTotal?: number };
+  interactivePrompt?: {
+    question: string;
+    options?: string[];
+    stepIndex?: number;
+    stepTotal?: number;
+  };
   reasoning?: string;
   todos?: string[];
   completedStepIndices?: number[];
@@ -20,7 +25,16 @@ export type ChatStreamMessage = {
   executingTodoLabel?: string;
   executingSubStepLabel?: string;
   rephrasedPrompt?: string | null;
-  traceSteps?: { phase: string; label?: string; contentPreview?: string; inputPreview?: string; specialistId?: string; toolName?: string; toolInput?: unknown; toolOutput?: unknown }[];
+  traceSteps?: {
+    phase: string;
+    label?: string;
+    contentPreview?: string;
+    inputPreview?: string;
+    specialistId?: string;
+    toolName?: string;
+    toolInput?: unknown;
+    toolOutput?: unknown;
+  }[];
 };
 
 export type UseChatStreamParams = {
@@ -33,12 +47,32 @@ export type UseChatStreamParams = {
   providerId: string;
   conversationId: string | null;
   setConversationId: (v: string | null) => void;
-  conversationList: { id: string; title: string | null; rating: number | null; note: string | null; createdAt: number }[];
-  setConversationList: React.Dispatch<React.SetStateAction<{ id: string; title: string | null; rating: number | null; note: string | null; createdAt: number }[]>>;
+  conversationList: {
+    id: string;
+    title: string | null;
+    rating: number | null;
+    note: string | null;
+    createdAt: number;
+  }[];
+  setConversationList: React.Dispatch<
+    React.SetStateAction<
+      {
+        id: string;
+        title: string | null;
+        rating: number | null;
+        note: string | null;
+        createdAt: number;
+      }[]
+    >
+  >;
   pathname: string | null;
   getUiContext: (pathname: string | null) => string;
   buildBody?: (base: Record<string, unknown>) => Record<string, unknown>;
-  onRunFinished?: (runId: string, status: string, details?: { question?: string; options?: string[] }) => void;
+  onRunFinished?: (
+    runId: string,
+    status: string,
+    details?: { question?: string; options?: string[] }
+  ) => void;
   randomId: () => string;
 };
 
@@ -51,14 +85,37 @@ export function processChatStreamEvent(
     updatePlaceholder: (u: Partial<ChatStreamMessage>, flush?: boolean) => void;
     setMessages: React.Dispatch<React.SetStateAction<ChatStreamMessage[]>>;
     setConversationId: (v: string | null) => void;
-    setConversationList: React.Dispatch<React.SetStateAction<{ id: string; title: string | null; rating: number | null; note: string | null; createdAt: number }[]>>;
+    setConversationList: React.Dispatch<
+      React.SetStateAction<
+        {
+          id: string;
+          title: string | null;
+          rating: number | null;
+          note: string | null;
+          createdAt: number;
+        }[]
+      >
+    >;
     doneReceived: { current: boolean };
-    onRunFinished?: (runId: string, status: string, details?: { question?: string; options?: string[] }) => void;
+    onRunFinished?: (
+      runId: string,
+      status: string,
+      details?: { question?: string; options?: string[] }
+    ) => void;
     onDone?: () => void;
   }
 ): void {
   if (event.type === "trace_step") {
-    const step: { phase: string; label?: string; contentPreview?: string; inputPreview?: string; specialistId?: string; toolName?: string; toolInput?: unknown; toolOutput?: unknown } = {
+    const step: {
+      phase: string;
+      label?: string;
+      contentPreview?: string;
+      inputPreview?: string;
+      specialistId?: string;
+      toolName?: string;
+      toolInput?: unknown;
+      toolOutput?: unknown;
+    } = {
       phase: event.phase ?? "",
       label: event.label,
       contentPreview: event.contentPreview,
@@ -71,17 +128,49 @@ export function processChatStreamEvent(
     ctx.setMessages((prev) => {
       // #region agent log
       const hasPlaceholder = prev.some((m) => m.id === ctx.placeholderId);
-      if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"840831"},body:JSON.stringify({sessionId:"840831",location:"useChatStream.ts:trace_step",message:"trace_step setMessages",data:{hasPlaceholder,prevLen:prev.length,placeholderIdPrefix:ctx.placeholderId.slice(0,8)},hypothesisId:"H1",timestamp:Date.now()})}).catch(()=>{});
+      if (typeof fetch !== "undefined")
+        fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "840831" },
+          body: JSON.stringify({
+            sessionId: "840831",
+            location: "useChatStream.ts:trace_step",
+            message: "trace_step setMessages",
+            data: {
+              hasPlaceholder,
+              prevLen: prev.length,
+              placeholderIdPrefix: ctx.placeholderId.slice(0, 8),
+            },
+            hypothesisId: "H1",
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
       // #endregion
       return prev.map((m) =>
         m.id === ctx.placeholderId ? { ...m, traceSteps: [...(m.traceSteps ?? []), step] } : m
       );
     });
-  } else if (event.type === "content_delta" && "delta" in event && typeof event.delta === "string") {
+  } else if (
+    event.type === "content_delta" &&
+    "delta" in event &&
+    typeof event.delta === "string"
+  ) {
     ctx.setMessages((prev) => {
       // #region agent log
       const hasPlaceholder = prev.some((m) => m.id === ctx.placeholderId);
-      if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"840831"},body:JSON.stringify({sessionId:"840831",location:"useChatStream.ts:content_delta",message:"content_delta setMessages",data:{hasPlaceholder,prevLen:prev.length},hypothesisId:"H1",timestamp:Date.now()})}).catch(()=>{});
+      if (typeof fetch !== "undefined")
+        fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "840831" },
+          body: JSON.stringify({
+            sessionId: "840831",
+            location: "useChatStream.ts:content_delta",
+            message: "content_delta setMessages",
+            data: { hasPlaceholder, prevLen: prev.length },
+            hypothesisId: "H1",
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
       // #endregion
       return prev.map((m) =>
         m.id === ctx.placeholderId ? { ...m, content: (m.content ?? "") + event.delta } : m
@@ -90,22 +179,28 @@ export function processChatStreamEvent(
   } else if (event.type === "rephrased_prompt" && event.rephrasedPrompt != null) {
     ctx.updatePlaceholder({ rephrasedPrompt: event.rephrasedPrompt });
   } else if (event.type === "plan") {
-    ctx.updatePlaceholder({
-      reasoning: event.reasoning ?? "",
-      todos: event.todos ?? [],
-      completedStepIndices: [],
-      executingStepIndex: undefined,
-      executingToolName: undefined,
-      executingTodoLabel: undefined,
-      executingSubStepLabel: undefined,
-    }, true);
+    ctx.updatePlaceholder(
+      {
+        reasoning: event.reasoning ?? "",
+        todos: event.todos ?? [],
+        completedStepIndices: [],
+        executingStepIndex: undefined,
+        executingToolName: undefined,
+        executingTodoLabel: undefined,
+        executingSubStepLabel: undefined,
+      },
+      true
+    );
   } else if (event.type === "step_start" && event.stepIndex !== undefined) {
-    ctx.updatePlaceholder({
-      executingStepIndex: event.stepIndex,
-      executingToolName: (event as { toolName?: string }).toolName,
-      executingTodoLabel: (event as { todoLabel?: string }).todoLabel,
-      executingSubStepLabel: (event as { subStepLabel?: string }).subStepLabel,
-    }, true);
+    ctx.updatePlaceholder(
+      {
+        executingStepIndex: event.stepIndex,
+        executingToolName: (event as { toolName?: string }).toolName,
+        executingTodoLabel: (event as { todoLabel?: string }).todoLabel,
+        executingSubStepLabel: (event as { subStepLabel?: string }).subStepLabel,
+      },
+      true
+    );
   } else if (event.type === "todo_done" && event.index !== undefined) {
     flushSync(() =>
       ctx.setMessages((prev) =>
@@ -126,45 +221,108 @@ export function processChatStreamEvent(
   } else if (event.type === "done") {
     ctx.doneReceived.current = true;
     // #region agent log
-    if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"ce22a5"},body:JSON.stringify({sessionId:"ce22a5",location:"useChatStream.ts:done",message:"done event received",data:{placeholderIdPrefix:ctx.placeholderId.slice(0,8),contentLen:(event.content??"").length},hypothesisId:"H2",timestamp:Date.now()})}).catch(()=>{});
+    if (typeof fetch !== "undefined")
+      fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ce22a5" },
+        body: JSON.stringify({
+          sessionId: "ce22a5",
+          location: "useChatStream.ts:done",
+          message: "done event received",
+          data: {
+            placeholderIdPrefix: ctx.placeholderId.slice(0, 8),
+            contentLen: (event.content ?? "").length,
+          },
+          hypothesisId: "H2",
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
     // #endregion
-    ctx.updatePlaceholder({
-      content: event.content ?? "",
-      toolResults: event.toolResults,
-      ...(event.status !== undefined && { status: event.status }),
-      ...(event.interactivePrompt && { interactivePrompt: event.interactivePrompt }),
-      ...(event.reasoning !== undefined && { reasoning: event.reasoning }),
-      ...(event.todos !== undefined && { todos: event.todos }),
-      completedStepIndices: event.completedStepIndices,
-      executingStepIndex: undefined,
-      executingToolName: undefined,
-      executingTodoLabel: undefined,
-      executingSubStepLabel: undefined,
-      ...(event.rephrasedPrompt !== undefined && { rephrasedPrompt: event.rephrasedPrompt }),
-    }, true);
-    if (event.messageId) ctx.setMessages((prev) => prev.map((m) => (m.id === ctx.placeholderId ? { ...m, id: event.messageId! } : m)));
-    if (event.userMessageId) ctx.setMessages((prev) => prev.map((m) => (m.id === ctx.userMsgId ? { ...m, id: event.userMessageId! } : m)));
+    ctx.updatePlaceholder(
+      {
+        content: event.content ?? "",
+        toolResults: event.toolResults,
+        ...(event.status !== undefined && { status: event.status }),
+        ...(event.interactivePrompt && { interactivePrompt: event.interactivePrompt }),
+        ...(event.reasoning !== undefined && { reasoning: event.reasoning }),
+        ...(event.todos !== undefined && { todos: event.todos }),
+        completedStepIndices: event.completedStepIndices,
+        executingStepIndex: undefined,
+        executingToolName: undefined,
+        executingTodoLabel: undefined,
+        executingSubStepLabel: undefined,
+        ...(event.rephrasedPrompt !== undefined && { rephrasedPrompt: event.rephrasedPrompt }),
+      },
+      true
+    );
+    if (event.messageId)
+      ctx.setMessages((prev) =>
+        prev.map((m) => (m.id === ctx.placeholderId ? { ...m, id: event.messageId! } : m))
+      );
+    if (event.userMessageId)
+      ctx.setMessages((prev) =>
+        prev.map((m) => (m.id === ctx.userMsgId ? { ...m, id: event.userMessageId! } : m))
+      );
     if (event.conversationId) {
       // #region agent log
-      if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({location:"useChatStream:done_set_conversationId",message:"stream done sets conversationId",data:{newConversationId:event.conversationId},hypothesisId:"H1",timestamp:Date.now()})}).catch(()=>{});
+      if (typeof fetch !== "undefined")
+        fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            location: "useChatStream:done_set_conversationId",
+            message: "stream done sets conversationId",
+            data: { newConversationId: event.conversationId },
+            hypothesisId: "H1",
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
       // #endregion
       ctx.setConversationId(event.conversationId);
       const newTitle = event.conversationTitle ?? null;
       ctx.setConversationList((prev) => {
         const has = prev.some((c) => c.id === event.conversationId);
-        if (has) return prev.map((c) => (c.id === event.conversationId ? { ...c, title: newTitle ?? c.title } : c));
-        return [{ id: event.conversationId!, title: newTitle, rating: null, note: null, createdAt: Date.now() }, ...prev];
+        if (has)
+          return prev.map((c) =>
+            c.id === event.conversationId ? { ...c, title: newTitle ?? c.title } : c
+          );
+        return [
+          {
+            id: event.conversationId!,
+            title: newTitle,
+            rating: null,
+            note: null,
+            createdAt: Date.now(),
+          },
+          ...prev,
+        ];
       });
     }
     // Use the last execute_workflow result so we show the final run state (e.g. waiting_for_user after a retry), not the first (e.g. failed)
-    const execWfResults = event.toolResults?.filter((r: { name: string; result?: unknown }) => r.name === "execute_workflow") ?? [];
-    const lastExecWf = execWfResults.length > 0 ? execWfResults[execWfResults.length - 1] : undefined;
-    const wfResult = lastExecWf?.result as { id?: string; status?: string; question?: string; options?: string[] } | undefined;
+    const execWfResults =
+      event.toolResults?.filter(
+        (r: { name: string; result?: unknown }) => r.name === "execute_workflow"
+      ) ?? [];
+    const lastExecWf =
+      execWfResults.length > 0 ? execWfResults[execWfResults.length - 1] : undefined;
+    const wfResult = lastExecWf?.result as
+      | { id?: string; status?: string; question?: string; options?: string[] }
+      | undefined;
     const terminalStatuses = ["completed", "waiting_for_user", "failed", "cancelled"] as const;
-    if (wfResult?.id && wfResult.status && terminalStatuses.includes(wfResult.status as (typeof terminalStatuses)[number]) && ctx.onRunFinished) {
-      const details = wfResult.status === "waiting_for_user" && (wfResult.question || (Array.isArray(wfResult.options) && wfResult.options.length > 0))
-        ? { question: wfResult.question, options: Array.isArray(wfResult.options) ? wfResult.options : undefined }
-        : undefined;
+    if (
+      wfResult?.id &&
+      wfResult.status &&
+      terminalStatuses.includes(wfResult.status as (typeof terminalStatuses)[number]) &&
+      ctx.onRunFinished
+    ) {
+      const details =
+        wfResult.status === "waiting_for_user" &&
+        (wfResult.question || (Array.isArray(wfResult.options) && wfResult.options.length > 0))
+          ? {
+              question: wfResult.question,
+              options: Array.isArray(wfResult.options) ? wfResult.options : undefined,
+            }
+          : undefined;
       ctx.onRunFinished(wfResult.id, wfResult.status, details);
     }
     ctx.onDone?.();
@@ -172,13 +330,21 @@ export function processChatStreamEvent(
     if (!ctx.doneReceived.current) {
       const errorContent = `Error: ${event.error ?? "Unknown error"}`;
       if (event.messageId) {
-        ctx.setMessages((prev) => prev.map((m) => (m.id === ctx.placeholderId ? { ...m, id: event.messageId!, content: errorContent, traceSteps: [] } : m)));
+        ctx.setMessages((prev) =>
+          prev.map((m) =>
+            m.id === ctx.placeholderId
+              ? { ...m, id: event.messageId!, content: errorContent, traceSteps: [] }
+              : m
+          )
+        );
       } else {
         ctx.updatePlaceholder({ content: errorContent, traceSteps: [] });
       }
     }
     if (event.userMessageId) {
-      ctx.setMessages((prev) => prev.map((m) => (m.id === ctx.userMsgId ? { ...m, id: event.userMessageId! } : m)));
+      ctx.setMessages((prev) =>
+        prev.map((m) => (m.id === ctx.userMsgId ? { ...m, id: event.userMessageId! } : m))
+      );
     }
   }
 }
@@ -186,7 +352,9 @@ export function processChatStreamEvent(
 /** Map API chat response rows to ChatStreamMessage format. */
 export function mapApiMessagesToMessage(
   data: unknown[],
-  normalizeToolResults: (raw: unknown) => { name: string; args: Record<string, unknown>; result: unknown }[]
+  normalizeToolResults: (
+    raw: unknown
+  ) => { name: string; args: Record<string, unknown>; result: unknown }[]
 ): ChatStreamMessage[] {
   if (!Array.isArray(data)) return [];
   return data.map((m) => {
@@ -199,7 +367,9 @@ export function mapApiMessagesToMessage(
       content: row.content as string,
       toolResults,
       ...(row.status !== undefined && { status: row.status as "completed" | "waiting_for_input" }),
-      ...(row.interactivePrompt != null && { interactivePrompt: row.interactivePrompt as { question: string; options?: string[] } }),
+      ...(row.interactivePrompt != null && {
+        interactivePrompt: row.interactivePrompt as { question: string; options?: string[] },
+      }),
     } as ChatStreamMessage;
   });
 }
@@ -214,16 +384,32 @@ export type PerformChatStreamSendParams = {
   uiContext: string;
   setMessages: React.Dispatch<React.SetStateAction<ChatStreamMessage[]>>;
   setConversationId: (v: string | null) => void;
-  setConversationList: React.Dispatch<React.SetStateAction<{ id: string; title: string | null; rating: number | null; note: string | null; createdAt: number }[]>>;
+  setConversationList: React.Dispatch<
+    React.SetStateAction<
+      {
+        id: string;
+        title: string | null;
+        rating: number | null;
+        note: string | null;
+        createdAt: number;
+      }[]
+    >
+  >;
   setLoading: (v: boolean) => void;
   abortSignal: AbortSignal | undefined;
   randomId: () => string;
-  normalizeToolResults: (raw: unknown) => { name: string; args: Record<string, unknown>; result: unknown }[];
+  normalizeToolResults: (
+    raw: unknown
+  ) => { name: string; args: Record<string, unknown>; result: unknown }[];
   /** Build final request body; base has message, history, providerId, uiContext, conversationId */
   buildBody: (base: Record<string, unknown>) => Record<string, unknown>;
   /** Optional extra fields merged into the request body (e.g. continueShellApproval) */
   extraBody?: Record<string, unknown>;
-  onRunFinished?: (runId: string, status: string, details?: { question?: string; options?: string[] }) => void;
+  onRunFinished?: (
+    runId: string,
+    status: string,
+    details?: { question?: string; options?: string[] }
+  ) => void;
   onDone?: () => void;
   onAbort?: () => void;
   onInputRestore?: (text: string) => void;
@@ -255,9 +441,7 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
 
   const updatePlaceholder = (updates: Partial<ChatStreamMessage>, flush = false) => {
     const updater = () =>
-      setMessages((prev) =>
-        prev.map((m) => (m.id === placeholderId ? { ...m, ...updates } : m))
-      );
+      setMessages((prev) => prev.map((m) => (m.id === placeholderId ? { ...m, ...updates } : m)));
     if (flush) flushSync(updater);
     else updater();
   };
@@ -278,7 +462,19 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
     };
 
     // #region agent log
-    if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"e0760a"},body:JSON.stringify({sessionId:"e0760a",location:"useChatStream.ts:before_fetch",message:"client sending message",data:{conversationId:body.conversationId ?? null,messageLen:(text||"").length},hypothesisId:"H1",timestamp:Date.now()})}).catch(()=>{});
+    if (typeof fetch !== "undefined")
+      fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e0760a" },
+        body: JSON.stringify({
+          sessionId: "e0760a",
+          location: "useChatStream.ts:before_fetch",
+          message: "client sending message",
+          data: { conversationId: body.conversationId ?? null, messageLen: (text || "").length },
+          hypothesisId: "H1",
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
     // #endregion
     const res = await fetch("/api/chat?stream=1", {
       method: "POST",
@@ -313,7 +509,8 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
     try {
       const data = await res.json();
       turnId = typeof data?.turnId === "string" ? data.turnId : "";
-      responseConversationId = typeof data?.conversationId === "string" ? data.conversationId : undefined;
+      responseConversationId =
+        typeof data?.conversationId === "string" ? data.conversationId : undefined;
     } catch {
       updatePlaceholder({ content: "Error: Invalid response (no turnId).", traceSteps: [] });
       setLoading(false);
@@ -331,7 +528,16 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
       setConversationId(responseConversationId);
       setConversationList((prev) => {
         if (prev.some((c) => c.id === responseConversationId)) return prev;
-        return [{ id: responseConversationId!, title: null, rating: null, note: null, createdAt: Date.now() }, ...prev];
+        return [
+          {
+            id: responseConversationId!,
+            title: null,
+            rating: null,
+            note: null,
+            createdAt: Date.now(),
+          },
+          ...prev,
+        ];
       });
     }
 
@@ -353,24 +559,45 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
               const data = await r.json();
               if (!Array.isArray(data)) return;
               const willReplace = data.length >= minMessagesForPollReplace;
-              if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"840831"},body:JSON.stringify({sessionId:"840831",location:"useChatStream.ts:poll",message:"poll ran",data:{dataLen:data.length,minMessagesForPollReplace,willReplace},hypothesisId:"H2",timestamp:Date.now()})}).catch(()=>{});
+              if (typeof fetch !== "undefined")
+                fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "840831" },
+                  body: JSON.stringify({
+                    sessionId: "840831",
+                    location: "useChatStream.ts:poll",
+                    message: "poll ran",
+                    data: { dataLen: data.length, minMessagesForPollReplace, willReplace },
+                    hypothesisId: "H2",
+                    timestamp: Date.now(),
+                  }),
+                }).catch(() => {});
               if (data.length < minMessagesForPollReplace) return;
               const apiMessages: ChatStreamMessage[] = data.map((m: Record<string, unknown>) => {
                 const raw = m.toolCalls;
                 const toolResults = Array.isArray(raw)
-                  ? (raw as { name?: string; arguments?: unknown; result?: unknown }[]).map((t) => ({
-                      name: (t?.name as string) ?? "",
-                      args: (typeof t?.arguments === "object" && t?.arguments != null ? t.arguments : {}) as Record<string, unknown>,
-                      result: t?.result,
-                    }))
+                  ? (raw as { name?: string; arguments?: unknown; result?: unknown }[]).map(
+                      (t) => ({
+                        name: (t?.name as string) ?? "",
+                        args: (typeof t?.arguments === "object" && t?.arguments != null
+                          ? t.arguments
+                          : {}) as Record<string, unknown>,
+                        result: t?.result,
+                      })
+                    )
                   : undefined;
                 return {
                   id: (m.id as string) ?? "",
                   role: (m.role as "user" | "assistant") ?? "assistant",
                   content: (m.content as string) ?? "",
                   toolResults,
-                  ...(m.status !== undefined && { status: m.status as "completed" | "waiting_for_input" }),
-                  ...(m.interactivePrompt != null && { interactivePrompt: m.interactivePrompt as ChatStreamMessage["interactivePrompt"] }),
+                  ...(m.status !== undefined && {
+                    status: m.status as "completed" | "waiting_for_input",
+                  }),
+                  ...(m.interactivePrompt != null && {
+                    interactivePrompt:
+                      m.interactivePrompt as ChatStreamMessage["interactivePrompt"],
+                  }),
                 };
               });
               setMessages(apiMessages);
@@ -422,17 +649,47 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
       // #region agent log
       try {
         const parsed = JSON.parse(e.data) as { type?: string };
-        if (parsed.type === "trace_step" || parsed.type === "step_start" || parsed.type === "plan") {
-          if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"e0760a"},body:JSON.stringify({sessionId:"e0760a",location:"useChatStream.ts:onmessage",message:"SSE event received",data:{eventType:parsed.type,placeholderId},hypothesisId:"H3",timestamp:Date.now()})}).catch(()=>{});
+        if (
+          parsed.type === "trace_step" ||
+          parsed.type === "step_start" ||
+          parsed.type === "plan"
+        ) {
+          if (typeof fetch !== "undefined")
+            fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e0760a" },
+              body: JSON.stringify({
+                sessionId: "e0760a",
+                location: "useChatStream.ts:onmessage",
+                message: "SSE event received",
+                data: { eventType: parsed.type, placeholderId },
+                hypothesisId: "H3",
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       // #endregion
       processEvent(e.data);
       try {
         const event = JSON.parse(e.data) as { type?: string };
         if (event.type === "done" || event.type === "error") {
           // #region agent log
-          if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"26876c"},body:JSON.stringify({sessionId:"26876c",location:"useChatStream:done_or_error",message:"SSE done/error, setting loading false",data:{eventType:event.type},hypothesisId:"H5_response",timestamp:Date.now()})}).catch(()=>{});
+          if (typeof fetch !== "undefined")
+            fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "26876c" },
+              body: JSON.stringify({
+                sessionId: "26876c",
+                location: "useChatStream:done_or_error",
+                message: "SSE done/error, setting loading false",
+                data: { eventType: event.type },
+                hypothesisId: "H5_response",
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
           // #endregion
           eventSource.close();
           setLoading(false);
@@ -443,7 +700,23 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
     };
     const fetchConversationFallback = async (): Promise<boolean> => {
       // #region agent log
-      if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"ce22a5"},body:JSON.stringify({sessionId:"ce22a5",location:"useChatStream.ts:fallback_enter",message:"fallback entered",data:{hasCidForPoll:!!cidForPoll,doneReceived:doneReceivedRef.current,minMessagesForPollReplace},hypothesisId:"H3",timestamp:Date.now()})}).catch(()=>{});
+      if (typeof fetch !== "undefined")
+        fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ce22a5" },
+          body: JSON.stringify({
+            sessionId: "ce22a5",
+            location: "useChatStream.ts:fallback_enter",
+            message: "fallback entered",
+            data: {
+              hasCidForPoll: !!cidForPoll,
+              doneReceived: doneReceivedRef.current,
+              minMessagesForPollReplace,
+            },
+            hypothesisId: "H3",
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
       // #endregion
       if (!cidForPoll || doneReceivedRef.current) return false;
       const doFetch = async (): Promise<{ data: unknown[] } | null> => {
@@ -462,7 +735,9 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
           const toolResults = Array.isArray(raw)
             ? (raw as { name?: string; arguments?: unknown; result?: unknown }[]).map((t) => ({
                 name: (t?.name as string) ?? "",
-                args: (typeof t?.arguments === "object" && t?.arguments != null ? t.arguments : {}) as Record<string, unknown>,
+                args: (typeof t?.arguments === "object" && t?.arguments != null
+                  ? t.arguments
+                  : {}) as Record<string, unknown>,
                 result: t?.result,
               }))
             : undefined;
@@ -471,19 +746,47 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
             role: (row.role as "user" | "assistant") ?? "assistant",
             content: (row.content as string) ?? "",
             toolResults,
-            ...(row.status !== undefined && { status: row.status as "completed" | "waiting_for_input" }),
-            ...(row.interactivePrompt != null && { interactivePrompt: row.interactivePrompt as ChatStreamMessage["interactivePrompt"] }),
+            ...(row.status !== undefined && {
+              status: row.status as "completed" | "waiting_for_input",
+            }),
+            ...(row.interactivePrompt != null && {
+              interactivePrompt: row.interactivePrompt as ChatStreamMessage["interactivePrompt"],
+            }),
           };
         });
       try {
         let result = await doFetch();
         if (result && result.data.length >= minMessagesForPollReplace) {
           // #region agent log
-          if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"ce22a5"},body:JSON.stringify({sessionId:"ce22a5",location:"useChatStream.ts:fallback_fetch",message:"onerror fallback replace",data:{apiLen:result.data.length,minMessagesForPollReplace},hypothesisId:"H3",timestamp:Date.now()})}).catch(()=>{});
+          if (typeof fetch !== "undefined")
+            fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ce22a5" },
+              body: JSON.stringify({
+                sessionId: "ce22a5",
+                location: "useChatStream.ts:fallback_fetch",
+                message: "onerror fallback replace",
+                data: { apiLen: result.data.length, minMessagesForPollReplace },
+                hypothesisId: "H3",
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
           // #endregion
           setMessages(mapToMessages(result.data));
           // #region agent log
-          if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"ce22a5"},body:JSON.stringify({sessionId:"ce22a5",location:"useChatStream.ts:fallback_applied",message:"fallback setMessages done",data:{apiLen:result.data.length},hypothesisId:"H3",timestamp:Date.now()})}).catch(()=>{});
+          if (typeof fetch !== "undefined")
+            fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ce22a5" },
+              body: JSON.stringify({
+                sessionId: "ce22a5",
+                location: "useChatStream.ts:fallback_applied",
+                message: "fallback setMessages done",
+                data: { apiLen: result.data.length },
+                hypothesisId: "H3",
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
           // #endregion
           return true;
         }
@@ -495,16 +798,52 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
         }
         if (result && result.data.length >= minMessagesForPollReplace) {
           // #region agent log
-          if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"ce22a5"},body:JSON.stringify({sessionId:"ce22a5",location:"useChatStream.ts:fallback_fetch_retry",message:"onerror fallback replace after retry",data:{apiLen:result.data.length},hypothesisId:"H3",timestamp:Date.now()})}).catch(()=>{});
+          if (typeof fetch !== "undefined")
+            fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ce22a5" },
+              body: JSON.stringify({
+                sessionId: "ce22a5",
+                location: "useChatStream.ts:fallback_fetch_retry",
+                message: "onerror fallback replace after retry",
+                data: { apiLen: result.data.length },
+                hypothesisId: "H3",
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
           // #endregion
           setMessages(mapToMessages(result.data));
           // #region agent log
-          if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"ce22a5"},body:JSON.stringify({sessionId:"ce22a5",location:"useChatStream.ts:fallback_applied",message:"fallback setMessages after retry",data:{apiLen:result.data.length},hypothesisId:"H3",timestamp:Date.now()})}).catch(()=>{});
+          if (typeof fetch !== "undefined")
+            fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ce22a5" },
+              body: JSON.stringify({
+                sessionId: "ce22a5",
+                location: "useChatStream.ts:fallback_applied",
+                message: "fallback setMessages after retry",
+                data: { apiLen: result.data.length },
+                hypothesisId: "H3",
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
           // #endregion
           return true;
         }
         // #region agent log
-        if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"ce22a5"},body:JSON.stringify({sessionId:"ce22a5",location:"useChatStream.ts:fallback_fetch",message:"onerror fallback no replace",data:{apiLen:result?.data?.length??0,minMessagesForPollReplace},hypothesisId:"H3",timestamp:Date.now()})}).catch(()=>{});
+        if (typeof fetch !== "undefined")
+          fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ce22a5" },
+            body: JSON.stringify({
+              sessionId: "ce22a5",
+              location: "useChatStream.ts:fallback_fetch",
+              message: "onerror fallback no replace",
+              data: { apiLen: result?.data?.length ?? 0, minMessagesForPollReplace },
+              hypothesisId: "H3",
+              timestamp: Date.now(),
+            }),
+          }).catch(() => {});
         // #endregion
         return false;
       } catch {
@@ -514,14 +853,29 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
 
     eventSource.onerror = () => {
       // #region agent log
-      if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"ce22a5"},body:JSON.stringify({sessionId:"ce22a5",location:"useChatStream.ts:onerror",message:"EventSource onerror",data:{doneReceived:doneReceivedRef.current},hypothesisId:"H3",timestamp:Date.now()})}).catch(()=>{});
+      if (typeof fetch !== "undefined")
+        fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ce22a5" },
+          body: JSON.stringify({
+            sessionId: "ce22a5",
+            location: "useChatStream.ts:onerror",
+            message: "EventSource onerror",
+            data: { doneReceived: doneReceivedRef.current },
+            hypothesisId: "H3",
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
       // #endregion
       if (pollTimer != null) clearTimeout(pollTimer);
       eventSource.close();
       if (!doneReceivedRef.current) {
         void fetchConversationFallback().then((replaced) => {
           if (!replaced) {
-            updatePlaceholder({ content: "Request failed or connection lost. You can try again or refresh the page.", traceSteps: [] });
+            updatePlaceholder({
+              content: "Request failed or connection lost. You can try again or refresh the page.",
+              traceSteps: [],
+            });
           }
           setLoading(false);
         });
@@ -531,20 +885,50 @@ export async function performChatStreamSend(params: PerformChatStreamSendParams)
     };
   } catch (err) {
     // #region agent log
-    if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"e0760a"},body:JSON.stringify({sessionId:"e0760a",location:"useChatStream.ts:catch",message:"chat fetch threw",data:{name:err instanceof Error?err.name:"",message:err instanceof Error?err.message:String(err)},hypothesisId:"H3",timestamp:Date.now()})}).catch(()=>{});
+    if (typeof fetch !== "undefined")
+      fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e0760a" },
+        body: JSON.stringify({
+          sessionId: "e0760a",
+          location: "useChatStream.ts:catch",
+          message: "chat fetch threw",
+          data: {
+            name: err instanceof Error ? err.name : "",
+            message: err instanceof Error ? err.message : String(err),
+          },
+          hypothesisId: "H3",
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
     // #endregion
     if (err instanceof Error && err.name === "AbortError") {
       setMessages((prev) => prev.filter((m) => m.id !== placeholderId));
       onAbort?.();
       if (onInputRestore) onInputRestore(text);
     } else {
-      updatePlaceholder({ content: "Request failed or connection lost. You can try again or refresh the page.", traceSteps: [] });
+      updatePlaceholder({
+        content: "Request failed or connection lost. You can try again or refresh the page.",
+        traceSteps: [],
+      });
       setLoading(false);
     }
   } finally {
     if (pollTimer != null) clearTimeout(pollTimer);
     // #region agent log
-    if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"26876c"},body:JSON.stringify({sessionId:"26876c",location:"useChatStream:finally",message:"performChatStreamSend finally ran",data:{},hypothesisId:"H5_response",timestamp:Date.now()})}).catch(()=>{});
+    if (typeof fetch !== "undefined")
+      fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "26876c" },
+        body: JSON.stringify({
+          sessionId: "26876c",
+          location: "useChatStream:finally",
+          message: "performChatStreamSend finally ran",
+          data: {},
+          hypothesisId: "H5_response",
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
     // #endregion
     // Do NOT setLoading(false) here: try block exits immediately after opening EventSource, so this would clear loading before any SSE events. Loading is cleared on done/error event, onerror, or poll replace.
   }

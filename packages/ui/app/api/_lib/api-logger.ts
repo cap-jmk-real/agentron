@@ -70,13 +70,9 @@ export function appendLogLine(route: string, method: string, message: string): v
 export function logApiError(route: string, method: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err);
   const stack = err instanceof Error ? err.stack : undefined;
-  const line = [
-    new Date().toISOString(),
-    method,
-    route,
-    msg,
-    stack ? `\n${stack}` : "",
-  ].join(" | ");
+  const line = [new Date().toISOString(), method, route, msg, stack ? `\n${stack}` : ""].join(
+    " | "
+  );
   const toWrite = line + "\n";
   writeLogLine(toWrite);
 }
@@ -121,7 +117,11 @@ export function probeLogWritable(): boolean {
     const fallback = getFallbackLogPath();
     if (!fallback) return false;
     try {
-      fs.appendFileSync(fallback, `${new Date().toISOString()} | PROBE | (fallback) Log file writable\n`, "utf8");
+      fs.appendFileSync(
+        fallback,
+        `${new Date().toISOString()} | PROBE | (fallback) Log file writable\n`,
+        "utf8"
+      );
       return true;
     } catch {
       return false;

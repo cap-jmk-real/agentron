@@ -43,7 +43,9 @@ const GPU_MODES = [
 ];
 
 export default function LocalModelsPage() {
-  const [ollamaStatus, setOllamaStatus] = useState<{ running: boolean; version?: string } | null>(null);
+  const [ollamaStatus, setOllamaStatus] = useState<{ running: boolean; version?: string } | null>(
+    null
+  );
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [models, setModels] = useState<OllamaModel[]>([]);
   const [running, setRunning] = useState<RunningModel[]>([]);
@@ -60,23 +62,37 @@ export default function LocalModelsPage() {
   const [checkingCompat, setCheckingCompat] = useState(false);
 
   // Install flow
-  const [installInfo, setInstallInfo] = useState<{ installUrl: string; platform: string; canBrewInstall: boolean } | null>(null);
+  const [installInfo, setInstallInfo] = useState<{
+    installUrl: string;
+    platform: string;
+    canBrewInstall: boolean;
+  } | null>(null);
   const [installing, setInstalling] = useState(false);
   const [installLog, setInstallLog] = useState("");
   const [installDone, setInstallDone] = useState(false);
 
   // HF search
   const [hfQuery, setHfQuery] = useState("");
-  const [hfResults, setHfResults] = useState<Array<{ id: string; downloads: number; hasGguf: boolean; parameterSize?: string }>>([]);
+  const [hfResults, setHfResults] = useState<
+    Array<{ id: string; downloads: number; hasGguf: boolean; parameterSize?: string }>
+  >([]);
   const [hfSearching, setHfSearching] = useState(false);
   const [importingModelId, setImportingModelId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const [statusRes, sysRes, modelsRes, installInfoRes] = await Promise.all([
-      fetch("/api/ollama/status").then((r) => r.json()).catch(() => ({ running: false })),
-      fetch("/api/ollama/system").then((r) => r.json()).catch(() => null),
-      fetch("/api/ollama/models").then((r) => r.json()).catch(() => ({ models: [], running: [] })),
-      fetch("/api/ollama/install-info").then((r) => r.json()).catch(() => null),
+      fetch("/api/ollama/status")
+        .then((r) => r.json())
+        .catch(() => ({ running: false })),
+      fetch("/api/ollama/system")
+        .then((r) => r.json())
+        .catch(() => null),
+      fetch("/api/ollama/models")
+        .then((r) => r.json())
+        .catch(() => ({ models: [], running: [] })),
+      fetch("/api/ollama/install-info")
+        .then((r) => r.json())
+        .catch(() => null),
     ]);
     setOllamaStatus(statusRes);
     setSystem(sysRes);
@@ -99,14 +115,20 @@ export default function LocalModelsPage() {
         body: JSON.stringify({ parameterSize: pullSize }),
       });
       setCompat(await res.json());
-    } catch { setCompat(null); }
+    } catch {
+      setCompat(null);
+    }
     setCheckingCompat(false);
   };
 
   const PULL_SIZES = ["1B", "3B", "7B", "8B", "13B", "14B", "32B", "70B", "405B"] as const;
   const doPullWithModel = async (model: string, suggestedParameterSize?: string) => {
     if (!model.trim()) return;
-    const paramSize = suggestedParameterSize && PULL_SIZES.includes(suggestedParameterSize as (typeof PULL_SIZES)[number]) ? suggestedParameterSize : pullSize;
+    const paramSize =
+      suggestedParameterSize &&
+      PULL_SIZES.includes(suggestedParameterSize as (typeof PULL_SIZES)[number])
+        ? suggestedParameterSize
+        : pullSize;
     setPullModel(model);
     setPullSize(paramSize);
     setCompat(null);
@@ -158,7 +180,9 @@ export default function LocalModelsPage() {
                 setPullProgress(status);
               }
             }
-          } catch { /* skip */ }
+          } catch {
+            /* skip */
+          }
         }
       }
 
@@ -188,10 +212,14 @@ export default function LocalModelsPage() {
     if (!hfQuery.trim()) return;
     setHfSearching(true);
     try {
-      const res = await fetch(`/api/llm/models/search?q=${encodeURIComponent(hfQuery)}&source=huggingface`);
+      const res = await fetch(
+        `/api/llm/models/search?q=${encodeURIComponent(hfQuery)}&source=huggingface`
+      );
       const data = await res.json();
       setHfResults(Array.isArray(data) ? data : []);
-    } catch { setHfResults([]); }
+    } catch {
+      setHfResults([]);
+    }
     setHfSearching(false);
   };
 
@@ -251,13 +279,28 @@ export default function LocalModelsPage() {
 
       {/* System info banner */}
       {system && (
-        <div className="card" style={{ padding: "0.65rem 0.85rem", marginBottom: "0.75rem", display: "flex", gap: "1.5rem", fontSize: "0.78rem" }}>
-          <span><strong>RAM:</strong> {fmtBytes(system.ram.free)} free / {fmtBytes(system.ram.total)}</span>
-          <span><strong>Disk:</strong> {fmtBytes(system.disk.free)} free</span>
+        <div
+          className="card"
+          style={{
+            padding: "0.65rem 0.85rem",
+            marginBottom: "0.75rem",
+            display: "flex",
+            gap: "1.5rem",
+            fontSize: "0.78rem",
+          }}
+        >
+          <span>
+            <strong>RAM:</strong> {fmtBytes(system.ram.free)} free / {fmtBytes(system.ram.total)}
+          </span>
+          <span>
+            <strong>Disk:</strong> {fmtBytes(system.disk.free)} free
+          </span>
           {primaryGpu && (
             <span>
               <strong>GPU:</strong> {primaryGpu.name}
-              {primaryGpu.vram > 0 ? ` (${fmtBytes(primaryGpu.vram)} ${primaryGpu.backend.toUpperCase()})` : ""}
+              {primaryGpu.vram > 0
+                ? ` (${fmtBytes(primaryGpu.vram)} ${primaryGpu.backend.toUpperCase()})`
+                : ""}
             </span>
           )}
         </div>
@@ -266,9 +309,18 @@ export default function LocalModelsPage() {
       {/* Ollama status */}
       <div className="card" style={{ padding: "0.85rem 1rem", marginBottom: "1rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: ollamaStatus?.running ? "#22c55e" : "#dc2626" }} />
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: ollamaStatus?.running ? "#22c55e" : "#dc2626",
+            }}
+          />
           <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>
-            {ollamaStatus?.running ? `Ollama running (v${ollamaStatus.version ?? "?"})` : "Ollama not detected"}
+            {ollamaStatus?.running
+              ? `Ollama running (v${ollamaStatus.version ?? "?"})`
+              : "Ollama not detected"}
           </span>
         </div>
         {!ollamaStatus?.running && (
@@ -277,12 +329,7 @@ export default function LocalModelsPage() {
               Install Ollama to run models locally. No terminal required.
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
-              <button
-                type="button"
-                className="button"
-                onClick={openDownload}
-                disabled={installing}
-              >
+              <button type="button" className="button" onClick={openDownload} disabled={installing}>
                 Install Ollama (download)
               </button>
               {installInfo?.canBrewInstall && (
@@ -297,11 +344,34 @@ export default function LocalModelsPage() {
               )}
             </div>
             {installing && installLog && (
-              <pre style={{ marginTop: "0.75rem", padding: "0.6rem", borderRadius: 6, background: "var(--surface-muted)", fontSize: "0.72rem", overflow: "auto", maxHeight: 200, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+              <pre
+                style={{
+                  marginTop: "0.75rem",
+                  padding: "0.6rem",
+                  borderRadius: 6,
+                  background: "var(--surface-muted)",
+                  fontSize: "0.72rem",
+                  overflow: "auto",
+                  maxHeight: 200,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-all",
+                }}
+              >
                 {installLog}
               </pre>
             )}
-            {installDone && <p style={{ marginTop: "0.5rem", fontSize: "0.8rem", color: "#16a34a", fontWeight: 500 }}>Install finished. Ollama should be starting.</p>}
+            {installDone && (
+              <p
+                style={{
+                  marginTop: "0.5rem",
+                  fontSize: "0.8rem",
+                  color: "#16a34a",
+                  fontWeight: 500,
+                }}
+              >
+                Install finished. Ollama should be starting.
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -309,18 +379,59 @@ export default function LocalModelsPage() {
       {/* Installed models */}
       <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.5rem" }}>Installed Models</h2>
       {pulling && (
-        <div className="card" style={{ padding: "0.75rem 1rem", marginBottom: "0.5rem", border: "1px solid var(--primary)", background: "rgba(91,124,250,0.06)" }}>
-          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.4rem" }}>Downloading model</div>
-          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "0.5rem", wordBreak: "break-all" }}>{pullModel}</div>
-          <div style={{ width: "100%", height: 8, borderRadius: 4, background: "var(--border)", overflow: "hidden", marginBottom: "0.35rem" }}>
-            <div style={{ width: `${pullPct}%`, height: "100%", borderRadius: 4, background: "var(--primary)", transition: "width 300ms" }} />
+        <div
+          className="card"
+          style={{
+            padding: "0.75rem 1rem",
+            marginBottom: "0.5rem",
+            border: "1px solid var(--primary)",
+            background: "rgba(91,124,250,0.06)",
+          }}
+        >
+          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.4rem" }}>
+            Downloading model
+          </div>
+          <div
+            style={{
+              fontSize: "0.78rem",
+              color: "var(--text-muted)",
+              marginBottom: "0.5rem",
+              wordBreak: "break-all",
+            }}
+          >
+            {pullModel}
+          </div>
+          <div
+            style={{
+              width: "100%",
+              height: 8,
+              borderRadius: 4,
+              background: "var(--border)",
+              overflow: "hidden",
+              marginBottom: "0.35rem",
+            }}
+          >
+            <div
+              style={{
+                width: `${pullPct}%`,
+                height: "100%",
+                borderRadius: 4,
+                background: "var(--primary)",
+                transition: "width 300ms",
+              }}
+            />
           </div>
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{pullProgress}</div>
         </div>
       )}
       {models.length === 0 && !pulling ? (
-        <div className="card" style={{ padding: "1.5rem", textAlign: "center", marginBottom: "1rem" }}>
-          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: 0 }}>No models installed</p>
+        <div
+          className="card"
+          style={{ padding: "1.5rem", textAlign: "center", marginBottom: "1rem" }}
+        >
+          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: 0 }}>
+            No models installed
+          </p>
         </div>
       ) : (
         <div style={{ display: "grid", gap: "0.35rem", marginBottom: "1rem" }}>
@@ -329,21 +440,60 @@ export default function LocalModelsPage() {
             const runInfo = running.find((r) => r.name === m.name);
             return (
               <div key={m.name} className="card" style={{ padding: "0.55rem 0.75rem" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+                >
                   <div>
-                    <div style={{ fontSize: "0.85rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                    <div
+                      style={{
+                        fontSize: "0.85rem",
+                        fontWeight: 600,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.4rem",
+                      }}
+                    >
                       {m.name}
-                      {isRunning && <span style={{ fontSize: "0.65rem", padding: "0.1rem 0.35rem", borderRadius: 4, background: "rgba(34,197,94,0.12)", color: "#16a34a", fontWeight: 600 }}>Running</span>}
+                      {isRunning && (
+                        <span
+                          style={{
+                            fontSize: "0.65rem",
+                            padding: "0.1rem 0.35rem",
+                            borderRadius: 4,
+                            background: "rgba(34,197,94,0.12)",
+                            color: "#16a34a",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Running
+                        </span>
+                      )}
                     </div>
-                    <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", display: "flex", gap: "0.75rem", marginTop: "0.15rem" }}>
+                    <div
+                      style={{
+                        fontSize: "0.72rem",
+                        color: "var(--text-muted)",
+                        display: "flex",
+                        gap: "0.75rem",
+                        marginTop: "0.15rem",
+                      }}
+                    >
                       <span>{fmtBytes(m.size)}</span>
                       {m.parameterSize && <span>{m.parameterSize}</span>}
                       {m.quantization && <span>{m.quantization}</span>}
                       {m.family && <span>{m.family}</span>}
-                      {runInfo && runInfo.sizeVram > 0 && <span>VRAM: {fmtBytes(runInfo.sizeVram)}</span>}
+                      {runInfo && runInfo.sizeVram > 0 && (
+                        <span>VRAM: {fmtBytes(runInfo.sizeVram)}</span>
+                      )}
                     </div>
                   </div>
-                  <button className="button button-ghost button-small" onClick={() => deleteModel(m.name)} style={{ color: "#dc2626" }}>Delete</button>
+                  <button
+                    className="button button-ghost button-small"
+                    onClick={() => deleteModel(m.name)}
+                    style={{ color: "#dc2626" }}
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             );
@@ -359,12 +509,24 @@ export default function LocalModelsPage() {
             <div className="form">
               <div className="field">
                 <label>Model name</label>
-                <input className="input" value={pullModel} onChange={(e) => setPullModel(e.target.value)} placeholder="e.g. llama3.1:8b, qwen2.5:7b" />
+                <input
+                  className="input"
+                  value={pullModel}
+                  onChange={(e) => setPullModel(e.target.value)}
+                  placeholder="e.g. llama3.1:8b, qwen2.5:7b"
+                />
               </div>
               <div style={{ display: "flex", gap: "0.5rem" }}>
                 <div className="field" style={{ flex: 1 }}>
                   <label>Parameter size (for compatibility check)</label>
-                  <select className="select" value={pullSize} onChange={(e) => { setPullSize(e.target.value); setCompat(null); }}>
+                  <select
+                    className="select"
+                    value={pullSize}
+                    onChange={(e) => {
+                      setPullSize(e.target.value);
+                      setCompat(null);
+                    }}
+                  >
                     <option value="1B">1B</option>
                     <option value="3B">3B</option>
                     <option value="7B">7B</option>
@@ -378,37 +540,87 @@ export default function LocalModelsPage() {
                 </div>
                 <div className="field" style={{ flex: 1 }}>
                   <label>GPU mode</label>
-                  <select className="select" value={gpuMode} onChange={(e) => setGpuMode(e.target.value)}>
-                    {GPU_MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                  <select
+                    className="select"
+                    value={gpuMode}
+                    onChange={(e) => setGpuMode(e.target.value)}
+                  >
+                    {GPU_MODES.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
 
               {/* Compatibility check */}
               <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-                <button className="button button-ghost button-small" onClick={checkCompat} disabled={checkingCompat}>
+                <button
+                  className="button button-ghost button-small"
+                  onClick={checkCompat}
+                  disabled={checkingCompat}
+                >
                   {checkingCompat ? "Checking..." : "Check Compatibility"}
                 </button>
                 {compat && (
-                  <span style={{ fontSize: "0.78rem", fontWeight: 600, color: compat.canRun ? "#16a34a" : "#dc2626" }}>
-                    {compat.canRun ? (compat.canRunOnGpu ? "Compatible (GPU)" : "Compatible (CPU)") : "Insufficient resources"}
+                  <span
+                    style={{
+                      fontSize: "0.78rem",
+                      fontWeight: 600,
+                      color: compat.canRun ? "#16a34a" : "#dc2626",
+                    }}
+                  >
+                    {compat.canRun
+                      ? compat.canRunOnGpu
+                        ? "Compatible (GPU)"
+                        : "Compatible (CPU)"
+                      : "Insufficient resources"}
                   </span>
                 )}
               </div>
 
               {compat && compat.warnings.length > 0 && (
-                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "grid", gap: "0.15rem" }}>
-                  {compat.warnings.map((w, i) => <span key={i}>&#x26A0; {w}</span>)}
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "var(--text-muted)",
+                    display: "grid",
+                    gap: "0.15rem",
+                  }}
+                >
+                  {compat.warnings.map((w, i) => (
+                    <span key={i}>&#x26A0; {w}</span>
+                  ))}
                 </div>
               )}
 
               {/* Pull progress */}
               {pulling && (
                 <div>
-                  <div style={{ width: "100%", height: 6, borderRadius: 3, background: "var(--border)", overflow: "hidden", marginBottom: "0.3rem" }}>
-                    <div style={{ width: `${pullPct}%`, height: "100%", borderRadius: 3, background: "var(--primary)", transition: "width 200ms" }} />
+                  <div
+                    style={{
+                      width: "100%",
+                      height: 6,
+                      borderRadius: 3,
+                      background: "var(--border)",
+                      overflow: "hidden",
+                      marginBottom: "0.3rem",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${pullPct}%`,
+                        height: "100%",
+                        borderRadius: 3,
+                        background: "var(--primary)",
+                        transition: "width 200ms",
+                      }}
+                    />
                   </div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{pullProgress}</div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                    {pullProgress}
+                  </div>
                 </div>
               )}
 
@@ -426,7 +638,14 @@ export default function LocalModelsPage() {
           <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.5rem" }}>Import from HuggingFace</h2>
           <div className="card" style={{ padding: "0.85rem" }}>
             <div style={{ display: "flex", gap: "0.35rem", marginBottom: "0.6rem" }}>
-              <input className="input" style={{ flex: 1 }} value={hfQuery} onChange={(e) => setHfQuery(e.target.value)} placeholder="Search HuggingFace models..." onKeyDown={(e) => e.key === "Enter" && searchHf()} />
+              <input
+                className="input"
+                style={{ flex: 1 }}
+                value={hfQuery}
+                onChange={(e) => setHfQuery(e.target.value)}
+                placeholder="Search HuggingFace models..."
+                onKeyDown={(e) => e.key === "Enter" && searchHf()}
+              />
               <button className="button button-small" onClick={searchHf} disabled={hfSearching}>
                 {hfSearching ? "..." : "Search"}
               </button>
@@ -436,12 +655,37 @@ export default function LocalModelsPage() {
                 {hfResults.map((m) => {
                   const modelId = m.id || "";
                   return (
-                    <div key={modelId || `row-${m.downloads}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.35rem 0.5rem", borderRadius: 6, border: "1px solid var(--border)", fontSize: "0.78rem" }}>
+                    <div
+                      key={modelId || `row-${m.downloads}`}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "0.35rem 0.5rem",
+                        borderRadius: 6,
+                        border: "1px solid var(--border)",
+                        fontSize: "0.78rem",
+                      }}
+                    >
                       <div>
                         <span style={{ fontWeight: 500 }}>{modelId}</span>
                         <span style={{ color: "var(--text-muted)", marginLeft: "0.5rem" }}>
                           {m.downloads.toLocaleString()} downloads
-                          {m.hasGguf && <span style={{ marginLeft: "0.4rem", fontSize: "0.65rem", padding: "0.1rem 0.3rem", borderRadius: 3, background: "rgba(91,124,250,0.12)", color: "var(--primary)", fontWeight: 600 }}>GGUF</span>}
+                          {m.hasGguf && (
+                            <span
+                              style={{
+                                marginLeft: "0.4rem",
+                                fontSize: "0.65rem",
+                                padding: "0.1rem 0.3rem",
+                                borderRadius: 3,
+                                background: "rgba(91,124,250,0.12)",
+                                color: "var(--primary)",
+                                fontWeight: 600,
+                              }}
+                            >
+                              GGUF
+                            </span>
+                          )}
                         </span>
                       </div>
                       <button

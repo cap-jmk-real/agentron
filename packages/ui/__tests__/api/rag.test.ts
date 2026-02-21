@@ -1,10 +1,22 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { GET as encListGet, POST as encPost } from "../../app/api/rag/encoding-config/route";
-import { GET as encGet, PUT as encPut, DELETE as encDelete } from "../../app/api/rag/encoding-config/[id]/route";
+import {
+  GET as encGet,
+  PUT as encPut,
+  DELETE as encDelete,
+} from "../../app/api/rag/encoding-config/[id]/route";
 import { GET as storeListGet, POST as storePost } from "../../app/api/rag/document-store/route";
-import { GET as storeGet, PUT as storePut, DELETE as storeDelete } from "../../app/api/rag/document-store/[id]/route";
+import {
+  GET as storeGet,
+  PUT as storePut,
+  DELETE as storeDelete,
+} from "../../app/api/rag/document-store/[id]/route";
 import { GET as collListGet, POST as collPost } from "../../app/api/rag/collections/route";
-import { GET as collGet, PUT as collPut, DELETE as collDelete } from "../../app/api/rag/collections/[id]/route";
+import {
+  GET as collGet,
+  PUT as collPut,
+  DELETE as collDelete,
+} from "../../app/api/rag/collections/[id]/route";
 
 describe("RAG encoding config API", () => {
   let id: string;
@@ -51,11 +63,47 @@ describe("RAG encoding config API", () => {
   });
 
   it("GET /api/rag/encoding-config/:id returns config", async () => {
-    const res = await encGet(new Request("http://localhost/x"), { params: Promise.resolve({ id }) });
+    const res = await encGet(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id }),
+    });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.id).toBe(id);
     expect(data.name).toBe("OpenAI small");
+  });
+
+  it("POST /api/rag/encoding-config with embeddingProviderId creates config", async () => {
+    const provRes = await (
+      await import("../../app/api/rag/embedding-providers/route")
+    ).POST(
+      new Request("http://localhost/api/rag/embedding-providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "RAG test local",
+          type: "local",
+          endpoint: "http://localhost:11434",
+        }),
+      })
+    );
+    if (provRes.status !== 201) return;
+    const prov = await provRes.json();
+    const res = await encPost(
+      new Request("http://localhost/api/rag/encoding-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Enc with provider",
+          embeddingProviderId: prov.id,
+          modelOrEndpoint: "nomic-embed-text",
+          dimensions: 768,
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.embeddingProviderId).toBe(prov.id);
+    expect(data.modelOrEndpoint).toBe("nomic-embed-text");
   });
 
   it("PUT /api/rag/encoding-config/:id updates config", async () => {
@@ -81,10 +129,12 @@ describe("RAG encoding config API", () => {
 
   it("DELETE /api/rag/encoding-config/:id removes config", async () => {
     const res = await encDelete(new Request("http://localhost/x", { method: "DELETE" }), {
-      params: Promise.resolve({ id }) },
-    );
+      params: Promise.resolve({ id }),
+    });
     expect(res.status).toBe(200);
-    const getRes = await encGet(new Request("http://localhost/x"), { params: Promise.resolve({ id }) });
+    const getRes = await encGet(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id }),
+    });
     expect(getRes.status).toBe(404);
   });
 });
@@ -122,7 +172,9 @@ describe("RAG document store API", () => {
   });
 
   it("GET /api/rag/document-store/:id returns store", async () => {
-    const res = await storeGet(new Request("http://localhost/x"), { params: Promise.resolve({ id }) });
+    const res = await storeGet(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id }),
+    });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.id).toBe(id);
@@ -144,10 +196,12 @@ describe("RAG document store API", () => {
 
   it("DELETE /api/rag/document-store/:id removes store", async () => {
     const res = await storeDelete(new Request("http://localhost/x", { method: "DELETE" }), {
-      params: Promise.resolve({ id }) },
-    );
+      params: Promise.resolve({ id }),
+    });
     expect(res.status).toBe(200);
-    const getRes = await storeGet(new Request("http://localhost/x"), { params: Promise.resolve({ id }) });
+    const getRes = await storeGet(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id }),
+    });
     expect(getRes.status).toBe(404);
   });
 });
@@ -217,7 +271,9 @@ describe("RAG collections API", () => {
   });
 
   it("GET /api/rag/collections/:id returns collection", async () => {
-    const res = await collGet(new Request("http://localhost/x"), { params: Promise.resolve({ id: collId }) });
+    const res = await collGet(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id: collId }),
+    });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.id).toBe(collId);
@@ -240,10 +296,12 @@ describe("RAG collections API", () => {
 
   it("DELETE /api/rag/collections/:id removes collection", async () => {
     const res = await collDelete(new Request("http://localhost/x", { method: "DELETE" }), {
-      params: Promise.resolve({ id: collId }) },
-    );
+      params: Promise.resolve({ id: collId }),
+    });
     expect(res.status).toBe(200);
-    const getRes = await collGet(new Request("http://localhost/x"), { params: Promise.resolve({ id: collId }) });
+    const getRes = await collGet(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id: collId }),
+    });
     expect(getRes.status).toBe(404);
   });
 });

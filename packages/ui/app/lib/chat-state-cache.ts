@@ -27,7 +27,16 @@ export type CachedMessage = {
   executingTodoLabel?: string;
   executingSubStepLabel?: string;
   rephrasedPrompt?: string | null;
-  traceSteps?: { phase: string; label?: string; contentPreview?: string; inputPreview?: string; specialistId?: string; toolName?: string; toolInput?: unknown; toolOutput?: unknown }[];
+  traceSteps?: {
+    phase: string;
+    label?: string;
+    contentPreview?: string;
+    inputPreview?: string;
+    specialistId?: string;
+    toolName?: string;
+    toolInput?: unknown;
+    toolOutput?: unknown;
+  }[];
 };
 
 export type RunWaitingState = { runId: string; question?: string; options?: string[] };
@@ -48,7 +57,9 @@ type CachePayload = {
 };
 
 function isElectron(): boolean {
-  return typeof window !== "undefined" && Boolean((window as Window & { agentron?: unknown }).agentron);
+  return (
+    typeof window !== "undefined" && Boolean((window as Window & { agentron?: unknown }).agentron)
+  );
 }
 
 function getStorage(): Storage | null {
@@ -63,11 +74,13 @@ function readCache(): CachePayload {
     const raw = storage.getItem(CACHE_KEY);
     if (!raw) return { entries: {}, lastActiveConversationId: null };
     const parsed = JSON.parse(raw) as CachePayload;
-    if (!parsed || typeof parsed !== "object") return { entries: {}, lastActiveConversationId: null };
+    if (!parsed || typeof parsed !== "object")
+      return { entries: {}, lastActiveConversationId: null };
     return {
       entries: typeof parsed.entries === "object" && parsed.entries !== null ? parsed.entries : {},
       lastActiveConversationId:
-        typeof parsed.lastActiveConversationId === "string" || parsed.lastActiveConversationId === null
+        typeof parsed.lastActiveConversationId === "string" ||
+        parsed.lastActiveConversationId === null
           ? parsed.lastActiveConversationId
           : null,
     };
@@ -187,7 +200,8 @@ export function getRunWaiting(conversationId: string): RunWaitingState | null {
   const { entries } = readCache();
   const entry = entries[conversationId];
   const rw = entry?.runWaiting;
-  if (rw == null || typeof rw !== "object" || typeof (rw as RunWaitingState).runId !== "string") return null;
+  if (rw == null || typeof rw !== "object" || typeof (rw as RunWaitingState).runId !== "string")
+    return null;
   return rw as RunWaitingState;
 }
 
@@ -241,7 +255,8 @@ export function subscribeToChatStateChanges(callback: ChatStateChangeCallback): 
     const channel = new BroadcastChannel(BC_CHANNEL_NAME);
     const handler = (e: MessageEvent) => {
       const msg = e.data;
-      if (msg?.type !== "chat-state-update" || typeof msg.conversationId !== "string" || !msg.data) return;
+      if (msg?.type !== "chat-state-update" || typeof msg.conversationId !== "string" || !msg.data)
+        return;
       const { conversationId, data } = msg;
       if (!Array.isArray(data?.messages)) return;
       callback(conversationId, {
@@ -273,4 +288,17 @@ export function setLastActiveConversationId(conversationId: string | null): void
   const payload = readCache();
   payload.lastActiveConversationId = conversationId;
   writeCache(payload);
+}
+
+/**
+ * Cross-tab guard: returns true if we should skip applying a "loading false" broadcast from another tab.
+ * Skip only when the broadcast has fewer messages (stale). When counts are equal, it is the stream-done
+ * completion update—do not skip so the other tab shows the final assistant response.
+ */
+export function shouldSkipLoadingFalseFromOtherTab(
+  state: { loading: boolean; messageCount: number },
+  dataLoading: boolean,
+  msgCount: number
+): boolean {
+  return state.loading && !dataLoading && msgCount < state.messageCount;
 }

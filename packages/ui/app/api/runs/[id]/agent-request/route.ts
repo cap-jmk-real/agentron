@@ -21,7 +21,17 @@ export async function GET(_: Request, { params }: Params) {
   }
   if (rows[0].status !== "waiting_for_user") {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'agent-request/route.ts:GET',message:'run not waiting',data:{runId,status:rows[0].status},hypothesisId:'H2',timestamp:Date.now()})}).catch(()=>{});
+    fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "agent-request/route.ts:GET",
+        message: "run not waiting",
+        data: { runId, status: rows[0].status },
+        hypothesisId: "H2",
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
     // #endregion
     return json({ question: undefined, options: [] });
   }
@@ -65,7 +75,24 @@ export async function GET(_: Request, { params }: Params) {
           : [];
   const options = opts.map((o) => String(o)).filter(Boolean);
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'agent-request/route.ts:GET',message:'agent-request returning',data:{runId,rawType:typeof raw,rawLen:typeof raw==='string'?raw.length:0,outKeys:Object.keys(out),questionLen:question?.length??0,optionsLen:options.length},hypothesisId:'H2',timestamp:Date.now()})}).catch(()=>{});
+  fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      location: "agent-request/route.ts:GET",
+      message: "agent-request returning",
+      data: {
+        runId,
+        rawType: typeof raw,
+        rawLen: typeof raw === "string" ? raw.length : 0,
+        outKeys: Object.keys(out),
+        questionLen: question?.length ?? 0,
+        optionsLen: options.length,
+      },
+      hypothesisId: "H2",
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
   // #endregion
   return json({ question, options });
 }

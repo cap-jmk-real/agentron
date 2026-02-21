@@ -1,4 +1,9 @@
-import type { NodeAgentDefinition, AgentExecutionContext, PromptTemplate, ToolOverride } from "@agentron-studio/core";
+import type {
+  NodeAgentDefinition,
+  AgentExecutionContext,
+  PromptTemplate,
+  ToolOverride,
+} from "@agentron-studio/core";
 import { renderPromptTemplate, validatePromptArguments } from "../prompts";
 import type { LLMRequest, LLMResponse, LLMMessage } from "../llm/types";
 
@@ -49,11 +54,13 @@ function isLLMResponse(v: unknown): v is LLMResponse {
 
 /** Apply transform: {{ $input }} is replaced with JSON.stringify(value). Passthrough if no expression. */
 function applyTransform(config: Record<string, unknown> | undefined, value: unknown): unknown {
-  const expr = config?.transform && typeof (config.transform as { expression?: string }).expression === "string"
-    ? (config.transform as { expression: string }).expression
-    : typeof config?.expression === "string"
-      ? config.expression
-      : undefined;
+  const expr =
+    config?.transform &&
+    typeof (config.transform as { expression?: string }).expression === "string"
+      ? (config.transform as { expression: string }).expression
+      : typeof config?.expression === "string"
+        ? config.expression
+        : undefined;
   if (!expr || !expr.trim()) return value;
   const inputStr = typeof value === "string" ? value : JSON.stringify(value ?? null);
   const result = expr.replace(/\{\{\s*\$input\s*\}\}/g, inputStr);
@@ -152,20 +159,33 @@ export class NodeAgentExecutor {
           }
           const args = (p.args as Record<string, unknown>) ?? {};
           validatePromptArguments(prompt, args);
-          const rendered = renderPromptTemplate(prompt, { input: lastOutput, context: shared, args });
+          const rendered = renderPromptTemplate(prompt, {
+            input: lastOutput,
+            context: shared,
+            args,
+          });
           const llmConfigId = (p.llmConfigId as string) ?? definition.defaultLlmConfigId;
-          const raw = await context.callLLM({ llmConfigId, messages: [{ role: "user", content: rendered }] });
-          out = (raw && typeof raw === "object" && "content" in (raw as object)) ? (raw as { content: string }).content : raw;
+          const raw = await context.callLLM({
+            llmConfigId,
+            messages: [{ role: "user", content: rendered }],
+          });
+          out =
+            raw && typeof raw === "object" && "content" in (raw as object)
+              ? (raw as { content: string }).content
+              : raw;
           break;
         }
         case "llm": {
           const llmConfigId = (p.llmConfigId as string) ?? definition.defaultLlmConfigId;
           const systemPrompt = String(p.systemPrompt ?? "").trim();
-          let userContent = typeof lastOutput === "string" ? lastOutput : JSON.stringify(lastOutput ?? "");
+          let userContent =
+            typeof lastOutput === "string" ? lastOutput : JSON.stringify(lastOutput ?? "");
           const ragBlock = context.ragBlock ?? "";
           const toolInstructionsBlock = context.toolInstructionsBlock ?? "";
           if (ragBlock || toolInstructionsBlock) {
-            userContent = [ragBlock, toolInstructionsBlock].filter(Boolean).join("\n\n") + (userContent ? "\n\n" + userContent : "");
+            userContent =
+              [ragBlock, toolInstructionsBlock].filter(Boolean).join("\n\n") +
+              (userContent ? "\n\n" + userContent : "");
           }
           const tools = (definition.toolIds ?? []).length > 0 ? context.availableTools : undefined;
           out = await runLLMWithDecisionLayer(context, {
@@ -180,17 +200,27 @@ export class NodeAgentExecutor {
         }
         case "decision": {
           const llmConfigId = (p.llmConfigId as string) ?? definition.defaultLlmConfigId;
-          if (!llmConfigId) throw new Error(`Decision node "${node.id}" requires llmConfigId or agent defaultLlmConfigId`);
-          const nodeToolIds = (Array.isArray(p.toolIds) ? p.toolIds : definition.toolIds ?? []) as string[];
+          if (!llmConfigId)
+            throw new Error(
+              `Decision node "${node.id}" requires llmConfigId or agent defaultLlmConfigId`
+            );
+          const nodeToolIds = (
+            Array.isArray(p.toolIds) ? p.toolIds : (definition.toolIds ?? [])
+          ) as string[];
           const tools = context.buildToolsForIds
             ? await context.buildToolsForIds(nodeToolIds)
-            : (nodeToolIds.length > 0 && context.availableTools ? context.availableTools : undefined);
+            : nodeToolIds.length > 0 && context.availableTools
+              ? context.availableTools
+              : undefined;
           const systemPrompt = String(p.systemPrompt ?? "").trim();
-          let userContent = typeof lastOutput === "string" ? lastOutput : JSON.stringify(lastOutput ?? "");
+          let userContent =
+            typeof lastOutput === "string" ? lastOutput : JSON.stringify(lastOutput ?? "");
           const ragBlock = context.ragBlock ?? "";
           const toolInstructionsBlock = context.toolInstructionsBlock ?? "";
           if (ragBlock || toolInstructionsBlock) {
-            userContent = [ragBlock, toolInstructionsBlock].filter(Boolean).join("\n\n") + (userContent ? "\n\n" + userContent : "");
+            userContent =
+              [ragBlock, toolInstructionsBlock].filter(Boolean).join("\n\n") +
+              (userContent ? "\n\n" + userContent : "");
           }
           out = await runLLMWithDecisionLayer(context, {
             llmConfigId,

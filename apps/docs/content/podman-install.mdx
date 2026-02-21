@@ -1,0 +1,184 @@
+---
+title: Container engine (Podman & Docker)
+description: Set up Podman or Docker as the container engine for Agentron sandboxes. Compare pros, cons, and licensing to choose the right option.
+---
+
+# Container engine (Podman & Docker)
+
+Agentron uses a **container engine** to run sandboxes—isolated containers for code execution, custom functions, and agent tools. In **Settings → Container Engine** you choose **Podman** or **Docker**. Both work; this page explains setup for each and how they differ (including licensing).
+
+<Callout type="info">
+  **Need a GUI?** **Podman Desktop** sets up the Podman engine and a Podman machine for you. See [Podman Desktop downloads](https://podman-desktop.io/downloads). Docker Desktop provides a GUI for Docker.
+</Callout>
+
+---
+
+## Podman vs Docker: pros, cons, and licensing
+
+| | Podman | Docker |
+| --- | --- | --- |
+| **License** | Apache 2.0 (fully open source). No usage limits or paid tiers. | **Docker Engine** (CLI/daemon) is Apache 2.0. **Docker Desktop** (the GUI app for Mac/Windows) is free for individuals, small businesses, education, and open-source projects; **paid subscription required** for larger companies (see [Docker subscription FAQ](https://www.docker.com/pricing/)). |
+| **Daemon** | Daemonless: no long-running background service. Containers can run as your user. | Daemon-based: `dockerd` runs as root (or rootless mode on Linux). |
+| **Compatibility** | Docker-compatible CLI and images. Drop-in for many `docker` commands (`podman run`, etc.). | Industry standard; largest ecosystem and docs. |
+| **Root / privileges** | Strong support for rootless containers; good for security and avoiding privilege escalation. | Rootless Docker is supported on Linux but less common; Desktop runs in a VM. |
+| **Windows / macOS** | Runs inside a Linux VM (Podman machine). Podman Desktop automates this. | Docker Desktop uses a Linux VM; smooth integration. |
+| **Linux** | Native; no VM. Simple install via package manager. | Native; Docker Engine or Docker Desktop (some distros). |
+
+**When to choose Podman:** You want a fully open-source, daemonless option with no commercial licensing concerns, or you prefer rootless containers. Ideal for Linux; on Windows/macOS use Podman Desktop or CLI + machine.
+
+**When to choose Docker:** You already use Docker elsewhere, need Docker Desktop’s GUI, or your organization is fine with Docker’s licensing. Docker has the broadest ecosystem and documentation.
+
+---
+
+## Setup: Podman
+
+### Windows
+
+**Requirements:** Windows 10 Build 19043+ or Windows 11 (64-bit), 6 GB RAM for the Podman machine, administrator rights, and **WSL 2**.
+
+**Option 1: Podman Desktop (recommended)**
+
+1. Enable WSL 2 (if not already):
+   ```powershell
+   wsl --update
+   wsl --install --no-distribution
+   ```
+   Restart your computer.
+
+2. Install Podman Desktop:
+   - [Download for Windows](https://podman-desktop.io/downloads/windows) → run the installer → choose **Windows Linux Subsystem (WSLv2)**
+   - **WinGet:** `winget install RedHat.Podman-Desktop`
+   - **Chocolatey:** `choco install podman-desktop`
+   - **Scoop:** `scoop bucket add extras` then `scoop install podman-desktop`
+
+3. Open Podman Desktop and use **Set up** / **Setup Podman** to install the engine and create the Podman machine.
+
+**Option 2: Podman CLI only**
+
+Download the Windows installer from [podman.io](https://podman.io) or [GitHub releases](https://github.com/containers/podman/releases). After installation (PowerShell):
+
+```powershell
+podman machine init
+podman machine start
+```
+
+**Verify:** `podman info` or in Podman Desktop: **Settings → Resources** → Podman tile.
+
+### macOS
+
+1. **Download** the installer from [podman.io](https://podman.io) or [GitHub releases](https://github.com/containers/podman/releases). Or: `brew install podman` (community-maintained).
+2. **Create and start** a Podman machine:
+   ```bash
+   podman machine init
+   podman machine start
+   ```
+3. **Verify:** `podman info`
+
+### Linux
+
+Install the package for your distribution. No separate "machine" is needed; Podman runs natively.
+
+| Distro | Command |
+| ------ | ------- |
+| **Ubuntu** (20.10+) | `sudo apt-get update && sudo apt-get -y install podman` |
+| **Debian** (11+) | `sudo apt-get -y install podman` |
+| **Fedora** | `sudo dnf -y install podman` |
+| **CentOS Stream 9+** | `sudo dnf -y install podman` |
+| **Arch / Manjaro** | `sudo pacman -S podman` |
+| **openSUSE** | `sudo zypper install podman` |
+| **Alpine** | `sudo apk add podman` |
+
+**Verify:** `podman run --rm docker.io/library/hello-world`
+
+For **RHEL**, see [Red Hat solution 3650231](https://access.redhat.com/solutions/3650231). For **Linux Mint**, use the same commands as Ubuntu (or Debian for LMDE).
+
+---
+
+## Setup: Docker
+
+### Windows
+
+**Requirements:** Windows 10/11 64-bit, WSL 2 (recommended) or Hyper-V. For WSL 2: Build 19041+ and virtualization enabled in BIOS.
+
+**Option 1: Docker Desktop (recommended)**
+
+1. Enable WSL 2 (if using WSL 2 backend):
+   ```powershell
+   wsl --update
+   wsl --install --no-distribution
+   ```
+   Restart if prompted.
+
+2. Install Docker Desktop:
+   - [Download Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/) → run the installer → choose **Use WSL 2 instead of Hyper-V** if asked.
+   - **WinGet:** `winget install Docker.Docker`
+   - **Chocolatey:** `choco install docker-desktop`
+
+3. Start **Docker Desktop** from the Start menu. Wait until the whale icon in the system tray shows Docker is running.
+
+**Option 2: Docker Engine only (no Desktop)**
+
+For server or CLI-only use (no GUI): [Install Docker Engine on Windows](https://docs.docker.com/engine/install/#server) (e.g. via WSL 2 or native Windows server).
+
+**Verify:** Open PowerShell or WSL and run `docker info`. Then: `docker run --rm hello-world`
+
+### macOS
+
+**Option 1: Docker Desktop (recommended)**
+
+1. **Download** the correct build for your chip:
+   - [Docker Desktop for Mac (Apple Silicon)](https://docs.docker.com/desktop/install/mac-install/#install-from-the-download-page) (M1/M2/M3)
+   - [Docker Desktop for Mac (Intel)](https://docs.docker.com/desktop/install/mac-install/#install-from-the-download-page)
+2. Open the **.dmg**, drag Docker to Applications, then start **Docker** from Applications or Spotlight.
+3. Accept the privilege prompt if shown. Wait until the menu bar icon indicates Docker is running.
+
+**Option 2: Homebrew**
+
+```bash
+brew install --cask docker
+```
+
+Then start the Docker app from Applications.
+
+**Verify:** In Terminal: `docker info` and `docker run --rm hello-world`
+
+### Linux
+
+Install Docker Engine for your distribution. After install, start and enable the service:
+
+```bash
+sudo systemctl start docker
+sudo systemctl enable docker
+```
+
+To run Docker without `sudo`, add your user to the `docker` group (then log out and back in):
+
+```bash
+sudo usermod -aG docker $USER
+```
+
+| Distro | Install |
+| ------ | ------- |
+| **Ubuntu** (22.04+, 24.04+) | Add Docker’s APT repo and install. Full steps: [Install Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/). Quick path (after adding the repo): `sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin` |
+| **Debian** (12+) | [Install Docker Engine on Debian](https://docs.docker.com/engine/install/debian/) — add repo then `sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin` |
+| **Fedora** | `sudo dnf -y install dnf-plugins-core`<br/>`sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo`<br/>`sudo dnf -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin` |
+| **Arch / Manjaro** | `sudo pacman -S docker` then `sudo systemctl enable --now docker` |
+| **openSUSE** | [Install Docker Engine on openSUSE](https://docs.docker.com/engine/install/open-suse/) |
+
+**Verify:** `docker run --rm hello-world`
+
+<Callout type="warning">
+  **Docker licensing:** Docker Desktop is free for individuals, small businesses (&lt;250 employees AND &lt;$10M revenue), education, and open-source projects. Larger companies need a [paid subscription](https://www.docker.com/pricing/). If licensing is a concern, use **Podman** or **Docker Engine** (CLI only, no Desktop)—both are open source.
+</Callout>
+
+---
+
+## After installing
+
+1. In Agentron go to **Settings → Container Engine** and select **Podman** or **Docker**.
+2. Ensure the engine is running: `podman info` or `docker info`.
+3. You can then use **sandboxes** (create sandboxes, run code, custom functions) and tools that run commands in containers (e.g. `run_container_command`, `create_sandbox`, `execute_code`).
+
+<Callout type="warning">
+  If something fails, check that `podman info` (or `podman machine list` on Windows/macOS) or `docker info` shows a working setup. See [Podman installation docs](https://podman.io/docs/installation), [Podman Desktop installation](https://podman-desktop.io/docs/installation), or [Docker docs](https://docs.docker.com/).
+</Callout>

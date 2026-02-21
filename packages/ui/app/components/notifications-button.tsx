@@ -2,8 +2,14 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Bell } from "lucide-react";
-import NotificationsModal, { type NotificationItem, type NotificationFilter } from "./notifications-modal";
-import { NOTIFICATIONS_UPDATED_EVENT, dispatchNotificationsUpdated } from "../lib/notifications-events";
+import NotificationsModal, {
+  type NotificationItem,
+  type NotificationFilter,
+} from "./notifications-modal";
+import {
+  NOTIFICATIONS_UPDATED_EVENT,
+  dispatchNotificationsUpdated,
+} from "../lib/notifications-events";
 
 export default function NotificationsButton() {
   const [open, setOpen] = useState(false);
@@ -22,10 +28,14 @@ export default function NotificationsButton() {
       if (typesParam) params.set("types", typesParam);
       params.set("limit", "50");
       const res = await fetch(`/api/notifications?${params.toString()}`, { cache: "no-store" });
-      const data = (await res.json().catch(() => ({}))) as { items?: NotificationItem[]; totalActiveCount?: number };
+      const data = (await res.json().catch(() => ({}))) as {
+        items?: NotificationItem[];
+        totalActiveCount?: number;
+      };
       if (!res.ok) throw new Error("Failed to load notifications");
       const nextItems = Array.isArray(data.items) ? data.items : [];
-      const totalActiveCount = typeof data.totalActiveCount === "number" ? data.totalActiveCount : 0;
+      const totalActiveCount =
+        typeof data.totalActiveCount === "number" ? data.totalActiveCount : 0;
       return { items: nextItems, totalActiveCount };
     };
     try {
@@ -52,7 +62,9 @@ export default function NotificationsButton() {
   }, []);
 
   useEffect(() => {
-    const run = () => { void fetchBadgeOnly(); };
+    const run = () => {
+      void fetchBadgeOnly();
+    };
     queueMicrotask(run);
     const t = setInterval(run, 30_000);
     return () => clearInterval(t);
@@ -75,21 +87,18 @@ export default function NotificationsButton() {
     }
   }, [open, filter, fetchNotifications]);
 
-  const handleClearOne = useCallback(
-    async (id: string) => {
-      const res = await fetch("/api/notifications/clear", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      if (res.ok) {
-        setItems((prev) => prev.filter((n) => n.id !== id));
-        setCount((c) => Math.max(0, c - 1));
-        dispatchNotificationsUpdated();
-      }
-    },
-    []
-  );
+  const handleClearOne = useCallback(async (id: string) => {
+    const res = await fetch("/api/notifications/clear", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) {
+      setItems((prev) => prev.filter((n) => n.id !== id));
+      setCount((c) => Math.max(0, c - 1));
+      dispatchNotificationsUpdated();
+    }
+  }, []);
 
   const handleClearAll = useCallback(async () => {
     const body = filter === "all" ? {} : { types: [filter] };
@@ -130,7 +139,10 @@ export default function NotificationsButton() {
       </button>
       <NotificationsModal
         open={open}
-        onClose={() => { setOpen(false); setLoading(false); }}
+        onClose={() => {
+          setOpen(false);
+          setLoading(false);
+        }}
         items={items}
         totalActiveCount={count}
         activeFilter={filter}

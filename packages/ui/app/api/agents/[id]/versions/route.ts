@@ -14,7 +14,11 @@ export async function GET(_: Request, { params }: Params) {
     return json({ error: "Agent not found" }, { status: 404 });
   }
   const rows = await db
-    .select({ id: agentVersions.id, version: agentVersions.version, createdAt: agentVersions.createdAt })
+    .select({
+      id: agentVersions.id,
+      version: agentVersions.version,
+      createdAt: agentVersions.createdAt,
+    })
     .from(agentVersions)
     .where(eq(agentVersions.agentId, id))
     .orderBy(desc(agentVersions.version));

@@ -11,7 +11,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e-llm": "vitest run --config vitest.e2e.config.ts",
+    "export-heap-snapshot": "vitest run __tests__/scripts/export-heap-snapshot.test.ts"
   },
   "dependencies": {
     "@agentron-studio/core": "file:../core",
@@ -25,6 +27,7 @@
     "next": "16.1.6",
     "next-ws": "^2.1.16",
     "node-pty": "^1.1.0",
+    "pdf-parse": "^1.1.1",
     "pg": "^8.18.0",
     "playwright": "^1.49.0",
     "react": "19.2.4",
@@ -36,15 +39,12 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
-    "@next/swc-darwin-arm64": "^16.1.6",
-    "@rollup/rollup-darwin-arm64": "4.57.1",
-    "@rollup/rollup-darwin-x64": "4.57.1",
     "@types/pg": "^8.16.0",
     "@types/react": "19.2.13",
     "@types/react-dom": "19.2.3",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^3.2.4",
-    "eslint": "^9.39.2",
+    "eslint": "^9.39.3",
     "eslint-config-next": "^16.1.6",
     "typescript": "5.9.3",
     "vitest": "^3.2.4"

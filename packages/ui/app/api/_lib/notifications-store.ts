@@ -21,13 +21,19 @@ export type Notification = {
 function rowToNotification(row: Record<string, unknown>): Notification {
   const id = String(row.id ?? "");
   const type = String(row.type ?? "");
-  const sourceId = String((row as { sourceId?: string }).sourceId ?? (row as { source_id?: string }).source_id ?? "");
+  const sourceId = String(
+    (row as { sourceId?: string }).sourceId ?? (row as { source_id?: string }).source_id ?? ""
+  );
   const title = String(row.title ?? "");
   const message = String(row.message ?? "");
   const severity = String(row.severity ?? "info");
   const status = String(row.status ?? "active");
-  const createdAt = Number((row as { createdAt?: number }).createdAt ?? (row as { created_at?: number }).created_at ?? 0);
-  const updatedAt = Number((row as { updatedAt?: number }).updatedAt ?? (row as { updated_at?: number }).updated_at ?? 0);
+  const createdAt = Number(
+    (row as { createdAt?: number }).createdAt ?? (row as { created_at?: number }).created_at ?? 0
+  );
+  const updatedAt = Number(
+    (row as { updatedAt?: number }).updatedAt ?? (row as { updated_at?: number }).updated_at ?? 0
+  );
   const rawMeta = row.metadata ?? (row as { metadata?: string }).metadata;
   let metadata: Record<string, unknown> | undefined;
   if (rawMeta != null && rawMeta !== "") {
@@ -86,11 +92,19 @@ export async function listNotifications(options: {
 
 /** Mark one notification as cleared. Idempotent. */
 export async function clearOne(id: string): Promise<boolean> {
-  const [row] = await db.select().from(notificationsTable).where(eq(notificationsTable.id, id)).limit(1);
+  const [row] = await db
+    .select()
+    .from(notificationsTable)
+    .where(eq(notificationsTable.id, id))
+    .limit(1);
   if (!row) return false;
   if (row.status === "cleared") return true;
   const now = Date.now();
-  await db.update(notificationsTable).set({ status: "cleared", updatedAt: now }).where(eq(notificationsTable.id, id)).run();
+  await db
+    .update(notificationsTable)
+    .set({ status: "cleared", updatedAt: now })
+    .where(eq(notificationsTable.id, id))
+    .run();
   return true;
 }
 
@@ -118,7 +132,10 @@ export async function clearAll(types?: NotificationType[]): Promise<number> {
     types && types.length > 0
       ? and(eq(notificationsTable.status, "active"), inArray(notificationsTable.type, types))
       : eq(notificationsTable.status, "active");
-  const [countRow] = await db.select({ count: sql<number>`count(*)` }).from(notificationsTable).where(where);
+  const [countRow] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(notificationsTable)
+    .where(where);
   const count = Number(countRow?.count ?? 0);
   if (count === 0) return 0;
   const now = Date.now();
@@ -127,13 +144,19 @@ export async function clearAll(types?: NotificationType[]): Promise<number> {
 }
 
 /** Clear active notifications with the given type and sourceId (e.g. one "chat needs input" per conversation). */
-export async function clearActiveBySourceId(type: NotificationType, sourceId: string): Promise<number> {
+export async function clearActiveBySourceId(
+  type: NotificationType,
+  sourceId: string
+): Promise<number> {
   const where = and(
     eq(notificationsTable.status, "active"),
     eq(notificationsTable.type, type),
     eq(notificationsTable.sourceId, sourceId)
   );
-  const [countRow] = await db.select({ count: sql<number>`count(*)` }).from(notificationsTable).where(where);
+  const [countRow] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(notificationsTable)
+    .where(where);
   const count = Number(countRow?.count ?? 0);
   if (count === 0) return 0;
   const now = Date.now();
@@ -153,18 +176,21 @@ export async function createNotification(entry: {
   const now = Date.now();
   const id = crypto.randomUUID();
   const metadataJson = entry.metadata != null ? JSON.stringify(entry.metadata) : null;
-  await db.insert(notificationsTable).values({
-    id,
-    type: entry.type,
-    sourceId: entry.sourceId,
-    title: entry.title,
-    message: entry.message ?? "",
-    severity: entry.severity ?? "info",
-    status: "active",
-    createdAt: now,
-    updatedAt: now,
-    metadata: metadataJson,
-  }).run();
+  await db
+    .insert(notificationsTable)
+    .values({
+      id,
+      type: entry.type,
+      sourceId: entry.sourceId,
+      title: entry.title,
+      message: entry.message ?? "",
+      severity: entry.severity ?? "info",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: metadataJson,
+    })
+    .run();
   return {
     id,
     type: entry.type,
@@ -190,7 +216,8 @@ export async function createRunNotification(
     failed: "Run failed",
     waiting_for_user: "Run needs your input",
   };
-  const severity: NotificationSeverity = status === "failed" ? "error" : status === "waiting_for_user" ? "warning" : "success";
+  const severity: NotificationSeverity =
+    status === "failed" ? "error" : status === "waiting_for_user" ? "warning" : "success";
   return createNotification({
     type: "run",
     sourceId: runId,

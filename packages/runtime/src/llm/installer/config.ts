@@ -3,7 +3,7 @@ import type { LocalLLMSetupPlan } from "./types";
 export const defaultLocalSetupPlan = (): LocalLLMSetupPlan => ({
   runtime: "ollama",
   endpoint: "http://localhost:11434",
-  model: "llama3.1:8b"
+  model: "llama3.1:8b",
 });
 
 export const buildCustomSetupPlan = (
@@ -13,5 +13,5 @@ export const buildCustomSetupPlan = (
 ): LocalLLMSetupPlan => ({
   runtime,
   endpoint,
-  model
+  model,
 });

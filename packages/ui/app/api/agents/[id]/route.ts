@@ -7,13 +7,19 @@ type Params = { params: Promise<{ id: string }> };
 export const runtime = "nodejs";
 
 /** Ensure definition.toolIds includes every toolId from graph tool nodes so graph and toolIds stay in sync. */
-function syncToolIdsFromGraph(definition: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+function syncToolIdsFromGraph(
+  definition: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
   if (!definition || typeof definition !== "object") return definition;
   const graph = definition.graph;
-  if (!graph || typeof graph !== "object" || !Array.isArray((graph as { nodes?: unknown[] }).nodes)) return definition;
+  if (!graph || typeof graph !== "object" || !Array.isArray((graph as { nodes?: unknown[] }).nodes))
+    return definition;
   const nodes = (graph as { nodes: unknown[] }).nodes;
   const fromGraph = nodes
-    .filter((n): n is { type?: string; parameters?: { toolId?: string } } => typeof n === "object" && n !== null && (n as { type?: string }).type === "tool")
+    .filter(
+      (n): n is { type?: string; parameters?: { toolId?: string } } =>
+        typeof n === "object" && n !== null && (n as { type?: string }).type === "tool"
+    )
     .map((n) => (n.parameters?.toolId as string)?.trim())
     .filter((id): id is string => typeof id === "string" && id.length > 0);
   const declared = (definition.toolIds as string[] | undefined) ?? [];
@@ -39,7 +45,7 @@ export async function PUT(request: Request, { params }: Params) {
     ...payload,
     ...(definition != null && { definition }),
     id,
-    createdAt: existing.length ? existing[0].createdAt : payload.createdAt ?? Date.now()
+    createdAt: existing.length ? existing[0].createdAt : (payload.createdAt ?? Date.now()),
   };
   await db.update(agentsTable).set(toAgentRow(agent)).where(eq(agentsTable.id, id)).run();
   const rows = await db.select().from(agentsTable).where(eq(agentsTable.id, id));

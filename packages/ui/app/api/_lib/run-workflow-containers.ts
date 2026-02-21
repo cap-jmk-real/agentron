@@ -8,10 +8,17 @@ import { db, files, toFileRow, ensureAgentFilesDir } from "./db";
 import { getContainerManager, withContainerInstallHint } from "./container-manager";
 import { getMaxFileUploadBytes } from "./app-settings";
 
-export type ContainerStreamChunk = { stdout?: string; stderr?: string; meta?: "container_started" | "container_stopped" };
+export type ContainerStreamChunk = {
+  stdout?: string;
+  stderr?: string;
+  meta?: "container_started" | "container_stopped";
+};
 
 /** Run a container one-shot (create, exec, destroy). Exported for chat. */
-export async function runContainer(input: unknown, onChunk?: (chunk: ContainerStreamChunk) => void): Promise<unknown> {
+export async function runContainer(
+  input: unknown,
+  onChunk?: (chunk: ContainerStreamChunk) => void
+): Promise<unknown> {
   const arg = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const image = (arg.image as string)?.trim();
   const rawCommand = arg.command;
@@ -32,7 +39,13 @@ export async function runContainer(input: unknown, onChunk?: (chunk: ContainerSt
   const mgr = getContainerManager();
   const isImageNotFound = (m: string) => {
     const s = m.toLowerCase();
-    return s.includes("no such image") || s.includes("manifest unknown") || s.includes("not found") || s.includes("pull access denied") || s.includes("unable to find image");
+    return (
+      s.includes("no such image") ||
+      s.includes("manifest unknown") ||
+      s.includes("not found") ||
+      s.includes("pull access denied") ||
+      s.includes("unable to find image")
+    );
   };
   let containerId: string;
   try {
@@ -46,18 +59,36 @@ export async function runContainer(input: unknown, onChunk?: (chunk: ContainerSt
       } catch (pullErr) {
         const pullMsg = pullErr instanceof Error ? pullErr.message : String(pullErr);
         const hint = withContainerInstallHint(pullMsg);
-        return { error: hint !== pullMsg ? hint : `Failed to pull/create: ${pullMsg}`, stdout: "", stderr: pullMsg, exitCode: -1 };
+        return {
+          error: hint !== pullMsg ? hint : `Failed to pull/create: ${pullMsg}`,
+          stdout: "",
+          stderr: pullMsg,
+          exitCode: -1,
+        };
       }
     } else {
       const hint = withContainerInstallHint(msg);
-      return { error: hint !== msg ? hint : `Failed to create container: ${msg}`, stdout: "", stderr: msg, exitCode: -1 };
+      return {
+        error: hint !== msg ? hint : `Failed to create container: ${msg}`,
+        stdout: "",
+        stderr: msg,
+        exitCode: -1,
+      };
     }
   }
   try {
     if (onChunk && typeof (mgr as { execStream?: unknown }).execStream === "function") {
       onChunk({ meta: "container_started" });
       try {
-        return await (mgr as { execStream(containerId: string, command: string, onChunk?: (c: ContainerStreamChunk) => void): Promise<{ stdout: string; stderr: string; exitCode: number }> }).execStream(containerId, command, onChunk);
+        return await (
+          mgr as {
+            execStream(
+              containerId: string,
+              command: string,
+              onChunk?: (c: ContainerStreamChunk) => void
+            ): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+          }
+        ).execStream(containerId, command, onChunk);
       } finally {
         onChunk({ meta: "container_stopped" });
       }
@@ -93,14 +124,27 @@ export async function runContainerSession(
   const mgr = getContainerManager();
   const isImageNotFound = (m: string) => {
     const s = m.toLowerCase();
-    return s.includes("no such image") || s.includes("manifest unknown") || s.includes("not found") || s.includes("pull access denied") || s.includes("unable to find image");
+    return (
+      s.includes("no such image") ||
+      s.includes("manifest unknown") ||
+      s.includes("not found") ||
+      s.includes("pull access denied") ||
+      s.includes("unable to find image")
+    );
   };
 
   if (action === "ensure") {
     const image = (arg.image as string)?.trim();
-    if (!image) return { error: "image is required for action ensure", stdout: "", stderr: "image is required", exitCode: -1 };
+    if (!image)
+      return {
+        error: "image is required for action ensure",
+        stdout: "",
+        stderr: "image is required",
+        exitCode: -1,
+      };
     const existing = containerSessionByRunId.get(runId);
-    if (existing) return { containerId: existing.containerId, created: false, image: existing.image };
+    if (existing)
+      return { containerId: existing.containerId, created: false, image: existing.image };
     const name = `workflow-session-${runId.slice(0, 8)}-${Date.now()}`;
     let containerId: string;
     try {
@@ -114,11 +158,21 @@ export async function runContainerSession(
         } catch (pullErr) {
           const pullMsg = pullErr instanceof Error ? pullErr.message : String(pullErr);
           const hint = withContainerInstallHint(pullMsg);
-          return { error: hint !== pullMsg ? hint : `Failed to pull/create: ${pullMsg}`, stdout: "", stderr: pullMsg, exitCode: -1 };
+          return {
+            error: hint !== pullMsg ? hint : `Failed to pull/create: ${pullMsg}`,
+            stdout: "",
+            stderr: pullMsg,
+            exitCode: -1,
+          };
         }
       } else {
         const hint = withContainerInstallHint(msg);
-        return { error: hint !== msg ? hint : `Failed to create container: ${msg}`, stdout: "", stderr: msg, exitCode: -1 };
+        return {
+          error: hint !== msg ? hint : `Failed to create container: ${msg}`,
+          stdout: "",
+          stderr: msg,
+          exitCode: -1,
+        };
       }
     }
     containerSessionByRunId.set(runId, { containerId, image });
@@ -127,12 +181,38 @@ export async function runContainerSession(
 
   if (action === "exec") {
     const session = containerSessionByRunId.get(runId);
-    if (!session) return { error: "No container session for this run. Call std-container-session with action ensure first.", stdout: "", stderr: "No session", exitCode: -1 };
+    if (!session)
+      return {
+        error:
+          "No container session for this run. Call std-container-session with action ensure first.",
+        stdout: "",
+        stderr: "No session",
+        exitCode: -1,
+      };
     const rawCommand = arg.command;
-    const command = typeof rawCommand === "string" ? rawCommand.trim() : Array.isArray(rawCommand) ? rawCommand.map(String).join(" ") : "";
-    if (!command) return { error: "command is required for action exec", stdout: "", stderr: "command is required", exitCode: -1 };
+    const command =
+      typeof rawCommand === "string"
+        ? rawCommand.trim()
+        : Array.isArray(rawCommand)
+          ? rawCommand.map(String).join(" ")
+          : "";
+    if (!command)
+      return {
+        error: "command is required for action exec",
+        stdout: "",
+        stderr: "command is required",
+        exitCode: -1,
+      };
     if (onChunk && typeof (mgr as { execStream?: unknown }).execStream === "function") {
-      return await (mgr as { execStream(containerId: string, command: string, onChunk?: (c: ContainerStreamChunk) => void): Promise<{ stdout: string; stderr: string; exitCode: number }> }).execStream(session.containerId, command, onChunk);
+      return await (
+        mgr as {
+          execStream(
+            containerId: string,
+            command: string,
+            onChunk?: (c: ContainerStreamChunk) => void
+          ): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+        }
+      ).execStream(session.containerId, command, onChunk);
     }
     return await mgr.exec(session.containerId, command);
   }
@@ -142,7 +222,12 @@ export async function runContainerSession(
     return { destroyed: true };
   }
 
-  return { error: `Unknown action: ${action}. Use ensure, exec, or destroy.`, stdout: "", stderr: "Unknown action", exitCode: -1 };
+  return {
+    error: `Unknown action: ${action}. Use ensure, exec, or destroy.`,
+    stdout: "",
+    stderr: "Unknown action",
+    exitCode: -1,
+  };
 }
 
 /** Build image from Containerfile. Exported for chat. Supports inline dockerfileContent (creates temp context) or contextPath + dockerfilePath. */
@@ -166,7 +251,12 @@ export async function runContainerBuild(input: unknown): Promise<unknown> {
   }
 
   if (!contextPath || !dockerfilePath) {
-    return { error: "contextPath and dockerfilePath are required, or provide dockerfileContent", stdout: "", stderr: "Missing required fields", exitCode: -1 };
+    return {
+      error: "contextPath and dockerfilePath are required, or provide dockerfileContent",
+      stdout: "",
+      stderr: "Missing required fields",
+      exitCode: -1,
+    };
   }
 
   const mgr = getContainerManager();
@@ -176,7 +266,12 @@ export async function runContainerBuild(input: unknown): Promise<unknown> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const hint = withContainerInstallHint(msg);
-    return { error: hint !== msg ? hint : `Build failed: ${msg}`, stdout: "", stderr: msg, exitCode: -1 };
+    return {
+      error: hint !== msg ? hint : `Build failed: ${msg}`,
+      stdout: "",
+      stderr: msg,
+      exitCode: -1,
+    };
   }
 }
 
@@ -191,7 +286,13 @@ export async function runWriteFile(input: unknown, contextId: string): Promise<u
   const maxBytes = getMaxFileUploadBytes();
   const buf = Buffer.from(content, "utf-8");
   if (buf.length > maxBytes) {
-    return { error: `Content too large (max ${Math.round(maxBytes / 1024 / 1024)}MB)`, id: null, name: null, path: null, contextDir: null };
+    return {
+      error: `Content too large (max ${Math.round(maxBytes / 1024 / 1024)}MB)`,
+      id: null,
+      name: null,
+      path: null,
+      contextDir: null,
+    };
   }
   const dir = ensureAgentFilesDir(contextId);
   const id = crypto.randomUUID();

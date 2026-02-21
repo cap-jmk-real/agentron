@@ -53,7 +53,10 @@ export const httpToolAdapter: ToolAdapter = {
     }
 
     const method = (config.method ?? "POST").toUpperCase();
-    const rawInput = input != null && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+    const rawInput =
+      input != null && typeof input === "object" && !Array.isArray(input)
+        ? (input as Record<string, unknown>)
+        : {};
     const pathParamNames = extractPathParamNames(config.url);
     const pathParams: Record<string, unknown> = {};
     const rest: Record<string, unknown> = {};

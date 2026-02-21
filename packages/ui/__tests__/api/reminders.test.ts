@@ -27,6 +27,20 @@ describe("Reminders API", () => {
     expect(Array.isArray(data)).toBe(true);
   });
 
+  it("GET /api/reminders?status=cancelled returns list", async () => {
+    const res = await GET(new Request("http://localhost/api/reminders?status=cancelled"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+  });
+
+  it("GET /api/reminders with invalid status defaults to pending", async () => {
+    const res = await GET(new Request("http://localhost/api/reminders?status=invalid"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+  });
+
   it("POST /api/reminders creates reminder with inMinutes", async () => {
     const res = await POST(
       new Request("http://localhost/api/reminders", {
@@ -58,6 +72,19 @@ describe("Reminders API", () => {
     expect(data.message).toBe("At reminder");
   });
 
+  it("POST /api/reminders uses inMinutes when at is empty string", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "Fallback", at: "   ", inMinutes: 15 }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.runAt).toBeGreaterThan(Date.now());
+  });
+
   it("POST /api/reminders returns 400 when message missing", async () => {
     const res = await POST(
       new Request("http://localhost/api/reminders", {
@@ -84,6 +111,55 @@ describe("Reminders API", () => {
     expect(data.error).toContain("at");
   });
 
+  it("POST /api/reminders creates assistant_task reminder with conversationId", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "Assistant task",
+          inMinutes: 30,
+          taskType: "assistant_task",
+          conversationId: "conv-123",
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.taskType).toBe("assistant_task");
+    expect(data.conversationId).toBe("conv-123");
+  });
+
+  it("POST /api/reminders returns 400 when assistant_task without conversationId", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "Task",
+          inMinutes: 10,
+          taskType: "assistant_task",
+        }),
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("conversationId");
+  });
+
+  it("POST /api/reminders clamps inMinutes to max", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "Far future", inMinutes: 60 * 24 * 400 }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.runAt).toBeGreaterThan(Date.now());
+  });
+
   it("POST /api/reminders returns 400 when neither at nor inMinutes", async () => {
     const res = await POST(
       new Request("http://localhost/api/reminders", {
@@ -95,6 +171,19 @@ describe("Reminders API", () => {
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toBeDefined();
+  });
+
+  it("POST /api/reminders returns 400 when at is not a valid date string", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "x", at: "not-a-date" }),
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toMatch(/at|ISO|valid/);
   });
 
   it("POST /api/reminders returns 400 when runAt in past", async () => {

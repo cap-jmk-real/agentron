@@ -11,7 +11,10 @@ export async function GET() {
     const rows = allUsage.filter((r) => r.workflowId === wf.id);
     const totalPrompt = rows.reduce((s, r) => s + r.promptTokens, 0);
     const totalCompletion = rows.reduce((s, r) => s + r.completionTokens, 0);
-    const totalCost = rows.reduce((s, r) => s + (r.estimatedCost ? parseFloat(r.estimatedCost) : 0), 0);
+    const totalCost = rows.reduce(
+      (s, r) => s + (r.estimatedCost ? parseFloat(r.estimatedCost) : 0),
+      0
+    );
     const agentIds = new Set(rows.map((r) => r.agentId).filter(Boolean));
     const llmKeys = new Set(rows.map((r) => `${r.provider}:${r.model}`));
 

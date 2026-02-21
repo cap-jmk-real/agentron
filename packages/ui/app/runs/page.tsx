@@ -74,7 +74,17 @@ export default function RunsPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setRuns((prev) => prev.map((r) => (r.id === runId ? { ...r, status: data.status ?? "cancelled", finishedAt: data.finishedAt ?? Date.now() } : r)));
+        setRuns((prev) =>
+          prev.map((r) =>
+            r.id === runId
+              ? {
+                  ...r,
+                  status: data.status ?? "cancelled",
+                  finishedAt: data.finishedAt ?? Date.now(),
+                }
+              : r
+          )
+        );
       }
     } finally {
       setStoppingRunId(null);
@@ -85,7 +95,8 @@ export default function RunsPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (filterTargetType && filterTargetType !== "all") params.set("targetType", filterTargetType);
+      if (filterTargetType && filterTargetType !== "all")
+        params.set("targetType", filterTargetType);
       params.set("limit", "50");
       const response = await fetch(`/api/runs?${params.toString()}`, { cache: "no-store" });
       const data = await response.json();
@@ -111,15 +122,22 @@ export default function RunsPage() {
       <div className="page-header">
         <h1 className="page-title">Runs</h1>
         <p className="page-description">
-          Inspect agent, workflow, and tool runs. Open a run to see output or errors and copy a paste-ready block for the chat to help debug.
+          Inspect agent, workflow, and tool runs. Open a run to see output or errors and copy a
+          paste-ready block for the chat to help debug.
         </p>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "0.5rem" }}>
-          <label htmlFor="runs-filter" style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>Filter:</label>
+          <label htmlFor="runs-filter" style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>
+            Filter:
+          </label>
           <select
             id="runs-filter"
             value={filterTargetType || "all"}
             onChange={(e) => setFilterTargetType(e.target.value === "all" ? "" : e.target.value)}
-            style={{ padding: "0.35rem 0.6rem", borderRadius: 6, border: "1px solid var(--border)" }}
+            style={{
+              padding: "0.35rem 0.6rem",
+              borderRadius: 6,
+              border: "1px solid var(--border)",
+            }}
           >
             <option value="all">All</option>
             <option value="workflow">Workflows</option>
@@ -151,7 +169,14 @@ export default function RunsPage() {
                   <button
                     type="button"
                     className="button button-secondary"
-                    style={{ marginLeft: "auto", padding: "0.25rem 0.5rem", fontSize: "0.85rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                    style={{
+                      marginLeft: "auto",
+                      padding: "0.25rem 0.5rem",
+                      fontSize: "0.85rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.35rem",
+                    }}
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -160,8 +185,16 @@ export default function RunsPage() {
                     disabled={stoppingRunId === run.id}
                     title={run.status === "waiting_for_user" ? "Cancel run" : "Stop run"}
                   >
-                    {stoppingRunId === run.id ? <Loader2 size={14} className="spin" /> : <Square size={14} />}
-                    {stoppingRunId === run.id ? "Stopping…" : run.status === "waiting_for_user" ? "Cancel" : "Stop"}
+                    {stoppingRunId === run.id ? (
+                      <Loader2 size={14} className="spin" />
+                    ) : (
+                      <Square size={14} />
+                    )}
+                    {stoppingRunId === run.id
+                      ? "Stopping…"
+                      : run.status === "waiting_for_user"
+                        ? "Cancel"
+                        : "Stop"}
                   </button>
                 )}
                 <ChevronRight size={18} className="run-chevron" />

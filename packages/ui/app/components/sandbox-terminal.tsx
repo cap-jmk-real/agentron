@@ -13,13 +13,16 @@ type SandboxTerminalProps = {
 
 export function SandboxTerminal({ sandboxId, sandboxName, className }: SandboxTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<"connecting" | "connected" | "disconnected" | "error">("connecting");
+  const [status, setStatus] = useState<"connecting" | "connected" | "disconnected" | "error">(
+    "connecting"
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || !sandboxId) return;
 
-    const protocol = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss:" : "ws:";
+    const protocol =
+      typeof window !== "undefined" && window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = typeof window !== "undefined" ? window.location.host : "localhost:3000";
     const wsUrl = `${protocol}//${host}/api/sandbox-shell?sid=${encodeURIComponent(sandboxId)}`;
 
@@ -93,7 +96,12 @@ export function SandboxTerminal({ sandboxId, sandboxName, className }: SandboxTe
             /* not JSON, pass through */
           }
         }
-        const text = typeof event.data === "string" ? event.data : (event.data as Blob).size ? "" : String(event.data);
+        const text =
+          typeof event.data === "string"
+            ? event.data
+            : (event.data as Blob).size
+              ? ""
+              : String(event.data);
         if (text) term?.write(text);
       };
 
@@ -126,7 +134,10 @@ export function SandboxTerminal({ sandboxId, sandboxName, className }: SandboxTe
   }, [sandboxId]);
 
   return (
-    <div className={className} style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 200 }}>
+    <div
+      className={className}
+      style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 200 }}
+    >
       {(status === "connecting" || status === "error" || status === "disconnected") && (
         <div
           style={{
@@ -140,9 +151,13 @@ export function SandboxTerminal({ sandboxId, sandboxName, className }: SandboxTe
           }}
         >
           {status === "connecting" && <span>Connecting to {sandboxName ?? "sandbox"}…</span>}
-          {status === "disconnected" && <span style={{ color: "var(--text-muted)" }}>Disconnected.</span>}
+          {status === "disconnected" && (
+            <span style={{ color: "var(--text-muted)" }}>Disconnected.</span>
+          )}
           {status === "error" && (
-            <span style={{ color: "var(--resource-red)" }}>{errorMessage ?? "Connection failed."}</span>
+            <span style={{ color: "var(--resource-red)" }}>
+              {errorMessage ?? "Connection failed."}
+            </span>
           )}
         </div>
       )}

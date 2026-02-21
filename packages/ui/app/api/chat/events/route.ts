@@ -32,7 +32,10 @@ export async function GET(request: Request) {
           // Serialization or enqueue failed (e.g. circular ref in event); send minimal error so client stops loading
           try {
             const fallback =
-              typeof data === "object" && data !== null && "type" in data && (data as { type: string }).type === "done"
+              typeof data === "object" &&
+              data !== null &&
+              "type" in data &&
+              (data as { type: string }).type === "done"
                 ? {
                     type: "done" as const,
                     content: (data as { content?: string }).content ?? "",

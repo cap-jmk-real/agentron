@@ -8,7 +8,11 @@ import type { SpecialistRegistry } from "./registry";
 import type { PlannerOutput } from "./types";
 
 function isParallelStep(step: HeapStep): step is { parallel: string[] } {
-  return typeof step === "object" && step !== null && Array.isArray((step as { parallel: string[] }).parallel);
+  return (
+    typeof step === "object" &&
+    step !== null &&
+    Array.isArray((step as { parallel: string[] }).parallel)
+  );
 }
 
 function getStepIds(step: HeapStep): string[] {
@@ -39,7 +43,8 @@ export function planImpliesCreateAgentAndWorkflow(plan: PlannerOutput | null): b
   const actions = plan.extractedContext?.requestedActions;
   if (Array.isArray(actions)) {
     const hasWorkflow = actions.some(
-      (a) => typeof a === "string" && (a.includes("workflow") || a.includes("add_agent_to_workflow"))
+      (a) =>
+        typeof a === "string" && (a.includes("workflow") || a.includes("add_agent_to_workflow"))
     );
     const hasAgent = actions.some(
       (a) => typeof a === "string" && (a.includes("create_agent") || a === "add_agent_to_workflow")
@@ -68,7 +73,10 @@ export function reorderAgentBeforeWorkflow(priorityOrder: HeapStep[]): HeapStep[
     levels.push(ids);
   }
   const firstWorkflow = levels.findIndex((l) => l.some(isWorkflowId));
-  const lastAgentIdx = levels.map((l, i) => (l.some(isAgentId) ? i : -1)).filter((i) => i >= 0).pop();
+  const lastAgentIdx = levels
+    .map((l, i) => (l.some(isAgentId) ? i : -1))
+    .filter((i) => i >= 0)
+    .pop();
   const lastAgent = lastAgentIdx ?? -1;
   if (firstWorkflow === -1 || lastAgent === -1) return priorityOrder;
   if (firstWorkflow >= lastAgent) return priorityOrder;
@@ -85,7 +93,9 @@ export function reorderAgentBeforeWorkflow(priorityOrder: HeapStep[]): HeapStep[
  * Used when the plan implies create-agent + create-workflow so creation happens before the workflow-agent improver runs.
  * Preserves relative order within agent, workflow, improve_agents_workflows, and other groups.
  */
-export function reorderAgentAndWorkflowBeforeImproveAgentsWorkflows(priorityOrder: HeapStep[]): HeapStep[] {
+export function reorderAgentAndWorkflowBeforeImproveAgentsWorkflows(
+  priorityOrder: HeapStep[]
+): HeapStep[] {
   const levels: string[][] = [];
   for (const step of priorityOrder) {
     const ids = getStepIds(step);

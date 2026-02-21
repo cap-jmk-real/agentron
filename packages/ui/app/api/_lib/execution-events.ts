@@ -62,9 +62,12 @@ export async function enqueueExecutionEvent(
 }
 
 /** Get the next unprocessed event for an execution (lowest sequence). */
-export async function getNextPendingEvent(
-  executionId: string
-): Promise<{ id: string; type: string; payload: Record<string, unknown> | null; sequence: number } | null> {
+export async function getNextPendingEvent(executionId: string): Promise<{
+  id: string;
+  type: string;
+  payload: Record<string, unknown> | null;
+  sequence: number;
+} | null> {
   const rows = await db
     .select()
     .from(executionEvents)
@@ -118,8 +121,13 @@ export async function getExecutionEventsForRun(executionId: string): Promise<Exe
 }
 
 /** Load run state for an execution. Returns null if none. */
-export async function getExecutionRunState(executionId: string): Promise<ExecutionRunStateRow | null> {
-  const rows = await db.select().from(executionRunState).where(eq(executionRunState.executionId, executionId));
+export async function getExecutionRunState(
+  executionId: string
+): Promise<ExecutionRunStateRow | null> {
+  const rows = await db
+    .select()
+    .from(executionRunState)
+    .where(eq(executionRunState.executionId, executionId));
   if (rows.length === 0) return null;
   const r = rows[0];
   return {
@@ -151,7 +159,9 @@ export async function setExecutionRunState(
   }
 ): Promise<void> {
   const sharedContext =
-    typeof state.sharedContext === "string" ? state.sharedContext : JSON.stringify(state.sharedContext);
+    typeof state.sharedContext === "string"
+      ? state.sharedContext
+      : JSON.stringify(state.sharedContext);
   const trailSnapshot =
     state.trailSnapshot == null
       ? null
@@ -159,7 +169,10 @@ export async function setExecutionRunState(
         ? state.trailSnapshot
         : JSON.stringify(state.trailSnapshot);
   const now = Date.now();
-  const existing = await db.select().from(executionRunState).where(eq(executionRunState.executionId, executionId));
+  const existing = await db
+    .select()
+    .from(executionRunState)
+    .where(eq(executionRunState.executionId, executionId));
   if (existing.length === 0) {
     await db.insert(executionRunState).values({
       executionId,
@@ -185,7 +198,10 @@ export async function setExecutionRunState(
       waitingAtNodeId: state.waitingAtNodeId ?? prev.waitingAtNodeId,
       trailSnapshot: trailSnapshot ?? prev.trailSnapshot,
     };
-    await db.update(executionRunState).set(updates as Record<string, unknown>).where(eq(executionRunState.executionId, executionId));
+    await db
+      .update(executionRunState)
+      .set(updates as Record<string, unknown>)
+      .where(eq(executionRunState.executionId, executionId));
   }
 }
 
@@ -201,7 +217,10 @@ export async function updateExecutionRunState(
     trailSnapshot: unknown[] | string | null;
   }>
 ): Promise<void> {
-  const existing = await db.select().from(executionRunState).where(eq(executionRunState.executionId, executionId));
+  const existing = await db
+    .select()
+    .from(executionRunState)
+    .where(eq(executionRunState.executionId, executionId));
   if (existing.length === 0) return;
   const now = Date.now();
   const row = existing[0];
@@ -209,15 +228,25 @@ export async function updateExecutionRunState(
   if (patch.currentNodeId !== undefined) updates.currentNodeId = patch.currentNodeId;
   if (patch.round !== undefined) updates.round = patch.round;
   if (patch.sharedContext !== undefined) {
-    updates.sharedContext = typeof patch.sharedContext === "string" ? patch.sharedContext : JSON.stringify(patch.sharedContext);
+    updates.sharedContext =
+      typeof patch.sharedContext === "string"
+        ? patch.sharedContext
+        : JSON.stringify(patch.sharedContext);
   }
   if (patch.status !== undefined) updates.status = patch.status;
   if (patch.waitingAtNodeId !== undefined) updates.waitingAtNodeId = patch.waitingAtNodeId;
   if (patch.trailSnapshot !== undefined) {
     updates.trailSnapshot =
-      patch.trailSnapshot == null ? null : typeof patch.trailSnapshot === "string" ? patch.trailSnapshot : JSON.stringify(patch.trailSnapshot);
+      patch.trailSnapshot == null
+        ? null
+        : typeof patch.trailSnapshot === "string"
+          ? patch.trailSnapshot
+          : JSON.stringify(patch.trailSnapshot);
   }
-  await db.update(executionRunState).set(updates as Record<string, unknown>).where(eq(executionRunState.executionId, executionId));
+  await db
+    .update(executionRunState)
+    .set(updates as Record<string, unknown>)
+    .where(eq(executionRunState.executionId, executionId));
 }
 
 /** Parse sharedContext JSON from run state. */

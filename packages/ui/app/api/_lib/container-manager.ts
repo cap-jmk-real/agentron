@@ -50,16 +50,25 @@ export async function verifyContainerEngine(): Promise<{ ok: boolean; error?: st
   const isWin = platform() === "win32";
   try {
     if (isWin) {
-      const pathRefresh = "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')";
+      const pathRefresh =
+        "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')";
       const cmd = `${pathRefresh}; & '${bin}' info`;
       await new Promise<void>((resolve, reject) => {
-        const proc = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd], {
-          stdio: ["ignore", "pipe", "pipe"],
-        });
+        const proc = spawn(
+          "powershell.exe",
+          ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd],
+          {
+            stdio: ["ignore", "pipe", "pipe"],
+          }
+        );
         let stderr = "";
-        proc.stderr?.on("data", (d: Buffer) => { stderr += d.toString(); });
+        proc.stderr?.on("data", (d: Buffer) => {
+          stderr += d.toString();
+        });
         proc.on("error", reject);
-        proc.on("close", (code) => (code === 0 ? resolve() : reject(new Error(stderr || `exit ${code}`))));
+        proc.on("close", (code) =>
+          code === 0 ? resolve() : reject(new Error(stderr || `exit ${code}`))
+        );
       });
     } else {
       const { execFile } = await import("node:child_process");

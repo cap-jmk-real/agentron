@@ -18,6 +18,8 @@ export async function GET(_: Request, { params }: Params) {
     provider: r.provider,
     modelOrEndpoint: r.modelOrEndpoint,
     dimensions: r.dimensions,
+    embeddingProviderId: r.embeddingProviderId ?? undefined,
+    endpoint: r.endpoint ?? undefined,
     createdAt: r.createdAt,
   });
 }
@@ -26,7 +28,14 @@ export async function PUT(request: Request, { params }: Params) {
   const { id } = await params;
   const rows = await db.select().from(ragEncodingConfigs).where(eq(ragEncodingConfigs.id, id));
   if (rows.length === 0) return json({ error: "Not found" }, { status: 404 });
-  let body: { name?: string; provider?: string; modelOrEndpoint?: string; dimensions?: number };
+  let body: {
+    name?: string;
+    provider?: string;
+    modelOrEndpoint?: string;
+    dimensions?: number;
+    embeddingProviderId?: string | null;
+    endpoint?: string | null;
+  };
   try {
     body = await request.json();
   } catch {
@@ -37,6 +46,9 @@ export async function PUT(request: Request, { params }: Params) {
   if (body.provider !== undefined) updates.provider = body.provider;
   if (body.modelOrEndpoint !== undefined) updates.modelOrEndpoint = body.modelOrEndpoint;
   if (body.dimensions !== undefined) updates.dimensions = body.dimensions;
+  if (body.embeddingProviderId !== undefined)
+    updates.embeddingProviderId = body.embeddingProviderId;
+  if (body.endpoint !== undefined) updates.endpoint = body.endpoint;
   if (Object.keys(updates).length > 0) {
     await db.update(ragEncodingConfigs).set(updates).where(eq(ragEncodingConfigs.id, id)).run();
   }
@@ -48,6 +60,8 @@ export async function PUT(request: Request, { params }: Params) {
     provider: r.provider,
     modelOrEndpoint: r.modelOrEndpoint,
     dimensions: r.dimensions,
+    embeddingProviderId: r.embeddingProviderId ?? undefined,
+    endpoint: r.endpoint ?? undefined,
     createdAt: r.createdAt,
   });
 }

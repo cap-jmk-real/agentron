@@ -49,19 +49,41 @@ export default function ConfirmModal({
       }}
     >
       <div className="card confirm-modal-card">
-        <h3 id="confirm-modal-title" style={{ margin: "0 0 0.5rem", fontSize: "1rem", fontWeight: 600 }}>
+        <h3
+          id="confirm-modal-title"
+          style={{ margin: "0 0 0.5rem", fontSize: "1rem", fontWeight: 600 }}
+        >
           {title}
         </h3>
         <p style={{ margin: 0, fontSize: "0.88rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
           {message}
         </p>
         {warning && (
-          <p style={{ margin: "0.75rem 0 0", fontSize: "0.82rem", color: "#eab308", lineHeight: 1.4 }}>
+          <p
+            style={{
+              margin: "0.75rem 0 0",
+              fontSize: "0.82rem",
+              color: "#eab308",
+              lineHeight: 1.4,
+            }}
+          >
             {warning}
           </p>
         )}
-        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", marginTop: "1.25rem" }}>
-          <button type="button" className="button button-secondary" onClick={onCancel} disabled={loading}>
+        <div
+          style={{
+            display: "flex",
+            gap: "0.5rem",
+            justifyContent: "flex-end",
+            marginTop: "1.25rem",
+          }}
+        >
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={onCancel}
+            disabled={loading}
+          >
             {cancelLabel}
           </button>
           <button

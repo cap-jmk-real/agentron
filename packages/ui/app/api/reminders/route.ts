@@ -9,7 +9,8 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const status = url.searchParams.get("status") ?? "pending";
-  const validStatus = status === "pending" || status === "fired" || status === "cancelled" ? status : "pending";
+  const validStatus =
+    status === "pending" || status === "fired" || status === "cancelled" ? status : "pending";
   const rows = await db
     .select()
     .from(reminders)
@@ -41,17 +42,27 @@ export async function POST(request: Request) {
   } else if (typeof body.inMinutes === "number" && body.inMinutes > 0) {
     runAt = Date.now() + Math.min(body.inMinutes, 60 * 24 * 365) * 60 * 1000;
   } else {
-    return json({ error: "Either at (ISO date) or inMinutes (number) is required" }, { status: 400 });
+    return json(
+      { error: "Either at (ISO date) or inMinutes (number) is required" },
+      { status: 400 }
+    );
   }
   if (runAt <= Date.now()) {
     return json({ error: "Reminder time must be in the future" }, { status: 400 });
   }
-  const taskType: ReminderTaskType = body.taskType === "assistant_task" ? "assistant_task" : "message";
+  const taskType: ReminderTaskType =
+    body.taskType === "assistant_task" ? "assistant_task" : "message";
   if (taskType === "assistant_task" && !body.conversationId) {
-    return json({ error: "conversationId is required for assistant_task reminders" }, { status: 400 });
+    return json(
+      { error: "conversationId is required for assistant_task reminders" },
+      { status: 400 }
+    );
   }
   const id = crypto.randomUUID();
-  const conversationId = typeof body.conversationId === "string" && body.conversationId.trim() ? body.conversationId.trim() : undefined;
+  const conversationId =
+    typeof body.conversationId === "string" && body.conversationId.trim()
+      ? body.conversationId.trim()
+      : undefined;
   const reminder = {
     id,
     runAt,
@@ -65,7 +76,15 @@ export async function POST(request: Request) {
   await db.insert(reminders).values(toReminderRow(reminder)).run();
   scheduleReminder(id);
   return json(
-    { id, runAt, message, conversationId: conversationId ?? undefined, taskType, status: "pending" as const, createdAt: reminder.createdAt },
+    {
+      id,
+      runAt,
+      message,
+      conversationId: conversationId ?? undefined,
+      taskType,
+      status: "pending" as const,
+      createdAt: reminder.createdAt,
+    },
     { status: 201 }
   );
 }

@@ -8,11 +8,31 @@ export const CONVERSATION_TOOLS: AssistantToolDef[] = [
     parameters: {
       type: "object",
       properties: {
-        question: { type: "string", description: "Clear question for this turn only (e.g. 'Which content types should we extract?' or 'Which LLM should I use?'). One topic per call when you need multiple answers." },
-        options: { type: "array", items: { type: "string" }, description: "2–4 plain string labels for this question only (e.g. ['Headlines & job titles', 'Skills & About', 'All of the above'] for content types, or ['Run it now', 'Modify agent'] for next steps)." },
-        reason: { type: "string", description: "Optional one-line reason (e.g. 'Need to pick LLM before creating agents')" },
-        stepIndex: { type: "number", description: "Optional 1-based step number when asking multiple questions in sequence (e.g. 1 for first question)." },
-        stepTotal: { type: "number", description: "Optional total number of steps when asking multiple questions (e.g. 4 for 'Step 1 of 4')." },
+        question: {
+          type: "string",
+          description:
+            "Clear question for this turn only (e.g. 'Which content types should we extract?' or 'Which LLM should I use?'). One topic per call when you need multiple answers.",
+        },
+        options: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "2–4 plain string labels for this question only (e.g. ['Headlines & job titles', 'Skills & About', 'All of the above'] for content types, or ['Run it now', 'Modify agent'] for next steps).",
+        },
+        reason: {
+          type: "string",
+          description: "Optional one-line reason (e.g. 'Need to pick LLM before creating agents')",
+        },
+        stepIndex: {
+          type: "number",
+          description:
+            "Optional 1-based step number when asking multiple questions in sequence (e.g. 1 for first question).",
+        },
+        stepTotal: {
+          type: "number",
+          description:
+            "Optional total number of steps when asking multiple questions (e.g. 4 for 'Step 1 of 4').",
+        },
       },
       required: ["question"],
     },
@@ -24,8 +44,16 @@ export const CONVERSATION_TOOLS: AssistantToolDef[] = [
     parameters: {
       type: "object",
       properties: {
-        question: { type: "string", description: "Clear prompt for the user (e.g. 'Enter your OpenAI API key' or 'Enter the SSH password for user@host')" },
-        credentialKey: { type: "string", description: "Stable key for this credential so it can be saved and reused (e.g. 'openai_api_key', 'github_token'). Use lowercase with underscores." },
+        question: {
+          type: "string",
+          description:
+            "Clear prompt for the user (e.g. 'Enter your OpenAI API key' or 'Enter the SSH password for user@host')",
+        },
+        credentialKey: {
+          type: "string",
+          description:
+            "Stable key for this credential so it can be saved and reused (e.g. 'openai_api_key', 'github_token'). Use lowercase with underscores.",
+        },
       },
       required: ["question", "credentialKey"],
     },
@@ -37,24 +65,37 @@ export const CONVERSATION_TOOLS: AssistantToolDef[] = [
     parameters: {
       type: "object",
       properties: {
-        summary: { type: "string", description: "Main body: what you did, current status, context. Use markdown: ## or ### for headings, **bold** for emphasis, numbered lists as 1. 2. 3. on separate lines (proper numbering so the UI renders correctly). Shown first." },
-        needsInput: { type: "string", description: "What the user must provide to proceed. Use markdown; keep concise. Shown in a highlighted block at the end." },
+        summary: {
+          type: "string",
+          description:
+            "Main body: what you did, current status, context. Use markdown: ## or ### for headings, **bold** for emphasis, numbered lists as 1. 2. 3. on separate lines (proper numbering so the UI renders correctly). Shown first.",
+        },
+        needsInput: {
+          type: "string",
+          description:
+            "What the user must provide to proceed. Use markdown; keep concise. Shown in a highlighted block at the end.",
+        },
       },
       required: ["summary"],
     },
   },
   {
     name: "retry_last_message",
-    description: "Get the last user message in this conversation so you can respond to it again. Use when the user asks to retry, redo, or repeat the last message (e.g. 'retry the last message', 'try again', 'redo', 'run that again'). Call this tool, then respond to the returned lastUserMessage in your reply.",
+    description:
+      "Get the last user message in this conversation so you can respond to it again. Use when the user asks to retry, redo, or repeat the last message (e.g. 'retry the last message', 'try again', 'redo', 'run that again'). Call this tool, then respond to the returned lastUserMessage in your reply.",
     parameters: { type: "object", properties: {}, required: [] },
   },
   {
     name: "remember",
-    description: "Store a preference or fact the user stated so it can be used in future chats (e.g. 'prefer Ollama for local', 'main workflow is X'). Use when the user explicitly tells you to remember something or states a clear preference. Key is optional (e.g. 'default_llm'); if omitted, the content is stored as a freeform note.",
+    description:
+      "Store a preference or fact the user stated so it can be used in future chats (e.g. 'prefer Ollama for local', 'main workflow is X'). Use when the user explicitly tells you to remember something or states a clear preference. Key is optional (e.g. 'default_llm'); if omitted, the content is stored as a freeform note.",
     parameters: {
       type: "object",
       properties: {
-        key: { type: "string", description: "Optional short key for the preference (e.g. default_llm, main_workflow)" },
+        key: {
+          type: "string",
+          description: "Optional short key for the preference (e.g. default_llm, main_workflow)",
+        },
         value: { type: "string", description: "What to remember (the preference or fact)" },
       },
       required: ["value"],
@@ -62,7 +103,8 @@ export const CONVERSATION_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "get_assistant_setting",
-    description: "Get an assistant setting value. Supported key: recentSummariesCount (how many recent conversation summaries are included in context, 1–10). Use when the user asks what the current setting is.",
+    description:
+      "Get an assistant setting value. Supported key: recentSummariesCount (how many recent conversation summaries are included in context, 1–10). Use when the user asks what the current setting is.",
     parameters: {
       type: "object",
       properties: {
@@ -73,7 +115,8 @@ export const CONVERSATION_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "set_assistant_setting",
-    description: "Update an assistant setting. Use when the user asks to change how many recent conversation summaries are used (e.g. 'use 5 recent summaries' or 'set summary count to 3'). recentSummariesCount: 1–10; default is 3. Lower = less context, faster; higher = more history from past chats.",
+    description:
+      "Update an assistant setting. Use when the user asks to change how many recent conversation summaries are used (e.g. 'use 5 recent summaries' or 'set summary count to 3'). recentSummariesCount: 1–10; default is 3. Lower = less context, faster; higher = more history from past chats.",
     parameters: {
       type: "object",
       properties: {

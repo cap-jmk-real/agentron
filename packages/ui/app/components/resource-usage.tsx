@@ -3,7 +3,11 @@
 import { useEffect, useState, useRef } from "react";
 import { Cpu, MemoryStick, HardDrive, Gauge } from "lucide-react";
 import { ResourceBar } from "./resource-bar";
-import { getSystemStatsIntervalMs, SYSTEM_STATS_INTERVAL_CHANGED_EVENT, SYSTEM_STATS_INTERVAL_DEFAULT_MS } from "../lib/system-stats-interval";
+import {
+  getSystemStatsIntervalMs,
+  SYSTEM_STATS_INTERVAL_CHANGED_EVENT,
+  SYSTEM_STATS_INTERVAL_DEFAULT_MS,
+} from "../lib/system-stats-interval";
 
 type SystemStats = {
   ts: number;
@@ -30,8 +34,8 @@ export function ResourceUsage() {
   const [cpuPercent, setCpuPercent] = useState<number | null>(null);
   const [error, setError] = useState(false);
   const [intervalMs, setIntervalMs] = useState(SYSTEM_STATS_INTERVAL_DEFAULT_MS);
-  const [tabHidden, setTabHidden] = useState(
-    () => (typeof document !== "undefined" ? document.hidden : false)
+  const [tabHidden, setTabHidden] = useState(() =>
+    typeof document !== "undefined" ? document.hidden : false
   );
   const prevCpuRef = useRef<{ user: number; system: number; ts: number } | null>(null);
 
@@ -95,16 +99,23 @@ export function ResourceUsage() {
 
   const ramUsedPct = stats.ram.total > 0 ? Math.round((stats.ram.used / stats.ram.total) * 100) : 0;
   const diskFreeGb = gb(stats.disk.free);
-  const diskUsedPct = stats.disk.total > 0 ? Math.round((1 - stats.disk.free / stats.disk.total) * 100) : 0;
+  const diskUsedPct =
+    stats.disk.total > 0 ? Math.round((1 - stats.disk.free / stats.disk.total) * 100) : 0;
   const gpu0 = stats.gpu[0];
-  const vramUsedPct = gpu0 && gpu0.vramTotal > 0 ? Math.round((gpu0.vramUsed / gpu0.vramTotal) * 100) : null;
+  const vramUsedPct =
+    gpu0 && gpu0.vramTotal > 0 ? Math.round((gpu0.vramUsed / gpu0.vramTotal) * 100) : null;
 
   return (
-    <div className="resource-usage-grid" title={`RAM ${mb(stats.ram.used)} / ${mb(stats.ram.total)} MB · Process ${mb(stats.process.rss)} MB · Disk ${diskFreeGb} GB free`}>
+    <div
+      className="resource-usage-grid"
+      title={`RAM ${mb(stats.ram.used)} / ${mb(stats.ram.total)} MB · Process ${mb(stats.process.rss)} MB · Disk ${diskFreeGb} GB free`}
+    >
       <div className="resource-usage-block">
         <div className="resource-usage-row">
           <Cpu size={12} className="resource-usage-icon" />
-          <span className="resource-usage-value">{cpuPercent != null ? `${cpuPercent}%` : "—"}</span>
+          <span className="resource-usage-value">
+            {cpuPercent != null ? `${cpuPercent}%` : "—"}
+          </span>
           <span className="resource-usage-label">CPU</span>
         </div>
         <ResourceBar percent={cpuPercent ?? 0} height={3} />
@@ -130,7 +141,9 @@ export function ResourceUsage() {
           <div className="resource-usage-block">
             <div className="resource-usage-row">
               <MemoryStick size={12} className="resource-usage-icon" />
-              <span className="resource-usage-value">{vramUsedPct != null ? `${vramUsedPct}%` : "—"}</span>
+              <span className="resource-usage-value">
+                {vramUsedPct != null ? `${vramUsedPct}%` : "—"}
+              </span>
               <span className="resource-usage-label">VRAM</span>
             </div>
             <ResourceBar percent={vramUsedPct ?? 0} height={3} />

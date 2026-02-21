@@ -54,23 +54,53 @@ export default function ChatSettingsPanel({ open, onClose, onRefreshed }: Props)
       const s = await settingsRes.json();
       setSettings(s);
       setCustomPromptDraft(s.customSystemPrompt ?? "");
-      setUseAllContext(!s.contextAgentIds?.length && !s.contextWorkflowIds?.length && !s.contextToolIds?.length);
+      setUseAllContext(
+        !s.contextAgentIds?.length && !s.contextWorkflowIds?.length && !s.contextToolIds?.length
+      );
       setSelectedAgentIds(new Set(s.contextAgentIds ?? []));
       setSelectedWorkflowIds(new Set(s.contextWorkflowIds ?? []));
       setSelectedToolIds(new Set(s.contextToolIds ?? []));
-      setRecentSummariesCount(typeof s.recentSummariesCount === "number" ? Math.min(10, Math.max(1, s.recentSummariesCount)) : 3);
+      setRecentSummariesCount(
+        typeof s.recentSummariesCount === "number"
+          ? Math.min(10, Math.max(1, s.recentSummariesCount))
+          : 3
+      );
       const t = typeof s.temperature === "number" ? Math.min(2, Math.max(0, s.temperature)) : 0.7;
       setTemperature(Number.isNaN(t) ? 0.7 : t);
-      setHistoryCompressAfter(typeof s.historyCompressAfter === "number" ? Math.min(200, Math.max(10, s.historyCompressAfter)) : 24);
-      setHistoryKeepRecent(typeof s.historyKeepRecent === "number" ? Math.min(100, Math.max(5, s.historyKeepRecent)) : 16);
-      setPlannerRecentMessages(typeof s.plannerRecentMessages === "number" ? Math.min(100, Math.max(1, s.plannerRecentMessages)) : 12);
+      setHistoryCompressAfter(
+        typeof s.historyCompressAfter === "number"
+          ? Math.min(200, Math.max(10, s.historyCompressAfter))
+          : 24
+      );
+      setHistoryKeepRecent(
+        typeof s.historyKeepRecent === "number"
+          ? Math.min(100, Math.max(5, s.historyKeepRecent))
+          : 16
+      );
+      setPlannerRecentMessages(
+        typeof s.plannerRecentMessages === "number"
+          ? Math.min(100, Math.max(1, s.plannerRecentMessages))
+          : 12
+      );
 
       const agentsData = await agentsRes.json();
       const workflowsData = await workflowsRes.json();
       const toolsData = await toolsRes.json();
-      setAgents(Array.isArray(agentsData) ? agentsData.map((a: { id: string; name: string }) => ({ id: a.id, name: a.name })) : []);
-      setWorkflows(Array.isArray(workflowsData) ? workflowsData.map((w: { id: string; name: string }) => ({ id: w.id, name: w.name })) : []);
-      setTools(Array.isArray(toolsData) ? toolsData.map((t: { id: string; name: string }) => ({ id: t.id, name: t.name })) : []);
+      setAgents(
+        Array.isArray(agentsData)
+          ? agentsData.map((a: { id: string; name: string }) => ({ id: a.id, name: a.name }))
+          : []
+      );
+      setWorkflows(
+        Array.isArray(workflowsData)
+          ? workflowsData.map((w: { id: string; name: string }) => ({ id: w.id, name: w.name }))
+          : []
+      );
+      setTools(
+        Array.isArray(toolsData)
+          ? toolsData.map((t: { id: string; name: string }) => ({ id: t.id, name: t.name }))
+          : []
+      );
     } finally {
       setLoading(false);
     }
@@ -213,7 +243,8 @@ export default function ChatSettingsPanel({ open, onClose, onRefreshed }: Props)
           <section className="chat-settings-section">
             <h3>Temperature</h3>
             <p className="chat-settings-hint">
-              LLM sampling temperature (0–2). Lower = more focused; higher = more varied. Default 0.7. Some models only support 1.
+              LLM sampling temperature (0–2). Lower = more focused; higher = more varied. Default
+              0.7. Some models only support 1.
             </p>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
               <input
@@ -222,7 +253,9 @@ export default function ChatSettingsPanel({ open, onClose, onRefreshed }: Props)
                 max={2}
                 step={0.1}
                 value={temperature}
-                onChange={(e) => setTemperature(Math.min(2, Math.max(0, parseFloat(e.target.value) || 0.7)))}
+                onChange={(e) =>
+                  setTemperature(Math.min(2, Math.max(0, parseFloat(e.target.value) || 0.7)))
+                }
                 style={{ width: "4rem", padding: "0.35rem" }}
               />
               <button
@@ -239,17 +272,28 @@ export default function ChatSettingsPanel({ open, onClose, onRefreshed }: Props)
           <section className="chat-settings-section">
             <h3>Conversation history compression</h3>
             <p className="chat-settings-hint">
-              When a chat has more than this many messages, older ones are summarized so the assistant keeps context without exceeding limits. Keep recent: how many of the latest messages to leave in full. Compress after should be greater than keep recent. Defaults: 24 and 16.
+              When a chat has more than this many messages, older ones are summarized so the
+              assistant keeps context without exceeding limits. Keep recent: how many of the latest
+              messages to leave in full. Compress after should be greater than keep recent.
+              Defaults: 24 and 16.
             </p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
+            <div
+              style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}
+            >
               <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                <span style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>Compress after</span>
+                <span style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>
+                  Compress after
+                </span>
                 <input
                   type="number"
                   min={10}
                   max={200}
                   value={historyCompressAfter}
-                  onChange={(e) => setHistoryCompressAfter(Math.min(200, Math.max(10, parseInt(e.target.value, 10) || 24)))}
+                  onChange={(e) =>
+                    setHistoryCompressAfter(
+                      Math.min(200, Math.max(10, parseInt(e.target.value, 10) || 24))
+                    )
+                  }
                   style={{ width: "4rem", padding: "0.35rem" }}
                 />
               </label>
@@ -260,7 +304,11 @@ export default function ChatSettingsPanel({ open, onClose, onRefreshed }: Props)
                   min={5}
                   max={100}
                   value={historyKeepRecent}
-                  onChange={(e) => setHistoryKeepRecent(Math.min(100, Math.max(5, parseInt(e.target.value, 10) || 16)))}
+                  onChange={(e) =>
+                    setHistoryKeepRecent(
+                      Math.min(100, Math.max(5, parseInt(e.target.value, 10) || 16))
+                    )
+                  }
                   style={{ width: "4rem", padding: "0.35rem" }}
                 />
               </label>
@@ -278,17 +326,26 @@ export default function ChatSettingsPanel({ open, onClose, onRefreshed }: Props)
           <section className="chat-settings-section">
             <h3>Planner context (heap mode)</h3>
             <p className="chat-settings-hint">
-              Number of past messages to include in recent conversation for the planner. Higher values give the planner more context (e.g. URLs, intent). Default 12.
+              Number of past messages to include in recent conversation for the planner. Higher
+              values give the planner more context (e.g. URLs, intent). Default 12.
             </p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
+            <div
+              style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}
+            >
               <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                <span style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>Past messages</span>
+                <span style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>
+                  Past messages
+                </span>
                 <input
                   type="number"
                   min={1}
                   max={100}
                   value={plannerRecentMessages}
-                  onChange={(e) => setPlannerRecentMessages(Math.min(100, Math.max(1, parseInt(e.target.value, 10) || 12)))}
+                  onChange={(e) =>
+                    setPlannerRecentMessages(
+                      Math.min(100, Math.max(1, parseInt(e.target.value, 10) || 12))
+                    )
+                  }
                   style={{ width: "4rem", padding: "0.35rem" }}
                 />
               </label>
@@ -306,7 +363,8 @@ export default function ChatSettingsPanel({ open, onClose, onRefreshed }: Props)
           <section className="chat-settings-section">
             <h3>Cross-chat context</h3>
             <p className="chat-settings-hint">
-              Number of recent conversation summaries to include in context (1–10). Default 3. Lower = faster, less history; higher = more continuity across chats.
+              Number of recent conversation summaries to include in context (1–10). Default 3. Lower
+              = faster, less history; higher = more continuity across chats.
             </p>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
               <input
@@ -314,10 +372,16 @@ export default function ChatSettingsPanel({ open, onClose, onRefreshed }: Props)
                 min={1}
                 max={10}
                 value={recentSummariesCount}
-                onChange={(e) => setRecentSummariesCount(Math.min(10, Math.max(1, parseInt(e.target.value, 10) || 3)))}
+                onChange={(e) =>
+                  setRecentSummariesCount(
+                    Math.min(10, Math.max(1, parseInt(e.target.value, 10) || 3))
+                  )
+                }
                 style={{ width: "4rem", padding: "0.35rem" }}
               />
-              <span style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>recent summaries</span>
+              <span style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>
+                recent summaries
+              </span>
               <button
                 type="button"
                 className="chat-settings-btn chat-settings-btn-secondary"
@@ -332,7 +396,8 @@ export default function ChatSettingsPanel({ open, onClose, onRefreshed }: Props)
           <section className="chat-settings-section">
             <h3>Context selection</h3>
             <p className="chat-settings-hint">
-              Choose which agents, workflows, and tools to include in the assistant context. Include all = assistant sees everything.
+              Choose which agents, workflows, and tools to include in the assistant context. Include
+              all = assistant sees everything.
             </p>
             <label className="chat-settings-check">
               <input

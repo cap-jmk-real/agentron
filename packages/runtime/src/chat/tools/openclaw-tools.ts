@@ -8,7 +8,16 @@ export const OPENCLAW_TOOLS: AssistantToolDef[] = [
     parameters: {
       type: "object",
       properties: {
-        content: { type: "string", description: "The message or command to send to OpenClaw (e.g. 'Check my calendar for tomorrow', 'Send an email to ...')" },
+        content: {
+          type: "string",
+          description:
+            "The message or command to send to OpenClaw (e.g. 'Check my calendar for tomorrow', 'Send an email to ...')",
+        },
+        gatewayUrl: {
+          type: "string",
+          description:
+            "Override gateway URL for this call (e.g. ws://127.0.0.1:<hostPort>); use when multiple OpenClaw containers are run and you need to target one.",
+        },
       },
       required: ["content"],
     },
@@ -21,13 +30,29 @@ export const OPENCLAW_TOOLS: AssistantToolDef[] = [
       type: "object",
       properties: {
         limit: { type: "number", description: "Maximum number of messages to return (default 20)" },
+        gatewayUrl: {
+          type: "string",
+          description:
+            "Override gateway URL for this call (e.g. ws://127.0.0.1:<hostPort>); use when multiple OpenClaw containers are run.",
+        },
       },
       required: [],
     },
   },
   {
     name: "openclaw_abort",
-    description: "Abort or stop the current run in the user's OpenClaw instance. Use when the user wants to stop what OpenClaw is doing.",
-    parameters: { type: "object", properties: {}, required: [] },
+    description:
+      "Abort or stop the current run in the user's OpenClaw instance. Use when the user wants to stop what OpenClaw is doing.",
+    parameters: {
+      type: "object",
+      properties: {
+        gatewayUrl: {
+          type: "string",
+          description:
+            "Override gateway URL for this call (e.g. ws://127.0.0.1:<hostPort>); use when multiple OpenClaw containers are run.",
+        },
+      },
+      required: [],
+    },
   },
 ];

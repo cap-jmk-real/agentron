@@ -45,10 +45,7 @@ async function withCancellation<T>(
   isCancelled?: () => Promise<boolean>
 ): Promise<T> {
   if (!isCancelled) return promise;
-  const result = await Promise.race([
-    promise,
-    waitUntilCancelled(isCancelled),
-  ]);
+  const result = await Promise.race([promise, waitUntilCancelled(isCancelled)]);
   return result as T;
 }
 
@@ -68,7 +65,8 @@ async function throttleInteractiveAction(minIntervalMs: number): Promise<void> {
 }
 
 function getChromePath(): string {
-  if (process.platform === "darwin") return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+  if (process.platform === "darwin")
+    return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
   if (process.platform === "win32") {
     const programFiles = process.env["ProgramFiles"] ?? "C:\\Program Files";
     return path.join(programFiles, "Google", "Chrome", "Application", "chrome.exe");
@@ -96,6 +94,8 @@ function waitForPort(host: string, port: number, timeoutMs: number): Promise<boo
 
 async function tryLaunchChrome(): Promise<boolean> {
   if (launchAttempted) return false;
+  // Skip launching Chrome in tests (e.g. AGENTRON_SKIP_CHROME_LAUNCH=1) to avoid leaving tabs open.
+  if (process.env.AGENTRON_SKIP_CHROME_LAUNCH === "1") return false;
   launchAttempted = true;
   const userDataDir = path.join(os.tmpdir(), "agentron");
   try {
@@ -168,7 +168,9 @@ export async function browserAutomation(
   const cdpUrl =
     typeof o.cdpUrl === "string" && o.cdpUrl.trim() ? o.cdpUrl.trim() : DEFAULT_CDP_URL;
   const timeout =
-    typeof o.timeout === "number" && o.timeout > 0 ? Math.min(o.timeout, 60000) : DEFAULT_TIMEOUT_MS;
+    typeof o.timeout === "number" && o.timeout > 0
+      ? Math.min(o.timeout, 60000)
+      : DEFAULT_TIMEOUT_MS;
   const minActionIntervalMs =
     typeof o.minActionIntervalMs === "number" && o.minActionIntervalMs >= 0
       ? Math.min(o.minActionIntervalMs, 60000)
@@ -221,7 +223,13 @@ export async function browserAutomation(
         onLog?.({
           level: "stdout",
           message: "[Playwright] navigate completed",
-          payload: { source: "playwright", action: "navigate", requestedUrl: url, finalUrl, pageTitle },
+          payload: {
+            source: "playwright",
+            action: "navigate",
+            requestedUrl: url,
+            finalUrl,
+            pageTitle,
+          },
         });
         const content = await page.content();
         return { success: true, content: content.slice(0, 100_000) };
@@ -232,7 +240,9 @@ export async function browserAutomation(
         const text = await body.innerText().catch(() => "");
         const snippet = text.slice(0, 50_000) || content.slice(0, 50_000);
         const snippetPreview = snippet.slice(0, 300).replace(/\s+/g, " ").trim();
-        const hasKnownErrorPage = /sorry[, ]*we couldn't find that page|404|not found/i.test(snippet);
+        const hasKnownErrorPage = /sorry[, ]*we couldn't find that page|404|not found/i.test(
+          snippet
+        );
         onLog?.({
           level: "stdout",
           message: "[Playwright] getContent",
@@ -240,7 +250,9 @@ export async function browserAutomation(
             source: "playwright",
             action: "getContent",
             contentLength: snippet.length,
-            snippetPreview: snippetPreview ? snippetPreview + (snippet.length > 300 ? "…" : "") : undefined,
+            snippetPreview: snippetPreview
+              ? snippetPreview + (snippet.length > 300 ? "…" : "")
+              : undefined,
             hasKnownErrorPage,
           },
         });
@@ -256,7 +268,12 @@ export async function browserAutomation(
           onLog?.({
             level: "stdout",
             message: "[Playwright] click",
-            payload: { source: "playwright", action: "click", selector: selector.slice(0, 80), outcome: "found and clicked" },
+            payload: {
+              source: "playwright",
+              action: "click",
+              selector: selector.slice(0, 80),
+              outcome: "found and clicked",
+            },
           });
           return { success: true };
         } catch (clickErr) {
@@ -264,7 +281,12 @@ export async function browserAutomation(
           onLog?.({
             level: "stderr",
             message: `[Playwright] click failed — ${msg}`,
-            payload: { source: "playwright", action: "click", selector: selector.slice(0, 80), error: msg },
+            payload: {
+              source: "playwright",
+              action: "click",
+              selector: selector.slice(0, 80),
+              error: msg,
+            },
           });
           throw clickErr;
         }
@@ -280,7 +302,13 @@ export async function browserAutomation(
           onLog?.({
             level: "stdout",
             message: "[Playwright] fill",
-            payload: { source: "playwright", action: "fill", selector: selector.slice(0, 80), valueLen: value.length, outcome: "filled" },
+            payload: {
+              source: "playwright",
+              action: "fill",
+              selector: selector.slice(0, 80),
+              valueLen: value.length,
+              outcome: "filled",
+            },
           });
           return { success: true };
         } catch (fillErr) {
@@ -288,7 +316,12 @@ export async function browserAutomation(
           onLog?.({
             level: "stderr",
             message: `[Playwright] fill failed — ${msg}`,
-            payload: { source: "playwright", action: "fill", selector: selector.slice(0, 80), error: msg },
+            payload: {
+              source: "playwright",
+              action: "fill",
+              selector: selector.slice(0, 80),
+              error: msg,
+            },
           });
           throw fillErr;
         }
@@ -314,7 +347,12 @@ export async function browserAutomation(
           onLog?.({
             level: "stdout",
             message: "[Playwright] waitFor",
-            payload: { source: "playwright", action: "waitFor", selector: selector.slice(0, 80), outcome: "visible" },
+            payload: {
+              source: "playwright",
+              action: "waitFor",
+              selector: selector.slice(0, 80),
+              outcome: "visible",
+            },
           });
           return { success: true };
         } catch (waitErr) {
@@ -322,7 +360,12 @@ export async function browserAutomation(
           onLog?.({
             level: "stderr",
             message: `[Playwright] waitFor failed — ${msg}`,
-            payload: { source: "playwright", action: "waitFor", selector: selector.slice(0, 80), error: msg },
+            payload: {
+              source: "playwright",
+              action: "waitFor",
+              selector: selector.slice(0, 80),
+              error: msg,
+            },
           });
           throw waitErr;
         }

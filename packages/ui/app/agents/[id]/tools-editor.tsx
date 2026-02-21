@@ -133,7 +133,14 @@ export default function ToolsEditor({ agentId, definition, onDefinitionChange }:
 
   return (
     <div className="card">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "1rem",
+        }}
+      >
         <div>
           <h3 style={{ margin: 0 }}>Connected Tools</h3>
           <p style={{ margin: "0.15rem 0 0", fontSize: "0.82rem", color: "var(--text-muted)" }}>
@@ -148,17 +155,22 @@ export default function ToolsEditor({ agentId, definition, onDefinitionChange }:
           >
             <RefreshCw size={14} />
           </button>
-          <button
-            className="button button-small"
-            onClick={() => setShowCreate(!showCreate)}
-          >
+          <button className="button button-small" onClick={() => setShowCreate(!showCreate)}>
             <Plus size={14} /> New Tool
           </button>
         </div>
       </div>
 
       {showCreate && (
-        <div style={{ marginBottom: "1rem", padding: "1rem", borderRadius: "12px", border: "1px solid var(--border)", background: "var(--surface-muted)" }}>
+        <div
+          style={{
+            marginBottom: "1rem",
+            padding: "1rem",
+            borderRadius: "12px",
+            border: "1px solid var(--border)",
+            background: "var(--surface-muted)",
+          }}
+        >
           <div className="section-label">Create New Tool</div>
           <div className="inline-form" style={{ marginTop: "0.5rem" }}>
             <div className="field">
@@ -209,7 +221,8 @@ export default function ToolsEditor({ agentId, definition, onDefinitionChange }:
       {connected.length > 0 && (
         <>
           <div className="section-label" style={{ marginTop: "0.25rem" }}>
-            Connected ({connectedFiltered.length}{searchQuery.trim() ? ` of ${connected.length}` : ""})
+            Connected ({connectedFiltered.length}
+            {searchQuery.trim() ? ` of ${connected.length}` : ""})
           </div>
           <div className="tool-grid" style={{ marginBottom: "1rem" }}>
             {connectedFiltered.map((tool) => (
@@ -224,7 +237,8 @@ export default function ToolsEditor({ agentId, definition, onDefinitionChange }:
                 <div className="tool-card-info">
                   <div className="tool-card-name">{tool.name}</div>
                   <div className="tool-card-meta">
-                    {tool.protocol} &middot; {Object.keys(tool.config ?? {}).length > 0 ? "configured" : "no config"}
+                    {tool.protocol} &middot;{" "}
+                    {Object.keys(tool.config ?? {}).length > 0 ? "configured" : "no config"}
                   </div>
                 </div>
                 <span className="tool-card-badge">{tool.protocol}</span>
@@ -235,7 +249,8 @@ export default function ToolsEditor({ agentId, definition, onDefinitionChange }:
       )}
 
       <div className="section-label">
-        Available Tools ({available.length}{searchQuery.trim() ? ` of ${availableAll.length}` : ""})
+        Available Tools ({available.length}
+        {searchQuery.trim() ? ` of ${availableAll.length}` : ""})
       </div>
       {available.length === 0 && connected.length === 0 ? (
         <div className="empty-state">
@@ -247,21 +262,20 @@ export default function ToolsEditor({ agentId, definition, onDefinitionChange }:
         </div>
       ) : available.length === 0 ? (
         <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: "0.25rem 0" }}>
-          {searchQuery.trim() ? "No tools match your search." : "All available tools are connected."}
+          {searchQuery.trim()
+            ? "No tools match your search."
+            : "All available tools are connected."}
         </p>
       ) : (
         <div className="tool-grid">
           {available.map((tool) => (
-            <div
-              key={tool.id}
-              className="tool-card"
-              onClick={() => toggleTool(tool.id)}
-            >
+            <div key={tool.id} className="tool-card" onClick={() => toggleTool(tool.id)}>
               <div className="tool-card-check" />
               <div className="tool-card-info">
                 <div className="tool-card-name">{tool.name}</div>
                 <div className="tool-card-meta">
-                  {tool.protocol} &middot; {Object.keys(tool.config ?? {}).length > 0 ? "configured" : "no config"}
+                  {tool.protocol} &middot;{" "}
+                  {Object.keys(tool.config ?? {}).length > 0 ? "configured" : "no config"}
                 </div>
               </div>
               <span className="tool-card-badge">{tool.protocol}</span>

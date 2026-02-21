@@ -15,7 +15,10 @@ export const runtime = "nodejs";
 export async function GET(_request: Request, { params }: Params) {
   const { id: runId } = await params;
 
-  const rows = await db.select({ id: executions.id }).from(executions).where(eq(executions.id, runId));
+  const rows = await db
+    .select({ id: executions.id })
+    .from(executions)
+    .where(eq(executions.id, runId));
   if (rows.length === 0) {
     return json({ error: "Run not found" }, { status: 404 });
   }

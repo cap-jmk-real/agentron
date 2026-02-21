@@ -9,7 +9,10 @@ export async function GET(request: Request) {
     const sessionKey = searchParams.get("sessionKey") ?? undefined;
     const limitParam = searchParams.get("limit");
     const limit = limitParam != null ? parseInt(limitParam, 10) : undefined;
-    const result = await openclawHistory({ sessionKey, limit: Number.isFinite(limit) ? limit : undefined });
+    const result = await openclawHistory({
+      sessionKey,
+      limit: Number.isFinite(limit) ? limit : undefined,
+    });
     return json(result);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

@@ -1,5 +1,13 @@
 import { json } from "../../../_lib/response";
-import { db, agents, feedback, llmConfigs, fromAgentRow, fromFeedbackRow, fromLlmConfigRowWithSecret } from "../../../_lib/db";
+import {
+  db,
+  agents,
+  feedback,
+  llmConfigs,
+  fromAgentRow,
+  fromFeedbackRow,
+  fromLlmConfigRowWithSecret,
+} from "../../../_lib/db";
 import { eq } from "drizzle-orm";
 import type { LLMConfig } from "@agentron-studio/core";
 import { refinePrompt, createDefaultLLMManager } from "@agentron-studio/runtime";
@@ -32,13 +40,14 @@ export async function POST(_: Request, { params }: Params) {
       return json({ error: "No LLM configured for this agent or globally" }, { status: 400 });
     }
     const cfg = fromLlmConfigRowWithSecret(configs[0]);
-    const manager = createDefaultLLMManager(async (ref) => ref ? process.env[ref] : undefined);
+    const manager = createDefaultLLMManager(async (ref) => (ref ? process.env[ref] : undefined));
 
     const definition = (agent as { definition?: Record<string, unknown> }).definition ?? {};
     const result = await refinePrompt(
       {
         currentSystemPrompt: (definition as { systemPrompt?: string }).systemPrompt ?? "",
-        currentSteps: (definition as { steps?: { name: string; type: string; content: string }[] }).steps,
+        currentSteps: (definition as { steps?: { name: string; type: string; content: string }[] })
+          .steps,
         feedback: items,
       },
       (req) => manager.chat(cfg as LLMConfig, req, { source: "agent", agentId: id })
@@ -46,12 +55,13 @@ export async function POST(_: Request, { params }: Params) {
     return json(result);
   }
 
-  const manager = createDefaultLLMManager(async (ref) => ref ? process.env[ref] : undefined);
+  const manager = createDefaultLLMManager(async (ref) => (ref ? process.env[ref] : undefined));
   const definition = (agent as { definition?: Record<string, unknown> }).definition ?? {};
   const result = await refinePrompt(
     {
       currentSystemPrompt: (definition as { systemPrompt?: string }).systemPrompt ?? "",
-      currentSteps: (definition as { steps?: { name: string; type: string; content: string }[] }).steps,
+      currentSteps: (definition as { steps?: { name: string; type: string; content: string }[] })
+        .steps,
       feedback: items,
     },
     (req) => manager.chat(llmConfig as LLMConfig, req, { source: "agent", agentId: id })

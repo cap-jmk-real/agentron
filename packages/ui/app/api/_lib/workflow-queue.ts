@@ -41,56 +41,78 @@ export async function enqueueWorkflowStart(params: {
 }): Promise<string> {
   const id = crypto.randomUUID();
   const now = Date.now();
-  await db.insert(workflowQueue).values({
-    id,
-    type: "workflow_start",
-    payload: JSON.stringify({ runId: params.runId, workflowId: params.workflowId, branchId: params.branchId ?? null }),
-    status: "queued",
-    runId: params.runId,
-    enqueuedAt: now,
-    startedAt: null,
-    finishedAt: null,
-    error: null,
-    createdAt: now,
-  }).run();
+  await db
+    .insert(workflowQueue)
+    .values({
+      id,
+      type: "workflow_start",
+      payload: JSON.stringify({
+        runId: params.runId,
+        workflowId: params.workflowId,
+        branchId: params.branchId ?? null,
+      }),
+      status: "queued",
+      runId: params.runId,
+      enqueuedAt: now,
+      startedAt: null,
+      finishedAt: null,
+      error: null,
+      createdAt: now,
+    })
+    .run();
   return id;
 }
 
 /** Enqueue a workflow resume (respond_to_run). Returns job id. */
-export async function enqueueWorkflowResume(params: { runId: string; resumeUserResponse?: string }): Promise<string> {
+export async function enqueueWorkflowResume(params: {
+  runId: string;
+  resumeUserResponse?: string;
+}): Promise<string> {
   const id = crypto.randomUUID();
   const now = Date.now();
-  await db.insert(workflowQueue).values({
-    id,
-    type: "workflow_resume",
-    payload: JSON.stringify({ runId: params.runId, resumeUserResponse: params.resumeUserResponse ?? null }),
-    status: "queued",
-    runId: params.runId,
-    enqueuedAt: now,
-    startedAt: null,
-    finishedAt: null,
-    error: null,
-    createdAt: now,
-  }).run();
+  await db
+    .insert(workflowQueue)
+    .values({
+      id,
+      type: "workflow_resume",
+      payload: JSON.stringify({
+        runId: params.runId,
+        resumeUserResponse: params.resumeUserResponse ?? null,
+      }),
+      status: "queued",
+      runId: params.runId,
+      enqueuedAt: now,
+      startedAt: null,
+      finishedAt: null,
+      error: null,
+      createdAt: now,
+    })
+    .run();
   return id;
 }
 
 /** Enqueue a scheduled workflow run. Returns job id. */
-export async function enqueueScheduledWorkflow(params: { workflowId: string; branchId?: string }): Promise<string> {
+export async function enqueueScheduledWorkflow(params: {
+  workflowId: string;
+  branchId?: string;
+}): Promise<string> {
   const id = crypto.randomUUID();
   const now = Date.now();
-  await db.insert(workflowQueue).values({
-    id,
-    type: "scheduled",
-    payload: JSON.stringify({ workflowId: params.workflowId, branchId: params.branchId ?? null }),
-    status: "queued",
-    runId: null,
-    enqueuedAt: now,
-    startedAt: null,
-    finishedAt: null,
-    error: null,
-    createdAt: now,
-  }).run();
+  await db
+    .insert(workflowQueue)
+    .values({
+      id,
+      type: "scheduled",
+      payload: JSON.stringify({ workflowId: params.workflowId, branchId: params.branchId ?? null }),
+      status: "queued",
+      runId: null,
+      enqueuedAt: now,
+      startedAt: null,
+      finishedAt: null,
+      error: null,
+      createdAt: now,
+    })
+    .run();
   return id;
 }
 
@@ -114,10 +136,18 @@ export async function getWorkflowQueueJob(jobId: string): Promise<WorkflowQueueJ
 }
 
 /** List all workflow queue jobs (for Queues UI). */
-export async function listWorkflowQueueJobs(opts?: { status?: string; limit?: number }): Promise<WorkflowQueueJobRow[]> {
+export async function listWorkflowQueueJobs(opts?: {
+  status?: string;
+  limit?: number;
+}): Promise<WorkflowQueueJobRow[]> {
   const limit = opts?.limit ?? 200;
   const rows = opts?.status
-    ? await db.select().from(workflowQueue).where(eq(workflowQueue.status, opts.status)).orderBy(asc(workflowQueue.createdAt)).limit(limit)
+    ? await db
+        .select()
+        .from(workflowQueue)
+        .where(eq(workflowQueue.status, opts.status))
+        .orderBy(asc(workflowQueue.createdAt))
+        .limit(limit)
     : await db.select().from(workflowQueue).orderBy(asc(workflowQueue.createdAt)).limit(limit);
   return rows.map((r) => ({
     id: r.id,
@@ -134,7 +164,11 @@ export async function listWorkflowQueueJobs(opts?: { status?: string; limit?: nu
 }
 
 /** Count by status (for UI summary). */
-export async function getWorkflowQueueStatus(): Promise<{ queued: number; running: number; concurrency: number }> {
+export async function getWorkflowQueueStatus(): Promise<{
+  queued: number;
+  running: number;
+  concurrency: number;
+}> {
   const rows = await db.select({ status: workflowQueue.status }).from(workflowQueue);
   const queued = rows.filter((r) => r.status === "queued").length;
   const running = rows.filter((r) => r.status === "running").length;
@@ -146,7 +180,10 @@ export async function processOneWorkflowJob(options?: {
   waitingJobId?: string;
   vaultKey?: Buffer | null;
 }): Promise<boolean> {
-  const runningRows = await db.select().from(workflowQueue).where(eq(workflowQueue.status, "running"));
+  const runningRows = await db
+    .select()
+    .from(workflowQueue)
+    .where(eq(workflowQueue.status, "running"));
   if (runningRows.length >= CONCURRENCY) return false;
 
   const queuedRows = await db
@@ -159,7 +196,11 @@ export async function processOneWorkflowJob(options?: {
 
   const row = queuedRows[0];
   const now = Date.now();
-  await db.update(workflowQueue).set({ status: "running", startedAt: now }).where(eq(workflowQueue.id, row.id)).run();
+  await db
+    .update(workflowQueue)
+    .set({ status: "running", startedAt: now })
+    .where(eq(workflowQueue.id, row.id))
+    .run();
 
   const payload = parsePayload(row.payload);
   const isWaitingJob = options?.waitingJobId === row.id;
@@ -180,10 +221,18 @@ export async function processOneWorkflowJob(options?: {
       const branchId = payload.branchId as string | undefined;
       await runOneScheduledWorkflow(workflowId, branchId);
     }
-    await db.update(workflowQueue).set({ status: "completed", finishedAt: Date.now() }).where(eq(workflowQueue.id, row.id)).run();
+    await db
+      .update(workflowQueue)
+      .set({ status: "completed", finishedAt: Date.now() })
+      .where(eq(workflowQueue.id, row.id))
+      .run();
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    await db.update(workflowQueue).set({ status: "failed", finishedAt: Date.now(), error: errMsg.slice(0, 2000) }).where(eq(workflowQueue.id, row.id)).run();
+    await db
+      .update(workflowQueue)
+      .set({ status: "failed", finishedAt: Date.now(), error: errMsg.slice(0, 2000) })
+      .where(eq(workflowQueue.id, row.id))
+      .run();
     if (isWaitingJob) throw err;
   }
   return true;

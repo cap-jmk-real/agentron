@@ -7,7 +7,10 @@ export const runtime = "nodejs";
 type ImportEntry = { key: string; value: string };
 
 function parseCsv(text: string): ImportEntry[] {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
   if (lines.length === 0) return [];
   const rows: string[][] = [];
   for (const line of lines) {
@@ -102,7 +105,10 @@ export async function POST(request: Request) {
     const body = (await request.json()) as { entries?: ImportEntry[] };
     entries = Array.isArray(body.entries) ? body.entries : [];
   } else {
-    return json({ error: "Send JSON { entries: [{ key, value }] } or multipart/form-data with a CSV file." }, { status: 400 });
+    return json(
+      { error: "Send JSON { entries: [{ key, value }] } or multipart/form-data with a CSV file." },
+      { status: 400 }
+    );
   }
   let imported = 0;
   const errors: string[] = [];
@@ -121,5 +127,10 @@ export async function POST(request: Request) {
       errors.push(`${k}: ${e instanceof Error ? e.message : "failed"}`);
     }
   }
-  return json({ ok: true, imported, total: entries.length, errors: errors.length ? errors : undefined });
+  return json({
+    ok: true,
+    imported,
+    total: entries.length,
+    errors: errors.length ? errors : undefined,
+  });
 }

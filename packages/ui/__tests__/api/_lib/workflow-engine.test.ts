@@ -171,4 +171,3 @@ describe("WorkflowEngine execute", () => {
     expect(result.output).toBe(3);
   });
 });
-

@@ -4,10 +4,13 @@ import {
   normalizeChatError,
   normalizeOptionsWithLLM,
   normalizeAskUserOptionsInToolResults,
+  areOptionsSafeForPassThrough,
   extractOptionsFromContentWithLLM,
+  extractOptionsFromBulletList,
   hasWaitingForInputInToolResults,
   hasFormatResponseWithContent,
   deriveInteractivePromptFromContentWithLLM,
+  deriveInteractivePromptFromContentDeterministic,
   getTurnStatusFromToolResults,
   normalizeOptionCountInContent,
   getAssistantDisplayContent,
@@ -26,7 +29,11 @@ describe("chat-helpers", () => {
 
     it("includes endpoint when present and non-empty", () => {
       expect(
-        llmContextPrefix({ provider: "openai", model: "gpt-4", endpoint: "https://api.example.com" })
+        llmContextPrefix({
+          provider: "openai",
+          model: "gpt-4",
+          endpoint: "https://api.example.com",
+        })
       ).toBe("[Provider: openai, Model: gpt-4, Endpoint: https://api.example.com] ");
     });
 
@@ -45,24 +52,14 @@ describe("chat-helpers", () => {
 
   describe("normalizeChatError", () => {
     it("returns generic message for network-style errors", () => {
-      expect(normalizeChatError(new Error("fetch failed"))).toContain(
-        "Could not reach the LLM"
-      );
-      expect(normalizeChatError(new Error("ECONNREFUSED"))).toContain(
-        "Could not reach the LLM"
-      );
-      expect(normalizeChatError(new Error("ENOTFOUND"))).toContain(
-        "Could not reach the LLM"
-      );
-      expect(normalizeChatError(new Error("network error"))).toContain(
-        "Could not reach the LLM"
-      );
+      expect(normalizeChatError(new Error("fetch failed"))).toContain("Could not reach the LLM");
+      expect(normalizeChatError(new Error("ECONNREFUSED"))).toContain("Could not reach the LLM");
+      expect(normalizeChatError(new Error("ENOTFOUND"))).toContain("Could not reach the LLM");
+      expect(normalizeChatError(new Error("network error"))).toContain("Could not reach the LLM");
     });
 
     it("appends tool execution hint for Cannot convert undefined or null to object", () => {
-      const msg = normalizeChatError(
-        new Error("Cannot convert undefined or null to object")
-      );
+      const msg = normalizeChatError(new Error("Cannot convert undefined or null to object"));
       expect(msg).toContain("tool execution bug");
       expect(msg).toContain("Cannot convert undefined or null to object");
     });
@@ -133,14 +130,31 @@ describe("chat-helpers", () => {
   });
 
   describe("normalizeAskUserOptionsInToolResults", () => {
-    it("normalizes ask_user options via callLLM and returns new array", async () => {
-      const callLLM = async () => '["Yes", "No"]';
+    it("passes through short options without calling LLM", async () => {
+      const callLLM = async () => {
+        throw new Error("LLM should not be called for short options");
+      };
       const toolResults = [
-        { name: "ask_user", args: {}, result: { question: "Confirm?", options: ["Yes", "No"] } },
+        {
+          name: "ask_user",
+          args: {},
+          result: { question: "Confirm?", options: ["Yes", "No", "Cancel"] },
+        },
       ];
       const out = await normalizeAskUserOptionsInToolResults(toolResults, callLLM);
       expect(out).toHaveLength(1);
-      expect((out[0].result as { options?: string[] }).options).toEqual(["Yes", "No"]);
+      expect((out[0].result as { options?: string[] }).options).toEqual(["Yes", "No", "Cancel"]);
+    });
+
+    it("normalizes ask_user options via callLLM when options are long", async () => {
+      const callLLM = async () => '["Run it now", "Not now"]';
+      const longOption = "Run the workflow with default settings and notify me when done";
+      const toolResults = [
+        { name: "ask_user", args: {}, result: { question: "?", options: [longOption, "Not now"] } },
+      ];
+      const out = await normalizeAskUserOptionsInToolResults(toolResults, callLLM);
+      expect(out).toHaveLength(1);
+      expect((out[0].result as { options?: string[] }).options).toEqual(["Run it now", "Not now"]);
     });
 
     it("leaves other tool results unchanged", async () => {
@@ -164,31 +178,54 @@ describe("chat-helpers", () => {
     });
   });
 
+  describe("extractOptionsFromBulletList", () => {
+    it("returns null when content too short", () => {
+      expect(extractOptionsFromBulletList("Hi")).toBeNull();
+    });
+
+    it("returns null when content does not ask to choose", () => {
+      expect(
+        extractOptionsFromBulletList("Here is some long content without pick one or next steps.")
+      ).toBeNull();
+    });
+
+    it("returns bullet options when content has next steps and bullet lines", () => {
+      const content = `Summary.
+
+Next steps:
+- Run it now
+- Modify
+- Not now`;
+      expect(extractOptionsFromBulletList(content)).toEqual(["Run it now", "Modify", "Not now"]);
+    });
+
+    it("returns at most 4 options", () => {
+      const content = `What would you like?
+- Option A
+- Option B
+- Option C
+- Option D
+- Option E`;
+      expect(extractOptionsFromBulletList(content)).toEqual([
+        "Option A",
+        "Option B",
+        "Option C",
+        "Option D",
+      ]);
+    });
+  });
+
   describe("extractOptionsFromContentWithLLM", () => {
     it("returns null when content does not suggest options", async () => {
-      // No heuristics; LLM is always called for long enough content. Mock returns [] when no options.
       const callLLM = async () => "[]";
       expect(await extractOptionsFromContentWithLLM("Just a normal message.", callLLM)).toBeNull();
       expect(await extractOptionsFromContentWithLLM("", callLLM)).toBeNull();
     });
 
-    it("returns parsed options when content has pick one and callLLM returns JSON array", async () => {
-      const callLLM = async () => '["Run it now", "Provide credentials", "Dry run only"]';
-      const content = "Please pick one option: Run it now — start the workflow. Provide credentials — ...";
-      const out = await extractOptionsFromContentWithLLM(content, callLLM);
-      expect(out).toEqual(["Run it now", "Provide credentials", "Dry run only"]);
-    });
-
-    it("returns null when callLLM throws", async () => {
+    it("uses bullet extraction first and does not call LLM when content has next steps and bullet list", async () => {
       const callLLM = async () => {
-        throw new Error("fail");
+        throw new Error("LLM should not be called");
       };
-      const content = "Please pick one option: a) Yes b) No";
-      expect(await extractOptionsFromContentWithLLM(content, callLLM)).toBeNull();
-    });
-
-    it("falls back to bullet-list extraction when LLM returns [] and content has options list", async () => {
-      const callLLM = async () => "[]";
       const content = `Summary: Workflow updated.
 
 What would you like me to do next?
@@ -199,10 +236,45 @@ What would you like me to do next?
       const out = await extractOptionsFromContentWithLLM(content, callLLM);
       expect(out).toEqual([
         "Run it now (I will execute the workflow and report results).",
-        "Change vault policy to \"Auto-use vault creds\" before running.",
+        'Change vault policy to "Auto-use vault creds" before running.',
         "Modify the agent or workflow (tell me what to change).",
         "Not now / stop.",
       ]);
+    });
+
+    it("returns parsed options when content has no bullets and callLLM returns JSON array", async () => {
+      const callLLM = async () => '["Run it now", "Provide credentials", "Dry run only"]';
+      const content =
+        "Please pick one option: Run it now — start the workflow. Provide credentials — ...";
+      const out = await extractOptionsFromContentWithLLM(content, callLLM);
+      expect(out).toEqual(["Run it now", "Provide credentials", "Dry run only"]);
+    });
+
+    it("returns null when callLLM throws and content has no bullet list", async () => {
+      const callLLM = async () => {
+        throw new Error("fail");
+      };
+      const content = "Please pick one option: a) Yes b) No";
+      expect(await extractOptionsFromContentWithLLM(content, callLLM)).toBeNull();
+    });
+  });
+
+  describe("areOptionsSafeForPassThrough", () => {
+    it("returns true for short options and count ≤ 4", () => {
+      expect(areOptionsSafeForPassThrough(["Yes", "No"])).toBe(true);
+      expect(areOptionsSafeForPassThrough(["A", "B", "C"])).toBe(true);
+    });
+
+    it("returns false when any option exceeds 50 chars", () => {
+      expect(areOptionsSafeForPassThrough(["Yes", "x".repeat(51)])).toBe(false);
+    });
+
+    it("returns false when more than 4 options", () => {
+      expect(areOptionsSafeForPassThrough(["A", "B", "C", "D", "E"])).toBe(false);
+    });
+
+    it("returns false for empty array", () => {
+      expect(areOptionsSafeForPassThrough([])).toBe(false);
     });
   });
 
@@ -241,28 +313,24 @@ What would you like me to do next?
 
     it("returns false for ask_user without waitingForUser or options", () => {
       expect(
-        hasWaitingForInputInToolResults([{ name: "ask_user", result: { question: "Open question" } }])
+        hasWaitingForInputInToolResults([
+          { name: "ask_user", result: { question: "Open question" } },
+        ])
       ).toBe(false);
     });
 
     it("returns false for format_response without formatted or needsInput", () => {
       expect(
-        hasWaitingForInputInToolResults([
-          { name: "format_response", result: { formatted: true } },
-        ])
+        hasWaitingForInputInToolResults([{ name: "format_response", result: { formatted: true } }])
       ).toBe(false);
       expect(
-        hasWaitingForInputInToolResults([
-          { name: "format_response", result: { needsInput: "x" } },
-        ])
+        hasWaitingForInputInToolResults([{ name: "format_response", result: { needsInput: "x" } }])
       ).toBe(false);
     });
 
     it("returns false for empty or non-waiting tool results", () => {
       expect(hasWaitingForInputInToolResults([])).toBe(false);
-      expect(
-        hasWaitingForInputInToolResults([{ name: "list_workflows", result: [] }])
-      ).toBe(false);
+      expect(hasWaitingForInputInToolResults([{ name: "list_workflows", result: [] }])).toBe(false);
     });
   });
 
@@ -275,7 +343,9 @@ What would you like me to do next?
 
     it("returns true when format_response has non-empty needsInput", () => {
       expect(
-        hasFormatResponseWithContent([{ name: "format_response", result: { needsInput: "Pick one" } }])
+        hasFormatResponseWithContent([
+          { name: "format_response", result: { needsInput: "Pick one" } },
+        ])
       ).toBe(true);
     });
 
@@ -285,7 +355,9 @@ What would you like me to do next?
 
     it("returns false when format_response has empty summary and needsInput", () => {
       expect(
-        hasFormatResponseWithContent([{ name: "format_response", result: { summary: "", needsInput: "" } }])
+        hasFormatResponseWithContent([
+          { name: "format_response", result: { summary: "", needsInput: "" } },
+        ])
       ).toBe(false);
     });
   });
@@ -294,7 +366,9 @@ What would you like me to do next?
     it("returns content when content is non-empty (e.g. heap summary)", () => {
       const summary = "I've created the workflow and wired the agents. You can run it now.";
       expect(getAssistantDisplayContent(summary, [])).toBe(summary);
-      expect(getAssistantDisplayContent(summary, [{ name: "list_tools", args: {}, result: [] }])).toBe(summary);
+      expect(
+        getAssistantDisplayContent(summary, [{ name: "list_tools", args: {}, result: [] }])
+      ).toBe(summary);
     });
 
     it("returns ask_user question when content is empty and ask_user present", () => {
@@ -316,11 +390,55 @@ What would you like me to do next?
     });
   });
 
+  describe("deriveInteractivePromptFromContentDeterministic", () => {
+    it("returns question and options when content has Next steps and 2-4 bullet lines", () => {
+      const content = `Summary text here.
+
+Next steps:
+- Run it now
+- Modify
+- Not now`;
+      expect(deriveInteractivePromptFromContentDeterministic(content)).toEqual({
+        question: "Next steps",
+        options: ["Run it now", "Modify", "Not now"],
+      });
+    });
+
+    it("returns null when content too short", () => {
+      expect(deriveInteractivePromptFromContentDeterministic("Hi")).toBeNull();
+    });
+
+    it("returns null when fewer than 2 bullet options", () => {
+      const content = "Next steps:\n- Only one option";
+      expect(deriveInteractivePromptFromContentDeterministic(content)).toBeNull();
+    });
+
+    it("returns null when no bullet list", () => {
+      expect(
+        deriveInteractivePromptFromContentDeterministic("Long message with no next steps bullets.")
+      ).toBeNull();
+    });
+  });
+
   describe("deriveInteractivePromptFromContentWithLLM", () => {
-    it("returns question and options when callLLM returns valid JSON", async () => {
+    it("uses deterministic extraction first and does not call LLM when content has Next steps and bullets", async () => {
+      const callLLM = async () => {
+        throw new Error("LLM should not be called");
+      };
+      const content = `Summary of the questionnaire and instructions.
+
+Next steps:
+- Run it now
+- Modify
+- Not now`;
+      const res = await deriveInteractivePromptFromContentWithLLM(content, callLLM);
+      expect(res).toEqual({ question: "Next steps", options: ["Run it now", "Modify", "Not now"] });
+    });
+
+    it("returns question and options when no deterministic match and callLLM returns valid JSON", async () => {
       const callLLM = async () => '{"question":"Next steps","options":["A","B","C"]}';
       const longContent =
-        "Summary of the questionnaire and instructions.\n\nNext steps (pick one): A, B, or C.";
+        "Summary of the questionnaire and instructions. No bullet list here — pick A, B, or C.";
       const res = await deriveInteractivePromptFromContentWithLLM(longContent, callLLM);
       expect(res).toEqual({ question: "Next steps", options: ["A", "B", "C"] });
     });
@@ -331,10 +449,10 @@ What would you like me to do next?
       expect(res).toBeNull();
     });
 
-    it("returns null when callLLM returns invalid JSON", async () => {
+    it("returns null when callLLM returns invalid JSON and no deterministic match", async () => {
       const callLLM = async () => "not json";
       const res = await deriveInteractivePromptFromContentWithLLM(
-        "Long message with next steps here.",
+        "Long message with next steps here but no bullet list.",
         callLLM
       );
       expect(res).toBeNull();
@@ -350,8 +468,16 @@ What would you like me to do next?
   describe("getTurnStatusFromToolResults", () => {
     it("returns first ask_user when useLastAskUser not set", () => {
       const toolResults = [
-        { name: "ask_user", args: {}, result: { waitingForUser: true, question: "First?", options: ["A", "B"] } },
-        { name: "ask_user", args: {}, result: { waitingForUser: true, question: "Last?", options: ["X", "Y", "Z"] } },
+        {
+          name: "ask_user",
+          args: {},
+          result: { waitingForUser: true, question: "First?", options: ["A", "B"] },
+        },
+        {
+          name: "ask_user",
+          args: {},
+          result: { waitingForUser: true, question: "Last?", options: ["X", "Y", "Z"] },
+        },
       ];
       const out = getTurnStatusFromToolResults(toolResults);
       expect(out.status).toBe("waiting_for_input");
@@ -361,8 +487,16 @@ What would you like me to do next?
 
     it("returns last ask_user when useLastAskUser true", () => {
       const toolResults = [
-        { name: "ask_user", args: {}, result: { waitingForUser: true, question: "First?", options: ["A", "B"] } },
-        { name: "ask_user", args: {}, result: { waitingForUser: true, question: "Last?", options: ["X", "Y", "Z"] } },
+        {
+          name: "ask_user",
+          args: {},
+          result: { waitingForUser: true, question: "First?", options: ["A", "B"] },
+        },
+        {
+          name: "ask_user",
+          args: {},
+          result: { waitingForUser: true, question: "Last?", options: ["X", "Y", "Z"] },
+        },
       ];
       const out = getTurnStatusFromToolResults(toolResults, { useLastAskUser: true });
       expect(out.status).toBe("waiting_for_input");
@@ -462,7 +596,11 @@ What would you like me to do next?
     it("merges workflowId and agentId from tool results into plan extractedContext", () => {
       const wfId = "wf-uuid-1";
       const agentId = "agent-uuid-1";
-      const plan = { refinedTask: "Create and run", priorityOrder: ["agent", "workflow"], extractedContext: { savedSearchId: "123" } };
+      const plan = {
+        refinedTask: "Create and run",
+        priorityOrder: ["agent", "workflow"],
+        extractedContext: { savedSearchId: "123" },
+      };
       const toolResults = [
         { name: "create_agent", result: { id: agentId } },
         { name: "create_workflow", result: { id: wfId } },

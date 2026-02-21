@@ -50,6 +50,23 @@ describe("Tools API", () => {
     expect(res.status).toBe(404);
   });
 
+  it("PUT /api/tools/:id returns 404 for unknown id", async () => {
+    const res = await putOne(
+      new Request("http://localhost/api/tools/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "No Such Tool",
+          protocol: "native",
+          config: {},
+          inputSchema: { type: "object", properties: {}, required: [] },
+        }),
+      }),
+      { params: Promise.resolve({ id: "non-existent-tool-id" }) }
+    );
+    expect(res.status).toBe(404);
+  });
+
   it("PUT /api/tools/:id updates tool", async () => {
     if (!createdId) return;
     const res = await putOne(
@@ -68,6 +85,59 @@ describe("Tools API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.name).toBe("Updated Tool");
+  });
+
+  it("PUT /api/tools/:id updates only inputSchema for standard tool", async () => {
+    const listRes = await listGet();
+    const list = await listRes.json();
+    const stdTool = list.find((t: { id: string }) => t.id.startsWith("std-"));
+    if (!stdTool) return;
+    const newSchema = { type: "object", properties: { x: { type: "string" } }, required: [] };
+    const res = await putOne(
+      new Request("http://localhost/api/tools/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inputSchema: newSchema }),
+      }),
+      { params: Promise.resolve({ id: stdTool.id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.inputSchema).toEqual(newSchema);
+    expect(data.id).toBe(stdTool.id);
+  });
+
+  it("PUT /api/tools/:id updates only outputSchema for standard tool", async () => {
+    const listRes = await listGet();
+    const list = await listRes.json();
+    const stdTool = list.find((t: { id: string }) => t.id.startsWith("std-"));
+    if (!stdTool) return;
+    const newOutputSchema = { type: "object", properties: { result: { type: "string" } } };
+    const res = await putOne(
+      new Request("http://localhost/api/tools/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outputSchema: newOutputSchema }),
+      }),
+      { params: Promise.resolve({ id: stdTool.id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.outputSchema).toEqual(newOutputSchema);
+    expect(data.id).toBe(stdTool.id);
+  });
+
+  it("DELETE /api/tools/:id returns 400 for standard tool", async () => {
+    const listRes = await listGet();
+    const list = await listRes.json();
+    const stdTool = list.find((t: { id: string }) => t.id.startsWith("std-"));
+    if (!stdTool) return;
+    const res = await deleteOne(new Request("http://localhost/api/tools/x", { method: "DELETE" }), {
+      params: Promise.resolve({ id: stdTool.id }),
+    });
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("cannot be deleted");
   });
 
   it("DELETE /api/tools/:id removes tool", async () => {

@@ -12,6 +12,12 @@ export type SearchResult = {
 export type SearchWebOptions = {
   maxResults?: number;
   provider?: "duckduckgo" | "brave" | "google";
+  /** When set, used for Brave Search instead of BRAVE_SEARCH_API_KEY env. */
+  braveApiKey?: string;
+  /** When set, used for Google CSE instead of GOOGLE_CSE_KEY env. */
+  googleCseKey?: string;
+  /** When set, used for Google CSE instead of GOOGLE_CSE_CX env. */
+  googleCseCx?: string;
 };
 
 export type SearchWebResponse = {
@@ -32,10 +38,7 @@ function getEnv(name: string): string | undefined {
  * DuckDuckGo Instant Answer API. No API key. Returns instant answer + related topics.
  * https://api.duckduckgo.com/?q=query&format=json
  */
-async function searchDuckDuckGo(
-  query: string,
-  maxResults: number
-): Promise<SearchWebResponse> {
+async function searchDuckDuckGo(query: string, maxResults: number): Promise<SearchWebResponse> {
   const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json`;
   const res = await fetch(url, {
     headers: { "User-Agent": "AgentOS-Tool/1.0" },
@@ -89,9 +92,7 @@ async function searchDuckDuckGo(
   }
 
   const summary =
-    data.AbstractText && results.length > 0
-      ? data.AbstractText.trim().slice(0, 300)
-      : undefined;
+    data.AbstractText && results.length > 0 ? data.AbstractText.trim().slice(0, 300) : undefined;
   return { results: results.slice(0, maxResults), summary };
 }
 
@@ -106,7 +107,7 @@ async function searchBrave(
   const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${Math.min(maxResults, 20)}`;
   const res = await fetch(url, {
     headers: {
-      "Accept": "application/json",
+      Accept: "application/json",
       "X-Subscription-Token": apiKey,
       "User-Agent": "AgentOS-Tool/1.0",
     },
@@ -172,9 +173,15 @@ export async function searchWeb(
   const maxResults = Math.min(Math.max((options?.maxResults ?? DEFAULT_MAX_RESULTS) || 1, 1), 20);
   const provider = options?.provider;
 
-  const braveKey = getEnv("BRAVE_SEARCH_API_KEY");
-  const googleKey = getEnv("GOOGLE_CSE_KEY");
-  const googleCx = getEnv("GOOGLE_CSE_CX");
+  const braveKey =
+    (typeof options?.braveApiKey === "string" && options.braveApiKey.trim()) ||
+    getEnv("BRAVE_SEARCH_API_KEY");
+  const googleKey =
+    (typeof options?.googleCseKey === "string" && options.googleCseKey.trim()) ||
+    getEnv("GOOGLE_CSE_KEY");
+  const googleCx =
+    (typeof options?.googleCseCx === "string" && options.googleCseCx.trim()) ||
+    getEnv("GOOGLE_CSE_CX");
 
   if (provider === "brave" && braveKey) {
     return searchBrave(q, maxResults, braveKey);
@@ -184,10 +191,16 @@ export async function searchWeb(
   }
   if (provider && provider !== "duckduckgo") {
     if (provider === "brave" && !braveKey) {
-      return { results: [], error: "BRAVE_SEARCH_API_KEY not set" };
+      return {
+        results: [],
+        error: "Brave Search API key not set (configure in Settings or BRAVE_SEARCH_API_KEY)",
+      };
     }
     if (provider === "google" && (!googleKey || !googleCx)) {
-      return { results: [], error: "GOOGLE_CSE_KEY and GOOGLE_CSE_CX must be set" };
+      return {
+        results: [],
+        error: "Google CSE key and CX not set (configure in Settings or GOOGLE_CSE_KEY/CX)",
+      };
     }
   }
 

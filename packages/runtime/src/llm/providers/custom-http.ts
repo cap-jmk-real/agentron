@@ -9,5 +9,5 @@ export const customHttpProvider: LLMProviderAdapter = {
     }
 
     return openAICompatibleChat(config.endpoint, config, request, {});
-  }
+  },
 };

@@ -48,7 +48,8 @@ function getToolIconAndTheme(tool: ToolDef): { Icon: LucideIcon; theme: string }
   if (/\b(webhook)\b/.test(name)) return { Icon: Zap, theme: "http" };
   if (/\b(code|script|function|run)\b/.test(name)) return { Icon: Code, theme: "code" };
   if (/\b(email|mail|smtp|gmail)\b/.test(name)) return { Icon: Mail, theme: "mail" };
-  if (/\b(slack|discord|teams|chat|message)\b/.test(name)) return { Icon: MessageCircle, theme: "mail" };
+  if (/\b(slack|discord|teams|chat|message)\b/.test(name))
+    return { Icon: MessageCircle, theme: "mail" };
   if (/\b(database|sql|postgres|mysql|mongo)\b/.test(name)) return { Icon: Database, theme: "db" };
   if (/\b(file|storage|drive|sheet)\b/.test(name)) return { Icon: FileText, theme: "file" };
   if (/\b(schedule|cron|interval|timer)\b/.test(name)) return { Icon: Clock, theme: "schedule" };
@@ -114,7 +115,9 @@ export default function ToolsPage() {
     if (!toolToDelete) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/tools/${encodeURIComponent(toolToDelete.id)}`, { method: "DELETE" });
+      const res = await fetch(`/api/tools/${encodeURIComponent(toolToDelete.id)}`, {
+        method: "DELETE",
+      });
       if (res.ok) {
         setToolToDelete(null);
         await load();
@@ -126,11 +129,20 @@ export default function ToolsPage() {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: "0.5rem",
+        }}
+      >
         <div>
           <h1 style={{ margin: 0 }}>Tools</h1>
           <p style={{ color: "var(--text-muted)", marginTop: "0.25rem", marginBottom: 0 }}>
-            Define tools agents can use (HTTP, MCP, or native). Like n8n nodes: web, code, email, database, and more. Attach them to agents in the agent editor.
+            Define tools agents can use (HTTP, MCP, or native). Like n8n nodes: web, code, email,
+            database, and more. Attach them to agents in the agent editor.
           </p>
         </div>
         <a
@@ -143,7 +155,9 @@ export default function ToolsPage() {
             if (!res.ok) return;
             const blob = await res.blob();
             const disposition = res.headers.get("Content-Disposition");
-            const name = disposition?.match(/filename="?([^";]+)"?/)?.[1] ?? `agentron-tools-${new Date().toISOString().slice(0, 10)}.json`;
+            const name =
+              disposition?.match(/filename="?([^";]+)"?/)?.[1] ??
+              `agentron-tools-${new Date().toISOString().slice(0, 10)}.json`;
             const a = document.createElement("a");
             a.href = URL.createObjectURL(blob);
             a.download = name;
@@ -167,7 +181,11 @@ export default function ToolsPage() {
           </div>
           <div className="field">
             <label>Protocol</label>
-            <select className="select" value={protocol} onChange={(e) => setProtocol(e.target.value as "mcp" | "http" | "native")}>
+            <select
+              className="select"
+              value={protocol}
+              onChange={(e) => setProtocol(e.target.value as "mcp" | "http" | "native")}
+            >
               <option value="native">Native (code / built-in)</option>
               <option value="http">HTTP</option>
               <option value="mcp">MCP</option>
@@ -243,7 +261,11 @@ export default function ToolsPage() {
       <ConfirmModal
         open={!!toolToDelete}
         title="Delete tool"
-        message={toolToDelete ? `Delete "${toolToDelete.name}"? Agents using this tool will no longer have access.` : ""}
+        message={
+          toolToDelete
+            ? `Delete "${toolToDelete.name}"? Agents using this tool will no longer have access.`
+            : ""
+        }
         confirmLabel="Delete"
         cancelLabel="Cancel"
         danger

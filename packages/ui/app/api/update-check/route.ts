@@ -28,10 +28,7 @@ function semverGt(a: string, b: string): boolean {
 
 /** GET: compare current app version with GitHub latest release. Returns { available, version?, url?, releaseNotes? } when update available. */
 export async function GET() {
-  const current =
-    process.env.AGENTRON_APP_VERSION ??
-    process.env.npm_package_version ??
-    "";
+  const current = process.env.AGENTRON_APP_VERSION ?? process.env.npm_package_version ?? "";
 
   if (!current) {
     return json({ available: false });

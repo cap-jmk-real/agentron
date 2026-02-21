@@ -8,6 +8,7 @@ import {
   getSubspecialistParent,
   getChildSpecialistIds,
   getOptionsAtNode,
+  getToolsForSpecialist,
   searchHeapPath,
   type ChooseFn,
   HEAP_OPTIONS_CAP,
@@ -20,6 +21,7 @@ import {
   buildPlannerPrompt,
   buildPlannerContinuationPrompt,
   parsePlanOutput,
+  mergePlanOnImprovementTypeConfirmation,
   enrichTaskWithPlan,
   inferFallbackPriorityOrder,
   planImpliesCreateAgentAndWorkflow,
@@ -37,17 +39,30 @@ import type { SpecialistRegistry, SpecialistEntry, HeapStep } from "@agentron-st
 describe("heap registry", () => {
   it("getRegistry() returns default registry with expected top-level ids and specialists", () => {
     const reg = getRegistry();
-    expect(reg.topLevelIds).toEqual(["general", "workflow", "agent", "improve_run", "improve_heap", "improve_agents_workflows"]);
-    const ids = Object.keys(reg.specialists).sort();
-    expect(ids).toEqual(expect.arrayContaining([
-      "agent",
+    expect(reg.topLevelIds).toEqual([
       "general",
+      "workflow",
+      "agent",
+      "tools",
       "improve_run",
       "improve_heap",
       "improve_agents_workflows",
-      "planner",
-      "workflow",
-    ]));
+    ]);
+    const ids = Object.keys(reg.specialists).sort();
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        "agent",
+        "agent_lifecycle",
+        "agent_openclaw",
+        "general",
+        "improve_run",
+        "improve_heap",
+        "improve_agents_workflows",
+        "planner",
+        "tools",
+        "workflow",
+      ])
+    );
     expect(reg.specialists.general?.toolNames.length).toBeLessThanOrEqual(SPECIALIST_TOOL_CAP);
     // Workflow may be a delegator (when > SPECIALIST_TOOL_CAP tools) with workflow__partN; collect tools from workflow and any part
     const workflowToolNames = (Object.entries(reg.specialists) as [string, SpecialistEntry][])
@@ -56,6 +71,24 @@ describe("heap registry", () => {
     expect(workflowToolNames).toContain("execute_workflow");
     expect(reg.specialists.planner).toBeDefined();
     expect(reg.specialists.planner?.toolNames).toEqual([]);
+    // Agent is a delegator; combined tools from agent_lifecycle + agent_openclaw include lifecycle and OpenClaw tools
+    const agentToolNames = getToolsForSpecialist(reg, "agent");
+    expect(agentToolNames).toContain("ask_user");
+    expect(agentToolNames).toContain("send_to_openclaw");
+    expect(agentToolNames).toContain("openclaw_history");
+    expect(agentToolNames).toContain("openclaw_abort");
+    expect(reg.specialists.agent_lifecycle).toBeDefined();
+    expect(reg.specialists.agent_openclaw).toBeDefined();
+    expect(reg.specialists.agent__part1).toBeUndefined();
+    expect(reg.specialists.agent__part2).toBeUndefined();
+    expect(reg.specialists.agent?.optionGroups).toBeDefined();
+    expect(reg.specialists.agent?.optionGroups?.agent_lifecycle).toBeDefined();
+    expect(reg.specialists.agent?.optionGroups?.openclaw).toBeDefined();
+    expect(reg.specialists.agent?.optionGroups?.openclaw?.toolIds).toEqual([
+      "send_to_openclaw",
+      "openclaw_history",
+      "openclaw_abort",
+    ]);
   });
 
   it("applyRegistryCaps trims topLevelIds to TOP_LEVEL_CAP", () => {
@@ -132,13 +165,25 @@ describe("heap registry", () => {
   it("getPrimaryTopLevelIds returns ids that are not subspecialists of another top-level", () => {
     const reg = getRegistry();
     const primary = getPrimaryTopLevelIds(reg);
-    expect(primary).toEqual(expect.arrayContaining(["general", "workflow", "agent", "improve_run", "improve_heap", "improve_agents_workflows"]));
+    expect(primary).toEqual(
+      expect.arrayContaining([
+        "general",
+        "workflow",
+        "agent",
+        "tools",
+        "improve_run",
+        "improve_heap",
+        "improve_agents_workflows",
+      ])
+    );
     expect(primary).not.toContain("improve_agents_workflows__part1");
   });
 
   it("getSubspecialistParent returns parent for improve_agents_workflows__part1", () => {
     const reg = getRegistry();
-    expect(getSubspecialistParent("improve_agents_workflows__part1", reg)).toBe("improve_agents_workflows");
+    expect(getSubspecialistParent("improve_agents_workflows__part1", reg)).toBe(
+      "improve_agents_workflows"
+    );
     expect(getSubspecialistParent("general", reg)).toBeNull();
     expect(getSubspecialistParent("improve_agents_workflows", reg)).toBeNull();
   });
@@ -146,16 +191,26 @@ describe("heap registry", () => {
   it("mergeRegistryOverrides merges overlay specialists and getRegistry(overrides) returns merged registry", () => {
     const base = getRegistry();
     const overrides: SpecialistEntry[] = [
-      { id: "custom_specialist", description: "Custom", toolNames: ["ask_user", "format_response"] },
+      {
+        id: "custom_specialist",
+        description: "Custom",
+        toolNames: ["ask_user", "format_response"],
+      },
     ];
     const merged = mergeRegistryOverrides(base, overrides);
     expect(merged.specialists.custom_specialist).toBeDefined();
-    expect(merged.specialists.custom_specialist?.toolNames).toEqual(["ask_user", "format_response"]);
-    expect(merged.topLevelIds).toContain("custom_specialist");
+    expect(merged.specialists.custom_specialist?.toolNames).toEqual([
+      "ask_user",
+      "format_response",
+    ]);
+    // Default registry is at TOP_LEVEL_CAP (7), so overlay id is not appended to topLevelIds
+    expect(merged.topLevelIds.length).toBe(TOP_LEVEL_CAP);
+    expect(merged.topLevelIds).not.toContain("custom_specialist");
 
     const regFromOverrides = getRegistry(overrides);
     expect(regFromOverrides.specialists.custom_specialist).toBeDefined();
-    expect(regFromOverrides.topLevelIds).toContain("custom_specialist");
+    expect(regFromOverrides.topLevelIds.length).toBe(TOP_LEVEL_CAP);
+    expect(regFromOverrides.topLevelIds).not.toContain("custom_specialist");
   });
 });
 
@@ -266,10 +321,17 @@ describe("heap planner", () => {
   });
 
   it("buildPlannerPrompt includes improve_run, improve_heap, improve_agents_workflows and create-before-improve_agents_workflows rule", () => {
-    const prompt = buildPlannerPrompt("Create an agent and a workflow and add the agent to it and run it", reg);
+    const prompt = buildPlannerPrompt(
+      "Create an agent and a workflow and add the agent to it and run it",
+      reg
+    );
     expect(prompt).toMatch(/improve_run|improve_heap|improve_agents_workflows/);
-    expect(prompt).toMatch(/improve_agents_workflows.*cannot create|agent.*workflow.*before.*improve_agents_workflows/i);
-    expect(prompt).toMatch(/put\s+["']agent["']\s+and\s+["']workflow["'].*before\s+["']improve_agents_workflows["']/i);
+    expect(prompt).toMatch(
+      /improve_agents_workflows.*cannot create|agent.*workflow.*before.*improve_agents_workflows/i
+    );
+    expect(prompt).toMatch(
+      /put\s+["']agent["']\s+and\s+["']workflow["'].*before\s+["']improve_agents_workflows["']/i
+    );
     expect(prompt).toMatch(/\[Created agent id:/);
   });
 
@@ -297,7 +359,9 @@ describe("heap planner", () => {
     const out = parsePlanOutput(text);
     expect(out).not.toBeNull();
     expect(out!.priorityOrder).toEqual(["improve_run", "improve_heap", "improve_agents_workflows"]);
-    expect(out!.instructionsForImproveRun).toBe("Observe runId from context; suggest; apply_session_override.");
+    expect(out!.instructionsForImproveRun).toBe(
+      "Observe runId from context; suggest; apply_session_override."
+    );
     expect(out!.instructionsForImproveHeap).toBe("Register a new specialist.");
     expect(out!.instructionsForImproveAgentsWorkflows).toBe("Observe run, then act_prompt.");
   });
@@ -353,7 +417,11 @@ describe("heap planner", () => {
 
   it("inferFallbackPriorityOrder returns agent when message mentions create agent", () => {
     const reg = getRegistry();
-    const order = inferFallbackPriorityOrder("Can you create an agent for LinkedIn?", undefined, reg);
+    const order = inferFallbackPriorityOrder(
+      "Can you create an agent for LinkedIn?",
+      undefined,
+      reg
+    );
     expect(order).toContain("agent");
   });
 
@@ -365,14 +433,22 @@ describe("heap planner", () => {
 
   it("inferFallbackPriorityOrder returns agent and workflow when message mentions both create agent and run workflow", () => {
     const reg = getRegistry();
-    const order = inferFallbackPriorityOrder("Create an agent and run the workflow now", undefined, reg);
+    const order = inferFallbackPriorityOrder(
+      "Create an agent and run the workflow now",
+      undefined,
+      reg
+    );
     expect(order).toContain("agent");
     expect(order).toContain("workflow");
   });
 
   it("inferFallbackPriorityOrder uses recentContext for intent", () => {
     const reg = getRegistry();
-    const order = inferFallbackPriorityOrder("yes", "user wanted to create an agent and run the workflow", reg);
+    const order = inferFallbackPriorityOrder(
+      "yes",
+      "user wanted to create an agent and run the workflow",
+      reg
+    );
     expect(order).toContain("agent");
     expect(order).toContain("workflow");
   });
@@ -398,7 +474,11 @@ describe("heap planner", () => {
       refinedTask: "Create agent and workflow.",
       extractedContext: { savedSearchUrl: "https://example.com/search" },
     };
-    const prompt = buildPlannerContinuationPrompt(previousPlan, "Create the agent + workflow, use vault credentials, and run the workflow now", reg);
+    const prompt = buildPlannerContinuationPrompt(
+      previousPlan,
+      "Create the agent + workflow, use vault credentials, and run the workflow now",
+      reg
+    );
     expect(prompt).toContain("continuing from the previous turn");
     expect(prompt).toContain("Create the agent + workflow");
     expect(prompt).toContain("https://example.com/search");
@@ -424,6 +504,60 @@ describe("heap planner", () => {
   });
 });
 
+describe("mergePlanOnImprovementTypeConfirmation", () => {
+  const createAgentWorkflowPlan = {
+    priorityOrder: ["agent", "workflow"] as HeapStep[],
+    refinedTask: "Create a self-improving agent and add it to a new workflow.",
+    extractedContext: { savedSearchId: "1962332737" },
+    instructionsForAgent:
+      "Create an agent (suggested name: 'LinkedIn-KW-SelfLearner') with the following spec: ...",
+    instructionsForWorkflow:
+      "Create a new workflow (suggested name: 'LinkedInKeywordCollection_and_SelfLearning') ...",
+  };
+
+  it("returns merged plan with prompt_and_workflow_only when user confirms option 1", () => {
+    const merged = mergePlanOnImprovementTypeConfirmation(
+      createAgentWorkflowPlan,
+      "1 — Prompt and workflow only (recommended)"
+    );
+    expect(merged).not.toBeNull();
+    expect(merged!.extractedContext?.selfImprovementType).toBe("prompt_and_workflow_only");
+    expect(merged!.refinedTask).toBe(createAgentWorkflowPlan.refinedTask);
+    expect(merged!.instructionsForAgent).toBe(createAgentWorkflowPlan.instructionsForAgent);
+    expect(merged!.instructionsForWorkflow).toBe(createAgentWorkflowPlan.instructionsForWorkflow);
+  });
+
+  it("returns merged plan with model_training when user confirms option 2", () => {
+    const merged = mergePlanOnImprovementTypeConfirmation(
+      createAgentWorkflowPlan,
+      "Also model training"
+    );
+    expect(merged).not.toBeNull();
+    expect(merged!.extractedContext?.selfImprovementType).toBe("model_training");
+  });
+
+  it("returns null when user reply is not a known confirmation", () => {
+    const merged = mergePlanOnImprovementTypeConfirmation(
+      createAgentWorkflowPlan,
+      "something random"
+    );
+    expect(merged).toBeNull();
+  });
+
+  it("returns null when previous plan does not imply create agent and workflow", () => {
+    const workflowOnlyPlan = {
+      priorityOrder: ["workflow"] as HeapStep[],
+      refinedTask: "Run workflow.",
+      extractedContext: { requestedActions: ["execute_workflow_on_demand"] },
+    };
+    const merged = mergePlanOnImprovementTypeConfirmation(
+      workflowOnlyPlan,
+      "1 — Prompt and workflow only (recommended)"
+    );
+    expect(merged).toBeNull();
+  });
+});
+
 describe("planImpliesCreateAgentAndWorkflow and reorderAgentBeforeWorkflow", () => {
   it("planImpliesCreateAgentAndWorkflow returns true when extractedContext.requestedActions has create_workflow and create_agent", () => {
     expect(
@@ -431,7 +565,11 @@ describe("planImpliesCreateAgentAndWorkflow and reorderAgentBeforeWorkflow", () 
         priorityOrder: ["workflow", "agent"],
         refinedTask: "Create both.",
         extractedContext: {
-          requestedActions: ["create_agent_with_self_improvement", "create_workflow", "add_agent_to_workflow"],
+          requestedActions: [
+            "create_agent_with_self_improvement",
+            "create_workflow",
+            "add_agent_to_workflow",
+          ],
         },
       })
     ).toBe(true);
@@ -463,7 +601,12 @@ describe("planImpliesCreateAgentAndWorkflow and reorderAgentBeforeWorkflow", () 
   });
 
   it("reorderAgentBeforeWorkflow moves agent before workflow when workflow was first", () => {
-    const order: HeapStep[] = ["improve_agents_workflows__part1", "workflow__part1", "agent", "general"];
+    const order: HeapStep[] = [
+      "improve_agents_workflows__part1",
+      "workflow__part1",
+      "agent",
+      "general",
+    ];
     const reordered = reorderAgentBeforeWorkflow(order);
     const flat = reordered.map((s) => (typeof s === "string" ? s : s.parallel[0]));
     const agentIdx = flat.findIndex((id) => id === "agent" || id.startsWith("agent__"));
@@ -490,7 +633,12 @@ describe("planImpliesCreateAgentAndWorkflow and reorderAgentBeforeWorkflow", () 
   });
 
   it("reorderAgentAndWorkflowBeforeImproveAgentsWorkflows puts agent and workflow before improve_agents_workflows when create-both", () => {
-    const order: HeapStep[] = ["improve_agents_workflows__part1", "agent", "workflow__part1", "general"];
+    const order: HeapStep[] = [
+      "improve_agents_workflows__part1",
+      "agent",
+      "workflow__part1",
+      "general",
+    ];
     const reordered = reorderAgentAndWorkflowBeforeImproveAgentsWorkflows(order);
     const flat = reordered.map((s) => (typeof s === "string" ? s : s.parallel[0]));
     const agentIdx = flat.findIndex((id) => id === "agent" || id.startsWith("agent__"));
@@ -501,7 +649,12 @@ describe("planImpliesCreateAgentAndWorkflow and reorderAgentBeforeWorkflow", () 
     expect(improveIdx).toBeGreaterThanOrEqual(0);
     expect(agentIdx).toBeLessThan(improveIdx);
     expect(workflowIdx).toBeLessThan(improveIdx);
-    expect(flat).toEqual(["agent", "workflow__part1", "improve_agents_workflows__part1", "general"]);
+    expect(flat).toEqual([
+      "agent",
+      "workflow__part1",
+      "improve_agents_workflows__part1",
+      "general",
+    ]);
   });
 
   it("reorderAgentBeforeWorkflow leaves order unchanged when only workflow or only agent", () => {
@@ -579,7 +732,9 @@ describe("heap DAG construction", () => {
     const fromDag = await runHeapFromDAG(dag, "Task", runSpecialist, registry);
     const fromRoute = await runHeap(priorityOrder, "Task", runSpecialist, registry);
     expect(fromDag.summary).toBe(fromRoute.summary);
-    expect(fromDag.context.steps.map((s) => s.specialistId)).toEqual(fromRoute.context.steps.map((s) => s.specialistId));
+    expect(fromDag.context.steps.map((s) => s.specialistId)).toEqual(
+      fromRoute.context.steps.map((s) => s.specialistId)
+    );
   });
 });
 
@@ -633,12 +788,7 @@ describe("heap runner", () => {
   });
 
   it("empty priorityOrder uses fallback specialist", async () => {
-    const run = await runHeap(
-      [],
-      "Task",
-      async (id) => ({ summary: `fallback-${id}` }),
-      registry
-    );
+    const run = await runHeap([], "Task", async (id) => ({ summary: `fallback-${id}` }), registry);
     expect(run.summary).toBe("fallback-a");
     expect(run.context.steps).toHaveLength(1);
     expect(run.context.steps[0].specialistId).toBe("a");

@@ -12,7 +12,7 @@
 - **Local-first & self-hosted** — SQLite storage, optional Electron desktop app; run on-premise or air-gapped.
 - **Visual agent builder** — Node-based graphs (LLM, tools, decision nodes) plus code agents (JavaScript/Python/TypeScript) in sandboxes.
 - **Multi-agent workflows** — Orchestrate agents in graphs with configurable rounds; built-in chat assistant that creates and edits agents, workflows, and tools via natural language.
-- **Tools & integrations** — Native, HTTP, and MCP tools; RAG/knowledge; Podman sandboxes; OpenAI, Anthropic, Ollama, and remote LLM support.
+- **Tools & integrations** — Native, HTTP, and MCP tools; RAG/knowledge; Podman sandboxes; OpenAI, Anthropic, Ollama, and remote LLM support; OpenClaw gateway integration (send commands, history, abort) for steering a local OpenClaw instance from chat.
 
 Ideal for teams that need **local AI automation**, **privacy-first agent orchestration**, and **multi-agent workflow** control without depending on cloud-only platforms.
 
@@ -49,4 +49,30 @@ When you need desktop packaging dependencies:
 npm run install:desktop
 ```
 
-**Optional dependencies:** We omit optional deps by default (see `.npmrc`). To **build the UI** (e.g. `npm run build:ui`) or run tests with coverage, optional deps must be installed (Next.js SWC and tooling). Set `optional=true` in `.npmrc`, or run `npm install --include=optional` after your first install. The desktop app also needs optional deps (e.g. `sharp`) for icon export; CI uses `npm install --include=optional` (and for desktop: `npm install --include=optional sharp --workspace apps/desktop`).
+## E2E tests with local LLMs (optional)
+
+Run end-to-end tests against a real local LLM (Ollama). **Single command** (from repo root):
+
+```bash
+npm run test:e2e-llm
+```
+
+The script starts Ollama if needed, **pulls the default E2E model if missing**, then runs the E2E suite. No manual `ollama pull` required.
+
+**Prerequisites:** [Ollama](https://ollama.com) installed. Optional: Podman for run-code and container scenarios. (In the app we plan to offer one-click model pull from the UI so users do not need to run `ollama pull` manually.)
+
+**Default model:** Qwen 2.5 3B (`qwen2.5:3b`). Override with `E2E_LLM_MODEL` (e.g. `E2E_LLM_MODEL=llama3.2 npm run test:e2e-llm`); the script will pull that model if missing.
+
+**Example configs (suggested models):**
+
+| Model                 | Env                                    | Notes                             |
+| --------------------- | -------------------------------------- | --------------------------------- |
+| Qwen 2.5 3B (default) | *(none)* or `E2E_LLM_MODEL=qwen2.5:3b` | Good balance of quality and speed |
+| Llama 3.2              | `E2E_LLM_MODEL=llama3.2`               | Script auto-pulls if missing      |
+| Phi-3                  | `E2E_LLM_MODEL=phi3`                   | Script auto-pulls if missing      |
+
+**Optional env:** `OLLAMA_BASE_URL` (default `http://localhost:11434`), `E2E_SAVE_ARTIFACTS=1`, `E2E_LOG_DIR`.
+
+These tests are **not** run in CI.
+
+**Optional dependencies:** A plain `npm install` works on all platforms (Windows, Linux, macOS). We omit optional deps by default (see `.npmrc`). To **build the UI** (e.g. `npm run build:ui`) or run tests with coverage, optional deps must be installed (Next.js SWC and tooling). Set `optional=true` in `.npmrc`, or run `npm install --include=optional` after your first install. The desktop app also needs optional deps (e.g. `sharp`) for icon export; CI uses `npm install --include=optional` (and for desktop: `npm install --include=optional sharp --workspace apps/desktop`).

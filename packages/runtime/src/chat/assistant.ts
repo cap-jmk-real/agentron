@@ -84,12 +84,18 @@ export async function runAssistant(
   if (options.attachedContext) {
     systemPrompt += `\n\n## User-shared context (e.g. run output)\nThe user opened the chat with the following content attached so you can help directly. Use it to answer their question or debug.\n\n${options.attachedContext}`;
   }
-  if (options.studioContext != null && typeof options.studioContext === "object" && !Array.isArray(options.studioContext)) {
+  if (
+    options.studioContext != null &&
+    typeof options.studioContext === "object" &&
+    !Array.isArray(options.studioContext)
+  ) {
     const ctx = options.studioContext;
     const parts: string[] = [];
     const tools = Array.isArray(ctx.tools) ? ctx.tools : [];
     if (tools.length > 0) {
-      parts.push(`Tools available (use these IDs in toolIds when creating/updating agents):\n${tools.map((t) => `- ${t.id}: ${t.name} (${t.protocol})`).join("\n")}`);
+      parts.push(
+        `Tools available (use these IDs in toolIds when creating/updating agents):\n${tools.map((t) => `- ${t.id}: ${t.name} (${t.protocol})`).join("\n")}`
+      );
     }
     const agents = Array.isArray(ctx.agents) ? ctx.agents : [];
     if (agents.length > 0) {
@@ -101,7 +107,9 @@ export async function runAssistant(
     }
     const llmProviders = Array.isArray(ctx.llmProviders) ? ctx.llmProviders : [];
     if (llmProviders.length > 0) {
-      parts.push(`LLM providers (use these IDs as llmConfigId when creating/updating agents):\n${llmProviders.map((p) => `- ${p.id}: ${p.provider} / ${p.model}`).join("\n")}`);
+      parts.push(
+        `LLM providers (use these IDs as llmConfigId when creating/updating agents):\n${llmProviders.map((p) => `- ${p.id}: ${p.provider} / ${p.model}`).join("\n")}`
+      );
     }
     if (parts.length > 0) {
       systemPrompt += `\n\n## Studio resources (current state)\n${parts.join("\n\n")}`;
@@ -152,7 +160,12 @@ export async function runAssistant(
     const block = todosMatch[1].trim();
     todos = block
       .split(/\n/)
-      .map((line) => line.replace(/^\s*[-*•]\s*/, "").replace(/^\s*\d+\.\s*/, "").trim())
+      .map((line) =>
+        line
+          .replace(/^\s*[-*•]\s*/, "")
+          .replace(/^\s*\d+\.\s*/, "")
+          .trim()
+      )
       .filter((line) => line.length > 0);
   }
 
@@ -210,7 +223,9 @@ export async function runAssistant(
         const name = call.name || call.tool;
         if (!name) continue;
         const rawArgs = call.arguments ?? call.args;
-        const args = (rawArgs != null && typeof rawArgs === "object" && !Array.isArray(rawArgs) ? rawArgs : {}) as Record<string, unknown>;
+        const args = (
+          rawArgs != null && typeof rawArgs === "object" && !Array.isArray(rawArgs) ? rawArgs : {}
+        ) as Record<string, unknown>;
         // Resolve todo index: from args when in todo-index mode, else position-based
         let stepIndex: number;
         let completeTodo = false;
@@ -222,7 +237,8 @@ export async function runAssistant(
               ? Math.min(rawTodoIndex, todosForSteps.length - 1)
               : startIndex + index;
           completeTodo = args.completeTodo === true;
-          if (typeof args.subStepLabel === "string" && args.subStepLabel.trim()) subStepLabel = args.subStepLabel.trim();
+          if (typeof args.subStepLabel === "string" && args.subStepLabel.trim())
+            subStepLabel = args.subStepLabel.trim();
         } else {
           stepIndex = startIndex + index;
           if (typeof maxSteps === "number" && maxSteps >= 0 && stepIndex >= maxSteps) break;
@@ -241,10 +257,16 @@ export async function runAssistant(
           }
         } else {
           options.onProgress?.onToolDone?.(stepIndex, name, result);
-          if (stepIndex >= 0 && stepIndex < todosForSteps.length) completedTodoIndices.add(stepIndex);
+          if (stepIndex >= 0 && stepIndex < todosForSteps.length)
+            completedTodoIndices.add(stepIndex);
         }
         index++;
-        if ((name === "ask_user" || name === "ask_credentials") && result != null && typeof result === "object" && (result as { waitingForUser?: boolean }).waitingForUser === true) {
+        if (
+          (name === "ask_user" || name === "ask_credentials") &&
+          result != null &&
+          typeof result === "object" &&
+          (result as { waitingForUser?: boolean }).waitingForUser === true
+        ) {
           break;
         }
       } catch (err) {
@@ -261,18 +283,23 @@ export async function runAssistant(
 
   // Only cap by todo count when we have at least one todo; otherwise run all tool calls from the first message
   const initialMaxSteps = (todos?.length ?? 0) > 0 ? todos!.length : undefined;
-  let toolResults = await extractAndRunToolCalls(rawContent, { todos: todos ?? [], maxSteps: initialMaxSteps });
+  let toolResults = await extractAndRunToolCalls(rawContent, {
+    todos: todos ?? [],
+    maxSteps: initialMaxSteps,
+  });
 
   // If the model gave no tool calls but the user asked for action, nudge to output tool calls
   let effectiveAssistantContent = rawContent;
   const userLower = userMessage.trim().toLowerCase();
-  const actionKeywords = /\b(create|add|fix|configure|set up|update|make|build|workflow|workflows|agents?|tools?|llm|graph|outputs?|produce)\b/;
+  const actionKeywords =
+    /\b(create|add|fix|configure|set up|update|make|build|workflow|workflows|agents?|tools?|llm|graph|outputs?|produce)\b/;
   const looksLikeActionRequest = actionKeywords.test(userLower);
   if (toolResults.length === 0 && looksLikeActionRequest) {
-    const possibleTruncation = /<tool_call>\s*\{/i.test(rawContent) && rawContent.trim().length > 500;
+    const possibleTruncation =
+      /<tool_call>\s*\{/i.test(rawContent) && rawContent.trim().length > 500;
     const nudgeContent = possibleTruncation
-      ? "Your previous response may have been cut off before the tool_call JSON was complete. Output the required <tool_call> block(s) again. For execute_code: use SHORT commands — split long sequences into multiple execute_code calls (e.g. one for clone, one for apt-get install, one for make) so each call stays under ~1500 characters and is not truncated. Use this exact format: <tool_call>{\"name\": \"tool_name\", \"arguments\": {...}}</tool_call>. Output only the tool_call blocks."
-      : "You responded with text but did not output any <tool_call> blocks. The user asked you to perform actions (create/configure/fix agents, workflows, or tools). You MUST output the required <tool_call> blocks now so the system can execute them. Start by listing or getting current state if needed (e.g. list_workflows, get_workflow, list_agents, list_llm_providers, list_tools), then create or update as needed. Use this exact format for each call: <tool_call>{\"name\": \"tool_name\", \"arguments\": {...}}</tool_call>. When you have <todos>, include \"todoIndex\" and \"completeTodo\": true in each tool's arguments. Output only the tool_call blocks, one after another.";
+      ? 'Your previous response may have been cut off before the tool_call JSON was complete. Output the required <tool_call> block(s) again. For execute_code: use SHORT commands — split long sequences into multiple execute_code calls (e.g. one for clone, one for apt-get install, one for make) so each call stays under ~1500 characters and is not truncated. Use this exact format: <tool_call>{"name": "tool_name", "arguments": {...}}</tool_call>. Output only the tool_call blocks.'
+      : 'You responded with text but did not output any <tool_call> blocks. The user asked you to perform actions (create/configure/fix agents, workflows, or tools). You MUST output the required <tool_call> blocks now so the system can execute them. Start by listing or getting current state if needed (e.g. list_workflows, get_workflow, list_agents, list_llm_providers, list_tools), then create or update as needed. Use this exact format for each call: <tool_call>{"name": "tool_name", "arguments": {...}}</tool_call>. When you have <todos>, include "todoIndex" and "completeTodo": true in each tool\'s arguments. Output only the tool_call blocks, one after another.';
     const nudgeMessages: LLMMessage[] = [
       ...messages,
       { role: "assistant", content: rawContent },
@@ -295,7 +322,11 @@ export async function runAssistant(
 
   // If the model asked the user for input (ask_user or ask_credentials with waitingForUser), do not nudge for more tool calls this turn
   const waitingForUser = toolResults.some(
-    (r) => (r.name === "ask_user" || r.name === "ask_credentials") && r.result != null && typeof r.result === "object" && (r.result as { waitingForUser?: boolean }).waitingForUser === true
+    (r) =>
+      (r.name === "ask_user" || r.name === "ask_credentials") &&
+      r.result != null &&
+      typeof r.result === "object" &&
+      (r.result as { waitingForUser?: boolean }).waitingForUser === true
   );
 
   // If the model output a plan but not all todos are complete, nudge (unless waiting for user input)
@@ -315,7 +346,7 @@ export async function runAssistant(
         role: "user",
         content:
           (toolResults.length === 0
-            ? "You listed steps but did not output any <tool_call> blocks. Output them now. For each step include \"todoIndex\" (0-based) and set \"completeTodo\": true on the last tool call for that step. Use the exact format: <tool_call>{\"name\": \"create_agent\", \"arguments\": {\"todoIndex\": 0, \"completeTodo\": true, ...}}</tool_call>. Do not add explanation, only the tool_call blocks."
+            ? 'You listed steps but did not output any <tool_call> blocks. Output them now. For each step include "todoIndex" (0-based) and set "completeTodo": true on the last tool call for that step. Use the exact format: <tool_call>{"name": "create_agent", "arguments": {"todoIndex": 0, "completeTodo": true, ...}}</tool_call>. Do not add explanation, only the tool_call blocks.'
             : `You listed ${expectedSteps} steps but ${completedTodoIndices.size} are marked complete (completeTodo: true). Output <tool_call> blocks for the remaining step(s). Each call must include \"todoIndex\" and set \"completeTodo\": true on the last tool for that todo. Only the missing tool_call blocks.`) +
           toolsSummary,
       },
@@ -356,7 +387,8 @@ export async function runAssistant(
     const toolsSummary = toolResults
       .map((r, i) => {
         const argsText = typeof r.args === "string" ? r.args : JSON.stringify(r.args ?? {});
-        const resultText = typeof r.result === "string" ? r.result : JSON.stringify(r.result ?? null);
+        const resultText =
+          typeof r.result === "string" ? r.result : JSON.stringify(r.result ?? null);
         return `Tool ${i + 1}: ${r.name}\n  arguments: ${argsText}\n  result: ${resultText}`;
       })
       .join("\n\n");

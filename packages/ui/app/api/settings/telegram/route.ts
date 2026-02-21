@@ -22,11 +22,18 @@ export async function GET() {
 export async function PATCH(request: Request) {
   try {
     const payload = await request.json().catch(() => ({}));
-    const updates: Partial<{ enabled: boolean; botToken: string; botTokenEnvVar: string; notificationChatId: string; usePolling: boolean }> = {};
+    const updates: Partial<{
+      enabled: boolean;
+      botToken: string;
+      botTokenEnvVar: string;
+      notificationChatId: string;
+      usePolling: boolean;
+    }> = {};
     if (typeof payload.enabled === "boolean") updates.enabled = payload.enabled;
     if (typeof payload.botToken === "string") updates.botToken = payload.botToken;
     if (typeof payload.botTokenEnvVar === "string") updates.botTokenEnvVar = payload.botTokenEnvVar;
-    if (typeof payload.notificationChatId === "string") updates.notificationChatId = payload.notificationChatId;
+    if (typeof payload.notificationChatId === "string")
+      updates.notificationChatId = payload.notificationChatId;
     if (typeof payload.usePolling === "boolean") {
       updates.usePolling = payload.usePolling;
       if (!payload.usePolling) stopPolling();

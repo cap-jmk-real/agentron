@@ -12,13 +12,20 @@ export async function GET(_: Request, { params }: Params) {
     return json({ error: "Missing agent id" }, { status: 400 });
   }
 
-  const rows = await db.select({ id: workflows.id, name: workflows.name, nodes: workflows.nodes }).from(workflows);
+  const rows = await db
+    .select({ id: workflows.id, name: workflows.name, nodes: workflows.nodes })
+    .from(workflows);
   const usedBy: { id: string; name: string }[] = [];
 
   for (const row of rows) {
     let nodes: Array<{ config?: Record<string, unknown> }>;
     try {
-      nodes = typeof row.nodes === "string" ? JSON.parse(row.nodes) : Array.isArray(row.nodes) ? row.nodes : [];
+      nodes =
+        typeof row.nodes === "string"
+          ? JSON.parse(row.nodes)
+          : Array.isArray(row.nodes)
+            ? row.nodes
+            : [];
     } catch {
       continue;
     }

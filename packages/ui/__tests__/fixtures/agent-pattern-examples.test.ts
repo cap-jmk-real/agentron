@@ -15,6 +15,8 @@ const VALID_PATTERN_IDS: AgentPatternId[] = [
   "orchestrator-workers",
   "diagnose-fix-rerun",
   "composition-over-complexity",
+  "custom-echo-agent",
+  "custom-linear-two-agents",
 ];
 
 describe("agent-pattern-examples fixture", () => {
@@ -54,8 +56,10 @@ describe("agent-pattern-examples fixture", () => {
     expect(getExamplesByLevel("intra").every((e) => e.level === "intra")).toBe(true);
     expect(getExamplesByLevel("workflow").every((e) => e.level === "workflow")).toBe(true);
     expect(getExamplesByLevel("meta").every((e) => e.level === "meta")).toBe(true);
-    expect(getExamplesByLevel("intra").length + getExamplesByLevel("workflow").length + getExamplesByLevel("meta").length).toBe(
-      AGENT_PATTERN_EXAMPLES.length
-    );
+    expect(
+      getExamplesByLevel("intra").length +
+        getExamplesByLevel("workflow").length +
+        getExamplesByLevel("meta").length
+    ).toBe(AGENT_PATTERN_EXAMPLES.length);
   });
 });

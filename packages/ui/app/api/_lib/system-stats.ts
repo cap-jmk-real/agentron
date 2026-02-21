@@ -22,11 +22,14 @@ function getDisk(): { total: number; free: number; path: string } {
       try {
         const psScript = `$ProgressPreference = 'SilentlyContinue'; $d = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='${drive}'"; if ($d) { "$($d.FreeSpace),$($d.Size)" }`;
         const encoded = Buffer.from(psScript, "utf16le").toString("base64");
-        const output = execSync(`powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`, {
-          timeout: 5000,
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "pipe"],
-        })
+        const output = execSync(
+          `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`,
+          {
+            timeout: 5000,
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "pipe"],
+          }
+        )
           .trim()
           .split("\n")
           .map((s) => s.trim())
@@ -42,7 +45,10 @@ function getDisk(): { total: number; free: number; path: string } {
       } catch {
         // Fallback to WMIC for older Windows
       }
-      const output = execSync(`wmic logicaldisk where "DeviceID='${drive}'" get Size,FreeSpace /format:csv`, { timeout: 3000, encoding: "utf8" }).trim();
+      const output = execSync(
+        `wmic logicaldisk where "DeviceID='${drive}'" get Size,FreeSpace /format:csv`,
+        { timeout: 3000, encoding: "utf8" }
+      ).trim();
       const lines = output.split("\n").filter(Boolean);
       const lastLine = lines[lines.length - 1];
       const parts = lastLine.split(",");
@@ -51,7 +57,10 @@ function getDisk(): { total: number; free: number; path: string } {
       const total = parseInt(parts[3] || "0", 10);
       return { total, free, path: drive };
     }
-    const output = execSync(`df -k "${checkPath}" | tail -1`, { timeout: 3000, encoding: "utf8" }).trim();
+    const output = execSync(`df -k "${checkPath}" | tail -1`, {
+      timeout: 3000,
+      encoding: "utf8",
+    }).trim();
     const parts = output.split(/\s+/);
     const total = parseInt(parts[1] || "0", 10) * 1024;
     const free = parseInt(parts[3] || "0", 10) * 1024;
@@ -65,8 +74,15 @@ function getDisk(): { total: number; free: number; path: string } {
  * Query nvidia-smi for utilization and VRAM. No caching: we try on every poll so that
  * when the user installs drivers and reopens the page or app, the next request will detect it.
  */
-function getNvidiaLive(): { utilizationPercent: number; vramUsedBytes: number; vramTotalBytes: number }[] {
-  const cmds = platform === "win32" ? ["nvidia-smi"] : ["nvidia-smi", "/usr/bin/nvidia-smi", "/usr/lib/nvidia/bin/nvidia-smi"];
+function getNvidiaLive(): {
+  utilizationPercent: number;
+  vramUsedBytes: number;
+  vramTotalBytes: number;
+}[] {
+  const cmds =
+    platform === "win32"
+      ? ["nvidia-smi"]
+      : ["nvidia-smi", "/usr/bin/nvidia-smi", "/usr/lib/nvidia/bin/nvidia-smi"];
   for (const cmd of cmds) {
     try {
       const output = execSync(
@@ -109,13 +125,14 @@ export function collectSystemStats(): SystemStatsSnapshot {
   const ramFree = os.freemem();
   const disk = getDisk();
   const nvidia = getNvidiaLive();
-  const gpu = nvidia.length > 0
-    ? nvidia.map((g) => ({
-        utilizationPercent: g.utilizationPercent,
-        vramUsed: g.vramUsedBytes,
-        vramTotal: g.vramTotalBytes,
-      }))
-    : [];
+  const gpu =
+    nvidia.length > 0
+      ? nvidia.map((g) => ({
+          utilizationPercent: g.utilizationPercent,
+          vramUsed: g.vramUsedBytes,
+          vramTotal: g.vramTotalBytes,
+        }))
+      : [];
 
   return {
     ts: Date.now(),

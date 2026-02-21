@@ -16,14 +16,32 @@ export async function GET() {
     const override = customMap.get(model);
     if (override) {
       customMap.delete(model);
-      return { id: override.id, modelPattern: model, inputCostPerM: override.inputCostPerM, outputCostPerM: override.outputCostPerM, isCustom: true };
+      return {
+        id: override.id,
+        modelPattern: model,
+        inputCostPerM: override.inputCostPerM,
+        outputCostPerM: override.outputCostPerM,
+        isCustom: true,
+      };
     }
-    return { id: null, modelPattern: model, inputCostPerM: pricing.input, outputCostPerM: pricing.output, isCustom: false };
+    return {
+      id: null,
+      modelPattern: model,
+      inputCostPerM: pricing.input,
+      outputCostPerM: pricing.output,
+      isCustom: false,
+    };
   });
 
   // Add remaining custom entries not in defaults
   for (const c of customMap.values()) {
-    merged.push({ id: c.id, modelPattern: c.modelPattern, inputCostPerM: c.inputCostPerM, outputCostPerM: c.outputCostPerM, isCustom: true });
+    merged.push({
+      id: c.id,
+      modelPattern: c.modelPattern,
+      inputCostPerM: c.inputCostPerM,
+      outputCostPerM: c.outputCostPerM,
+      isCustom: true,
+    });
   }
 
   return json(merged);
@@ -44,14 +62,30 @@ export async function PUT(request: Request) {
   const match = existing.find((r) => r.modelPattern === modelPattern);
 
   if (match) {
-    await db.update(modelPricing)
-      .set({ inputCostPerM: String(inputCostPerM), outputCostPerM: String(outputCostPerM), updatedAt: Date.now() })
+    await db
+      .update(modelPricing)
+      .set({
+        inputCostPerM: String(inputCostPerM),
+        outputCostPerM: String(outputCostPerM),
+        updatedAt: Date.now(),
+      })
       .where(eq(modelPricing.id, match.id))
       .run();
     return json({ id: match.id, modelPattern, inputCostPerM, outputCostPerM });
   }
 
   const id = crypto.randomUUID();
-  await db.insert(modelPricing).values(toModelPricingRow({ id, modelPattern, inputCostPerM: String(inputCostPerM), outputCostPerM: String(outputCostPerM), updatedAt: Date.now() })).run();
+  await db
+    .insert(modelPricing)
+    .values(
+      toModelPricingRow({
+        id,
+        modelPattern,
+        inputCostPerM: String(inputCostPerM),
+        outputCostPerM: String(outputCostPerM),
+        updatedAt: Date.now(),
+      })
+    )
+    .run();
   return json({ id, modelPattern, inputCostPerM, outputCostPerM }, { status: 201 });
 }

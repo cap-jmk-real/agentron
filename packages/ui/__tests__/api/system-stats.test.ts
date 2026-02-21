@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { GET as statsGet } from "../../app/api/system-stats/route";
 import { GET as historyGet } from "../../app/api/system-stats/history/route";
+import { getCachedSystemStats } from "../../app/api/_lib/system-stats";
 
 describe("System stats API", () => {
   it("GET /api/system-stats returns snapshot with ram, process, cpu, disk, gpu", async () => {
@@ -27,5 +28,12 @@ describe("System stats API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
+  });
+
+  it("getCachedSystemStats returns same snapshot within cache TTL", () => {
+    const a = getCachedSystemStats();
+    const b = getCachedSystemStats();
+    expect(a.ts).toBe(b.ts);
+    expect(a.ram.total).toBe(b.ram.total);
   });
 });

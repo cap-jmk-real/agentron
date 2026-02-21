@@ -55,12 +55,18 @@ export function AgentRequestBlock({
   sendingOption = null,
 }: AgentRequestBlockProps) {
   const displayQuestion = question?.trim() || "The agent is waiting for your input.";
-  const showHint = showVagueHint && (!question?.trim() || question.trim().length < 40 || isVagueQuestion(question.trim()));
+  const showHint =
+    showVagueHint &&
+    (!question?.trim() || question.trim().length < 40 || isVagueQuestion(question.trim()));
   const hasOptions = Array.isArray(options) && options.length > 0;
   const isSending = sendingOption != null && sendingOption !== "";
 
   return (
-    <div className={`agent-request-block ${className}`.trim()} role="region" aria-label="Agent request">
+    <div
+      className={`agent-request-block ${className}`.trim()}
+      role="region"
+      aria-label="Agent request"
+    >
       <div className="agent-request-block-header">
         <strong className="agent-request-block-title">What the agent needs</strong>
       </div>
@@ -72,38 +78,47 @@ export function AgentRequestBlock({
         >
           {displayQuestion}
         </div>
-        {showHint && (
-          <p className="agent-request-block-hint">{VAGUE_HINT}</p>
-        )}
+        {showHint && <p className="agent-request-block-hint">{VAGUE_HINT}</p>}
         {hasOptions && (
           <div className="agent-request-block-options-wrap">
             <span className="agent-request-block-options-label">Options:</span>
             {onReplyOption ? (
-              <ul className="agent-request-block-options-list" role="group" aria-label="Reply options">
-                {options.filter((s): s is string => typeof s === "string").map((s, i) => {
-                  const sendingThis = isSending && sendingOption === s;
-                  return (
-                    <li key={i}>
-                      <button
-                        type="button"
-                        className="agent-request-block-option-btn"
-                        onClick={() => !isSending && onReplyOption(s)}
-                        title={sendingThis ? "Sending…" : "Send this as your reply"}
-                        disabled={isSending}
-                        aria-busy={sendingThis}
-                      >
-                        {sendingThis ? (
-                          <>
-                            <Loader2 size={14} className="spin" style={{ marginRight: 6, verticalAlign: "middle" }} aria-hidden />
-                            Sending…
-                          </>
-                        ) : (
-                          s
-                        )}
-                      </button>
-                    </li>
-                  );
-                })}
+              <ul
+                className="agent-request-block-options-list"
+                role="group"
+                aria-label="Reply options"
+              >
+                {options
+                  .filter((s): s is string => typeof s === "string")
+                  .map((s, i) => {
+                    const sendingThis = isSending && sendingOption === s;
+                    return (
+                      <li key={i}>
+                        <button
+                          type="button"
+                          className="agent-request-block-option-btn"
+                          onClick={() => !isSending && onReplyOption(s)}
+                          title={sendingThis ? "Sending…" : "Send this as your reply"}
+                          disabled={isSending}
+                          aria-busy={sendingThis}
+                        >
+                          {sendingThis ? (
+                            <>
+                              <Loader2
+                                size={14}
+                                className="spin"
+                                style={{ marginRight: 6, verticalAlign: "middle" }}
+                                aria-hidden
+                              />
+                              Sending…
+                            </>
+                          ) : (
+                            s
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
               </ul>
             ) : (
               <span className="agent-request-block-options-inline">
@@ -116,7 +131,12 @@ export function AgentRequestBlock({
       {(viewRunHref || onCancelRun) && (
         <div className="agent-request-block-actions">
           {viewRunHref && (
-            <a href={viewRunHref} target="_blank" rel="noopener noreferrer" className="agent-request-block-link">
+            <a
+              href={viewRunHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="agent-request-block-link"
+            >
               View run
             </a>
           )}

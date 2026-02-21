@@ -45,7 +45,10 @@ export async function retrieveChunks(
   query: string,
   limit: number
 ): Promise<RagChunk[]> {
-  const collRows = await db.select().from(ragCollections).where(eq(ragCollections.id, collectionId));
+  const collRows = await db
+    .select()
+    .from(ragCollections)
+    .where(eq(ragCollections.id, collectionId));
   if (collRows.length === 0) return [];
   const collection = collRows[0];
   const encodingConfigId = collection.encodingConfigId;
@@ -55,10 +58,15 @@ export async function retrieveChunks(
 
   const vectorStoreId = collection.vectorStoreId;
   if (vectorStoreId) {
-    const storeRows = await db.select().from(ragVectorStores).where(eq(ragVectorStores.id, vectorStoreId));
+    const storeRows = await db
+      .select()
+      .from(ragVectorStores)
+      .where(eq(ragVectorStores.id, vectorStoreId));
     const store = storeRows[0];
     if (store && store.type === "qdrant") {
-      const config = store.config ? (JSON.parse(store.config) as { endpoint?: string; apiKeyRef?: string }) : {};
+      const config = store.config
+        ? (JSON.parse(store.config) as { endpoint?: string; apiKeyRef?: string })
+        : {};
       try {
         return await queryQdrant(collectionId, queryVector, limit, config);
       } catch {
@@ -66,7 +74,9 @@ export async function retrieveChunks(
       }
     }
     if (store && store.type === "pgvector") {
-      const config = store.config ? (JSON.parse(store.config) as { connectionStringRef?: string; tableName?: string }) : {};
+      const config = store.config
+        ? (JSON.parse(store.config) as { connectionStringRef?: string; tableName?: string })
+        : {};
       try {
         return await queryPgvector(collectionId, queryVector, limit, config);
       } catch {

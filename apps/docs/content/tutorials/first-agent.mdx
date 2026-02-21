@@ -1,0 +1,63 @@
+---
+title: Tutorial — First agent (prompts)
+description: Create your first agent using prompts in the Agentron chat.
+---
+
+# Tutorial: First agent (prompts)
+
+Create an agent by asking the Agentron assistant in natural language. No UI forms—just prompts that work.
+
+---
+
+## Prerequisites
+
+- Agentron running (`npm run dev:ui`, open http://localhost:3000)
+- At least one **LLM provider** configured (e.g. **Settings → LLM providers** — OpenAI, Anthropic, Ollama, or OpenRouter)
+
+---
+
+## Prompts to try
+
+Open **Chat** and send these in order (or adapt them).
+
+### 1. See what you have
+
+- **"What LLM providers do I have?"** — The assistant calls `list_llm_providers` so you know which config to use.
+- **"List my tools."** — See built-in and any custom tools (e.g. `std-weather`, `std-fetch-url`).
+
+### 2. Create a simple agent
+
+- **"Create an agent named Hello Agent. It should greet the user. Use my first LLM provider."**
+
+  The assistant will use `create_agent` with a name, description, and a minimal node graph (e.g. input → LLM → output). It will attach an LLM config from `list_llm_providers`.
+
+### 3. Give the agent a tool (optional)
+
+- **"Add the weather tool to my Hello Agent."** (If you have a weather tool, e.g. `std-weather`.)
+- Or: **"List tools, then add std-fetch-url to the Hello Agent."**
+
+  The assistant uses `get_agent`, `list_tools`, and `update_agent` with `toolIds`.
+
+### 4. Run or inspect
+
+- **"Run my Hello Agent with input: Say hi."** — The assistant can use the run API or point you to the Runs page.
+- **"Show me my Hello Agent."** — `get_agent` and a summary.
+
+---
+
+## What the assistant did
+
+Behind the scenes, the assistant called tools such as:
+
+- `list_llm_providers` — to pick an LLM
+- `create_agent` — with `name`, `description`, `llmConfigId`, `graphNodes`, `graphEdges`
+- `list_tools` / `get_agent` / `update_agent` — to add tools
+
+You can do the same via the **Agents** UI; the chat is another way in.
+
+---
+
+## Next
+
+- [First workflow (prompts)](/tutorials/first-workflow) — Connect two agents in a workflow with prompts
+- [Concepts: Agents](/concepts/agents) — Node types, decision layer, code agents

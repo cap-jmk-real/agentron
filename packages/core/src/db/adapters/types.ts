@@ -8,4 +8,4 @@ export type DatabaseAdapter<TDatabase> = {
   restoreFromPath?: (sourcePath: string) => Promise<void>;
   /** Drop all tables and re-create from current schema. Use to clear data or fix schema drift. */
   resetDatabase?: () => void;
-}
+};

@@ -24,7 +24,10 @@ export async function GET(_: Request, { params }: Params) {
 
   const apiKey = typeof config.extra?.apiKey === "string" ? config.extra.apiKey : undefined;
   if (!apiKey) {
-    return json({ error: "No API key set. Edit this provider and enter your OpenRouter API key." }, { status: 400 });
+    return json(
+      { error: "No API key set. Edit this provider and enter your OpenRouter API key." },
+      { status: 400 }
+    );
   }
 
   try {

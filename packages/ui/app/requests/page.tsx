@@ -34,7 +34,11 @@ type AggregateBy = "none" | "source" | "workflow" | "agent";
 
 function formatTs(ts: number) {
   const d = new Date(ts);
-  return d.toLocaleTimeString(undefined, { hour12: false }) + "." + (ts % 1000).toString().padStart(3, "0");
+  return (
+    d.toLocaleTimeString(undefined, { hour12: false }) +
+    "." +
+    (ts % 1000).toString().padStart(3, "0")
+  );
 }
 
 function describeContext(ctx: LLMRequestContext): string {
@@ -103,9 +107,7 @@ export default function RequestsPage() {
 
   if (loading && !data) {
     return (
-      <div style={{ padding: "2rem", color: "var(--text-muted)" }}>
-        Loading request queue…
-      </div>
+      <div style={{ padding: "2rem", color: "var(--text-muted)" }}>Loading request queue…</div>
     );
   }
 
@@ -119,10 +121,19 @@ export default function RequestsPage() {
     <div style={{ maxWidth: 900 }}>
       <h1 style={{ margin: "0 0 0.25rem" }}>Request queue</h1>
       <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 1rem" }}>
-        LLM requests waiting due to rate limiting, and recently delayed requests. Data updates every 2 seconds.
+        LLM requests waiting due to rate limiting, and recently delayed requests. Data updates every
+        2 seconds.
       </p>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem", flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.75rem",
+          marginBottom: "1.25rem",
+          flexWrap: "wrap",
+        }}
+      >
         <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Aggregate by:</span>
         {(["none", "source", "workflow", "agent"] as const).map((value) => (
           <button
@@ -131,7 +142,13 @@ export default function RequestsPage() {
             className={`tab ${aggregateBy === value ? "tab-active" : ""}`}
             onClick={() => setAggregateBy(value)}
           >
-            {value === "none" ? "None" : value === "source" ? "Source" : value === "workflow" ? "Workflow" : "Agent"}
+            {value === "none"
+              ? "None"
+              : value === "source"
+                ? "Source"
+                : value === "workflow"
+                  ? "Workflow"
+                  : "Agent"}
           </button>
         ))}
       </div>
@@ -140,7 +157,9 @@ export default function RequestsPage() {
         <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.5rem" }}>
           Waiting now
           {pending.length > 0 && (
-            <span style={{ marginLeft: "0.5rem", fontWeight: 600, color: "var(--resource-yellow)" }}>
+            <span
+              style={{ marginLeft: "0.5rem", fontWeight: 600, color: "var(--resource-yellow)" }}
+            >
               {pending.length} request{pending.length !== 1 ? "s" : ""}
             </span>
           )}
@@ -163,9 +182,14 @@ export default function RequestsPage() {
                   fontSize: "0.85rem",
                 }}
               >
-                <span style={{ color: "var(--text-muted)", marginRight: "0.5rem" }}>{formatTs(p.addedAt)}</span>
+                <span style={{ color: "var(--text-muted)", marginRight: "0.5rem" }}>
+                  {formatTs(p.addedAt)}
+                </span>
                 <span>{describeContext(p.context)}</span>
-                <span style={{ color: "var(--text-muted)", marginLeft: "0.5rem" }}>{" | "}{p.key}</span>
+                <span style={{ color: "var(--text-muted)", marginLeft: "0.5rem" }}>
+                  {" | "}
+                  {p.key}
+                </span>
               </li>
             ))}
           </ul>
@@ -173,15 +197,26 @@ export default function RequestsPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
             {Array.from(pendingGrouped.entries()).map(([key, entries]) => (
               <div key={key}>
-                <div style={{ fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem", color: "var(--text-muted)" }}>
+                <div
+                  style={{
+                    fontSize: "0.8rem",
+                    fontWeight: 600,
+                    marginBottom: "0.35rem",
+                    color: "var(--text-muted)",
+                  }}
+                >
                   {aggregateBy === "workflow" && key !== "(no workflow)" ? (
-                    <Link href={`/workflows/${key}`} style={{ color: "var(--primary)" }}>{key}</Link>
+                    <Link href={`/workflows/${key}`} style={{ color: "var(--primary)" }}>
+                      {key}
+                    </Link>
                   ) : aggregateBy === "agent" && key !== "(no agent)" ? (
-                    <Link href={`/agents/${key}`} style={{ color: "var(--primary)" }}>{key}</Link>
+                    <Link href={`/agents/${key}`} style={{ color: "var(--primary)" }}>
+                      {key}
+                    </Link>
                   ) : (
                     key
-                  )}
-                  {" "}({entries.length})
+                  )}{" "}
+                  ({entries.length})
                 </div>
                 <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
                   {entries.map((p) => (
@@ -211,56 +246,83 @@ export default function RequestsPage() {
           Requests that had to wait at least 50ms before being sent (last 200 shown).
         </p>
         {recentDelayed.length === 0 ? (
-          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>No delayed requests in history.</p>
+          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+            No delayed requests in history.
+          </p>
         ) : aggregateBy === "none" ? (
           <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {[...recentDelayed].reverse().slice(0, 50).map((d, i) => (
-              <li
-                key={`${d.addedAt}-${d.key}-${i}`}
-                style={{
-                  padding: "0.45rem 0.6rem",
-                  borderRadius: 6,
-                  background: "var(--surface-muted)",
-                  marginBottom: "0.35rem",
-                  fontSize: "0.85rem",
-                }}
-              >
-                <span style={{ color: "var(--text-muted)", marginRight: "0.5rem" }}>{formatTs(d.completedAt)}</span>
-                <span>{describeContext(d.context)}</span>
-                <span style={{ marginLeft: "0.5rem", color: "var(--resource-yellow)" }}>waited {d.waitedMs}ms</span>
-                <span style={{ color: "var(--text-muted)", marginLeft: "0.5rem" }}>{" | "}{d.key}</span>
-              </li>
-            ))}
+            {[...recentDelayed]
+              .reverse()
+              .slice(0, 50)
+              .map((d, i) => (
+                <li
+                  key={`${d.addedAt}-${d.key}-${i}`}
+                  style={{
+                    padding: "0.45rem 0.6rem",
+                    borderRadius: 6,
+                    background: "var(--surface-muted)",
+                    marginBottom: "0.35rem",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  <span style={{ color: "var(--text-muted)", marginRight: "0.5rem" }}>
+                    {formatTs(d.completedAt)}
+                  </span>
+                  <span>{describeContext(d.context)}</span>
+                  <span style={{ marginLeft: "0.5rem", color: "var(--resource-yellow)" }}>
+                    waited {d.waitedMs}ms
+                  </span>
+                  <span style={{ color: "var(--text-muted)", marginLeft: "0.5rem" }}>
+                    {" | "}
+                    {d.key}
+                  </span>
+                </li>
+              ))}
           </ul>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
             {Array.from(delayedGrouped.entries()).map(([key, entries]) => (
               <div key={key}>
-                <div style={{ fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem", color: "var(--text-muted)" }}>
+                <div
+                  style={{
+                    fontSize: "0.8rem",
+                    fontWeight: 600,
+                    marginBottom: "0.35rem",
+                    color: "var(--text-muted)",
+                  }}
+                >
                   {aggregateBy === "workflow" && key !== "(no workflow)" ? (
-                    <Link href={`/workflows/${key}`} style={{ color: "var(--primary)" }}>{key}</Link>
+                    <Link href={`/workflows/${key}`} style={{ color: "var(--primary)" }}>
+                      {key}
+                    </Link>
                   ) : aggregateBy === "agent" && key !== "(no agent)" ? (
-                    <Link href={`/agents/${key}`} style={{ color: "var(--primary)" }}>{key}</Link>
+                    <Link href={`/agents/${key}`} style={{ color: "var(--primary)" }}>
+                      {key}
+                    </Link>
                   ) : (
                     key
-                  )}
-                  {" "}({entries.length})
+                  )}{" "}
+                  ({entries.length})
                 </div>
                 <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                  {entries.slice(-15).reverse().map((d, i) => (
-                    <li
-                      key={`${d.addedAt}-${d.key}-${i}`}
-                      style={{
-                        padding: "0.4rem 0.5rem",
-                        borderRadius: 4,
-                        background: "var(--surface-muted)",
-                        marginBottom: "0.25rem",
-                        fontSize: "0.82rem",
-                      }}
-                    >
-                      {formatTs(d.completedAt)} — {describeContext(d.context)} — waited {d.waitedMs}ms | {d.key}
-                    </li>
-                  ))}
+                  {entries
+                    .slice(-15)
+                    .reverse()
+                    .map((d, i) => (
+                      <li
+                        key={`${d.addedAt}-${d.key}-${i}`}
+                        style={{
+                          padding: "0.4rem 0.5rem",
+                          borderRadius: 4,
+                          background: "var(--surface-muted)",
+                          marginBottom: "0.25rem",
+                          fontSize: "0.82rem",
+                        }}
+                      >
+                        {formatTs(d.completedAt)} — {describeContext(d.context)} — waited{" "}
+                        {d.waitedMs}ms | {d.key}
+                      </li>
+                    ))}
                 </ul>
               </div>
             ))}

@@ -49,6 +49,7 @@ yarn-error.log*
 
 # Testing and coverage
 coverage/
+packages/ui/__tests__/e2e/artifacts/
 .nyc_output/
 *.lcov
 

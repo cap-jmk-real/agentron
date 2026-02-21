@@ -28,7 +28,14 @@ export async function PUT(request: Request, { params }: Params) {
   const { id } = await params;
   const rows = await db.select().from(ragCollections).where(eq(ragCollections.id, id));
   if (rows.length === 0) return json({ error: "Not found" }, { status: 404 });
-  let body: { name?: string; scope?: string; agentId?: string; encodingConfigId?: string; documentStoreId?: string; vectorStoreId?: string | null };
+  let body: {
+    name?: string;
+    scope?: string;
+    agentId?: string;
+    encodingConfigId?: string;
+    documentStoreId?: string;
+    vectorStoreId?: string | null;
+  };
   try {
     body = await request.json();
   } catch {

@@ -57,8 +57,8 @@ function createWindow(url: string): void {
     height: 800,
     show: false,
     webPreferences: {
-      preload: path.join(__dirname, "preload.js")
-    }
+      preload: path.join(__dirname, "preload.js"),
+    },
   });
 
   mainWindow.once("ready-to-show", () => {
@@ -93,7 +93,10 @@ function setupAutoUpdater(): void {
   autoUpdater.on("update-available", (info: UpdateInfo) => {
     const releaseNotes = typeof info.releaseNotes === "string" ? info.releaseNotes : undefined;
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("agentron:update-available", { version: info.version, releaseNotes });
+      mainWindow.webContents.send("agentron:update-available", {
+        version: info.version,
+        releaseNotes,
+      });
     }
   });
 
@@ -186,27 +189,30 @@ async function startInProcessServer(): Promise<string> {
   return errorPageDataUrl(path.join(userData, "agentron-desktop.log"));
 }
 
-app.whenReady().then(async () => {
-  logLine("app.whenReady");
-  try {
-    const adapter = initializeLocalRuntime();
-    runtimeClose = () => adapter.close();
-  } catch (err) {
-    logLine(`Local runtime unavailable: ${(err as Error).message}`);
-  }
+app
+  .whenReady()
+  .then(async () => {
+    logLine("app.whenReady");
+    try {
+      const adapter = initializeLocalRuntime();
+      runtimeClose = () => adapter.close();
+    } catch (err) {
+      logLine(`Local runtime unavailable: ${(err as Error).message}`);
+    }
 
-  let url: string;
-  if (app.isPackaged) {
-    url = await startInProcessServer();
-  } else {
-    url = process.env.AGENTRON_STUDIO_URL ?? `http://localhost:${DEV_PORT}`;
-  }
+    let url: string;
+    if (app.isPackaged) {
+      url = await startInProcessServer();
+    } else {
+      url = process.env.AGENTRON_STUDIO_URL ?? `http://localhost:${DEV_PORT}`;
+    }
 
-  createWindow(url);
-  setupAutoUpdater();
-}).catch((err) => {
-  logLine(`whenReady failed: ${err}`);
-});
+    createWindow(url);
+    setupAutoUpdater();
+  })
+  .catch((err) => {
+    logLine(`whenReady failed: ${err}`);
+  });
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {

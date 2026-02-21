@@ -22,12 +22,14 @@ function writePlaceholder256(cb) {
     const { PNG } = require("pngjs");
     const png = new PNG({ width: 256, height: 256, filterType: -1 });
     for (let i = 0; i < png.data.length; i += 4) {
-      png.data[i] = 99;     // R (indigo)
+      png.data[i] = 99; // R (indigo)
       png.data[i + 1] = 102; // G
       png.data[i + 2] = 241; // B
       png.data[i + 3] = 255; // A
     }
-    png.pack().pipe(fs.createWriteStream(outputPng))
+    png
+      .pack()
+      .pipe(fs.createWriteStream(outputPng))
       .on("finish", () => {
         console.warn("Wrote 256x256 placeholder icon (sharp unavailable)");
         if (cb) cb();

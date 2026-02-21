@@ -27,7 +27,12 @@ export async function PUT(request: Request, { params }: Params) {
   const { id } = await params;
   const rows = await db.select().from(ragConnectors).where(eq(ragConnectors.id, id));
   if (rows.length === 0) return json({ error: "Not found" }, { status: 404 });
-  let body: { type?: string; collectionId?: string; config?: Record<string, unknown>; status?: string };
+  let body: {
+    type?: string;
+    collectionId?: string;
+    config?: Record<string, unknown>;
+    status?: string;
+  };
   try {
     body = await request.json();
   } catch {

@@ -1,15 +1,30 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import { db, vaultMeta } from "../../app/api/_lib/db";
 import { eq } from "drizzle-orm";
 import { POST as createPost } from "../../app/api/vault/create/route";
 import { GET as statusGet } from "../../app/api/vault/status/route";
 import { POST as lockPost } from "../../app/api/vault/lock/route";
 import { POST as unlockPost } from "../../app/api/vault/unlock/route";
+import * as vault from "../../app/api/_lib/vault";
 
 describe("Vault create API", () => {
   beforeAll(async () => {
     // Remove default vault if present so create can succeed in tests that need it
     await db.delete(vaultMeta).where(eq(vaultMeta.id, "default")).run();
+  });
+
+  it("POST /api/vault/unlock returns 400 when vault does not exist", async () => {
+    await db.delete(vaultMeta).where(eq(vaultMeta.id, "default")).run();
+    const res = await unlockPost(
+      new Request("http://localhost/api/vault/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ masterPassword: "any-password" }),
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("does not exist");
   });
 
   it("POST /api/vault/create returns 400 when masterPassword missing", async () => {
@@ -116,5 +131,20 @@ describe("Vault create API", () => {
     const data = await res.json();
     expect(data.ok).toBe(true);
     expect(res.headers.get("Set-Cookie")).toMatch(/agentron_vault=/);
+  });
+
+  it("POST /api/vault/unlock returns 401 when decrypt succeeds but check value is wrong", async () => {
+    vi.spyOn(vault, "decryptWithVaultKey").mockReturnValueOnce("wrong_plaintext");
+    const res = await unlockPost(
+      new Request("http://localhost/api/vault/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ masterPassword: "test-vault-password-123" }),
+      })
+    );
+    expect(res.status).toBe(401);
+    const data = await res.json();
+    expect(data.error).toContain("Invalid master password");
+    vi.restoreAllMocks();
   });
 });

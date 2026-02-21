@@ -27,12 +27,9 @@
     "electron-updater": "^6.3.9"
   },
   "devDependencies": {
-    "@electron/rebuild": "latest",
-    "@next/swc-darwin-arm64": "^16.1.6",
-    "@rollup/rollup-darwin-arm64": "4.57.1",
-    "@rollup/rollup-darwin-x64": "4.57.1",
+    "@electron/rebuild": "^4.0.0",
     "electron": "40.2.1",
-    "electron-builder": "26.7.0",
+    "electron-builder": "^26.8.1",
     "esbuild": "0.24.0",
     "pngjs": "^7.0.0",
     "sharp": "^0.33.5"

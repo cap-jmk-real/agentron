@@ -298,12 +298,23 @@ const SCHEMA_SQL = `
           resolved_at integer,
           resolved_by text
         );
+        create table if not exists rag_embedding_providers (
+          id text primary key,
+          name text not null,
+          type text not null,
+          endpoint text,
+          api_key_ref text,
+          extra text,
+          created_at integer not null
+        );
         create table if not exists rag_encoding_configs (
           id text primary key,
           name text not null,
           provider text not null,
           model_or_endpoint text not null,
           dimensions integer not null,
+          embedding_provider_id text,
+          endpoint text,
           created_at integer not null
         );
         create table if not exists rag_document_stores (
@@ -421,6 +432,15 @@ const SCHEMA_SQL = `
           created_at integer not null,
           finished_at integer
         );
+        create table if not exists eval_results (
+          id text primary key,
+          job_id text not null,
+          training_run_id text,
+          instance_ref text,
+          eval_set_ref text,
+          metrics text not null,
+          created_at integer not null
+        );
         create table if not exists reminders (
           id text primary key,
           run_at integer not null,
@@ -458,7 +478,11 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
       const escaped = absolute.replace(/\\/g, "/").replace(/'/g, "''");
       sqlite.exec(`ATTACH DATABASE '${escaped}' AS backup`);
       try {
-        const rows = sqlite.prepare("SELECT name FROM backup.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[];
+        const rows = sqlite
+          .prepare(
+            "SELECT name FROM backup.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+          )
+          .all() as { name: string }[];
         for (const { name } of rows) {
           const quoted = `"${name.replace(/"/g, '""')}"`;
           sqlite.exec(`DELETE FROM main.${quoted}`);
@@ -470,11 +494,51 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
     },
     resetDatabase: () => {
       const tables = [
-        "notifications", "reminders", "training_runs", "agent_store_entries", "guardrails", "technique_insights", "technique_playbook", "improvement_jobs",
-        "rag_vectors", "rag_connectors", "rag_documents", "rag_collections", "rag_vector_stores", "rag_document_stores", "rag_encoding_configs",
-        "tasks", "sandbox_site_bindings", "feedback", "remote_servers", "model_pricing", "token_usage",
-        "message_queue_log", "execution_log", "custom_functions", "sandboxes", "files", "chat_messages", "conversations", "assistant_memory", "chat_assistant_settings", "saved_credentials", "vault_meta", "contexts",
-        "agent_skills", "skills", "run_logs", "executions", "llm_configs", "prompts", "tools", "workflows", "agents"
+        "notifications",
+        "reminders",
+        "training_runs",
+        "eval_results",
+        "agent_store_entries",
+        "guardrails",
+        "technique_insights",
+        "technique_playbook",
+        "improvement_jobs",
+        "rag_vectors",
+        "rag_connectors",
+        "rag_documents",
+        "rag_collections",
+        "rag_vector_stores",
+        "rag_document_stores",
+        "rag_encoding_configs",
+        "rag_embedding_providers",
+        "tasks",
+        "sandbox_site_bindings",
+        "feedback_vectors",
+        "feedback",
+        "remote_servers",
+        "model_pricing",
+        "token_usage",
+        "message_queue_log",
+        "execution_log",
+        "custom_functions",
+        "sandboxes",
+        "files",
+        "chat_messages",
+        "conversations",
+        "assistant_memory",
+        "chat_assistant_settings",
+        "saved_credentials",
+        "vault_meta",
+        "contexts",
+        "agent_skills",
+        "skills",
+        "run_logs",
+        "executions",
+        "llm_configs",
+        "prompts",
+        "tools",
+        "workflows",
+        "agents",
       ];
       for (const table of tables) {
         sqlite.exec(`DROP TABLE IF EXISTS ${table}`);
@@ -524,7 +588,9 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         // Column already exists
       }
       try {
-        sqlite.exec("CREATE TABLE IF NOT EXISTS conversations (id text primary key, title text, rating integer, note text, summary text, last_used_provider text, last_used_model text, created_at integer not null)");
+        sqlite.exec(
+          "CREATE TABLE IF NOT EXISTS conversations (id text primary key, title text, rating integer, note text, summary text, last_used_provider text, last_used_model text, created_at integer not null)"
+        );
       } catch {
         // Already exists
       }
@@ -544,7 +610,9 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         // Column already exists
       }
       try {
-        sqlite.exec("CREATE TABLE IF NOT EXISTS assistant_memory (id text primary key, key text, content text not null, created_at integer not null)");
+        sqlite.exec(
+          "CREATE TABLE IF NOT EXISTS assistant_memory (id text primary key, key text, content text not null, created_at integer not null)"
+        );
       } catch {
         // Already exists
       }
@@ -554,12 +622,16 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         // Column already exists
       }
       try {
-        sqlite.exec("CREATE TABLE IF NOT EXISTS chat_assistant_settings (id text primary key, custom_system_prompt text, context_agent_ids text, context_workflow_ids text, context_tool_ids text, recent_summaries_count integer, temperature real, updated_at integer not null)");
+        sqlite.exec(
+          "CREATE TABLE IF NOT EXISTS chat_assistant_settings (id text primary key, custom_system_prompt text, context_agent_ids text, context_workflow_ids text, context_tool_ids text, recent_summaries_count integer, temperature real, updated_at integer not null)"
+        );
       } catch {
         // Already exists
       }
       try {
-        sqlite.exec("ALTER TABLE chat_assistant_settings ADD COLUMN recent_summaries_count integer");
+        sqlite.exec(
+          "ALTER TABLE chat_assistant_settings ADD COLUMN recent_summaries_count integer"
+        );
       } catch {
         // Column already exists
       }
@@ -569,7 +641,9 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         // Column already exists
       }
       try {
-        sqlite.exec("ALTER TABLE chat_assistant_settings ADD COLUMN history_compress_after integer");
+        sqlite.exec(
+          "ALTER TABLE chat_assistant_settings ADD COLUMN history_compress_after integer"
+        );
       } catch {
         // Column already exists
       }
@@ -579,12 +653,31 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         // Column already exists
       }
       try {
-        sqlite.exec("ALTER TABLE chat_assistant_settings ADD COLUMN planner_recent_messages integer");
+        sqlite.exec(
+          "ALTER TABLE chat_assistant_settings ADD COLUMN planner_recent_messages integer"
+        );
       } catch {
         // Column already exists
       }
       try {
         sqlite.exec("ALTER TABLE rag_collections ADD COLUMN vector_store_id text");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec(
+          "CREATE TABLE IF NOT EXISTS rag_embedding_providers (id text primary key, name text not null, type text not null, endpoint text, api_key_ref text, extra text, created_at integer not null)"
+        );
+      } catch {
+        // Already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE rag_encoding_configs ADD COLUMN embedding_provider_id text");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE rag_encoding_configs ADD COLUMN endpoint text");
       } catch {
         // Column already exists
       }
@@ -599,22 +692,30 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         // Column already exists
       }
       try {
-        sqlite.exec("CREATE TABLE IF NOT EXISTS saved_credentials (key text primary key, value text not null, created_at integer not null)");
+        sqlite.exec(
+          "CREATE TABLE IF NOT EXISTS saved_credentials (key text primary key, value text not null, created_at integer not null)"
+        );
       } catch {
         // Already exists
       }
       try {
-        sqlite.exec('CREATE TABLE IF NOT EXISTS vault_meta (id text primary key, salt text not null, "check" text not null, created_at integer not null)');
+        sqlite.exec(
+          'CREATE TABLE IF NOT EXISTS vault_meta (id text primary key, salt text not null, "check" text not null, created_at integer not null)'
+        );
       } catch {
         // Already exists
       }
       try {
-        sqlite.exec("CREATE TABLE IF NOT EXISTS message_queue_log (id text primary key, conversation_id text not null, message_id text, type text not null, phase text, label text, payload text, created_at integer not null)");
+        sqlite.exec(
+          "CREATE TABLE IF NOT EXISTS message_queue_log (id text primary key, conversation_id text not null, message_id text, type text not null, phase text, label text, payload text, created_at integer not null)"
+        );
       } catch {
         // Already exists
       }
       try {
-        sqlite.exec("CREATE TABLE IF NOT EXISTS execution_log (id text primary key, execution_id text not null, sequence integer not null, phase text not null, label text, payload text, created_at integer not null)");
+        sqlite.exec(
+          "CREATE TABLE IF NOT EXISTS execution_log (id text primary key, execution_id text not null, sequence integer not null, phase text not null, label text, payload text, created_at integer not null)"
+        );
       } catch {
         // Already exists
       }
@@ -628,6 +729,48 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
       } catch {
         // Table might not exist yet
       }
+      try {
+        sqlite.exec(
+          "CREATE TABLE IF NOT EXISTS feedback_vectors (id text primary key, feedback_id text not null, target_type text not null, target_id text not null, embedding text not null, text_for_embed text not null, created_at integer not null)"
+        );
+      } catch {
+        // Already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE chat_assistant_settings ADD COLUMN rag_retrieve_limit integer");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE chat_assistant_settings ADD COLUMN feedback_last_n integer");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE chat_assistant_settings ADD COLUMN feedback_retrieve_cap integer");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE chat_assistant_settings ADD COLUMN feedback_min_score text");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE agents ADD COLUMN feedback_last_n integer");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE agents ADD COLUMN feedback_retrieve_cap integer");
+      } catch {
+        // Column already exists
+      }
+      try {
+        sqlite.exec("ALTER TABLE rag_collections ADD COLUMN rag_retrieve_limit integer");
+      } catch {
+        // Column already exists
+      }
       sqlite.exec(`
         CREATE TABLE IF NOT EXISTS improvement_jobs (id text primary key, name text, scope_type text, scope_id text, student_llm_config_id text, teacher_llm_config_id text, current_model_ref text, instance_refs text, architecture_spec text, last_trained_at integer, last_feedback_at integer, created_at integer not null);
         CREATE TABLE IF NOT EXISTS technique_insights (id text primary key, job_id text not null, run_id text, technique_or_strategy text not null, outcome text not null, summary text not null, config text, created_at integer not null);
@@ -635,9 +778,10 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         CREATE TABLE IF NOT EXISTS guardrails (id text primary key, scope text not null, scope_id text, config text not null, created_at integer not null);
         CREATE TABLE IF NOT EXISTS agent_store_entries (id text primary key, scope text not null, scope_id text not null, store_name text not null, key text not null, value text not null, created_at integer not null);
         CREATE TABLE IF NOT EXISTS training_runs (id text primary key, job_id text not null, backend text not null, status text not null, dataset_ref text, output_model_ref text, config text, created_at integer not null, finished_at integer);
+        CREATE TABLE IF NOT EXISTS eval_results (id text primary key, job_id text not null, training_run_id text, instance_ref text, eval_set_ref text, metrics text not null, created_at integer not null);
         CREATE TABLE IF NOT EXISTS reminders (id text primary key, run_at integer not null, message text not null, conversation_id text, task_type text not null, status text not null, created_at integer not null, fired_at integer);
         CREATE TABLE IF NOT EXISTS notifications (id text primary key, type text not null, source_id text not null, title text not null, message text not null, severity text not null, status text not null, created_at integer not null, updated_at integer not null, metadata text);
       `);
-    }
+    },
   };
 };

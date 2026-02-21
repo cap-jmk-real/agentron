@@ -37,14 +37,25 @@ export default function SandboxShellPage() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   if (!id) {
     return (
       <div style={{ padding: "2rem" }}>
         <p style={{ color: "var(--text-muted)" }}>Missing sandbox id.</p>
-        <Link href="/sandboxes" className="button button-small" style={{ marginTop: "0.5rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+        <Link
+          href="/sandboxes"
+          className="button button-small"
+          style={{
+            marginTop: "0.5rem",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.35rem",
+          }}
+        >
           <ArrowLeft size={14} /> Back to sandboxes
         </Link>
       </div>
@@ -52,18 +63,23 @@ export default function SandboxShellPage() {
   }
 
   if (loading) {
-    return (
-      <div style={{ padding: "2rem", color: "var(--text-muted)" }}>
-        Loading…
-      </div>
-    );
+    return <div style={{ padding: "2rem", color: "var(--text-muted)" }}>Loading…</div>;
   }
 
   if (!sandbox) {
     return (
       <div style={{ padding: "2rem" }}>
         <p style={{ color: "var(--resource-red)" }}>Sandbox not found.</p>
-        <Link href="/sandboxes" className="button button-small" style={{ marginTop: "0.5rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+        <Link
+          href="/sandboxes"
+          className="button button-small"
+          style={{
+            marginTop: "0.5rem",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.35rem",
+          }}
+        >
           <ArrowLeft size={14} /> Back to sandboxes
         </Link>
       </div>
@@ -73,8 +89,19 @@ export default function SandboxShellPage() {
   if (sandbox.status !== "running" || !sandbox.containerId) {
     return (
       <div style={{ padding: "2rem" }}>
-        <p style={{ color: "var(--text-muted)" }}>Sandbox is not running. Start it first from the sandbox list or chat.</p>
-        <Link href="/sandboxes" className="button button-small" style={{ marginTop: "0.5rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+        <p style={{ color: "var(--text-muted)" }}>
+          Sandbox is not running. Start it first from the sandbox list or chat.
+        </p>
+        <Link
+          href="/sandboxes"
+          className="button button-small"
+          style={{
+            marginTop: "0.5rem",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.35rem",
+          }}
+        >
           <ArrowLeft size={14} /> Back to sandboxes
         </Link>
       </div>
@@ -82,8 +109,23 @@ export default function SandboxShellPage() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - var(--topbar-height, 56px))", padding: "0 1rem 1rem" }}>
-      <div style={{ padding: "0.5rem 0", display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "calc(100vh - var(--topbar-height, 56px))",
+        padding: "0 1rem 1rem",
+      }}
+    >
+      <div
+        style={{
+          padding: "0.5rem 0",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+          flexShrink: 0,
+        }}
+      >
         <Link
           href="/sandboxes"
           className="button button-small"
@@ -95,8 +137,21 @@ export default function SandboxShellPage() {
           Terminal · {sandbox.name}
         </span>
       </div>
-      <div style={{ flex: 1, minHeight: 0, border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden", background: "var(--bg)" }}>
-        <SandboxTerminal sandboxId={sandbox.id} sandboxName={sandbox.name} className="sandbox-terminal-fill" />
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          overflow: "hidden",
+          background: "var(--bg)",
+        }}
+      >
+        <SandboxTerminal
+          sandboxId={sandbox.id}
+          sandboxName={sandbox.name}
+          className="sandbox-terminal-fill"
+        />
       </div>
     </div>
   );

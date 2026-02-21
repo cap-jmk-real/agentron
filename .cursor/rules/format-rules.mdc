@@ -1,0 +1,31 @@
+---
+description: Code formatting — Prettier rules and when to run format/format:check
+alwaysApply: true
+---
+
+# Format rules
+
+This repo uses **Prettier** (the most widely adopted JS/TS formatter) for consistent formatting. Configuration is in the repo root: `.prettierrc.json` and `.prettierignore`.
+
+## Config summary (`.prettierrc.json`)
+
+- **printWidth:** 100
+- **tabWidth:** 2
+- **semi:** true
+- **singleQuote:** false (double quotes for strings)
+- **trailingComma:** "es5"
+
+## Commands (run from repo root)
+
+- **Format all in-scope files:** `npm run format` (writes changes).
+- **Check formatting only (CI / pre-push):** `npm run format:check` (exits non-zero if any file is not formatted).
+
+## When to format
+
+- Before committing: run `npm run format` to fix formatting, or rely on `format:check` in `npm run check` / `npm run pre-push` and fix any reported files.
+- When adding or editing code: keep to the rules above (or run `npm run format` so Prettier applies them).
+- CI runs `format:check`; PRs must have formatting passing.
+
+## Scope
+
+Prettier runs on JS, TS, JSON, and other supported files under the repo. Ignored paths (e.g. `node_modules`, lockfiles, `.data`, docs/markdown) are listed in `.prettierignore`.

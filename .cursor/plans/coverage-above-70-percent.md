@@ -2,17 +2,17 @@
 
 ## Current state vs target
 
-| Metric     | Current | Target |
-|-----------|---------|--------|
-| Statements | **70.33%** | **> 70%** ✓ |
-| Branches   | 60.4% | (threshold 55% in vitest.config) |
-| Functions  | 87.37% | (threshold 70%) |
-| Lines      | **70.33%** | **> 70%** ✓ |
+| Metric     | Current | Target (vitest.config.ts) |
+|-----------|---------|---------------------------|
+| Statements | ~51% | **70%** |
+| Branches   | ~37% | **100%** |
+| Functions  | ~57% | **70%** |
+| Lines      | ~53% | **70%** |
 
-*Phase 1 and minimal Phase 2 completed; threshold enforced in `vitest.config.ts`.*
+*Thresholds are enforced in `vitest.config.ts`. Reaching 70% lines/statements/functions requires adding tests for in-scope routes and `_lib`; reaching 100% branches requires covering ~4,800 more branches across the in-scope codebase (ongoing test expansion).*
 
-**Codebase (in scope):** `packages/ui`, coverage over `app/**/*.ts` (chat `route.ts` already excluded).  
-**Total lines in report:** 5,087 | **Covered:** 2,574 → need **~987 more lines covered** for 70%, or reduce denominator by excluding intentional gaps.
+**Codebase (in scope):** `packages/ui`, coverage over `app/**/*.ts` (many paths excluded; see `vitest.config.ts` and `__tests__/README.md`).  
+**Improve coverage by adding tests** (see `.cursor/rules/coverage-and-test-failures.mdc`); avoid excluding code to hit targets.
 
 ---
 

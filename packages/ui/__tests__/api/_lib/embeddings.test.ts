@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
 import { embed, getEncodingConfig } from "../../../app/api/_lib/embeddings";
 import { POST as encPost } from "../../../app/api/rag/encoding-config/route";
+import { POST as provPost } from "../../../app/api/rag/embedding-providers/route";
 import { GET as llmListGet, POST as llmPost } from "../../../app/api/llm/providers/route";
 
 describe("embeddings", () => {
@@ -66,6 +67,41 @@ describe("embeddings", () => {
       expect(config?.provider).toBe("openai");
       expect(config?.dimensions).toBe(1536);
     });
+
+    it("returns embeddingProviderId and endpoint when set", async () => {
+      const provRes = await provPost(
+        new Request("http://localhost/api/rag/embedding-providers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Embed test local",
+            type: "local",
+            endpoint: "http://localhost:11434",
+          }),
+        })
+      );
+      if (provRes.status !== 201) return;
+      const prov = await provRes.json();
+      const encRes = await encPost(
+        new Request("http://localhost/api/rag/encoding-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Enc with provider",
+            embeddingProviderId: prov.id,
+            modelOrEndpoint: "nomic-embed-text",
+            dimensions: 768,
+          }),
+        })
+      );
+      if (encRes.status !== 201) return;
+      const enc = await encRes.json();
+      const config = await getEncodingConfig(enc.id);
+      expect(config).not.toBeNull();
+      expect(config?.embeddingProviderId).toBe(prov.id);
+      expect(config?.modelOrEndpoint).toBe("nomic-embed-text");
+      expect(config?.dimensions).toBe(768);
+    });
   });
 
   describe("embed", () => {
@@ -121,9 +157,77 @@ describe("embeddings", () => {
           }),
       }) as typeof fetch;
 
-      await expect(embed(encId, ["a", "b"])).rejects.toThrow(
-        "returned 1 vectors for 2 inputs"
+      await expect(embed(encId, ["a", "b"])).rejects.toThrow("returned 1 vectors for 2 inputs");
+    });
+
+    it("embed with embeddingProviderId (local) uses Ollama /api/embed and returns vectors", async () => {
+      const provRes = await provPost(
+        new Request("http://localhost/api/rag/embedding-providers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Embed test local",
+            type: "local",
+            endpoint: "http://localhost:11434",
+          }),
+        })
       );
+      if (provRes.status !== 201) return;
+      const prov = await provRes.json();
+      const encRes = await encPost(
+        new Request("http://localhost/api/rag/encoding-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Enc local",
+            embeddingProviderId: prov.id,
+            modelOrEndpoint: "nomic-embed-text",
+            dimensions: 768,
+          }),
+        })
+      );
+      if (encRes.status !== 201) return;
+      const enc = await encRes.json();
+      globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+        if (typeof url === "string" && url.includes("/api/embed")) {
+          const body = init?.body ? JSON.parse(init.body as string) : {};
+          expect(body.model).toBe("nomic-embed-text");
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                embeddings: [
+                  [0.1, 0.2, 0.3],
+                  [0.4, 0.5, 0.6],
+                ],
+              }),
+          });
+        }
+        return savedFetch(typeof url === "string" ? new URL(url) : (url as URL), init);
+      }) as typeof fetch;
+
+      const result = await embed(enc.id, ["a", "b"]);
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual([0.1, 0.2, 0.3]);
+      expect(result[1]).toEqual([0.4, 0.5, 0.6]);
+    });
+
+    it("embed with embeddingProviderId throws when provider not found", async () => {
+      const encRes = await encPost(
+        new Request("http://localhost/api/rag/encoding-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Enc bad provider",
+            embeddingProviderId: "non-existent-provider-id",
+            modelOrEndpoint: "nomic-embed-text",
+            dimensions: 768,
+          }),
+        })
+      );
+      if (encRes.status !== 201) return;
+      const enc = await encRes.json();
+      await expect(embed(enc.id, ["hello"])).rejects.toThrow("Embedding provider not found");
     });
   });
 });

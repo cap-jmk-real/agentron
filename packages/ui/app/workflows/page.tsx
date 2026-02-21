@@ -20,7 +20,11 @@ function formatSchedule(executionMode: string, schedule?: string): string {
   const s = schedule.trim();
   if (s.startsWith("daily@")) return "Daily at " + (s.slice(6) || "09:00");
   if (s.startsWith("weekly@")) {
-    const days = s.slice(7).split(",").map((d) => WEEKDAY_NAMES[parseInt(d, 10)] ?? d).filter(Boolean);
+    const days = s
+      .slice(7)
+      .split(",")
+      .map((d) => WEEKDAY_NAMES[parseInt(d, 10)] ?? d)
+      .filter(Boolean);
     return days.length ? "Weekly " + days.join(", ") : "Weekly";
   }
   if (s.startsWith("monthly@")) {
@@ -67,8 +71,8 @@ export default function WorkflowsPage() {
         name,
         nodes: [],
         edges: [],
-        executionMode: "one_time"
-      })
+        executionMode: "one_time",
+      }),
     });
     setName("");
     await load();
@@ -131,7 +135,15 @@ export default function WorkflowsPage() {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: "0.5rem",
+        }}
+      >
         <h1 style={{ margin: 0 }}>Workflows</h1>
         <a
           href="/api/export?type=workflows"
@@ -143,7 +155,9 @@ export default function WorkflowsPage() {
             if (!res.ok) return;
             const blob = await res.blob();
             const disposition = res.headers.get("Content-Disposition");
-            const name = disposition?.match(/filename="?([^";]+)"?/)?.[1] ?? `agentron-workflows-${new Date().toISOString().slice(0, 10)}.json`;
+            const name =
+              disposition?.match(/filename="?([^";]+)"?/)?.[1] ??
+              `agentron-workflows-${new Date().toISOString().slice(0, 10)}.json`;
             const a = document.createElement("a");
             a.href = URL.createObjectURL(blob);
             a.download = name;
@@ -179,8 +193,24 @@ export default function WorkflowsPage() {
         </form>
       </div>
       {workflows.length > 0 && (
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "1.5rem", flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.875rem", cursor: "pointer" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            marginTop: "1.5rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.35rem",
+              fontSize: "0.875rem",
+              cursor: "pointer",
+            }}
+          >
             <input
               type="checkbox"
               checked={workflows.length > 0 && selectedIds.size === workflows.length}
@@ -211,12 +241,24 @@ export default function WorkflowsPage() {
               checked={selectedIds.has(workflow.id)}
               onChange={() => toggleSelect(workflow.id)}
               onClick={(e) => e.stopPropagation()}
-              style={{ width: "1rem", height: "1rem", flexShrink: 0, accentColor: "var(--primary)" }}
+              style={{
+                width: "1rem",
+                height: "1rem",
+                flexShrink: 0,
+                accentColor: "var(--primary)",
+              }}
             />
             <Link
               href={workflow.id ? `/workflows/${encodeURIComponent(workflow.id)}` : "/workflows"}
               className="list-item"
-              style={{ flex: 1, display: "flex", alignItems: "center", gap: "0.6rem", textDecoration: "none", color: "inherit" }}
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                gap: "0.6rem",
+                textDecoration: "none",
+                color: "inherit",
+              }}
             >
               <WorkflowIcon size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
               <div>
@@ -276,7 +318,9 @@ export default function WorkflowsPage() {
       <ConfirmModal
         open={!!workflowToDelete}
         title="Delete workflow"
-        message={workflowToDelete ? `Delete "${workflowToDelete.name}"? This cannot be undone.` : ""}
+        message={
+          workflowToDelete ? `Delete "${workflowToDelete.name}"? This cannot be undone.` : ""
+        }
         confirmLabel="Delete"
         cancelLabel="Cancel"
         danger

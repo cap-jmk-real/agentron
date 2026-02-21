@@ -1,230 +1,435 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Agentron – Logo A→T→A animation</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
-      padding: 2rem;
-      margin: 0;
-    }
-    h1 { text-align: center; margin-bottom: 0.5rem; font-weight: 600; }
-    .subtitle { text-align: center; color: #94a3b8; margin-bottom: 2rem; }
-    section { max-width: 900px; margin: 0 auto 3rem; }
-    section h2 { margin-bottom: 1rem; font-size: 1.25rem; color: #cbd5e1; }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agentron – Logo A→T→A animation</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 2rem;
+        margin: 0;
+      }
+      h1 {
+        text-align: center;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+      }
+      .subtitle {
+        text-align: center;
+        color: #94a3b8;
+        margin-bottom: 2rem;
+      }
+      section {
+        max-width: 900px;
+        margin: 0 auto 3rem;
+      }
+      section h2 {
+        margin-bottom: 1rem;
+        font-size: 1.25rem;
+        color: #cbd5e1;
+      }
 
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1.25rem; }
-    .card {
-      background: #1e293b;
-      border-radius: 12px;
-      padding: 1.25rem;
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .card figure {
-      width: 100px;
-      height: 100px;
-      margin: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #0f172a;
-      border-radius: 10px;
-    }
-    .card figure svg { max-width: 64px; max-height: 64px; }
-    .card span { font-size: 0.85rem; color: #94a3b8; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 1.25rem;
+      }
+      .card {
+        background: #1e293b;
+        border-radius: 12px;
+        padding: 1.25rem;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .card figure {
+        width: 100px;
+        height: 100px;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0f172a;
+        border-radius: 10px;
+      }
+      .card figure svg {
+        max-width: 64px;
+        max-height: 64px;
+      }
+      .card span {
+        font-size: 0.85rem;
+        color: #94a3b8;
+      }
 
-    .loading-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1.5rem; }
-    .loading-demo {
-      background: #1e293b;
-      border-radius: 12px;
-      padding: 1.5rem;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.75rem;
-    }
-    .loading-demo .stage {
-      width: 120px;
-      height: 120px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #0f172a;
-      border-radius: 12px;
-      perspective: 280px;
-    }
-    .loading-demo .stage .flip-inner {
-      width: 64px;
-      height: 64px;
-      position: relative;
-      transform-style: preserve-3d;
-      -webkit-transform-style: preserve-3d;
-    }
-    .loading-demo .stage .flip-inner svg {
-      width: 64px;
-      height: 64px;
-      position: absolute;
-      left: 0;
-      top: 0;
-      backface-visibility: hidden;
-      -webkit-backface-visibility: hidden;
-    }
-    .loading-demo .stage .flip-inner .flip-back {
-      transform: rotateY(180deg);
-    }
-    .loading-demo span { font-size: 0.85rem; color: #94a3b8; }
+      .loading-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 1.5rem;
+      }
+      .loading-demo {
+        background: #1e293b;
+        border-radius: 12px;
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .loading-demo .stage {
+        width: 120px;
+        height: 120px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0f172a;
+        border-radius: 12px;
+        perspective: 280px;
+      }
+      .loading-demo .stage .flip-inner {
+        width: 64px;
+        height: 64px;
+        position: relative;
+        transform-style: preserve-3d;
+        -webkit-transform-style: preserve-3d;
+      }
+      .loading-demo .stage .flip-inner svg {
+        width: 64px;
+        height: 64px;
+        position: absolute;
+        left: 0;
+        top: 0;
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+      }
+      .loading-demo .stage .flip-inner .flip-back {
+        transform: rotateY(180deg);
+      }
+      .loading-demo span {
+        font-size: 0.85rem;
+        color: #94a3b8;
+      }
 
-    /* Seamless loop: no clear start/end. Cross through 0 at loop so motion never “stops”. Same 4-beat rhythm. */
-    @keyframes a-to-t-to-a {
-      /* Beat 1: T tilt 45→0 (20%). Beat 2: flip T→A, A at 0. Beat 3: A tilt 0→45 (20%). Beat 4: flip A→T. */
-      0% { transform: rotateY(180deg) rotateZ(45deg); }
-      5% { transform: rotateY(180deg) rotateZ(34deg); }
-      10% { transform: rotateY(180deg) rotateZ(22deg); }
-      15% { transform: rotateY(180deg) rotateZ(11deg); }
-      20% { transform: rotateY(180deg) rotateZ(0deg); }
-      22% { transform: rotateY(180deg) rotateZ(-8deg); }
-      25% { transform: rotateY(180deg) rotateZ(-24deg); }
-      27% { transform: rotateY(180deg) rotateZ(-12deg); }
-      29% { transform: rotateY(180deg) rotateZ(-4deg); }
-      31% { transform: rotateY(180deg) rotateZ(0deg); }
-      33% { transform: rotateY(144deg) rotateZ(0deg); }
-      35% { transform: rotateY(108deg) rotateZ(0deg); }
-      37% { transform: rotateY(72deg) rotateZ(0deg); }
-      39% { transform: rotateY(36deg) rotateZ(0deg); }
-      41% { transform: rotateY(0deg) rotateZ(0deg); }
-      50% { transform: rotateY(0deg) rotateZ(0deg); }
-      55% { transform: rotateY(0deg) rotateZ(11deg); }
-      60% { transform: rotateY(0deg) rotateZ(22deg); }
-      65% { transform: rotateY(0deg) rotateZ(34deg); }
-      70% { transform: rotateY(0deg) rotateZ(45deg); }
-      72% { transform: rotateY(0deg) rotateZ(55deg); }
-      75% { transform: rotateY(0deg) rotateZ(65deg); }
-      77% { transform: rotateY(0deg) rotateZ(58deg); }
-      79% { transform: rotateY(0deg) rotateZ(51deg); }
-      81% { transform: rotateY(0deg) rotateZ(45deg); }
-      83% { transform: rotateY(36deg) rotateZ(45deg); }
-      85% { transform: rotateY(72deg) rotateZ(45deg); }
-      87% { transform: rotateY(108deg) rotateZ(45deg); }
-      89% { transform: rotateY(144deg) rotateZ(45deg); }
-      91% { transform: rotateY(180deg) rotateZ(45deg); }
-      100% { transform: rotateY(180deg) rotateZ(45deg); }
-    }
-    .anim-a-t-a .stage .flip-inner {
-      animation: a-to-t-to-a 4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-    }
-  </style>
-</head>
-<body>
-  <h1>Agentron logo</h1>
-  <p class="subtitle">4+9 with eye · Animation: A turns into T and back</p>
+      /* Seamless loop: no clear start/end. Cross through 0 at loop so motion never “stops”. Same 4-beat rhythm. */
+      @keyframes a-to-t-to-a {
+        /* Beat 1: T tilt 45→0 (20%). Beat 2: flip T→A, A at 0. Beat 3: A tilt 0→45 (20%). Beat 4: flip A→T. */
+        0% {
+          transform: rotateY(180deg) rotateZ(45deg);
+        }
+        5% {
+          transform: rotateY(180deg) rotateZ(34deg);
+        }
+        10% {
+          transform: rotateY(180deg) rotateZ(22deg);
+        }
+        15% {
+          transform: rotateY(180deg) rotateZ(11deg);
+        }
+        20% {
+          transform: rotateY(180deg) rotateZ(0deg);
+        }
+        22% {
+          transform: rotateY(180deg) rotateZ(-8deg);
+        }
+        25% {
+          transform: rotateY(180deg) rotateZ(-24deg);
+        }
+        27% {
+          transform: rotateY(180deg) rotateZ(-12deg);
+        }
+        29% {
+          transform: rotateY(180deg) rotateZ(-4deg);
+        }
+        31% {
+          transform: rotateY(180deg) rotateZ(0deg);
+        }
+        33% {
+          transform: rotateY(144deg) rotateZ(0deg);
+        }
+        35% {
+          transform: rotateY(108deg) rotateZ(0deg);
+        }
+        37% {
+          transform: rotateY(72deg) rotateZ(0deg);
+        }
+        39% {
+          transform: rotateY(36deg) rotateZ(0deg);
+        }
+        41% {
+          transform: rotateY(0deg) rotateZ(0deg);
+        }
+        50% {
+          transform: rotateY(0deg) rotateZ(0deg);
+        }
+        55% {
+          transform: rotateY(0deg) rotateZ(11deg);
+        }
+        60% {
+          transform: rotateY(0deg) rotateZ(22deg);
+        }
+        65% {
+          transform: rotateY(0deg) rotateZ(34deg);
+        }
+        70% {
+          transform: rotateY(0deg) rotateZ(45deg);
+        }
+        72% {
+          transform: rotateY(0deg) rotateZ(55deg);
+        }
+        75% {
+          transform: rotateY(0deg) rotateZ(65deg);
+        }
+        77% {
+          transform: rotateY(0deg) rotateZ(58deg);
+        }
+        79% {
+          transform: rotateY(0deg) rotateZ(51deg);
+        }
+        81% {
+          transform: rotateY(0deg) rotateZ(45deg);
+        }
+        83% {
+          transform: rotateY(36deg) rotateZ(45deg);
+        }
+        85% {
+          transform: rotateY(72deg) rotateZ(45deg);
+        }
+        87% {
+          transform: rotateY(108deg) rotateZ(45deg);
+        }
+        89% {
+          transform: rotateY(144deg) rotateZ(45deg);
+        }
+        91% {
+          transform: rotateY(180deg) rotateZ(45deg);
+        }
+        100% {
+          transform: rotateY(180deg) rotateZ(45deg);
+        }
+      }
+      .anim-a-t-a .stage .flip-inner {
+        animation: a-to-t-to-a 4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Agentron logo</h1>
+    <p class="subtitle">4+9 with eye · Animation: A turns into T and back</p>
 
-  <section>
-    <h2>Final logo (A) and T</h2>
-    <p style="color:#94a3b8; font-size:0.9rem; margin-bottom:1rem;">Same style, eye at same position (32,38) for both so the flip looks homogeneous.</p>
-    <div class="grid">
-      <div class="card">
-        <figure>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-            <defs><linearGradient id="finalA" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient></defs>
-            <path d="M32 10 L14 54 H22 L28 38 H36 L42 54 H50 Z" fill="url(#finalA)"/>
-            <circle cx="32" cy="38" r="5.5" fill="#EEF2FF"/>
-            <circle cx="32" cy="38" r="2.8" fill="#4f46e5"/>
-          </svg>
-        </figure>
-        <span>A (with eye)</span>
-      </div>
-      <div class="card">
-        <figure>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-            <defs><linearGradient id="finalT" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient></defs>
-            <path d="M10 30 H54 V38 H36 V54 H28 V38 H10 V30 Z" fill="url(#finalT)"/>
-            <circle cx="32" cy="38" r="5.5" fill="#EEF2FF"/>
-            <circle cx="32" cy="38" r="2.8" fill="#4f46e5"/>
-          </svg>
-        </figure>
-        <span>T (with eye)</span>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <h2>A → T → A animation</h2>
-    <p style="color:#94a3b8; font-size:0.9rem; margin-bottom:1rem;">Seamless loop: no clear start or end; motion crosses through 0 so it feels like one infinite movement. 4 beats.</p>
-    <div class="loading-grid">
-      <div class="loading-demo anim-a-t-a">
-        <div class="stage">
-          <div class="flip-inner">
-            <svg class="flip-front" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-              <defs><linearGradient id="flipA" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient></defs>
-              <path d="M32 10 L14 54 H22 L28 38 H36 L42 54 H50 Z" fill="url(#flipA)"/>
-              <circle cx="32" cy="38" r="5.5" fill="#EEF2FF"/>
-              <circle cx="32" cy="38" r="2.8" fill="#4f46e5"/>
+    <section>
+      <h2>Final logo (A) and T</h2>
+      <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 1rem">
+        Same style, eye at same position (32,38) for both so the flip looks homogeneous.
+      </p>
+      <div class="grid">
+        <div class="card">
+          <figure>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+              <defs>
+                <linearGradient id="finalA" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#6366f1" />
+                  <stop offset="100%" stop-color="#4f46e5" />
+                </linearGradient>
+              </defs>
+              <path d="M32 10 L14 54 H22 L28 38 H36 L42 54 H50 Z" fill="url(#finalA)" />
+              <circle cx="32" cy="38" r="5.5" fill="#EEF2FF" />
+              <circle cx="32" cy="38" r="2.8" fill="#4f46e5" />
             </svg>
-            <svg class="flip-back" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-              <defs><linearGradient id="flipT" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient></defs>
-              <path d="M10 30 H54 V38 H36 V54 H28 V38 H10 V30 Z" fill="url(#flipT)"/>
-              <circle cx="32" cy="38" r="5.5" fill="#EEF2FF"/>
-              <circle cx="32" cy="38" r="2.8" fill="#4f46e5"/>
+          </figure>
+          <span>A (with eye)</span>
+        </div>
+        <div class="card">
+          <figure>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+              <defs>
+                <linearGradient id="finalT" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#6366f1" />
+                  <stop offset="100%" stop-color="#4f46e5" />
+                </linearGradient>
+              </defs>
+              <path d="M10 30 H54 V38 H36 V54 H28 V38 H10 V30 Z" fill="url(#finalT)" />
+              <circle cx="32" cy="38" r="5.5" fill="#EEF2FF" />
+              <circle cx="32" cy="38" r="2.8" fill="#4f46e5" />
+            </svg>
+          </figure>
+          <span>T (with eye)</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>A → T → A animation</h2>
+      <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 1rem">
+        Seamless loop: no clear start or end; motion crosses through 0 so it feels like one infinite
+        movement. 4 beats.
+      </p>
+      <div class="loading-grid">
+        <div class="loading-demo anim-a-t-a">
+          <div class="stage">
+            <div class="flip-inner">
+              <svg class="flip-front" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+                <defs>
+                  <linearGradient id="flipA" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#6366f1" />
+                    <stop offset="100%" stop-color="#4f46e5" />
+                  </linearGradient>
+                </defs>
+                <path d="M32 10 L14 54 H22 L28 38 H36 L42 54 H50 Z" fill="url(#flipA)" />
+                <circle cx="32" cy="38" r="5.5" fill="#EEF2FF" />
+                <circle cx="32" cy="38" r="2.8" fill="#4f46e5" />
+              </svg>
+              <svg class="flip-back" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+                <defs>
+                  <linearGradient id="flipT" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#6366f1" />
+                    <stop offset="100%" stop-color="#4f46e5" />
+                  </linearGradient>
+                </defs>
+                <path d="M10 30 H54 V38 H36 V54 H28 V38 H10 V30 Z" fill="url(#flipT)" />
+                <circle cx="32" cy="38" r="5.5" fill="#EEF2FF" />
+                <circle cx="32" cy="38" r="2.8" fill="#4f46e5" />
+              </svg>
+            </div>
+          </div>
+          <span>A → T → A (loop)</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Loading screen preview</h2>
+      <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 1rem">
+        A→T→A + progress. Eye kept.
+      </p>
+      <div
+        class="loading-screen-preview"
+        style="
+          background: #0f172a;
+          border-radius: 16px;
+          height: 240px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 1rem;
+        "
+        id="screenPreview"
+      >
+        <div class="screen-logo" style="width: 80px; height: 80px; perspective: 320px">
+          <div
+            class="flip-inner"
+            style="
+              width: 80px;
+              height: 80px;
+              position: relative;
+              transform-style: preserve-3d;
+              animation: a-to-t-to-a 4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+            "
+          >
+            <svg
+              class="flip-front"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 64 64"
+              style="
+                width: 80px;
+                height: 80px;
+                position: absolute;
+                left: 0;
+                top: 0;
+                backface-visibility: hidden;
+              "
+            >
+              <defs>
+                <linearGradient id="prevA" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#6366f1" />
+                  <stop offset="100%" stop-color="#4f46e5" />
+                </linearGradient>
+              </defs>
+              <path d="M32 10 L14 54 H22 L28 38 H36 L42 54 H50 Z" fill="url(#prevA)" />
+              <circle cx="32" cy="38" r="5.5" fill="#EEF2FF" />
+              <circle cx="32" cy="38" r="2.8" fill="#4f46e5" />
+            </svg>
+            <svg
+              class="flip-back"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 64 64"
+              style="
+                width: 80px;
+                height: 80px;
+                position: absolute;
+                left: 0;
+                top: 0;
+                backface-visibility: hidden;
+                transform: rotateY(180deg);
+              "
+            >
+              <defs>
+                <linearGradient id="prevT" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#6366f1" />
+                  <stop offset="100%" stop-color="#4f46e5" />
+                </linearGradient>
+              </defs>
+              <path d="M10 30 H54 V38 H36 V54 H28 V38 H10 V30 Z" fill="url(#prevT)" />
+              <circle cx="32" cy="38" r="5.5" fill="#EEF2FF" />
+              <circle cx="32" cy="38" r="2.8" fill="#4f46e5" />
             </svg>
           </div>
         </div>
-        <span>A → T → A (loop)</span>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <h2>Loading screen preview</h2>
-    <p style="color:#94a3b8; font-size:0.9rem; margin-bottom:1rem;">A→T→A + progress. Eye kept.</p>
-    <div class="loading-screen-preview" style="background:#0f172a; border-radius:16px; height:240px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1rem;" id="screenPreview">
-      <div class="screen-logo" style="width:80px; height:80px; perspective: 320px;">
-        <div class="flip-inner" style="width:80px; height:80px; position:relative; transform-style:preserve-3d; animation: a-to-t-to-a 4s cubic-bezier(0.45, 0, 0.55, 1) infinite;">
-          <svg class="flip-front" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" style="width:80px; height:80px; position:absolute; left:0; top:0; backface-visibility:hidden;">
-            <defs><linearGradient id="prevA" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient></defs>
-            <path d="M32 10 L14 54 H22 L28 38 H36 L42 54 H50 Z" fill="url(#prevA)"/>
-            <circle cx="32" cy="38" r="5.5" fill="#EEF2FF"/>
-            <circle cx="32" cy="38" r="2.8" fill="#4f46e5"/>
-          </svg>
-          <svg class="flip-back" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" style="width:80px; height:80px; position:absolute; left:0; top:0; backface-visibility:hidden; transform: rotateY(180deg);">
-            <defs><linearGradient id="prevT" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient></defs>
-            <path d="M10 30 H54 V38 H36 V54 H28 V38 H10 V30 Z" fill="url(#prevT)"/>
-            <circle cx="32" cy="38" r="5.5" fill="#EEF2FF"/>
-            <circle cx="32" cy="38" r="2.8" fill="#4f46e5"/>
-          </svg>
+        <div style="font-size: 0.9rem; color: #94a3b8">Loading…</div>
+        <div
+          style="
+            width: 160px;
+            height: 4px;
+            background: #1e293b;
+            border-radius: 2px;
+            overflow: hidden;
+          "
+        >
+          <div
+            id="progressBar"
+            style="
+              height: 100%;
+              width: 0%;
+              background: linear-gradient(90deg, #6366f1, #4f46e5);
+              border-radius: 2px;
+              transition: width 0.2s ease;
+            "
+          ></div>
         </div>
       </div>
-      <div style="font-size:0.9rem; color:#94a3b8;">Loading…</div>
-      <div style="width:160px; height:4px; background:#1e293b; border-radius:2px; overflow:hidden;">
-        <div id="progressBar" style="height:100%; width:0%; background:linear-gradient(90deg,#6366f1,#4f46e5); border-radius:2px; transition:width 0.2s ease;"></div>
-      </div>
-    </div>
-    <p style="text-align:center; margin-top:0.75rem; font-size:0.8rem; color:#64748b;">Click to restart progress</p>
-  </section>
-</body>
-<script>
-  const bar = document.getElementById('progressBar');
-  const preview = document.getElementById('screenPreview');
+      <p style="text-align: center; margin-top: 0.75rem; font-size: 0.8rem; color: #64748b">
+        Click to restart progress
+      </p>
+    </section>
+  </body>
+  <script>
+    const bar = document.getElementById("progressBar");
+    const preview = document.getElementById("screenPreview");
 
-  function runProgress() {
-    bar.style.width = '0%';
-    let w = 0;
-    const iv = setInterval(() => {
-      w += 4;
-      if (w >= 100) { w = 100; clearInterval(iv); }
-      bar.style.width = w + '%';
-    }, 80);
-  }
+    function runProgress() {
+      bar.style.width = "0%";
+      let w = 0;
+      const iv = setInterval(() => {
+        w += 4;
+        if (w >= 100) {
+          w = 100;
+          clearInterval(iv);
+        }
+        bar.style.width = w + "%";
+      }, 80);
+    }
 
-  preview.addEventListener('click', runProgress);
-  runProgress();
-</script>
+    preview.addEventListener("click", runProgress);
+    runProgress();
+  </script>
 </html>

@@ -34,7 +34,9 @@ export default function ActionRequiredBanner() {
     };
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 10_000);
-    const onUpdated = () => { void fetchNotifications(); };
+    const onUpdated = () => {
+      void fetchNotifications();
+    };
     window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
     return () => {
       clearInterval(interval);
@@ -66,7 +68,11 @@ export default function ActionRequiredBanner() {
         {runItems.length > 0 && (
           <span className="action-required-banner-links">
             {runItems.slice(0, 3).map((r) => (
-              <Link key={r.id} href={`/runs/${r.sourceId}`} className="action-required-banner-run-link">
+              <Link
+                key={r.id}
+                href={`/runs/${r.sourceId}`}
+                className="action-required-banner-run-link"
+              >
                 {r.targetName || "Run"}
               </Link>
             ))}

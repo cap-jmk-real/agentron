@@ -15,13 +15,16 @@ export async function GET(request: Request) {
       const res = await fetch(hfUrl, {
         signal: AbortSignal.timeout(15000),
         headers: {
-          "Accept": "application/json",
+          Accept: "application/json",
           "User-Agent": "Agentron/1.0 (https://github.com/agentron; app)",
         },
       });
       if (!res.ok) {
         const text = await res.text();
-        return json({ error: `HuggingFace API error: ${res.status}`, details: text.slice(0, 200) }, { status: 502 });
+        return json(
+          { error: `HuggingFace API error: ${res.status}`, details: text.slice(0, 200) },
+          { status: 502 }
+        );
       }
 
       const data = (await res.json()) as Array<{

@@ -88,7 +88,11 @@ function encryptForCookie(vaultKey: Buffer): string {
   const cipher = crypto.createCipheriv(ALGORITHM, secret, iv, { authTagLength: AUTH_TAG_LENGTH });
   const encrypted = Buffer.concat([cipher.update(vaultKey), cipher.final()]);
   const authTag = cipher.getAuthTag();
-  return [iv.toString("base64url"), authTag.toString("base64url"), encrypted.toString("base64url")].join(".");
+  return [
+    iv.toString("base64url"),
+    authTag.toString("base64url"),
+    encrypted.toString("base64url"),
+  ].join(".");
 }
 
 /** Decrypt vault key from cookie value. Returns null if invalid. */
@@ -101,7 +105,9 @@ export function decryptFromCookie(cookieValue: string): Buffer | null {
     const iv = Buffer.from(parts[0]!, "base64url");
     const authTag = Buffer.from(parts[1]!, "base64url");
     const ciphertext = Buffer.from(parts[2]!, "base64url");
-    const decipher = crypto.createDecipheriv(ALGORITHM, secret, iv, { authTagLength: AUTH_TAG_LENGTH });
+    const decipher = crypto.createDecipheriv(ALGORITHM, secret, iv, {
+      authTagLength: AUTH_TAG_LENGTH,
+    });
     decipher.setAuthTag(authTag);
     const out = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
     return out.length === KEY_LENGTH ? out : null;

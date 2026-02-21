@@ -1,0 +1,117 @@
+---
+title: Tools
+description: Callable capabilities agents use to perform actions. Native, HTTP, and MCP tools in Agentron.
+---
+
+# Tools
+
+A **tool** is a callable capability that agents use to perform actions. Tools are first-class resources: created, stored, and referenced by ID.
+
+---
+
+## Tool protocols
+
+| Protocol | Description |
+| -------- | ----------- |
+| **native** | Built-in or code-based. Implemented in the runtime (e.g. `std-weather`, `std-fetch-url`). |
+| **http** | Calls an external URL. Config: `{ url, method }`. |
+| **mcp** | Connects to an MCP (Model Context Protocol) server. |
+
+---
+
+## Tool lifecycle
+
+<Steps>
+
+### 1. Create
+
+`create_tool` with `name`, `protocol`, and optional `config` / `inputSchema`.
+
+### 2. List
+
+`list_tools` returns all tools with `id`, `name`, `protocol`.
+
+### 3. Get
+
+`get_tool(id)` returns full details (config, inputSchema, outputSchema).
+
+### 4. Update
+
+`update_tool` to change name, config, schemas. Standard tools (`std-*`) can only update `inputSchema` / `outputSchema`.
+
+</Steps>
+
+---
+
+## How agents use tools
+
+- **Node agents** reference tools in two ways:
+  - **Decision layer** (`toolIds`): The LLM receives tool definitions and decides per request whether to call a tool or respond. The agent can only use tools in `toolIds` (agent-level or per decision node).
+  - **Tool nodes**: Unconditional tool calls in the graph (`parameters.toolId`).
+- **Code agents** can call tools via the runtime API.
+- Use IDs from `list_tools` when creating or updating agents.
+
+---
+
+## Standard tools (built-in)
+
+Agentron ships with standard tools such as:
+
+- `std-weather` — weather data
+- `std-fetch-url` — fetch URL content  
+- Others depending on installation
+
+---
+
+## Import from OpenAPI
+
+Create many HTTP tools at once from an OpenAPI 3.x (or Swagger) spec:
+
+1. **In chat** — Tell the assistant: "Add tools from this API: &lt;URL&gt;" or paste the spec. It uses `create_tools_from_openapi` with `specUrl` or `spec` to create one tool per operation. Each tool gets a stable id (e.g. `get_users`, `post_users`), correct URL and method, and `inputSchema` from parameters and request body.
+2. **Attach to agents** — After import, use `list_tools` to see the new ids, then `update_agent` with `toolIds`.
+
+<Callout type="info">
+  HTTP tools from OpenAPI support path parameters (e.g. `/users/{id}`), query parameters (GET), and request body (POST/PUT/PATCH). The runtime substitutes placeholders and sends query/body as appropriate.
+</Callout>
+
+---
+
+## Custom code tools
+
+Create tools that run custom code (JavaScript, Python, or TypeScript):
+
+1. **Create** — In chat, ask the assistant to "create a tool that does X". It uses `create_code_tool` with `name`, `language`, and `source`. The tool is created with a default runner sandbox; attach it to agents via `update_agent` with `toolIds` (returned `toolId` is e.g. `fn-<uuid>`).
+2. **Improve** — To change code: `get_tool(id)` → `config.functionId`, then `get_custom_function(functionId)` to read source, then `update_custom_function(id, { source: "..." })`. Optionally `update_tool` for name or `inputSchema`.
+
+<Callout type="warning">
+  Code tools run in sandboxes (Podman/Docker). Use `list_custom_functions` to list all custom functions (id, name, language, description; no source in the list).
+</Callout>
+
+---
+
+## OpenClaw gateway
+
+Steer a local [OpenClaw](https://openclaw.ai) instance (personal AI assistant gateway) from chat:
+
+- **send_to_openclaw** — Send a message or command to OpenClaw.
+- **openclaw_history** — Get recent chat history.
+- **openclaw_abort** — Abort the current run.
+
+**Running OpenClaw in a container:** Use the **alpine/openclaw** image (Docker Hub). Create a sandbox with `alpine/openclaw:latest`, expose port 18789 with **bind_sandbox_port**, then set `OPENCLAW_GATEWAY_URL` or pass **gatewayUrl** in the tool calls. The flow is container-engine agnostic (Docker or Podman). See [OpenClaw integration](/docs/openclaw-integration) for full details.
+
+---
+
+## Suggested user actions
+
+<div className="compact-tables">
+
+| User wants… | Action |
+| ----------- | ------ |
+| "Add a tool to my agent" | `list_tools`, then `update_agent` with `toolIds` including the chosen IDs |
+| "Create a custom HTTP tool" | `create_tool` with `protocol: "http"` and `config: { url, method }` |
+| "Create a tool that runs code" | `create_code_tool` with `name`, `language`, `source`; then `update_agent` with `toolIds` |
+| "Add tools from an API spec" / "Import OpenAPI" | `create_tools_from_openapi` with `specUrl` or `spec`, then `update_agent` with `toolIds` |
+| "What tools are available?" | `list_tools` |
+| "Fix a tool" | `get_tool(id)` first; then `update_tool`. For code tools, use `get_custom_function` and `update_custom_function` to change source |
+
+</div>

@@ -22,14 +22,44 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useState } from "react";
-import { Brain, Wrench, BookOpen, Save, ArrowRightLeft, Settings2, Library, LogIn, LogOut, GitBranch, Search, LayoutGrid, X } from "lucide-react";
+import {
+  Brain,
+  Wrench,
+  BookOpen,
+  Save,
+  ArrowRightLeft,
+  Settings2,
+  Library,
+  LogIn,
+  LogOut,
+  GitBranch,
+  Search,
+  LayoutGrid,
+  X,
+} from "lucide-react";
 import { CanvasNodeCard } from "../../components/canvas-node-card";
 import { CanvasLabelEdge } from "../../components/canvas-label-edge";
-import { getGridPosition, getNextNodePosition, getAgentGridOptions, layoutNodesByGraph } from "../../lib/canvas-layout";
+import {
+  getGridPosition,
+  getNextNodePosition,
+  getAgentGridOptions,
+  layoutNodesByGraph,
+} from "../../lib/canvas-layout";
 
-type ToolDef = { id: string; name: string; protocol: string; config?: Record<string, unknown>; inputSchema?: unknown };
+type ToolDef = {
+  id: string;
+  name: string;
+  protocol: string;
+  config?: Record<string, unknown>;
+  inputSchema?: unknown;
+};
 
-type AgentNodeDef = { id: string; type: string; position: [number, number]; parameters?: Record<string, unknown> };
+type AgentNodeDef = {
+  id: string;
+  type: string;
+  position: [number, number];
+  parameters?: Record<string, unknown>;
+};
 type AgentEdgeDef = { id: string; source: string; target: string; data?: { label?: string } };
 
 type LlmConfig = { id: string; provider: string; model: string };
@@ -38,7 +68,15 @@ type LlmConfig = { id: string; provider: string; model: string };
 type CanvasToolRef = { nodeId: string; toolId: string; name: string };
 
 type FlowNodeData = {
-  nodeType: "llm" | "tool" | "context_read" | "context_write" | "prompt" | "input" | "output" | "decision";
+  nodeType:
+    | "llm"
+    | "tool"
+    | "context_read"
+    | "context_write"
+    | "prompt"
+    | "input"
+    | "output"
+    | "decision";
   config: Record<string, unknown>;
   tools: ToolDef[];
   /** Tools that exist as tool nodes on the canvas; used by Decision node. */
@@ -48,7 +86,11 @@ type FlowNodeData = {
   llmConfigs?: LlmConfig[];
   onConfigChange: (nodeId: string, config: Record<string, unknown>) => void;
   onRemove: (nodeId: string) => void;
-  onSaveToolToLibrary?: (nodeId: string, baseToolId: string, override: { config?: Record<string, unknown>; inputSchema?: unknown; name?: string }) => Promise<string | null>;
+  onSaveToolToLibrary?: (
+    nodeId: string,
+    baseToolId: string,
+    override: { config?: Record<string, unknown>; inputSchema?: unknown; name?: string }
+  ) => Promise<string | null>;
 };
 
 const DRAG_TYPE = "application/agent-graph-node";
@@ -64,7 +106,8 @@ function randomNodeId(): string {
 function LLMNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
   const systemPrompt = String(data.config?.systemPrompt ?? "");
   const llmConfigId = String(data.config?.llmConfigId ?? "");
-  const temperature = typeof data.config?.temperature === "number" ? data.config.temperature : undefined;
+  const temperature =
+    typeof data.config?.temperature === "number" ? data.config.temperature : undefined;
   const llmConfigs = data.llmConfigs ?? [];
   const connectedTools = data.connectedTools ?? [];
   return (
@@ -79,24 +122,41 @@ function LLMNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
       maxWidth={320}
     >
       {connectedTools.length > 0 && (
-        <div className="nodrag nopan" style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginBottom: "0.35rem" }}>
-          <span style={{ fontWeight: 600 }}>Tools:</span> {connectedTools.map((ct) => ct.name).join(", ")}
+        <div
+          className="nodrag nopan"
+          style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginBottom: "0.35rem" }}
+        >
+          <span style={{ fontWeight: 600 }}>Tools:</span>{" "}
+          {connectedTools.map((ct) => ct.name).join(", ")}
         </div>
       )}
       {llmConfigs.length > 0 && (
         <select
           className="nodrag nopan select"
           value={llmConfigId}
-          onChange={(e) => data.onConfigChange?.(id, { ...data.config, llmConfigId: e.target.value || undefined })}
+          onChange={(e) =>
+            data.onConfigChange?.(id, { ...data.config, llmConfigId: e.target.value || undefined })
+          }
           style={{ width: "100%", fontSize: "0.8rem", marginBottom: "0.35rem" }}
         >
           <option value="">Select LLM</option>
           {llmConfigs.map((c) => (
-            <option key={c.id} value={c.id}>{c.provider} / {c.model}</option>
+            <option key={c.id} value={c.id}>
+              {c.provider} / {c.model}
+            </option>
           ))}
         </select>
       )}
-      <label style={{ fontSize: "0.7rem", color: "var(--text-muted)", display: "block", marginBottom: "0.2rem" }}>Temperature (0–2)</label>
+      <label
+        style={{
+          fontSize: "0.7rem",
+          color: "var(--text-muted)",
+          display: "block",
+          marginBottom: "0.2rem",
+        }}
+      >
+        Temperature (0–2)
+      </label>
       <input
         type="number"
         className="nodrag nopan input"
@@ -106,7 +166,11 @@ function LLMNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
         value={temperature ?? ""}
         onChange={(e) => {
           const v = e.target.value === "" ? undefined : parseFloat(e.target.value);
-          data.onConfigChange?.(id, { ...data.config, temperature: v === undefined || Number.isNaN(v) ? undefined : Math.min(2, Math.max(0, v)) });
+          data.onConfigChange?.(id, {
+            ...data.config,
+            temperature:
+              v === undefined || Number.isNaN(v) ? undefined : Math.min(2, Math.max(0, v)),
+          });
         }}
         placeholder="Default"
         style={{ width: "100%", fontSize: "0.8rem", marginBottom: "0.35rem" }}
@@ -114,10 +178,19 @@ function LLMNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
       <textarea
         className="nodrag nopan nowheel textarea"
         value={systemPrompt}
-        onChange={(e) => data.onConfigChange?.(id, { ...data.config, systemPrompt: e.target.value })}
+        onChange={(e) =>
+          data.onConfigChange?.(id, { ...data.config, systemPrompt: e.target.value })
+        }
         placeholder="System prompt..."
         rows={3}
-        style={{ fontSize: "0.8rem", resize: "vertical", width: "100%", minHeight: 60, maxHeight: 160, overflowY: "auto" }}
+        style={{
+          fontSize: "0.8rem",
+          resize: "vertical",
+          width: "100%",
+          minHeight: 60,
+          maxHeight: 160,
+          overflowY: "auto",
+        }}
       />
     </CanvasNodeCard>
   );
@@ -126,17 +199,21 @@ function LLMNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
 function ToolNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
   const toolId = String(data.config?.toolId ?? "");
   const tools = data.tools ?? [];
-  const override = (data.config?.override as { config?: Record<string, unknown>; inputSchema?: unknown; name?: string } | undefined) ?? {};
+  const override =
+    (data.config?.override as
+      | { config?: Record<string, unknown>; inputSchema?: unknown; name?: string }
+      | undefined) ?? {};
   const [showCustomize, setShowCustomize] = useState(false);
   const [saving, setSaving] = useState(false);
   const hasOverride = override.config && Object.keys(override.config).length > 0;
 
   const baseTool = tools.find((t) => t.id === toolId);
-  const configKeys = baseTool?.config && typeof baseTool.config === "object"
-    ? Object.keys(baseTool.config).filter((k) => !["builtin", "baseToolId"].includes(k))
-    : baseTool?.protocol === "http"
-      ? ["url", "method"]
-      : [];
+  const configKeys =
+    baseTool?.config && typeof baseTool.config === "object"
+      ? Object.keys(baseTool.config).filter((k) => !["builtin", "baseToolId"].includes(k))
+      : baseTool?.protocol === "http"
+        ? ["url", "method"]
+        : [];
 
   const updateOverride = (upd: Partial<typeof override>) => {
     const next = { ...override, ...upd };
@@ -173,12 +250,16 @@ function ToolNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
       <select
         className="nodrag nopan select"
         value={toolId}
-        onChange={(e) => data.onConfigChange?.(id, { ...data.config, toolId: e.target.value, override: undefined })}
+        onChange={(e) =>
+          data.onConfigChange?.(id, { ...data.config, toolId: e.target.value, override: undefined })
+        }
         style={{ width: "100%", fontSize: "0.85rem" }}
       >
         <option value="">Select tool</option>
         {tools.map((t) => (
-          <option key={t.id} value={t.id}>{t.name}</option>
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
         ))}
       </select>
       {toolId && (
@@ -187,25 +268,50 @@ function ToolNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
             type="button"
             className="nodrag nopan button button-secondary button-small"
             onClick={() => setShowCustomize(!showCustomize)}
-            style={{ width: "100%", marginTop: "0.35rem", fontSize: "0.75rem", padding: "0.25rem 0.5rem", display: "flex", alignItems: "center", gap: "0.35rem", justifyContent: "center" }}
+            style={{
+              width: "100%",
+              marginTop: "0.35rem",
+              fontSize: "0.75rem",
+              padding: "0.25rem 0.5rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.35rem",
+              justifyContent: "center",
+            }}
             title="Customize for this agent only"
           >
             <Settings2 size={12} />
             {showCustomize ? "Hide" : "Customize"} {hasOverride && "●"}
           </button>
           {showCustomize && (
-            <div className="nodrag nopan" style={{ marginTop: "0.5rem", paddingTop: "0.5rem", borderTop: "1px solid var(--border)" }}>
+            <div
+              className="nodrag nopan"
+              style={{
+                marginTop: "0.5rem",
+                paddingTop: "0.5rem",
+                borderTop: "1px solid var(--border)",
+              }}
+            >
               {configKeys.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
                   {configKeys.map((key) => {
-                    const val = (override.config ?? {})[key] ?? (baseTool?.config as Record<string, unknown>)?.[key] ?? "";
+                    const val =
+                      (override.config ?? {})[key] ??
+                      (baseTool?.config as Record<string, unknown>)?.[key] ??
+                      "";
                     return (
                       <div key={key}>
-                        <label style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{key}</label>
+                        <label style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                          {key}
+                        </label>
                         <input
                           className="nodrag nopan input"
                           value={typeof val === "string" ? val : JSON.stringify(val)}
-                          onChange={(e) => updateOverride({ config: { ...(override.config ?? {}), [key]: e.target.value } })}
+                          onChange={(e) =>
+                            updateOverride({
+                              config: { ...(override.config ?? {}), [key]: e.target.value },
+                            })
+                          }
                           placeholder={key}
                           style={{ width: "100%", fontSize: "0.8rem", padding: "0.2rem 0.4rem" }}
                         />
@@ -237,7 +343,15 @@ function ToolNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
                   className="nodrag nopan button button-small"
                   onClick={handleSaveToLibrary}
                   disabled={saving}
-                  style={{ marginTop: "0.5rem", width: "100%", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.35rem", justifyContent: "center" }}
+                  style={{
+                    marginTop: "0.5rem",
+                    width: "100%",
+                    fontSize: "0.75rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                    justifyContent: "center",
+                  }}
                   title="Save as new tool in library"
                 >
                   <Library size={12} />
@@ -315,8 +429,10 @@ function InputNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
       <textarea
         className="nodrag nopan nowheel textarea"
         value={expression}
-        onChange={(e) => data.onConfigChange?.(id, { ...data.config, transform: { expression: e.target.value } })}
-        placeholder='{{ $input }} or custom transform'
+        onChange={(e) =>
+          data.onConfigChange?.(id, { ...data.config, transform: { expression: e.target.value } })
+        }
+        placeholder="{{ $input }} or custom transform"
         rows={2}
         style={{ fontSize: "0.75rem", resize: "vertical", width: "100%", minHeight: 40 }}
       />
@@ -327,7 +443,8 @@ function InputNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
 function DecisionNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
   const systemPrompt = String(data.config?.systemPrompt ?? "");
   const llmConfigId = String(data.config?.llmConfigId ?? "");
-  const temperature = typeof data.config?.temperature === "number" ? data.config.temperature : undefined;
+  const temperature =
+    typeof data.config?.temperature === "number" ? data.config.temperature : undefined;
   const toolIds = (Array.isArray(data.config?.toolIds) ? data.config.toolIds : []) as string[];
   const llmConfigs = data.llmConfigs ?? [];
   const canvasTools = data.canvasTools ?? [];
@@ -346,16 +463,29 @@ function DecisionNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
         <select
           className="nodrag nopan select"
           value={llmConfigId}
-          onChange={(e) => data.onConfigChange?.(id, { ...data.config, llmConfigId: e.target.value })}
+          onChange={(e) =>
+            data.onConfigChange?.(id, { ...data.config, llmConfigId: e.target.value })
+          }
           style={{ width: "100%", fontSize: "0.8rem", marginBottom: "0.35rem" }}
         >
           <option value="">Select LLM</option>
           {llmConfigs.map((c) => (
-            <option key={c.id} value={c.id}>{c.provider} / {c.model}</option>
+            <option key={c.id} value={c.id}>
+              {c.provider} / {c.model}
+            </option>
           ))}
         </select>
       )}
-      <label style={{ fontSize: "0.7rem", color: "var(--text-muted)", display: "block", marginBottom: "0.2rem" }}>Temperature (0–2)</label>
+      <label
+        style={{
+          fontSize: "0.7rem",
+          color: "var(--text-muted)",
+          display: "block",
+          marginBottom: "0.2rem",
+        }}
+      >
+        Temperature (0–2)
+      </label>
       <input
         type="number"
         className="nodrag nopan input"
@@ -365,14 +495,29 @@ function DecisionNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
         value={temperature ?? ""}
         onChange={(e) => {
           const v = e.target.value === "" ? undefined : parseFloat(e.target.value);
-          data.onConfigChange?.(id, { ...data.config, temperature: v === undefined || Number.isNaN(v) ? undefined : Math.min(2, Math.max(0, v)) });
+          data.onConfigChange?.(id, {
+            ...data.config,
+            temperature:
+              v === undefined || Number.isNaN(v) ? undefined : Math.min(2, Math.max(0, v)),
+          });
         }}
         placeholder="Default"
         style={{ width: "100%", fontSize: "0.8rem", marginBottom: "0.35rem" }}
       />
-      <label style={{ fontSize: "0.7rem", color: "var(--text-muted)", display: "block", marginBottom: "0.25rem" }}>Tools (from canvas)</label>
+      <label
+        style={{
+          fontSize: "0.7rem",
+          color: "var(--text-muted)",
+          display: "block",
+          marginBottom: "0.25rem",
+        }}
+      >
+        Tools (from canvas)
+      </label>
       {canvasTools.length === 0 ? (
-        <p className="decision-tools-empty nodrag nopan">Add tools to the canvas to use them in this decision.</p>
+        <p className="decision-tools-empty nodrag nopan">
+          Add tools to the canvas to use them in this decision.
+        </p>
       ) : (
         <div className="decision-tools-list nodrag nopan">
           {canvasTools.map((ct) => {
@@ -383,7 +528,9 @@ function DecisionNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
                   type="checkbox"
                   checked={checked}
                   onChange={() => {
-                    const next = checked ? toolIds.filter((x) => x !== ct.toolId) : [...toolIds, ct.toolId];
+                    const next = checked
+                      ? toolIds.filter((x) => x !== ct.toolId)
+                      : [...toolIds, ct.toolId];
                     data.onConfigChange?.(id, { ...data.config, toolIds: next });
                   }}
                 />
@@ -396,10 +543,19 @@ function DecisionNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
       <textarea
         className="nodrag nopan nowheel textarea"
         value={systemPrompt}
-        onChange={(e) => data.onConfigChange?.(id, { ...data.config, systemPrompt: e.target.value })}
+        onChange={(e) =>
+          data.onConfigChange?.(id, { ...data.config, systemPrompt: e.target.value })
+        }
         placeholder="System prompt..."
         rows={3}
-        style={{ fontSize: "0.8rem", resize: "vertical", width: "100%", minHeight: 60, maxHeight: 160, overflowY: "auto" }}
+        style={{
+          fontSize: "0.8rem",
+          resize: "vertical",
+          width: "100%",
+          minHeight: 60,
+          maxHeight: 160,
+          overflowY: "auto",
+        }}
       />
     </CanvasNodeCard>
   );
@@ -422,8 +578,10 @@ function OutputNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
       <textarea
         className="nodrag nopan nowheel textarea"
         value={expression}
-        onChange={(e) => data.onConfigChange?.(id, { ...data.config, transform: { expression: e.target.value } })}
-        placeholder='{{ $input }} or custom transform'
+        onChange={(e) =>
+          data.onConfigChange?.(id, { ...data.config, transform: { expression: e.target.value } })
+        }
+        placeholder="{{ $input }} or custom transform"
         rows={2}
         style={{ fontSize: "0.75rem", resize: "vertical", width: "100%", minHeight: 40 }}
       />
@@ -487,14 +645,31 @@ function toFlowNode(
   llmConfigs?: LlmConfig[]
 ): Node<FlowNodeData> {
   const gridOpts = getAgentGridOptions();
-  const pos = Array.isArray(n.position) && n.position.length >= 2 && Number.isFinite(n.position[0]) && Number.isFinite(n.position[1])
-    ? { x: n.position[0], y: n.position[1] }
-    : getGridPosition(i, gridOpts);
+  const pos =
+    Array.isArray(n.position) &&
+    n.position.length >= 2 &&
+    Number.isFinite(n.position[0]) &&
+    Number.isFinite(n.position[1])
+      ? { x: n.position[0], y: n.position[1] }
+      : getGridPosition(i, gridOpts);
   const config = n.parameters ?? {};
-  const validTypes = ["llm", "decision", "tool", "context_read", "context_write", "input", "output"] as const;
-  const type = (validTypes.includes(n.type as typeof validTypes[number]) ? n.type : "llm") as FlowNodeData["nodeType"];
+  const validTypes = [
+    "llm",
+    "decision",
+    "tool",
+    "context_read",
+    "context_write",
+    "input",
+    "output",
+  ] as const;
+  const type = (
+    validTypes.includes(n.type as (typeof validTypes)[number]) ? n.type : "llm"
+  ) as FlowNodeData["nodeType"];
   const canvasTools = getCanvasTools(allNodes, tools);
-  const connectedTools = (type === "llm" || type === "decision") ? getConnectedToolsForNode(n.id, allNodes, allEdges, tools) : undefined;
+  const connectedTools =
+    type === "llm" || type === "decision"
+      ? getConnectedToolsForNode(n.id, allNodes, allEdges, tools)
+      : undefined;
   return {
     id: n.id,
     type,
@@ -526,9 +701,13 @@ function toFlowEdges(edges: AgentEdgeDef[]): Edge[] {
   }));
 }
 
-function fromFlowToAgentGraph(nodes: Node<FlowNodeData>[], edges: Edge[]): { nodes: AgentNodeDef[]; edges: AgentEdgeDef[] } {
+function fromFlowToAgentGraph(
+  nodes: Node<FlowNodeData>[],
+  edges: Edge[]
+): { nodes: AgentNodeDef[]; edges: AgentEdgeDef[] } {
   const sorted = [...nodes].sort((a, b) => {
-    const ax = a.position?.x ?? 0, bx = b.position?.x ?? 0;
+    const ax = a.position?.x ?? 0,
+      bx = b.position?.x ?? 0;
     if (Math.abs(ax - bx) > 20) return ax - bx;
     return (a.position?.y ?? 0) - (b.position?.y ?? 0);
   });
@@ -542,9 +721,15 @@ function fromFlowToAgentGraph(nodes: Node<FlowNodeData>[], edges: Edge[]): { nod
     id: e.id ?? `e-${e.source}-${e.target}`,
     source: e.source,
     target: e.target,
-    data: e.data && typeof e.data === "object" && "label" in e.data
-      ? { label: typeof (e.data as { label?: unknown }).label === "string" ? (e.data as { label: string }).label : undefined }
-      : undefined,
+    data:
+      e.data && typeof e.data === "object" && "label" in e.data
+        ? {
+            label:
+              typeof (e.data as { label?: unknown }).label === "string"
+                ? (e.data as { label: string }).label
+                : undefined,
+          }
+        : undefined,
   }));
   return { nodes: agentNodes, edges: agentEdges };
 }
@@ -555,23 +740,40 @@ type Props = {
   tools: ToolDef[];
   llmConfigs?: LlmConfig[];
   onNodesEdgesChange: (nodes: AgentNodeDef[], edges: AgentEdgeDef[]) => void;
-  onSaveToolToLibrary?: (nodeId: string, baseToolId: string, override: { config?: Record<string, unknown>; inputSchema?: unknown; name?: string }) => Promise<string | null>;
+  onSaveToolToLibrary?: (
+    nodeId: string,
+    baseToolId: string,
+    override: { config?: Record<string, unknown>; inputSchema?: unknown; name?: string }
+  ) => Promise<string | null>;
   /** Called after Arrange is applied with the new nodes/edges so the page can auto-save. */
   onArrangeComplete?: (nodes: AgentNodeDef[], edges: AgentEdgeDef[]) => void;
 };
 
-function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesChange, onSaveToolToLibrary, onArrangeComplete }: Props) {
+function AgentCanvasInner({
+  nodes,
+  edges,
+  tools,
+  llmConfigs = [],
+  onNodesEdgesChange,
+  onSaveToolToLibrary,
+  onArrangeComplete,
+}: Props) {
   const { screenToFlowPosition } = useReactFlow();
   const canvasWrapRef = useRef<HTMLDivElement>(null);
-  const setFlowNodesRef = useRef<React.Dispatch<React.SetStateAction<Node<FlowNodeData>[]>>>(() => {});
+  const setFlowNodesRef = useRef<React.Dispatch<React.SetStateAction<Node<FlowNodeData>[]>>>(
+    () => {}
+  );
   const llmConfigsRef = useRef<LlmConfig[]>(llmConfigs);
-  const onSaveToolToLibraryRef = useRef(typeof onSaveToolToLibrary === "function" ? onSaveToolToLibrary : undefined);
+  const onSaveToolToLibraryRef = useRef(
+    typeof onSaveToolToLibrary === "function" ? onSaveToolToLibrary : undefined
+  );
   const isDraggingRef = useRef(false);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
   useEffect(() => {
     llmConfigsRef.current = llmConfigs;
-    onSaveToolToLibraryRef.current = typeof onSaveToolToLibrary === "function" ? onSaveToolToLibrary : undefined;
+    onSaveToolToLibraryRef.current =
+      typeof onSaveToolToLibrary === "function" ? onSaveToolToLibrary : undefined;
   }, [llmConfigs, onSaveToolToLibrary]);
 
   // #region agent log
@@ -582,7 +784,12 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
       const nodesContainer = document.querySelector(".react-flow__nodes");
       const firstNode = document.querySelector(".react-flow__node");
       const getStyle = (el: Element | null) =>
-        el ? { pointerEvents: getComputedStyle(el).pointerEvents, zIndex: getComputedStyle(el).zIndex } : null;
+        el
+          ? {
+              pointerEvents: getComputedStyle(el).pointerEvents,
+              zIndex: getComputedStyle(el).zIndex,
+            }
+          : null;
       fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -605,8 +812,7 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
       const cardEl = nodeEl?.firstElementChild ?? null;
       const handleLeft = document.querySelector(".react-flow__handle-left");
       const handleRight = document.querySelector(".react-flow__handle-right");
-      const rect = (el: Element | null) =>
-        el ? { ...el.getBoundingClientRect() } : null;
+      const rect = (el: Element | null) => (el ? { ...el.getBoundingClientRect() } : null);
       const cs = (el: Element | null) => {
         if (!el) return null;
         const s = getComputedStyle(el);
@@ -658,12 +864,15 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
       const t = ev.target as HTMLElement;
       const tag = t?.tagName ?? "";
       const cls = (t?.className && String(t.className).slice(0, 120)) ?? "";
-      const computedCursor = t && typeof getComputedStyle !== "undefined" ? getComputedStyle(t).cursor : "";
+      const computedCursor =
+        t && typeof getComputedStyle !== "undefined" ? getComputedStyle(t).cursor : "";
       const parentChain: string[] = [];
       let p: HTMLElement | null = t?.parentElement ?? null;
       for (let i = 0; i < 5 && p; i++) {
         const c = (p.className && String(p.className).slice(0, 60)) || "";
-        parentChain.push(`${(p.tagName || "").toLowerCase()}${c ? "." + c.split(" ").filter(Boolean).slice(0, 2).join(".") : ""}`);
+        parentChain.push(
+          `${(p.tagName || "").toLowerCase()}${c ? "." + c.split(" ").filter(Boolean).slice(0, 2).join(".") : ""}`
+        );
         p = p.parentElement;
       }
       const data = {
@@ -673,7 +882,7 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
         targetId: (t as HTMLElement)?.id ?? "",
         computedCursor: computedCursor,
         isSelect: tag === "SELECT" || !!(t && t.closest?.("select")),
-        isInput: tag === "INPUT" || tag === "TEXTAREA" || !!(t && t.closest?.('input, textarea')),
+        isInput: tag === "INPUT" || tag === "TEXTAREA" || !!(t && t.closest?.("input, textarea")),
         isNode: !!(t && t.closest?.(".react-flow__node")),
         isViewport: !!(t && t.classList?.contains?.("react-flow__viewport")),
         isNodesContainer: !!(t && t.classList?.contains?.("react-flow__nodes")),
@@ -728,9 +937,7 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
       const next = nodes.map((n) => (n.id === nodeId ? { ...n, parameters: config } : n));
       onNodesEdgesChange(next, edges);
       setFlowNodesRef.current((nds) =>
-        nds.map((n) =>
-          n.id === nodeId ? { ...n, data: { ...n.data, config } } : n
-        )
+        nds.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, config } } : n))
       );
     },
     [nodes, edges, onNodesEdgesChange]
@@ -751,12 +958,17 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
       const existingPositions = nodes.map((n) => ({ x: n.position[0], y: n.position[1] }));
       const pos = position ?? getNextNodePosition(existingPositions, getAgentGridOptions());
       const baseParams =
-        type === "llm" ? { systemPrompt: "" }
-        : type === "decision" ? { systemPrompt: "", llmConfigId: "", toolIds: [] as string[] }
-        : type === "tool" ? { toolId: toolId ?? "" }
-        : type === "context_read" || type === "context_write" ? { key: "" }
-        : type === "input" || type === "output" ? { transform: { expression: "" } }
-        : { systemPrompt: "" };
+        type === "llm"
+          ? { systemPrompt: "" }
+          : type === "decision"
+            ? { systemPrompt: "", llmConfigId: "", toolIds: [] as string[] }
+            : type === "tool"
+              ? { toolId: toolId ?? "" }
+              : type === "context_read" || type === "context_write"
+                ? { key: "" }
+                : type === "input" || type === "output"
+                  ? { transform: { expression: "" } }
+                  : { systemPrompt: "" };
       const newNode: AgentNodeDef = {
         id,
         type,
@@ -768,10 +980,14 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
     [nodes, edges, onNodesEdgesChange]
   );
 
+  const noopConfig = useCallback((_nodeId: string, _config: Record<string, unknown>) => {}, []);
+  const noopRemove = useCallback((_nodeId: string) => {}, []);
   const initialNodes = useMemo(
-    // eslint-disable-next-line react-hooks/refs -- we pass props (llmConfigs, onSaveToolToLibrary), not refs; refs are only for sync effect
-    () => nodes.map((n, i) => toFlowNode(n, i, tools, nodes, edges, onConfigChange, onRemove, onSaveToolToLibrary, llmConfigs)),
-    [nodes, edges, tools, llmConfigs, onConfigChange, onRemove, onSaveToolToLibrary]
+    () =>
+      nodes.map((n, i) =>
+        toFlowNode(n, i, tools, nodes, edges, noopConfig, noopRemove, undefined, undefined)
+      ),
+    [nodes, edges, tools, noopConfig, noopRemove]
   );
   const initialEdges = useMemo(() => toFlowEdges(edges), [edges]);
 
@@ -795,16 +1011,40 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
         hypothesisId: "H5",
         location: "agent-canvas.tsx:sync-effect",
         message: "sync effect ran: setFlowNodes/setFlowEdges (full replace)",
-        data: { nodesLength: nodes.length, edgesLength: edges.length, structKeyLen: structKey.length, edgesKeyLen: edgesKey.length },
+        data: {
+          nodesLength: nodes.length,
+          edgesLength: edges.length,
+          structKeyLen: structKey.length,
+          edgesKeyLen: edgesKey.length,
+        },
         timestamp: Date.now(),
       }),
     }).catch(() => {});
     // #endregion
     const llm = llmConfigsRef.current;
     const onSave = onSaveToolToLibraryRef.current;
-    setFlowNodes(nodes.map((n, i) => toFlowNode(n, i, tools, nodes, edges, onConfigChange, onRemove, onSave ?? (() => Promise.resolve(null)), llm)));
+    setFlowNodes(
+      nodes.map((n, i) =>
+        toFlowNode(
+          n,
+          i,
+          tools,
+          nodes,
+          edges,
+          onConfigChange,
+          onRemove,
+          onSave ?? (() => Promise.resolve(null)),
+          llm
+        )
+      )
+    );
     setFlowEdges(toFlowEdges(edges));
-  }, [nodes.length, edges.length, JSON.stringify(nodes.map((n) => [n.id, n.position])), JSON.stringify(edges)]);
+  }, [
+    nodes.length,
+    edges.length,
+    JSON.stringify(nodes.map((n) => [n.id, n.position])),
+    JSON.stringify(edges),
+  ]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -847,7 +1087,9 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
   const [addNodeModalOpen, setAddNodeModalOpen] = useState(false);
   const [toolSearchOpen, setToolSearchOpen] = useState(false);
   const [toolSearchQuery, setToolSearchQuery] = useState("");
-  const [toolSearchPosition, setToolSearchPosition] = useState<{ x: number; y: number } | undefined>(undefined);
+  const [toolSearchPosition, setToolSearchPosition] = useState<
+    { x: number; y: number } | undefined
+  >(undefined);
   const [addModalQuery, setAddModalQuery] = useState("");
   const addMenuRef = useRef<HTMLDivElement>(null);
   const toolSearchInputRef = useRef<HTMLInputElement>(null);
@@ -864,7 +1106,10 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
       const raw = e.dataTransfer.getData(DRAG_TYPE);
       if (!raw) return;
       try {
-        const { type, toolId } = JSON.parse(raw) as { type: FlowNodeData["nodeType"]; toolId?: string };
+        const { type, toolId } = JSON.parse(raw) as {
+          type: FlowNodeData["nodeType"];
+          toolId?: string;
+        };
         const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
         if (type === "tool" && !toolId) {
           setToolSearchPosition(position);
@@ -940,13 +1185,48 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
 
   /** Unified list: LLM, Input, Output, Decision, Context read/write, and all library tools — so everything appears as "tools" for the agent. */
   const addableItems = useMemo(() => {
-    const nodeItems: { kind: "node"; type: FlowNodeData["nodeType"]; label: string; icon: React.ReactNode }[] = [
-      { kind: "node", type: "llm", label: "LLM", icon: <Brain size={18} className="add-node-modal-item-icon" /> },
-      { kind: "node", type: "input", label: "Input", icon: <LogIn size={18} className="add-node-modal-item-icon" /> },
-      { kind: "node", type: "output", label: "Output", icon: <LogOut size={18} className="add-node-modal-item-icon" /> },
-      { kind: "node", type: "decision", label: "Decision", icon: <GitBranch size={18} className="add-node-modal-item-icon" /> },
-      { kind: "node", type: "context_read", label: "Context read", icon: <ArrowRightLeft size={18} className="add-node-modal-item-icon" /> },
-      { kind: "node", type: "context_write", label: "Context write", icon: <ArrowRightLeft size={18} className="add-node-modal-item-icon" /> },
+    const nodeItems: {
+      kind: "node";
+      type: FlowNodeData["nodeType"];
+      label: string;
+      icon: React.ReactNode;
+    }[] = [
+      {
+        kind: "node",
+        type: "llm",
+        label: "LLM",
+        icon: <Brain size={18} className="add-node-modal-item-icon" />,
+      },
+      {
+        kind: "node",
+        type: "input",
+        label: "Input",
+        icon: <LogIn size={18} className="add-node-modal-item-icon" />,
+      },
+      {
+        kind: "node",
+        type: "output",
+        label: "Output",
+        icon: <LogOut size={18} className="add-node-modal-item-icon" />,
+      },
+      {
+        kind: "node",
+        type: "decision",
+        label: "Decision",
+        icon: <GitBranch size={18} className="add-node-modal-item-icon" />,
+      },
+      {
+        kind: "node",
+        type: "context_read",
+        label: "Context read",
+        icon: <ArrowRightLeft size={18} className="add-node-modal-item-icon" />,
+      },
+      {
+        kind: "node",
+        type: "context_write",
+        label: "Context write",
+        icon: <ArrowRightLeft size={18} className="add-node-modal-item-icon" />,
+      },
     ];
     const toolItems = tools.map((t) => ({
       kind: "tool" as const,
@@ -966,7 +1246,9 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
   const filteredTools = useMemo(() => {
     const q = toolSearchQuery.trim().toLowerCase();
     if (!q) return tools;
-    return tools.filter((t) => t.name.toLowerCase().includes(q) || (t.protocol?.toLowerCase().includes(q)));
+    return tools.filter(
+      (t) => t.name.toLowerCase().includes(q) || t.protocol?.toLowerCase().includes(q)
+    );
   }, [tools, toolSearchQuery]);
 
   return (
@@ -992,7 +1274,14 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
           type="button"
           className="button"
           onClick={() => setAddNodeModalOpen(true)}
-          style={{ fontSize: "0.82rem", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}
+          style={{
+            fontSize: "0.82rem",
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "0.35rem",
+          }}
         >
           <Wrench size={14} /> Add tool
         </button>
@@ -1006,14 +1295,26 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
               getNodeId: (n) => n.id,
               edges: edges.map((e) => ({ source: e.source, target: e.target })),
               setPosition: (n, x, y) => ({ ...n, position: [x, y] as [number, number] }),
-              options: { startX: opts.startX, startY: opts.startY, stepX: opts.stepX, stepY: opts.stepY },
+              options: {
+                startX: opts.startX,
+                startY: opts.startY,
+                stepX: opts.stepX,
+                stepY: opts.stepY,
+              },
             });
             onNodesEdgesChange(arranged, edges);
             if (onArrangeComplete) {
               setTimeout(() => onArrangeComplete(arranged, edges), 0);
             }
           }}
-          style={{ fontSize: "0.82rem", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}
+          style={{
+            fontSize: "0.82rem",
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "0.35rem",
+          }}
           title="Arrange nodes by flow (left to right; fan-outs stacked vertically)"
         >
           <LayoutGrid size={14} /> Arrange
@@ -1028,19 +1329,43 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
               background: "var(--background)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.35rem" }}>
-              <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>Edge</span>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "0.35rem",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "0.7rem",
+                  fontWeight: 600,
+                  color: "var(--text-muted)",
+                  textTransform: "uppercase",
+                }}
+              >
+                Edge
+              </span>
               <button
                 type="button"
                 className="nopan nodrag"
                 onClick={() => setSelectedEdgeId(null)}
-                style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 2,
+                  display: "flex",
+                }}
                 title="Close"
               >
                 <X size={14} style={{ color: "var(--text-muted)" }} />
               </button>
             </div>
-            <label style={{ fontSize: "0.75rem", display: "block", marginBottom: "0.25rem" }}>Label</label>
+            <label style={{ fontSize: "0.75rem", display: "block", marginBottom: "0.25rem" }}>
+              Label
+            </label>
             <input
               type="text"
               className="input nodrag nopan"
@@ -1084,7 +1409,10 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
                       key={item.type}
                       type="button"
                       className="add-node-modal-item nodrag nopan"
-                      onClick={() => { addNode(item.type); setAddNodeModalOpen(false); }}
+                      onClick={() => {
+                        addNode(item.type);
+                        setAddNodeModalOpen(false);
+                      }}
                     >
                       {item.icon}
                       <span>{item.label}</span>
@@ -1094,7 +1422,10 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
                       key={item.toolId}
                       type="button"
                       className="add-node-modal-item nodrag nopan"
-                      onClick={() => { addNode("tool", undefined, item.toolId); setAddNodeModalOpen(false); }}
+                      onClick={() => {
+                        addNode("tool", undefined, item.toolId);
+                        setAddNodeModalOpen(false);
+                      }}
                     >
                       {item.icon}
                       <span>{item.label}</span>
@@ -1104,7 +1435,11 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
               )}
             </div>
             <div className="add-node-modal-footer">
-              <button type="button" className="button button-secondary" onClick={() => setAddNodeModalOpen(false)}>
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => setAddNodeModalOpen(false)}
+              >
                 Cancel
               </button>
             </div>
@@ -1156,7 +1491,11 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
               )}
             </div>
             <div className="tool-picker-footer">
-              <button type="button" className="button button-secondary" onClick={() => setToolSearchOpen(false)}>
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => setToolSearchOpen(false)}
+              >
                 Cancel
               </button>
             </div>
@@ -1188,8 +1527,12 @@ function AgentCanvasInner({ nodes, edges, tools, llmConfigs = [], onNodesEdgesCh
           connectionLineStyle={{ stroke: "var(--primary)", strokeWidth: 2 }}
           onEdgeClick={onEdgeClick}
           onPaneClick={onPaneClick}
-          onNodeDragStart={() => { isDraggingRef.current = true; }}
-          onNodeDragStop={() => { isDraggingRef.current = false; }}
+          onNodeDragStart={() => {
+            isDraggingRef.current = true;
+          }}
+          onNodeDragStop={() => {
+            isDraggingRef.current = false;
+          }}
         >
           <Background />
           <Controls position="bottom-right" showZoom showFitView showInteractive />

@@ -33,15 +33,18 @@ export async function appendExecutionLogStep(
   const sequence = await getNextSequence(executionId);
   const safePayload = payload != null ? capPayload(payload) : null;
   const payloadStr = safePayload != null ? JSON.stringify(safePayload) : null;
-  await db.insert(executionLog).values({
-    id: crypto.randomUUID(),
-    executionId,
-    sequence,
-    phase,
-    label,
-    payload: payloadStr,
-    createdAt: Date.now(),
-  }).run();
+  await db
+    .insert(executionLog)
+    .values({
+      id: crypto.randomUUID(),
+      executionId,
+      sequence,
+      phase,
+      label,
+      payload: payloadStr,
+      createdAt: Date.now(),
+    })
+    .run();
 }
 
 export type ExecutionLogEntry = {

@@ -2,7 +2,18 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, GitBranch, ExternalLink, CheckCircle, XCircle, Clock, Loader2, Copy, Check } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  GitBranch,
+  ExternalLink,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Loader2,
+  Copy,
+  Check,
+} from "lucide-react";
 
 type ExecutionTraceStep = {
   nodeId: string;
@@ -60,12 +71,23 @@ function buildTraceText(trace: TraceResponse): string {
   ];
   const sorted = [...(trace.trail || [])].sort((a, b) => a.order - b.order);
   sorted.forEach((step, i) => {
-    lines.push(`  #${i + 1} ${step.agentName} (${step.nodeId})${step.round !== undefined ? ` [Round ${step.round + 1}]` : ""}`);
+    lines.push(
+      `  #${i + 1} ${step.agentName} (${step.nodeId})${step.round !== undefined ? ` [Round ${step.round + 1}]` : ""}`
+    );
     if (step.input !== undefined) {
       const label = step.inputIsUserReply ? "User reply (agent received):" : "Input:";
-      lines.push("    " + label + " " + (typeof step.input === "string" ? step.input : JSON.stringify(step.input)));
+      lines.push(
+        "    " +
+          label +
+          " " +
+          (typeof step.input === "string" ? step.input : JSON.stringify(step.input))
+      );
     }
-    if (step.output !== undefined) lines.push("    Output: " + (typeof step.output === "string" ? step.output : JSON.stringify(step.output)));
+    if (step.output !== undefined)
+      lines.push(
+        "    Output: " +
+          (typeof step.output === "string" ? step.output : JSON.stringify(step.output))
+      );
     if (step.error) lines.push("    Error: " + step.error);
     lines.push("");
   });
@@ -104,40 +126,114 @@ function TrailStepCard({ step }: { step: ExecutionTraceStep }) {
         }}
       >
         {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        <span style={{ fontWeight: 600, color: "var(--text-muted)", minWidth: 24 }}>#{step.order + 1}</span>
+        <span style={{ fontWeight: 600, color: "var(--text-muted)", minWidth: 24 }}>
+          #{step.order + 1}
+        </span>
         {step.round !== undefined && (
-          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", background: "var(--surface)", padding: "0.1rem 0.35rem", borderRadius: 4 }}>
+          <span
+            style={{
+              fontSize: "0.75rem",
+              color: "var(--text-muted)",
+              background: "var(--surface)",
+              padding: "0.1rem 0.35rem",
+              borderRadius: 4,
+            }}
+          >
             Round {step.round + 1}
           </span>
         )}
         <span style={{ fontWeight: 600 }}>{step.agentName}</span>
         <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>({step.nodeId})</span>
-        {hasError && <span style={{ color: "var(--resource-red)", fontSize: "0.8rem" }}>— Error</span>}
+        {hasError && (
+          <span style={{ color: "var(--resource-red)", fontSize: "0.8rem" }}>— Error</span>
+        )}
       </button>
       {expanded && (
-        <div style={{ padding: "0 0.75rem 0.75rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <div
+          style={{
+            padding: "0 0.75rem 0.75rem",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.5rem",
+          }}
+        >
           {hasInput && (
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.2rem" }}>
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: 600,
+                  color: "var(--text-muted)",
+                  marginBottom: "0.2rem",
+                }}
+              >
                 {step.inputIsUserReply ? "User reply (agent received this)" : "Input"}
               </div>
-              <pre style={{ margin: 0, padding: "0.5rem", background: "var(--surface)", borderRadius: 6, fontSize: "0.8rem", overflow: "auto", maxHeight: 200 }}>
+              <pre
+                style={{
+                  margin: 0,
+                  padding: "0.5rem",
+                  background: "var(--surface)",
+                  borderRadius: 6,
+                  fontSize: "0.8rem",
+                  overflow: "auto",
+                  maxHeight: 200,
+                }}
+              >
                 {formatValue(step.input)}
               </pre>
             </div>
           )}
           {hasOutput && (
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.2rem" }}>Output</div>
-              <pre style={{ margin: 0, padding: "0.5rem", background: "var(--surface)", borderRadius: 6, fontSize: "0.8rem", overflow: "auto", maxHeight: 200 }}>
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: 600,
+                  color: "var(--text-muted)",
+                  marginBottom: "0.2rem",
+                }}
+              >
+                Output
+              </div>
+              <pre
+                style={{
+                  margin: 0,
+                  padding: "0.5rem",
+                  background: "var(--surface)",
+                  borderRadius: 6,
+                  fontSize: "0.8rem",
+                  overflow: "auto",
+                  maxHeight: 200,
+                }}
+              >
                 {formatValue(step.output)}
               </pre>
             </div>
           )}
           {hasError && (
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--resource-red)", marginBottom: "0.2rem" }}>Error</div>
-              <pre style={{ margin: 0, padding: "0.5rem", background: "var(--surface)", borderRadius: 6, fontSize: "0.8rem", overflow: "auto", color: "var(--resource-red)" }}>
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: 600,
+                  color: "var(--resource-red)",
+                  marginBottom: "0.2rem",
+                }}
+              >
+                Error
+              </div>
+              <pre
+                style={{
+                  margin: 0,
+                  padding: "0.5rem",
+                  background: "var(--surface)",
+                  borderRadius: 6,
+                  fontSize: "0.8rem",
+                  overflow: "auto",
+                  color: "var(--resource-red)",
+                }}
+              >
                 {step.error}
               </pre>
             </div>
@@ -151,27 +247,39 @@ function TrailStepCard({ step }: { step: ExecutionTraceStep }) {
 function StatusBadge({ status }: { status: string }) {
   if (status === "completed" || status === "success") {
     return (
-      <span className="run-status run-status-success" style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+      <span
+        className="run-status run-status-success"
+        style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+      >
         <CheckCircle size={12} /> {status}
       </span>
     );
   }
   if (status === "failed" || status === "error") {
     return (
-      <span className="run-status run-status-failed" style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+      <span
+        className="run-status run-status-failed"
+        style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+      >
         <XCircle size={12} /> {status}
       </span>
     );
   }
   if (status === "running") {
     return (
-      <span className="run-status run-status-running" style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+      <span
+        className="run-status run-status-running"
+        style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+      >
         <Loader2 size={12} className="spin" /> {status}
       </span>
     );
   }
   return (
-    <span className="run-status run-status-queued" style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+    <span
+      className="run-status run-status-queued"
+      style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+    >
       <Clock size={12} /> {status}
     </span>
   );
@@ -193,7 +301,9 @@ export default function WorkflowStackTracesView({ workflowId }: Props) {
       const res = await fetch("/api/runs", { cache: "no-store" });
       const data = await res.json();
       const list = Array.isArray(data) ? data : [];
-      setRuns(list.filter((r: RunListItem) => r.targetType === "workflow" && r.targetId === workflowId));
+      setRuns(
+        list.filter((r: RunListItem) => r.targetType === "workflow" && r.targetId === workflowId)
+      );
     } catch {
       setRuns([]);
     } finally {
@@ -234,11 +344,33 @@ export default function WorkflowStackTracesView({ workflowId }: Props) {
   }, [trace]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 320, overflow: "hidden" }}>
-      <div style={{ padding: "0.75rem 0", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 320,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          padding: "0.75rem 0",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+          flexShrink: 0,
+        }}
+      >
         <GitBranch size={18} style={{ color: "var(--text-muted)" }} />
         <h3 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 600 }}>Execution traces</h3>
-        <button type="button" className="button button-secondary" onClick={loadRuns} style={{ marginLeft: "auto", fontSize: "0.8rem" }}>
+        <button
+          type="button"
+          className="button button-secondary"
+          onClick={loadRuns}
+          style={{ marginLeft: "auto", fontSize: "0.8rem" }}
+        >
           Refresh
         </button>
       </div>
@@ -252,9 +384,13 @@ export default function WorkflowStackTracesView({ workflowId }: Props) {
             padding: "0.5rem",
           }}
         >
-          {loadingRuns && <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Loading…</p>}
+          {loadingRuns && (
+            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Loading…</p>
+          )}
           {!loadingRuns && runs.length === 0 && (
-            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>No runs yet. Execute the workflow to see traces.</p>
+            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+              No runs yet. Execute the workflow to see traces.
+            </p>
           )}
           {!loadingRuns &&
             runs.map((run) => (
@@ -275,7 +411,9 @@ export default function WorkflowStackTracesView({ workflowId }: Props) {
                 }}
               >
                 <StatusBadge status={run.status} />
-                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
+                <div
+                  style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.2rem" }}
+                >
                   {new Date(run.startedAt).toLocaleString()}
                 </div>
               </button>
@@ -283,12 +421,24 @@ export default function WorkflowStackTracesView({ workflowId }: Props) {
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "1rem", minWidth: 0 }}>
           {!selectedId && (
-            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Select a run to view its execution trace.</p>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
+              Select a run to view its execution trace.
+            </p>
           )}
-          {selectedId && loadingTrace && <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Loading trace…</p>}
+          {selectedId && loadingTrace && (
+            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Loading trace…</p>
+          )}
           {selectedId && !loadingTrace && trace && (
             <>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  marginBottom: "0.75rem",
+                  flexWrap: "wrap",
+                }}
+              >
                 <StatusBadge status={trace.status} />
                 <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
                   {new Date(trace.startedAt).toLocaleString()}
@@ -298,7 +448,13 @@ export default function WorkflowStackTracesView({ workflowId }: Props) {
                   type="button"
                   className="button button-secondary"
                   onClick={handleCopyTrace}
-                  style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", fontSize: "0.8rem", marginLeft: "auto" }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                    fontSize: "0.8rem",
+                    marginLeft: "auto",
+                  }}
                 >
                   {copied ? <Check size={14} /> : <Copy size={14} />}
                   {copied ? "Copied" : "Copy trace"}
@@ -306,13 +462,20 @@ export default function WorkflowStackTracesView({ workflowId }: Props) {
                 <Link
                   href={`/runs/${trace.id}`}
                   className="button button-secondary"
-                  style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", fontSize: "0.8rem" }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                    fontSize: "0.8rem",
+                  }}
                 >
                   <ExternalLink size={14} /> Full run
                 </Link>
               </div>
               {sortedTrail.length === 0 ? (
-                <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>No step-by-step trace for this run.</p>
+                <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
+                  No step-by-step trace for this run.
+                </p>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
                   {sortedTrail.map((step) => (
@@ -323,7 +486,9 @@ export default function WorkflowStackTracesView({ workflowId }: Props) {
             </>
           )}
           {selectedId && !loadingTrace && !trace && (
-            <p style={{ color: "var(--resource-red)", fontSize: "0.9rem" }}>Could not load trace.</p>
+            <p style={{ color: "var(--resource-red)", fontSize: "0.9rem" }}>
+              Could not load trace.
+            </p>
           )}
         </div>
       </div>

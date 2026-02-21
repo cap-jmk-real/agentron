@@ -50,26 +50,31 @@ function download(url) {
   return new Promise((resolve, reject) => {
     const file = path.join(desktopDir, "node-runtime-download");
     const stream = fs.createWriteStream(file);
-    https.get(url, { headers: { "User-Agent": "Agentron-Desktop" } }, (res) => {
-      if (res.statusCode !== 200) {
-        reject(new Error(`Download failed: ${res.statusCode} ${url}`));
-        return;
-      }
-      res.pipe(stream);
-      stream.on("finish", () => {
-        stream.close();
-        resolve(file);
-      });
-    }).on("error", reject);
+    https
+      .get(url, { headers: { "User-Agent": "Agentron-Desktop" } }, (res) => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`Download failed: ${res.statusCode} ${url}`));
+          return;
+        }
+        res.pipe(stream);
+        stream.on("finish", () => {
+          stream.close();
+          resolve(file);
+        });
+      })
+      .on("error", reject);
   });
 }
 
 function extractZip(zipPath, outDir) {
   fs.mkdirSync(outDir, { recursive: true });
   if (process.platform === "win32") {
-    execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath.replace(/'/g, "''")}' -DestinationPath '${outDir.replace(/'/g, "''")}' -Force"`, {
-      stdio: "inherit"
-    });
+    execSync(
+      `powershell -NoProfile -Command "Expand-Archive -Path '${zipPath.replace(/'/g, "''")}' -DestinationPath '${outDir.replace(/'/g, "''")}' -Force"`,
+      {
+        stdio: "inherit",
+      }
+    );
   } else {
     execSync(`unzip -o "${zipPath}" -d "${outDir}"`, { stdio: "inherit" });
   }

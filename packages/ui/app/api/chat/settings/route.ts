@@ -1,11 +1,34 @@
 import { json } from "../../_lib/response";
-import { db, chatAssistantSettings, fromChatAssistantSettingsRow, toChatAssistantSettingsRow } from "../../_lib/db";
+import {
+  db,
+  chatAssistantSettings,
+  fromChatAssistantSettingsRow,
+  toChatAssistantSettingsRow,
+} from "../../_lib/db";
 import { eq } from "drizzle-orm";
+import { getDeploymentCollectionId } from "../../_lib/rag";
+import { ragCollections } from "@agentron-studio/core";
 
 const DEFAULT_ID = "default";
 
+/** True when feedback retrieval by similarity is desired but no embedding model is configured. */
+async function needsEmbeddingForFeedbackRetrieval(): Promise<boolean> {
+  const collectionId = await getDeploymentCollectionId();
+  if (!collectionId) return true;
+  const rows = await db
+    .select({ encodingConfigId: ragCollections.encodingConfigId })
+    .from(ragCollections)
+    .where(eq(ragCollections.id, collectionId))
+    .limit(1);
+  return rows.length === 0 || rows[0].encodingConfigId == null || rows[0].encodingConfigId === "";
+}
+
 export async function GET() {
-  const rows = await db.select().from(chatAssistantSettings).where(eq(chatAssistantSettings.id, DEFAULT_ID));
+  const rows = await db
+    .select()
+    .from(chatAssistantSettings)
+    .where(eq(chatAssistantSettings.id, DEFAULT_ID));
+  const needsEmbedding = await needsEmbeddingForFeedbackRetrieval();
   if (rows.length === 0) {
     return json({
       id: DEFAULT_ID,
@@ -18,10 +41,18 @@ export async function GET() {
       historyCompressAfter: 24,
       historyKeepRecent: 16,
       plannerRecentMessages: 12,
+      ragRetrieveLimit: null,
+      feedbackLastN: null,
+      feedbackRetrieveCap: null,
+      feedbackMinScore: null,
       updatedAt: Date.now(),
+      needsEmbeddingForFeedbackRetrieval: needsEmbedding,
     });
   }
-  return json(fromChatAssistantSettingsRow(rows[0]));
+  return json({
+    ...fromChatAssistantSettingsRow(rows[0]),
+    needsEmbeddingForFeedbackRetrieval: needsEmbedding,
+  });
 }
 
 export async function PATCH(request: Request) {
@@ -60,12 +91,16 @@ export async function PATCH(request: Request) {
   let historyCompressAfter: number | undefined;
   if (payload.historyCompressAfter !== undefined) {
     const n = Number(payload.historyCompressAfter);
-    historyCompressAfter = Number.isNaN(n) ? DEFAULT_COMPRESS_AFTER : Math.min(MAX_COMPRESS, Math.max(MIN_COMPRESS, Math.round(n)));
+    historyCompressAfter = Number.isNaN(n)
+      ? DEFAULT_COMPRESS_AFTER
+      : Math.min(MAX_COMPRESS, Math.max(MIN_COMPRESS, Math.round(n)));
   }
   let historyKeepRecent: number | undefined;
   if (payload.historyKeepRecent !== undefined) {
     const n = Number(payload.historyKeepRecent);
-    historyKeepRecent = Number.isNaN(n) ? DEFAULT_KEEP_RECENT : Math.min(MAX_KEEP, Math.max(MIN_KEEP, Math.round(n)));
+    historyKeepRecent = Number.isNaN(n)
+      ? DEFAULT_KEEP_RECENT
+      : Math.min(MAX_KEEP, Math.max(MIN_KEEP, Math.round(n)));
   }
   const DEFAULT_PLANNER_RECENT = 12;
   const MIN_PLANNER_RECENT = 1;
@@ -73,10 +108,15 @@ export async function PATCH(request: Request) {
   let plannerRecentMessages: number | undefined;
   if (payload.plannerRecentMessages !== undefined) {
     const n = Number(payload.plannerRecentMessages);
-    plannerRecentMessages = Number.isNaN(n) ? DEFAULT_PLANNER_RECENT : Math.min(MAX_PLANNER_RECENT, Math.max(MIN_PLANNER_RECENT, Math.round(n)));
+    plannerRecentMessages = Number.isNaN(n)
+      ? DEFAULT_PLANNER_RECENT
+      : Math.min(MAX_PLANNER_RECENT, Math.max(MIN_PLANNER_RECENT, Math.round(n)));
   }
 
-  const rows = await db.select().from(chatAssistantSettings).where(eq(chatAssistantSettings.id, DEFAULT_ID));
+  const rows = await db
+    .select()
+    .from(chatAssistantSettings)
+    .where(eq(chatAssistantSettings.id, DEFAULT_ID));
   const now = Date.now();
 
   if (rows.length === 0) {
@@ -91,10 +131,14 @@ export async function PATCH(request: Request) {
       historyCompressAfter: historyCompressAfter ?? DEFAULT_COMPRESS_AFTER,
       historyKeepRecent: historyKeepRecent ?? DEFAULT_KEEP_RECENT,
       plannerRecentMessages: plannerRecentMessages ?? DEFAULT_PLANNER_RECENT,
+      ragRetrieveLimit: null,
+      feedbackLastN: null,
+      feedbackRetrieveCap: null,
+      feedbackMinScore: null,
       updatedAt: now,
     });
     await db.insert(chatAssistantSettings).values(row).run();
-    return json(fromChatAssistantSettingsRow(row as typeof rows[0]));
+    return json(fromChatAssistantSettingsRow(row as (typeof rows)[0]));
   }
 
   const current = fromChatAssistantSettingsRow(rows[0]);
@@ -117,6 +161,9 @@ export async function PATCH(request: Request) {
     .where(eq(chatAssistantSettings.id, DEFAULT_ID))
     .run();
 
-  const updated = await db.select().from(chatAssistantSettings).where(eq(chatAssistantSettings.id, DEFAULT_ID));
+  const updated = await db
+    .select()
+    .from(chatAssistantSettings)
+    .where(eq(chatAssistantSettings.id, DEFAULT_ID));
   return json(fromChatAssistantSettingsRow(updated[0]));
 }

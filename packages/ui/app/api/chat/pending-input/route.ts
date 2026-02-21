@@ -5,7 +5,11 @@ import { eq, desc } from "drizzle-orm";
 /** Returns count and list of conversations where the Chat assistant is waiting for user input (ask_user, format_response with needsInput). */
 export async function GET() {
   const rows = await db
-    .select({ conversationId: chatMessages.conversationId, role: chatMessages.role, toolCalls: chatMessages.toolCalls })
+    .select({
+      conversationId: chatMessages.conversationId,
+      role: chatMessages.role,
+      toolCalls: chatMessages.toolCalls,
+    })
     .from(chatMessages)
     .where(eq(chatMessages.role, "assistant"))
     .orderBy(desc(chatMessages.createdAt))

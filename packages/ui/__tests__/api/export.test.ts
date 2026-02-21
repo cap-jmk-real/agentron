@@ -27,6 +27,7 @@ describe("Export API", () => {
     const data = await res.json();
     expect(data).toHaveProperty("tools");
     expect(Array.isArray(data.tools)).toBe(true);
+    expect(res.headers.get("Content-Disposition")).toMatch(/attachment; filename="agentron-tools-/);
   });
 
   it("GET /api/export without type defaults to all", async () => {
@@ -35,5 +36,23 @@ describe("Export API", () => {
     const data = await res.json();
     expect(data).toHaveProperty("agents");
     expect(data).toHaveProperty("workflows");
+  });
+
+  it("GET /api/export?type=agents returns agents only", async () => {
+    const res = await GET(new Request("http://localhost/api/export?type=agents"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toHaveProperty("agents");
+    expect(Array.isArray(data.agents)).toBe(true);
+    expect(data).not.toHaveProperty("tools");
+    expect(data).not.toHaveProperty("workflows");
+  });
+
+  it("GET /api/export?type=workflows returns workflows only", async () => {
+    const res = await GET(new Request("http://localhost/api/export?type=workflows"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toHaveProperty("workflows");
+    expect(Array.isArray(data.workflows)).toBe(true);
   });
 });

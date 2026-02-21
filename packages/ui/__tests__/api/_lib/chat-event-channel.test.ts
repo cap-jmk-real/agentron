@@ -21,7 +21,11 @@ describe("chat-event-channel", () => {
 
     publish(turnId, { type: "plan", reasoning: "We will do X", todos: ["A", "B"] });
     expect(onEvent).toHaveBeenCalledTimes(1);
-    expect(onEvent.mock.calls[0][0]).toEqual({ type: "plan", reasoning: "We will do X", todos: ["A", "B"] });
+    expect(onEvent.mock.calls[0][0]).toEqual({
+      type: "plan",
+      reasoning: "We will do X",
+      todos: ["A", "B"],
+    });
 
     publish(turnId, { type: "done", content: "Done" });
     expect(onEvent).toHaveBeenCalledTimes(2);
