@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Bell, Play, MessageCircle, X, CheckCheck } from "lucide-react";
 
@@ -20,6 +21,13 @@ export type NotificationItem = {
 };
 
 export type NotificationFilter = "all" | "run" | "chat";
+
+/** Build href for a notification item so the user is guided to the run or chat. Used by the modal and tested in __tests__. */
+export function getNotificationItemHref(item: { type: string; sourceId: string }): string {
+  if (item.type === "run") return `/runs/${item.sourceId}`;
+  if (item.type === "chat") return `/chat?conversation=${item.sourceId}`;
+  return "#";
+}
 
 type Props = {
   open: boolean;
@@ -74,7 +82,7 @@ export default function NotificationsModal({
     { id: "chat", label: "Chats" },
   ];
 
-  return (
+  const modalContent = (
     <div
       className="notifications-overlay"
       role="dialog"
@@ -128,7 +136,12 @@ export default function NotificationsModal({
               {error}
             </div>
           )}
-          {!loading && !error && items.length === 0 && (
+          {!loading && !error && items.length === 0 && totalActiveCount > 0 && (
+            <div className="notifications-loading" aria-live="polite">
+              Checking…
+            </div>
+          )}
+          {!loading && !error && items.length === 0 && totalActiveCount === 0 && (
             <div className="notifications-empty" aria-live="polite">
               <Bell size={32} strokeWidth={1.2} />
               <p>No notifications</p>
@@ -142,7 +155,7 @@ export default function NotificationsModal({
               {items.map((item) => (
                 <li key={item.id} className="notifications-item">
                   <Link
-                    href={item.type === "run" ? `/runs/${item.sourceId}` : item.type === "chat" ? `/chat?conversation=${item.sourceId}` : "#"}
+                    href={getNotificationItemHref(item)}
                     className="notifications-item-link"
                     onClick={() => onClose()}
                   >
@@ -151,15 +164,13 @@ export default function NotificationsModal({
                     </span>
                     <span className="notifications-item-content">
                       <span className="notifications-item-title">{item.title}</span>
-                      {(item.targetName ?? item.conversationTitle ?? item.message) && (
-                        <span className="notifications-item-message">
-                          {item.type === "run" && item.targetName
-                            ? item.targetName
-                            : item.type === "chat" && item.conversationTitle
-                              ? item.conversationTitle
-                              : item.message || ""}
-                        </span>
-                      )}
+                      <span className="notifications-item-message">
+                        {item.type === "run" && item.targetName
+                          ? item.targetName
+                          : item.type === "chat"
+                            ? (item.conversationTitle || item.message || "Open conversation")
+                            : item.message || ""}
+                      </span>
                       <span className="notifications-item-time">{formatTime(item.createdAt)}</span>
                     </span>
                     <span className={`notifications-item-severity severity-${item.severity}`}>{item.severity}</span>
@@ -189,4 +200,7 @@ export default function NotificationsModal({
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(modalContent, document.body);
 }

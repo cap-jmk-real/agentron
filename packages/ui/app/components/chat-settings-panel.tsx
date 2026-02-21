@@ -12,6 +12,7 @@ type ChatSettings = {
   temperature: number | null;
   historyCompressAfter: number | null;
   historyKeepRecent: number | null;
+  plannerRecentMessages: number | null;
 };
 
 type Resource = { id: string; name: string };
@@ -39,6 +40,7 @@ export default function ChatSettingsPanel({ open, onClose, onRefreshed }: Props)
   const [temperature, setTemperature] = useState(0.7);
   const [historyCompressAfter, setHistoryCompressAfter] = useState(24);
   const [historyKeepRecent, setHistoryKeepRecent] = useState(16);
+  const [plannerRecentMessages, setPlannerRecentMessages] = useState(12);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -61,6 +63,7 @@ export default function ChatSettingsPanel({ open, onClose, onRefreshed }: Props)
       setTemperature(Number.isNaN(t) ? 0.7 : t);
       setHistoryCompressAfter(typeof s.historyCompressAfter === "number" ? Math.min(200, Math.max(10, s.historyCompressAfter)) : 24);
       setHistoryKeepRecent(typeof s.historyKeepRecent === "number" ? Math.min(100, Math.max(5, s.historyKeepRecent)) : 16);
+      setPlannerRecentMessages(typeof s.plannerRecentMessages === "number" ? Math.min(100, Math.max(1, s.plannerRecentMessages)) : 12);
 
       const agentsData = await agentsRes.json();
       const workflowsData = await workflowsRes.json();
@@ -265,6 +268,34 @@ export default function ChatSettingsPanel({ open, onClose, onRefreshed }: Props)
                 type="button"
                 className="chat-settings-btn chat-settings-btn-secondary"
                 onClick={() => save({ historyCompressAfter, historyKeepRecent })}
+                disabled={saving}
+              >
+                Save
+              </button>
+            </div>
+          </section>
+
+          <section className="chat-settings-section">
+            <h3>Planner context (heap mode)</h3>
+            <p className="chat-settings-hint">
+              Number of past messages to include in recent conversation for the planner. Higher values give the planner more context (e.g. URLs, intent). Default 12.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                <span style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>Past messages</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={plannerRecentMessages}
+                  onChange={(e) => setPlannerRecentMessages(Math.min(100, Math.max(1, parseInt(e.target.value, 10) || 12)))}
+                  style={{ width: "4rem", padding: "0.35rem" }}
+                />
+              </label>
+              <button
+                type="button"
+                className="chat-settings-btn chat-settings-btn-secondary"
+                onClick={() => save({ plannerRecentMessages })}
                 disabled={saving}
               >
                 Save

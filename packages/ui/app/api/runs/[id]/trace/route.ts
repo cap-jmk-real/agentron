@@ -1,12 +1,13 @@
 import { json } from "../../../_lib/response";
 import { db, executions, workflows, agents, fromExecutionRow } from "../../../_lib/db";
+import { getExecutionLogForRun } from "../../../_lib/execution-log";
 import { eq } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
 
 export const runtime = "nodejs";
 
-/** GET /api/runs/:id/trace — returns run metadata and detailed execution trail (stack trace) for debugging. */
+/** GET /api/runs/:id/trace — returns run metadata, execution trail, and execution log (LLM/tool steps) for debugging. */
 export async function GET(_: Request, { params }: Params) {
   const { id } = await params;
   const rows = await db.select().from(executions).where(eq(executions.id, id));
@@ -23,6 +24,8 @@ export async function GET(_: Request, { params }: Params) {
     Array.isArray((output as { trail?: unknown[] }).trail)
       ? (output as { trail: unknown[] }).trail
       : [];
+
+  const executionLogSteps = await getExecutionLogForRun(id);
 
   let targetName: string | undefined;
   if (run.targetType === "workflow") {
@@ -42,5 +45,6 @@ export async function GET(_: Request, { params }: Params) {
     startedAt: run.startedAt,
     finishedAt: run.finishedAt,
     trail,
+    executionLog: executionLogSteps,
   });
 }

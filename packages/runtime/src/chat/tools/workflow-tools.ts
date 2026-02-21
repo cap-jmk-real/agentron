@@ -128,7 +128,7 @@ export const WORKFLOW_TOOLS: AssistantToolDef[] = [
       [
         "Update an existing workflow. REQUIRED when you have just created a workflow and agents in the same turn: call this in the SAME turn with nodes, edges, and maxRounds so the workflow actually runs agents.",
         "",
-        "REQUIRED: id (workflow UUID from create_workflow).",
+        "REQUIRED: id (workflow UUID from create_workflow or from [Created workflow id: <uuid>] in previous steps). Always pass workflow by id, never by name.",
         "",
         "Nodes: array of { id (e.g. 'n1'), type: 'agent', position: [x,y], parameters: { agentId: '<exact-agent-uuid>' } }. Each node MUST be type 'agent' with parameters.agentId. Do NOT pass nodes with type 'tool'; the runtime does not support workflow-level tool nodes. Tools are configured on the agent (toolIds), not as workflow nodes.",
         "Edges: array of { id, source: nodeId, target: nodeId } (e.g. n1→n2 and n2→n1 for a two-agent chat loop). For a single agent, use no edges (empty array).",
@@ -166,8 +166,30 @@ export const WORKFLOW_TOOLS: AssistantToolDef[] = [
     },
   },
   {
+    name: "list_workflow_versions",
+    description: "List version history for a workflow (id, version, created_at). Use before rollback_workflow so the user can pick a version.",
+    parameters: {
+      type: "object",
+      properties: { workflowId: { type: "string", description: "Workflow ID" } },
+      required: ["workflowId"],
+    },
+  },
+  {
+    name: "rollback_workflow",
+    description: "Restore a workflow to a previous version. Use list_workflow_versions first to get version id or version number.",
+    parameters: {
+      type: "object",
+      properties: {
+        workflowId: { type: "string", description: "Workflow ID" },
+        versionId: { type: "string", description: "Version row id from list_workflow_versions" },
+        version: { type: "number", description: "Version number (1-based) from list_workflow_versions" },
+      },
+      required: ["workflowId"],
+    },
+  },
+  {
     name: "execute_workflow",
-    description: "Run a workflow so its agents execute and produce output. Call this when the user says 'Run it now', 'Execute', 'Run the workflow', or selects that option from your format_response. Get the workflow id from list_workflows (use the only one, or the one you just created). Call after create_workflow and update_workflow when the user wants to run. Returns run id, status, and output (output.output = final text, output.trail = array of { nodeId, agentName, round, input, output } per step). You MUST inspect output.trail to see what the agents actually said; if it does not match the user's goal, use update_agent or update_workflow and call execute_workflow again. Do at most 2–3 improvement rounds, then report to the user.",
+    description: "Run a workflow so its agents execute and produce output. Call this when the user says 'Run it now', 'Execute', 'Run the workflow', or selects that option from your format_response. Pass the workflow by id: use the id from create_workflow result in this turn, or from [Created workflow id: <uuid>] in previous steps, or from list_workflows. Always pass id (or workflowId), never workflow name. Call after create_workflow and update_workflow when the user wants to run. Returns run id, status, and output (output.output = final text, output.trail = array of { nodeId, agentName, round, input, output } per step). You MUST inspect output.trail to see what the agents actually said; if it does not match the user's goal, use update_agent or update_workflow and call execute_workflow again. Do at most 2–3 improvement rounds, then report to the user.",
     parameters: {
       type: "object",
       properties: {

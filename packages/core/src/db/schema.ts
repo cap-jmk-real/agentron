@@ -32,6 +32,26 @@ export const workflows = sqliteTable("workflows", {
   createdAt: integer("created_at").notNull()
 });
 
+/** Version history for agents: one row per update, snapshot = state before that update. Used for audit and rollback. */
+export const agentVersions = sqliteTable("agent_versions", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  version: integer("version").notNull(),
+  snapshot: text("snapshot").notNull(),
+  createdAt: integer("created_at").notNull(),
+  conversationId: text("conversation_id")
+});
+
+/** Version history for workflows: one row per update, snapshot = state before that update. Used for audit and rollback. */
+export const workflowVersions = sqliteTable("workflow_versions", {
+  id: text("id").primaryKey(),
+  workflowId: text("workflow_id").notNull(),
+  version: integer("version").notNull(),
+  snapshot: text("snapshot").notNull(),
+  createdAt: integer("created_at").notNull(),
+  conversationId: text("conversation_id")
+});
+
 export const tools = sqliteTable("tools", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -111,6 +131,7 @@ export const chatAssistantSettings = sqliteTable("chat_assistant_settings", {
   temperature: text("temperature"),
   historyCompressAfter: integer("history_compress_after"),
   historyKeepRecent: integer("history_keep_recent"),
+  plannerRecentMessages: integer("planner_recent_messages"),
   updatedAt: integer("updated_at").notNull()
 });
 
@@ -339,6 +360,17 @@ export const messageQueueLog = sqliteTable("message_queue_log", {
   createdAt: integer("created_at").notNull()
 });
 
+/** Per-run execution log for workflow debugging (LLM requests/responses, tool calls/results). Same level of detail as message queue log for agentron. */
+export const executionLog = sqliteTable("execution_log", {
+  id: text("id").primaryKey(),
+  executionId: text("execution_id").notNull(),
+  sequence: integer("sequence").notNull(),
+  phase: text("phase").notNull(),
+  label: text("label"),
+  payload: text("payload"),
+  createdAt: integer("created_at").notNull()
+});
+
 // --- RAG: encoding config (user-configured; changing it requires re-encoding vectors) ---
 export const ragEncodingConfigs = sqliteTable("rag_encoding_configs", {
   id: text("id").primaryKey(),
@@ -493,4 +525,18 @@ export const reminders = sqliteTable("reminders", {
   status: text("status").notNull(),
   createdAt: integer("created_at").notNull(),
   firedAt: integer("fired_at")
+});
+
+/** Notifications (run completed/failed, chat needs input). Event-driven; created by run/chat APIs, listed by GET /api/notifications. */
+export const notifications = sqliteTable("notifications", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(), // run | chat | system
+  sourceId: text("source_id").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  severity: text("severity").notNull(), // info | success | warning | error
+  status: text("status").notNull(), // active | cleared
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  metadata: text("metadata") // JSON
 });

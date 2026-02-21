@@ -273,5 +273,7 @@ describe("Runs API", () => {
     expect(data.trail[0].nodeId).toBe("n1");
     expect(data.trail[0].input).toBe("in");
     expect(data.trail[0].output).toBe("out");
+    expect(data.executionLog).toBeDefined();
+    expect(Array.isArray(data.executionLog)).toBe(true);
   });
 });

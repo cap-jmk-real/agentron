@@ -74,7 +74,7 @@ export async function runContainer(input: unknown, onChunk?: (chunk: ContainerSt
 
 const containerSessionByRunId = new Map<string, { containerId: string; image: string }>();
 
-function destroyContainerSession(runId: string): Promise<void> {
+export async function destroyContainerSession(runId: string): Promise<void> {
   const session = containerSessionByRunId.get(runId);
   if (!session) return Promise.resolve();
   containerSessionByRunId.delete(runId);

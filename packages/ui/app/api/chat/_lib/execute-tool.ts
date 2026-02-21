@@ -3,7 +3,7 @@
  * Extracted from the chat route for maintainability.
  */
 import {
-  db, agents, workflows, tools, llmConfigs, executions, files, sandboxes, customFunctions, feedback, conversations, chatMessages, chatAssistantSettings, assistantMemory,
+  db, agents, workflows, agentVersions, workflowVersions, tools, llmConfigs, executions, files, sandboxes, customFunctions, feedback, conversations, chatMessages, chatAssistantSettings, assistantMemory,
   fromChatAssistantSettingsRow, toChatAssistantSettingsRow, fromAssistantMemoryRow, toAssistantMemoryRow,
   fromAgentRow, fromWorkflowRow, fromToolRow, fromLlmConfigRow, fromLlmConfigRowWithSecret, fromFeedbackRow, fromFileRow, fromSandboxRow,
   toAgentRow, toWorkflowRow, toToolRow, toCustomFunctionRow, toSandboxRow, toChatMessageRow, fromChatMessageRow,
@@ -24,6 +24,9 @@ import {
   toReminderRow,
   insertWorkflowMessage,
   getWorkflowMessages,
+  TOOL_CATEGORIES,
+  IMPROVEMENT_SUBSETS,
+  remoteServers,
 } from "../../_lib/db";
 import type { RemoteServer } from "../../_lib/db";
 import { runWorkflow, RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE, WaitingForUserError, runWriteFile, runContainerBuild, runContainer, runContainerSession } from "../../_lib/run-workflow";
@@ -35,7 +38,7 @@ import { testRemoteConnection } from "../../_lib/remote-test";
 import { randomAgentName, randomWorkflowName } from "../../_lib/naming";
 import { openclawSend, openclawHistory, openclawAbort } from "../../_lib/openclaw-client";
 import { eq, asc, desc, and, inArray, isNotNull } from "drizzle-orm";
-import { runAssistant, buildFeedbackInjection, createDefaultLLMManager, resolveModelPricing, calculateCost, searchWeb, fetchUrl, refinePrompt, getRegistry } from "@agentron-studio/runtime";
+import { runAssistant, buildFeedbackInjection, createDefaultLLMManager, resolveModelPricing, calculateCost, searchWeb, fetchUrl, refinePrompt, getRegistry, getSpecialistOptions } from "@agentron-studio/runtime";
 import { getContainerManager, withContainerInstallHint } from "../../_lib/container-manager";
 import { getShellCommandAllowlist, updateAppSettings } from "../../_lib/app-settings";
 import { getStoredCredential, setStoredCredential } from "../../_lib/credential-store";
@@ -43,6 +46,28 @@ import { createRunNotification } from "../../_lib/notifications-store";
 import { scheduleReminder, cancelReminderTimeout } from "../../_lib/reminder-scheduler";
 import { layoutNodesByGraph } from "../../../lib/canvas-layout";
 import { runShellCommand } from "../../_lib/shell-exec";
+import { loadSpecialistOverrides, saveSpecialistOverrides } from "../../_lib/specialist-overrides";
+
+/** In-memory session overrides keyed by scopeKey (runId or conversationId). (a) Session-only improver writes here; workflow runner can read for the current run. */
+const sessionOverridesStore = new Map<string, { overrideType: string; payload: unknown }[]>();
+
+const DEFAULT_RECENT_SUMMARIES_COUNT = 3;
+const MIN_SUMMARIES = 1;
+const MAX_SUMMARIES = 10;
+
+/** Max tools per agent when creating via create_agent. When over cap, reject and instruct to create multiple agents + workflow. */
+export const MAX_TOOLS_PER_CREATED_AGENT = 10;
+
+/** Resolve workflow id from args: workflowId, id, or workflowIdentifierField "id" + workflowIdentifierValue. No name-based resolution. */
+function resolveWorkflowIdFromArgs(a: Record<string, unknown>): { workflowId: string } | { error: string } {
+  const direct = (a.workflowId ?? a.id) as string | undefined;
+  if (typeof direct === "string" && direct.trim()) return { workflowId: direct.trim() };
+  const field = typeof a.workflowIdentifierField === "string" ? (a.workflowIdentifierField as string).trim().toLowerCase() : "";
+  const value = typeof a.workflowIdentifierValue === "string" ? (a.workflowIdentifierValue as string).trim() : "";
+  if (!value) return { error: "Workflow id is required (pass workflowId, id, or workflowIdentifierField 'id' + workflowIdentifierValue)." };
+  if (field === "id") return { workflowId: value };
+  return { error: "Workflow id is required (pass workflowId, id, or workflowIdentifierField 'id' + workflowIdentifierValue)." };
+}
 
 type GraphNode = { id: string; type?: string; position: [number, number]; parameters?: Record<string, unknown> };
 type GraphEdge = { id: string; source: string; target: string };
@@ -317,7 +342,7 @@ export function resolveTemplateVars(
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
-  ctx?: { conversationId?: string; vaultKey?: Buffer | null }
+  ctx?: { conversationId?: string; vaultKey?: Buffer | null; registry?: ReturnType<typeof getRegistry> }
 ): Promise<unknown> {
   try {
     const a = args != null && typeof args === "object" && !Array.isArray(args) ? args : {};
@@ -338,17 +363,72 @@ export async function executeTool(
     }
 
     switch (name) {
+    case "get_specialist_options": {
+      const reg = ctx?.registry;
+      if (!reg) return { error: "Heap registry not available (call only in heap mode)." };
+      const specialistId = typeof a.specialistId === "string" && (a.specialistId as string).trim() ? (a.specialistId as string).trim() : undefined;
+      return getSpecialistOptions(reg, specialistId);
+    }
+    case "apply_session_override": {
+      const scopeKey = typeof a.scopeKey === "string" && (a.scopeKey as string).trim() ? (a.scopeKey as string).trim() : undefined;
+      const overrideType = typeof a.overrideType === "string" && (a.overrideType as string).trim() ? (a.overrideType as string).trim() : undefined;
+      const payload = a.payload != null && typeof a.payload === "object" && !Array.isArray(a.payload) ? a.payload : {};
+      if (!scopeKey || !overrideType) return { error: "scopeKey and overrideType are required." };
+      const list = sessionOverridesStore.get(scopeKey) ?? [];
+      list.push({ overrideType, payload });
+      sessionOverridesStore.set(scopeKey, list);
+      return { ok: true, message: "Session override applied for scope " + scopeKey + "." };
+    }
+    case "list_specialists": {
+      const reg = ctx?.registry;
+      if (!reg) return { error: "Heap registry not available (call only in heap mode)." };
+      const specialists = Object.entries(reg.specialists).map(([id, e]) => ({ id, description: e.description }));
+      return { specialists };
+    }
+    case "register_specialist": {
+      const id = typeof a.id === "string" && (a.id as string).trim() ? (a.id as string).trim() : undefined;
+      const description = typeof a.description === "string" ? (a.description as string).trim() : "";
+      const toolNames = Array.isArray(a.toolNames) ? (a.toolNames as string[]).filter((x) => typeof x === "string").slice(0, 10) : [];
+      if (!id) return { error: "id is required." };
+      const overrides = loadSpecialistOverrides();
+      if (overrides.some((e) => e.id === id)) return { error: "Specialist id already exists: " + id + "." };
+      overrides.push({ id, description, toolNames });
+      saveSpecialistOverrides(overrides);
+      return { ok: true, message: "Registered specialist " + id + "." };
+    }
+    case "update_specialist": {
+      const id = typeof a.id === "string" && (a.id as string).trim() ? (a.id as string).trim() : undefined;
+      if (!id) return { error: "id is required." };
+      const overrides = loadSpecialistOverrides();
+      const desc = typeof a.description === "string" ? (a.description as string).trim() : undefined;
+      const toolNames = Array.isArray(a.toolNames) ? (a.toolNames as string[]).filter((x) => typeof x === "string").slice(0, 10) : undefined;
+      let entry = overrides.find((e) => e.id === id);
+      if (!entry) {
+        const defaultReg = getRegistry();
+        const defaultEntry = defaultReg.specialists[id];
+        entry = defaultEntry ? { id, description: defaultEntry.description ?? "", toolNames: [...defaultEntry.toolNames] } : { id, description: "", toolNames: [] };
+        overrides.push(entry);
+      }
+      if (desc !== undefined) entry.description = desc;
+      if (toolNames !== undefined) entry.toolNames = toolNames;
+      saveSpecialistOverrides(overrides);
+      return { ok: true, message: "Updated specialist " + id + "." };
+    }
     case "ask_user": {
       const question = typeof a.question === "string" ? a.question.trim() : "";
       const reason = typeof a.reason === "string" ? (a.reason as string).trim() : undefined;
       const options = Array.isArray(a.options)
         ? (a.options as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim())
         : undefined;
+      const stepIndex = typeof a.stepIndex === "number" && Number.isInteger(a.stepIndex) ? a.stepIndex : undefined;
+      const stepTotal = typeof a.stepTotal === "number" && Number.isInteger(a.stepTotal) ? a.stepTotal : undefined;
       return {
         waitingForUser: true,
         question: question || "Please provide the information or confirmation.",
         ...(options && options.length > 0 ? { options } : {}),
         ...(reason ? { reason } : {}),
+        ...(stepIndex != null ? { stepIndex } : {}),
+        ...(stepTotal != null ? { stepTotal } : {}),
       };
     }
     case "ask_credentials": {
@@ -384,9 +464,16 @@ export async function executeTool(
       return rows.map(fromLlmConfigRow).map((c) => ({ id: c.id, provider: c.provider, model: c.model }));
     }
     case "create_agent": {
+      let toolIds = Array.isArray(a.toolIds) ? (a.toolIds as string[]).filter((x) => typeof x === "string") : undefined;
+      if (toolIds && toolIds.length > MAX_TOOLS_PER_CREATED_AGENT) {
+        return {
+          error: `This agent would have ${toolIds.length} tools, which exceeds the maximum of ${MAX_TOOLS_PER_CREATED_AGENT} tools per agent. Create multiple agents (each with at most ${MAX_TOOLS_PER_CREATED_AGENT} tools) and connect them with a workflow (e.g. pipeline or chat loop).`,
+          code: "TOOL_CAP_EXCEEDED",
+          maxToolsPerAgent: MAX_TOOLS_PER_CREATED_AGENT,
+        };
+      }
       const id = crypto.randomUUID();
       const agentName = (a.name && String(a.name).trim()) ? (a.name as string) : randomAgentName();
-      let toolIds = Array.isArray(a.toolIds) ? (a.toolIds as string[]).filter((x) => typeof x === "string") : undefined;
       const def: Record<string, unknown> = {};
       const topLevelSystemPrompt = typeof a.systemPrompt === "string" && a.systemPrompt.trim() ? (a.systemPrompt as string).trim() : undefined;
       if (topLevelSystemPrompt) def.systemPrompt = topLevelSystemPrompt;
@@ -410,6 +497,24 @@ export async function executeTool(
         const graphEdges: { id: string; source: string; target: string }[] = [];
         ensureToolNodesInGraph(graphNodes, graphEdges, toolIds ?? []);
         def.graph = { nodes: applyAgentGraphLayout(graphNodes, graphEdges), edges: graphEdges };
+      } else if ((a.kind as string) !== "code" && !def.graph && ((toolIds?.length ?? 0) > 0 || (a.llmConfigId as string | undefined))) {
+        // Caller provided toolIds/llmConfigId but no systemPrompt or graph — avoid creating an empty agent that does nothing when run
+        const nid = `n-${crypto.randomUUID().slice(0, 8)}`;
+        const desc = (a.description && String(a.description).trim()) ? String(a.description).trim() : "";
+        const systemPrompt = desc || "You are an assistant. Use the available tools to complete the user request. Respond with a brief summary.";
+        const graphNodes: GraphNode[] = [
+          { id: nid, type: "llm", position: [100, 100], parameters: { systemPrompt } },
+        ];
+        const graphEdges: GraphEdge[] = [];
+        ensureToolNodesInGraph(graphNodes, graphEdges, toolIds ?? []);
+        def.graph = { nodes: applyAgentGraphLayout(graphNodes, graphEdges), edges: graphEdges };
+      }
+      if (toolIds && toolIds.length > MAX_TOOLS_PER_CREATED_AGENT) {
+        return {
+          error: `This agent would have ${toolIds.length} tools, which exceeds the maximum of ${MAX_TOOLS_PER_CREATED_AGENT} tools per agent. Create multiple agents (each with at most ${MAX_TOOLS_PER_CREATED_AGENT} tools) and connect them with a workflow (e.g. pipeline or chat loop).`,
+          code: "TOOL_CAP_EXCEEDED",
+          maxToolsPerAgent: MAX_TOOLS_PER_CREATED_AGENT,
+        };
       }
       if (toolIds && toolIds.length > 0) def.toolIds = toolIds;
       const llmConfigId = a.llmConfigId as string | undefined;
@@ -526,12 +631,59 @@ export async function executeTool(
         }
       }
       (updated as { definition?: unknown }).definition = def;
+      const currentRow = rows[0];
+      const versionRows = await db.select({ version: agentVersions.version }).from(agentVersions).where(eq(agentVersions.agentId, id)).orderBy(desc(agentVersions.version)).limit(1);
+      const nextVersion = versionRows.length > 0 ? versionRows[0].version + 1 : 1;
+      const versionId = crypto.randomUUID();
+      const snapshot = JSON.stringify(currentRow);
+      await db.insert(agentVersions).values({
+        id: versionId,
+        agentId: id,
+        version: nextVersion,
+        snapshot,
+        createdAt: Date.now(),
+        conversationId: conversationId ?? null,
+      }).run();
       await db.update(agents).set(toAgentRow(updated)).where(eq(agents.id, id)).run();
-      return { id, message: `Agent "${updated.name}" updated` };
+      return { id, message: `Agent "${updated.name}" updated`, version: nextVersion };
     }
     case "delete_agent": {
       await db.delete(agents).where(eq(agents.id, a.id as string)).run();
       return { message: "Agent deleted" };
+    }
+    case "list_agent_versions": {
+      const agentId = (a.agentId ?? a.id) as string;
+      if (!agentId?.trim()) return { error: "agentId is required" };
+      const exists = await db.select({ id: agents.id }).from(agents).where(eq(agents.id, agentId)).limit(1);
+      if (exists.length === 0) return { error: "Agent not found" };
+      const rows = await db.select({ id: agentVersions.id, version: agentVersions.version, createdAt: agentVersions.createdAt }).from(agentVersions).where(eq(agentVersions.agentId, agentId)).orderBy(desc(agentVersions.version));
+      return rows.map((r) => ({ id: r.id, version: r.version, created_at: r.createdAt }));
+    }
+    case "rollback_agent": {
+      const agentId = (a.agentId ?? a.id) as string;
+      if (!agentId?.trim()) return { error: "agentId is required" };
+      const versionId = a.versionId as string | undefined;
+      const versionNum = typeof a.version === "number" ? a.version : undefined;
+      const exists = await db.select({ id: agents.id }).from(agents).where(eq(agents.id, agentId)).limit(1);
+      if (exists.length === 0) return { error: "Agent not found" };
+      let versionRow: { id: string; agentId: string; version: number; snapshot: string } | undefined;
+      if (versionId) {
+        const rows = await db.select().from(agentVersions).where(eq(agentVersions.id, versionId)).limit(1);
+        versionRow = rows.length > 0 && rows[0].agentId === agentId ? (rows[0] as { id: string; agentId: string; version: number; snapshot: string }) : undefined;
+      } else if (versionNum != null) {
+        const rows = await db.select().from(agentVersions).where(eq(agentVersions.agentId, agentId));
+        versionRow = (rows.find((r) => r.version === versionNum) as { id: string; agentId: string; version: number; snapshot: string } | undefined);
+      }
+      if (!versionRow) return { error: "Version not found (provide versionId or version)" };
+      let snapshot: Record<string, unknown>;
+      try {
+        snapshot = JSON.parse(versionRow.snapshot) as Record<string, unknown>;
+      } catch {
+        return { error: "Invalid snapshot" };
+      }
+      if (String(snapshot.id) !== agentId) return { error: "Snapshot does not match agent" };
+      await db.update(agents).set(snapshot as Record<string, unknown>).where(eq(agents.id, agentId)).run();
+      return { id: agentId, version: versionRow.version, message: "Agent rolled back" };
     }
     case "apply_agent_prompt_improvement": {
       const agentId = a.agentId as string;
@@ -621,7 +773,21 @@ export async function executeTool(
     case "list_tools": {
       await ensureStandardTools();
       const rows = await db.select().from(tools);
-      return rows.map(fromToolRow).map((t) => ({ id: t.id, name: t.name, protocol: t.protocol }));
+      let result = rows.map(fromToolRow).map((t) => ({ id: t.id, name: t.name, protocol: t.protocol }));
+      const category = typeof a.category === "string" ? (a.category as string).trim().toLowerCase() : undefined;
+      let subset = typeof a.subset === "string" ? (a.subset as string).trim().toLowerCase() : undefined;
+      if (category === "improvement" && !subset) {
+        subset = "prompt_and_topology";
+      }
+      if (category) {
+        const inCategory = new Set(Object.entries(TOOL_CATEGORIES).filter(([, c]) => c === category).map(([id]) => id));
+        result = result.filter((t) => inCategory.has(t.id));
+        if (category === "improvement" && subset && IMPROVEMENT_SUBSETS[subset]) {
+          const subsetIds = new Set(IMPROVEMENT_SUBSETS[subset]);
+          result = result.filter((t) => subsetIds.has(t.id));
+        }
+      }
+      return result;
     }
     case "get_tool": {
       await ensureStandardTools();
@@ -666,7 +832,9 @@ export async function executeTool(
       return rows.map(fromWorkflowRow).map((w) => ({ id: w.id, name: w.name, executionMode: w.executionMode }));
     }
     case "get_workflow": {
-      const wfId = a.id as string;
+      const wfResolved = resolveWorkflowIdFromArgs(a);
+      if ("error" in wfResolved) return { error: wfResolved.error };
+      const wfId = wfResolved.workflowId;
       const rows = await db.select().from(workflows).where(eq(workflows.id, wfId));
       if (rows.length === 0) return { error: "Workflow not found" };
       const w = fromWorkflowRow(rows[0]);
@@ -675,7 +843,9 @@ export async function executeTool(
       return { id: w.id, name: w.name, executionMode: w.executionMode, nodes: wNodes, edges: wEdges, maxRounds: w.maxRounds, turnInstruction: (w as { turnInstruction?: string | null }).turnInstruction, branches: (w as { branches?: unknown }).branches };
     }
     case "add_workflow_edges": {
-      const wfId = (a.workflowId ?? a.id) as string;
+      const wfResolved = resolveWorkflowIdFromArgs(a);
+      if ("error" in wfResolved) return { error: wfResolved.error };
+      const wfId = wfResolved.workflowId;
       const newEdges = Array.isArray(a.edges) ? (a.edges as { id: string; source: string; target: string }[]) : [];
       const newNodes = Array.isArray(a.nodes) ? (a.nodes as { id: string; type: string; position: [number, number]; parameters?: Record<string, unknown> }[]) : [];
       const rows = await db.select().from(workflows).where(eq(workflows.id, wfId));
@@ -726,7 +896,18 @@ export async function executeTool(
       return { id, name: wf.name, message: `Workflow "${wf.name}" created` };
     }
     case "update_workflow": {
-      const wfId = (a.workflowId ?? a.id) as string;
+      // Accept both flat (nodes, edges, maxRounds) and nested (workflow: { nodes, edges, maxRounds }) so workflows are not left empty when the LLM sends the nested shape.
+      const w = (a as { workflow?: Record<string, unknown> }).workflow;
+      if (w != null && typeof w === "object" && !Array.isArray(w)) {
+        if (a.nodes === undefined && Array.isArray(w.nodes)) (a as Record<string, unknown>).nodes = w.nodes;
+        if (a.edges === undefined && Array.isArray(w.edges)) (a as Record<string, unknown>).edges = w.edges;
+        if (a.maxRounds === undefined && w.maxRounds != null) (a as Record<string, unknown>).maxRounds = w.maxRounds;
+        if (a.name === undefined && w.name != null) (a as Record<string, unknown>).name = w.name;
+        if (a.branches === undefined && w.branches !== undefined) (a as Record<string, unknown>).branches = w.branches;
+      }
+      const wfResolved = resolveWorkflowIdFromArgs(a);
+      if ("error" in wfResolved) return { error: wfResolved.error };
+      const wfId = wfResolved.workflowId;
       const rows = await db.select().from(workflows).where(eq(workflows.id, wfId));
       if (rows.length === 0) return { error: "Workflow not found" };
       const row = rows[0];
@@ -763,9 +944,16 @@ export async function executeTool(
               parameters = {};
             }
           }
+          const nodeRecord = n as Record<string, unknown>;
           if (!parameters.agentId && parameters.agentName != null) {
             const byName = await db.select().from(agents).where(eq(agents.name, String(parameters.agentName)));
             if (byName.length > 0) parameters.agentId = byName[0].id;
+          }
+          if (parameters.agentId == null && nodeRecord.agentId != null && String(nodeRecord.agentId).trim() !== "") {
+            parameters.agentId = String(nodeRecord.agentId).trim();
+          }
+          if (parameters.agentName == null && nodeRecord.agentName != null && String(nodeRecord.agentName).trim() !== "") {
+            parameters.agentName = String(nodeRecord.agentName).trim();
           }
           normalizedNodes.push({ id: id || `n-${i}`, type, position, parameters });
         }
@@ -793,19 +981,68 @@ export async function executeTool(
         updated.edges = normalizedEdges;
       }
       const workflowPayload = { id: updated.id, name: updated.name, description: updated.description, nodes: updated.nodes ?? [], edges: updated.edges ?? [], executionMode: updated.executionMode, schedule: updated.schedule, maxRounds: updated.maxRounds, turnInstruction: updated.turnInstruction, branches: updated.branches };
+      const wfVersionRows = await db.select({ version: workflowVersions.version }).from(workflowVersions).where(eq(workflowVersions.workflowId, wfId)).orderBy(desc(workflowVersions.version)).limit(1);
+      const nextWfVersion = wfVersionRows.length > 0 ? wfVersionRows[0].version + 1 : 1;
+      const wfVersionId = crypto.randomUUID();
+      await db.insert(workflowVersions).values({
+        id: wfVersionId,
+        workflowId: wfId,
+        version: nextWfVersion,
+        snapshot: JSON.stringify(row),
+        createdAt: Date.now(),
+        conversationId: conversationId ?? null,
+      }).run();
       await db.update(workflows).set(toWorkflowRow(workflowPayload as Parameters<typeof toWorkflowRow>[0])).where(eq(workflows.id, wfId)).run();
       const nodeList = Array.isArray(workflowPayload.nodes) ? workflowPayload.nodes : [];
       const edgeList = Array.isArray(workflowPayload.edges) ? workflowPayload.edges : [];
-      const result: { id: string; message: string; nodes: number; edges: number; warning?: string } = { id: wfId, message: `Workflow "${updated.name}" updated`, nodes: nodeList.length, edges: edgeList.length };
+      const result: { id: string; message: string; nodes: number; edges: number; version?: number; warning?: string } = { id: wfId, message: `Workflow "${updated.name}" updated`, nodes: nodeList.length, edges: edgeList.length, version: nextWfVersion };
       if (updateWorkflowWarning) result.warning = updateWorkflowWarning;
       return result;
     }
     case "delete_workflow": {
-      const wfId = a.id as string;
+      const wfResolved = resolveWorkflowIdFromArgs(a);
+      if ("error" in wfResolved) return { error: wfResolved.error };
+      const wfId = wfResolved.workflowId;
       const wfRows = await db.select({ id: workflows.id, name: workflows.name }).from(workflows).where(eq(workflows.id, wfId));
       if (wfRows.length === 0) return { error: "Workflow not found" };
       await db.delete(workflows).where(eq(workflows.id, wfId)).run();
       return { id: wfId, message: `Workflow "${wfRows[0].name}" deleted` };
+    }
+    case "list_workflow_versions": {
+      const wfResolved = resolveWorkflowIdFromArgs(a);
+      if ("error" in wfResolved) return { error: wfResolved.error };
+      const wfId = wfResolved.workflowId;
+      const exists = await db.select({ id: workflows.id }).from(workflows).where(eq(workflows.id, wfId)).limit(1);
+      if (exists.length === 0) return { error: "Workflow not found" };
+      const rows = await db.select({ id: workflowVersions.id, version: workflowVersions.version, createdAt: workflowVersions.createdAt }).from(workflowVersions).where(eq(workflowVersions.workflowId, wfId)).orderBy(desc(workflowVersions.version));
+      return rows.map((r) => ({ id: r.id, version: r.version, created_at: r.createdAt }));
+    }
+    case "rollback_workflow": {
+      const wfResolved = resolveWorkflowIdFromArgs(a);
+      if ("error" in wfResolved) return { error: wfResolved.error };
+      const wfId = wfResolved.workflowId;
+      const versionId = a.versionId as string | undefined;
+      const versionNum = typeof a.version === "number" ? a.version : undefined;
+      const exists = await db.select({ id: workflows.id }).from(workflows).where(eq(workflows.id, wfId)).limit(1);
+      if (exists.length === 0) return { error: "Workflow not found" };
+      let versionRow: { id: string; workflowId: string; version: number; snapshot: string } | undefined;
+      if (versionId) {
+        const rows = await db.select().from(workflowVersions).where(eq(workflowVersions.id, versionId)).limit(1);
+        versionRow = rows.length > 0 && rows[0].workflowId === wfId ? (rows[0] as { id: string; workflowId: string; version: number; snapshot: string }) : undefined;
+      } else if (versionNum != null) {
+        const rows = await db.select().from(workflowVersions).where(eq(workflowVersions.workflowId, wfId));
+        versionRow = (rows.find((r) => r.version === versionNum) as { id: string; workflowId: string; version: number; snapshot: string } | undefined);
+      }
+      if (!versionRow) return { error: "Version not found (provide versionId or version)" };
+      let snapshot: Record<string, unknown>;
+      try {
+        snapshot = JSON.parse(versionRow.snapshot) as Record<string, unknown>;
+      } catch {
+        return { error: "Invalid snapshot" };
+      }
+      if (String(snapshot.id) !== wfId) return { error: "Snapshot does not match workflow" };
+      await db.update(workflows).set(snapshot as Record<string, unknown>).where(eq(workflows.id, wfId)).run();
+      return { id: wfId, version: versionRow.version, message: "Workflow rolled back" };
     }
     case "create_custom_function": {
       const id = crypto.randomUUID();
@@ -989,8 +1226,9 @@ export async function executeTool(
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:execute_workflow',message:'execute_workflow start',data:{hasVaultKey:!!vaultKey},hypothesisId:'vault_access',timestamp:Date.now()})}).catch(()=>{});
       // #endregion
-      const workflowId = ((a as Record<string, unknown>).workflowId ?? (a as Record<string, unknown>).id) as string;
-      if (!workflowId || typeof workflowId !== "string" || !workflowId.trim()) return { error: "Workflow id is required" };
+      const wfResolved = resolveWorkflowIdFromArgs(a);
+      if ("error" in wfResolved) return { error: wfResolved.error };
+      const workflowId = wfResolved.workflowId;
       const branchId = typeof a.branchId === "string" && a.branchId.trim() ? (a.branchId as string) : undefined;
       const wfRows = await db.select().from(workflows).where(eq(workflows.id, workflowId));
       if (wfRows.length === 0) return { error: "Workflow not found" };
@@ -1017,7 +1255,7 @@ export async function executeTool(
         const payload = executionOutputSuccess(output ?? context, trail);
         await db.update(executions).set({ status: "completed", finishedAt: Date.now(), output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
         try {
-          createRunNotification(runId, "completed", { targetType: "workflow", targetId: workflowId });
+          await createRunNotification(runId, "completed", { targetType: "workflow", targetId: workflowId });
         } catch {
           // ignore
         }
@@ -1075,7 +1313,7 @@ export async function executeTool(
         const payload = executionOutputFailure(message, { message, stack: err instanceof Error ? err.stack : undefined });
         await db.update(executions).set({ status: "failed", finishedAt: Date.now(), output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
         try {
-          createRunNotification(runId, "failed", { targetType: "workflow", targetId: workflowId });
+          await createRunNotification(runId, "failed", { targetType: "workflow", targetId: workflowId });
         } catch {
           // ignore
         }
@@ -1285,7 +1523,15 @@ export async function executeTool(
       return { jobId, metrics: { accuracy: 0, loss: null }, message: "Evaluation stub; plug in eval set and run student for real metrics." };
     }
     case "trigger_training": {
-      const jobId = a.jobId as string;
+      const raw = a.jobId ?? a.job_id;
+      const jobId = typeof raw === "string" ? raw.trim() : "";
+      if (!jobId) {
+        return { error: "trigger_training requires jobId. Create an improvement job with create_improvement_job first, then pass its id." };
+      }
+      const jobRows = await db.select().from(improvementJobs).where(eq(improvementJobs.id, jobId));
+      if (jobRows.length === 0) {
+        return { error: "Job not found" };
+      }
       const datasetRef = (a.datasetRef as string) || "";
       const backend = (a.backend as string) || "local";
       const addInstance = !!a.addInstance;
@@ -1300,13 +1546,16 @@ export async function executeTool(
           });
           const data = await res.json().catch(() => ({}));
           const extId = (data.run_id ?? data.id ?? runId) as string;
+          if (typeof jobId !== "string" || !jobId) return { error: "trigger_training requires a valid jobId." };
           await db.insert(trainingRuns).values({ id: runId, jobId, backend: "local", status: "pending", datasetRef, outputModelRef: null, config: JSON.stringify({ addInstance }), createdAt: Date.now(), finishedAt: null }).run();
           return { runId, backend, status: "pending", message: `Training started. Poll get_training_status(runId: ${runId}) for completion.` };
         } catch {
+          if (typeof jobId !== "string" || !jobId) return { error: "trigger_training requires a valid jobId." };
           await db.insert(trainingRuns).values({ id: runId, jobId, backend: "local", status: "pending", datasetRef, outputModelRef: null, config: JSON.stringify({ addInstance }), createdAt: Date.now(), finishedAt: null }).run();
           return { runId, backend, status: "pending", message: `Training run created (local trainer at ${localUrl} may be unavailable). Poll get_training_status(runId: ${runId}).` };
         }
       }
+      if (typeof jobId !== "string" || !jobId) return { error: "trigger_training requires a valid jobId." };
       await db.insert(trainingRuns).values({ id: runId, jobId, backend, status: "pending", datasetRef, outputModelRef: null, config: JSON.stringify({ addInstance }), createdAt: Date.now(), finishedAt: null }).run();
       return { runId, backend, status: "pending", message: `Training run created. Poll get_training_status(runId: ${runId}) for replicate/huggingface.` };
     }
@@ -1353,7 +1602,9 @@ export async function executeTool(
       return { id, message: "Insight recorded." };
     }
     case "propose_architecture": {
-      const jobId = a.jobId as string;
+      const raw = a.jobId ?? a.job_id;
+      const jobId = typeof raw === "string" ? raw.trim() : "";
+      if (!jobId) return { error: "propose_architecture requires jobId. Create an improvement job with create_improvement_job first." };
       const spec = a.spec as Record<string, unknown>;
       const rows = await db.select().from(improvementJobs).where(eq(improvementJobs.id, jobId));
       if (rows.length === 0) return { error: "Job not found" };

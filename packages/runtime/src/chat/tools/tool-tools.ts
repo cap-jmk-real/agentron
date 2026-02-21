@@ -2,9 +2,27 @@ import type { AssistantToolDef } from "./types";
 
 export const TOOL_TOOLS: AssistantToolDef[] = [
   {
+    name: "get_specialist_options",
+    description: "Query the heap for structured options (option groups) for one or all specialists. Returns optionGroups (e.g. observe, act_prompt, act_training, evaluate) so you judge meaning and choose groups instead of judging a full tool list. Call with no arguments to list all top-level specialists and their option groups; call with specialistId (e.g. 'improvement') to get that specialist's groups. Only available in heap mode.",
+    parameters: {
+      type: "object",
+      properties: {
+        specialistId: { type: "string", description: "Optional: specialist id (e.g. improvement, agent). Omit to get options for all top-level specialists." },
+      },
+      required: [],
+    },
+  },
+  {
     name: "list_tools",
-    description: "List all tools available in the studio. Returns id, name, protocol for each tool. Call this before create_agent when agents need capabilities (e.g. weather → std-weather, search the web → std-web-search, fetch a URL → std-fetch-url, run container → std-container-run, HTTP fetch → corresponding tool). Use the returned ids in toolIds when creating/updating agents. Standard tools include std-weather, std-web-search, std-fetch-url, std-browser-automation (navigate/click/fill/getContent via Chrome CDP — use for 'get list from web then ask user which one' together with std-request-user-help; browser first, then request_user_help), std-container-run, and std-request-user-help. Add std-request-user-help ONLY when a workflow agent must pause for user input (confirmation, choice, credentials) — the run stops until the user responds. For 'get list from website then ask me which one': include std-browser-automation or std-fetch-url AND std-request-user-help; order is browser/fetch first, then request_user_help. Do not add std-request-user-help for agents that do not need to pause.",
-    parameters: { type: "object", properties: {}, required: [] },
+    description: "List tools in the studio (id, name, protocol). Use category to get a shorter list: vault, web, browser, containers, files, user_input, improvement. For improvement, use subset to get a small relevant list: 'observe' = get_run_for_improvement, get_feedback_for_scope; 'prompt' = prompt-adjustment tools only (get_agent, update_agent, apply_agent_prompt_improvement, etc.); 'topology' = workflow/agent graph tools only (get_workflow, update_workflow, list_workflows, etc.); 'prompt_and_topology' = observe + prompt + topology (no model training tools); 'training' = jobs, generate_training_data, trigger_training, etc. (13 tools). Omit subset or use no category to get all tools. Call before create_agent when agents need capabilities; use returned ids in toolIds.",
+    parameters: {
+      type: "object",
+      properties: {
+        category: { type: "string", description: "Optional: vault | web | browser | containers | files | user_input | improvement." },
+        subset: { type: "string", description: "When category is 'improvement': 'observe' (run/feedback); 'prompt' (prompt-adjustment only); 'topology' (workflow/agent graph only); 'prompt_and_topology' (observe + prompt + topology, no model training); 'training' (jobs and training pipeline). Omit for all improvement tools." },
+      },
+      required: [],
+    },
   },
   {
     name: "get_tool",

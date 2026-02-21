@@ -19,3 +19,7 @@
 1. **Run detail page** (`/runs/[id]`): Add an "Event queue" or "Diagnosis" card when the run uses the event-driven engine (e.g. when `GET /api/runs/:id/events` returns events). Show event list (sequence, type, processedAt) and a "Copy for diagnosis" button that copies `copyForDiagnosis` to the clipboard.
 2. **Runs list or Settings**: Optional "Queue status" line: "Workflow queue: N queued, M running" from `GET /api/workflow-queue`.
 3. **Settings / LLM**: "Rate limit queue" from `GET /api/rate-limit/queue` (pending and recentDelayed) if you already have a rate-limit UI.
+
+## Chat message queue and heap trace
+
+The **message queue log** (Queues page) records steps for each chat turn when heap mode is on: `planner_request`, `planner_response`, `heap_route`, `heap_specialist`, `heap_tool`, etc. Use these to see which plan was chosen and which specialists ran. For how the chat backend uses the planner, heap, and context (including continuation and pending plan), see [chat-backend-heap-planning-context.md](chat-backend-heap-planning-context.md).

@@ -4,13 +4,15 @@ export const CONVERSATION_TOOLS: AssistantToolDef[] = [
   {
     name: "ask_user",
     description:
-      "Ask the user for information or confirmation. REQUIRED: 'question' (string). When offering choices, pass 'options': 2–4 plain string labels (e.g. ['Yes', 'No'] or ['Run it now', 'Modify agent']). Shown as clickable buttons; user can also type a reply. Same response: only ask_user + short message, no create_* or execute_workflow. Wait for reply.",
+      "Ask the user for information or confirmation. REQUIRED: 'question' (string). When offering choices, pass 'options': 2–4 plain string labels for this question only. For multiple topics (e.g. content types, run frequency, vault usage): ask one topic per turn — call ask_user with that topic's question and that topic's options only; after the user replies, ask the next topic; repeat until all are answered, then create_agent/create_workflow with the collected inputs. Do NOT list all topic titles as one set of options. Same response: only ask_user + short message when waiting for input; no create_* or execute_workflow until you have all required answers. Wait for reply.",
     parameters: {
       type: "object",
       properties: {
-        question: { type: "string", description: "Clear question to show the user (e.g. 'Which LLM should I use?' or 'Confirm: create 3 agents?')" },
-        options: { type: "array", items: { type: "string" }, description: "2–4 plain string labels, shown as buttons (e.g. ['Run it now', 'Modify agent', 'Not now'])." },
+        question: { type: "string", description: "Clear question for this turn only (e.g. 'Which content types should we extract?' or 'Which LLM should I use?'). One topic per call when you need multiple answers." },
+        options: { type: "array", items: { type: "string" }, description: "2–4 plain string labels for this question only (e.g. ['Headlines & job titles', 'Skills & About', 'All of the above'] for content types, or ['Run it now', 'Modify agent'] for next steps)." },
         reason: { type: "string", description: "Optional one-line reason (e.g. 'Need to pick LLM before creating agents')" },
+        stepIndex: { type: "number", description: "Optional 1-based step number when asking multiple questions in sequence (e.g. 1 for first question)." },
+        stepTotal: { type: "number", description: "Optional total number of steps when asking multiple questions (e.g. 4 for 'Step 1 of 4')." },
       },
       required: ["question"],
     },
@@ -31,7 +33,7 @@ export const CONVERSATION_TOOLS: AssistantToolDef[] = [
   {
     name: "format_response",
     description:
-      "Format response for display. REQUIRED after create_agent or create_workflow: call with summary and needsInput. For clickable choices call ask_user with 2–4 options in the same response. Summary/needsInput: markdown with ## headings and 1. 2. 3. lists (no placeholders).",
+      "Format response for display. REQUIRED after create_agent or create_workflow: call with summary and needsInput. When you need multiple answers (e.g. content types, frequency, vault, format), do NOT put all topics in one block; instead ask one topic at a time via ask_user (question + that topic's options), then the next topic after the user replies. For a single next-step choice call ask_user in the same response (e.g. 'Run it now', 'Modify agent', 'Cancel'). Summary/needsInput: markdown with ## headings and 1. 2. 3. lists (no placeholders).",
     parameters: {
       type: "object",
       properties: {

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { ResourceUsage } from "./resource-usage";
 import BrandIcon from "./brand-icon";
+import { NOTIFICATIONS_UPDATED_EVENT } from "../lib/notifications-events";
 
 type NavItem = {
   label: string;
@@ -135,6 +136,14 @@ const icons = {
       <path d="M8 11h8" />
     </svg>
   ),
+  heap: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  ),
 };
 
 const sections: NavSection[] = [
@@ -150,6 +159,7 @@ const sections: NavSection[] = [
       { label: "Statistics", href: "/stats", icon: icons.stats },
       { label: "Runs", href: "/runs", icon: icons.runs },
       { label: "Queues", href: "/queues", icon: icons.queue },
+      { label: "Heap", href: "/heap", icon: icons.heap },
       { label: "Sandboxes", href: "/sandboxes", icon: icons.container },
       { label: "Request queue", href: "/requests", icon: icons.queue },
     ],
@@ -209,27 +219,32 @@ export default function Sidebar() {
     return () => clearInterval(interval);
   }, []);
   useEffect(() => {
-    const fetchPending = async () => {
+    const fetchNotifications = async () => {
       try {
-        const [runsRes, chatRes] = await Promise.all([
-          fetch("/api/runs/pending-help"),
-          fetch("/api/chat/pending-input"),
+        const [runRes, chatRes] = await Promise.all([
+          fetch("/api/notifications?status=active&limit=0&types=run"),
+          fetch("/api/notifications?status=active&limit=0&types=chat"),
         ]);
-        if (runsRes.ok) {
-          const data = await runsRes.json();
-          setRunsNeedingInput(typeof data.count === "number" ? data.count : 0);
+        if (runRes.ok) {
+          const data = await runRes.json();
+          setRunsNeedingInput(typeof data.totalActiveCount === "number" ? data.totalActiveCount : 0);
         }
         if (chatRes.ok) {
           const data = await chatRes.json();
-          setChatNeedingInput(typeof data.count === "number" ? data.count : 0);
+          setChatNeedingInput(typeof data.totalActiveCount === "number" ? data.totalActiveCount : 0);
         }
       } catch {
         // ignore
       }
     };
-    fetchPending();
-    const interval = setInterval(fetchPending, 5000);
-    return () => clearInterval(interval);
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 5000);
+    const onUpdated = () => { void fetchNotifications(); };
+    window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+    };
   }, []);
 
   const toggleSection = (title: string) => {

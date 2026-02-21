@@ -17,19 +17,19 @@ export async function POST(request: Request) {
   }
 
   if (body.id != null) {
-    const ok = clearOne(typeof body.id === "string" ? body.id : "");
+    const ok = await clearOne(typeof body.id === "string" ? body.id : "");
     return json({ cleared: ok ? 1 : 0 });
   }
   if (Array.isArray(body.ids) && body.ids.length > 0) {
     const ids = body.ids.filter((x): x is string => typeof x === "string");
-    const cleared = clearBulk(ids);
+    const cleared = await clearBulk(ids);
     return json({ cleared });
   }
   if (Array.isArray(body.types) && body.types.length > 0) {
-    const cleared = clearAll(body.types as NotificationType[]);
+    const cleared = await clearAll(body.types as NotificationType[]);
     return json({ cleared });
   }
   // Clear all active
-  const cleared = clearAll();
+  const cleared = await clearAll();
   return json({ cleared });
 }

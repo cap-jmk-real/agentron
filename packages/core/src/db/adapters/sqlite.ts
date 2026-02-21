@@ -35,6 +35,22 @@ const SCHEMA_SQL = `
           execution_order text,
           created_at integer not null
         );
+        create table if not exists agent_versions (
+          id text primary key,
+          agent_id text not null,
+          version integer not null,
+          snapshot text not null,
+          created_at integer not null,
+          conversation_id text
+        );
+        create table if not exists workflow_versions (
+          id text primary key,
+          workflow_id text not null,
+          version integer not null,
+          snapshot text not null,
+          created_at integer not null,
+          conversation_id text
+        );
         create table if not exists tools (
           id text primary key,
           name text not null,
@@ -132,6 +148,15 @@ const SCHEMA_SQL = `
           message_id text,
           type text not null,
           phase text,
+          label text,
+          payload text,
+          created_at integer not null
+        );
+        create table if not exists execution_log (
+          id text primary key,
+          execution_id text not null,
+          sequence integer not null,
+          phase text not null,
           label text,
           payload text,
           created_at integer not null
@@ -406,6 +431,18 @@ const SCHEMA_SQL = `
           created_at integer not null,
           fired_at integer
         );
+        create table if not exists notifications (
+          id text primary key,
+          type text not null,
+          source_id text not null,
+          title text not null,
+          message text not null,
+          severity text not null,
+          status text not null,
+          created_at integer not null,
+          updated_at integer not null,
+          metadata text
+        );
       `;
 
 export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
@@ -433,10 +470,10 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
     },
     resetDatabase: () => {
       const tables = [
-        "reminders", "training_runs", "agent_store_entries", "guardrails", "technique_insights", "technique_playbook", "improvement_jobs",
+        "notifications", "reminders", "training_runs", "agent_store_entries", "guardrails", "technique_insights", "technique_playbook", "improvement_jobs",
         "rag_vectors", "rag_connectors", "rag_documents", "rag_collections", "rag_vector_stores", "rag_document_stores", "rag_encoding_configs",
         "tasks", "sandbox_site_bindings", "feedback", "remote_servers", "model_pricing", "token_usage",
-        "message_queue_log", "custom_functions", "sandboxes", "files", "chat_messages", "conversations", "assistant_memory", "chat_assistant_settings", "saved_credentials", "vault_meta", "contexts",
+        "message_queue_log", "execution_log", "custom_functions", "sandboxes", "files", "chat_messages", "conversations", "assistant_memory", "chat_assistant_settings", "saved_credentials", "vault_meta", "contexts",
         "agent_skills", "skills", "run_logs", "executions", "llm_configs", "prompts", "tools", "workflows", "agents"
       ];
       for (const table of tables) {
@@ -542,6 +579,11 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         // Column already exists
       }
       try {
+        sqlite.exec("ALTER TABLE chat_assistant_settings ADD COLUMN planner_recent_messages integer");
+      } catch {
+        // Column already exists
+      }
+      try {
         sqlite.exec("ALTER TABLE rag_collections ADD COLUMN vector_store_id text");
       } catch {
         // Column already exists
@@ -572,6 +614,11 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         // Already exists
       }
       try {
+        sqlite.exec("CREATE TABLE IF NOT EXISTS execution_log (id text primary key, execution_id text not null, sequence integer not null, phase text not null, label text, payload text, created_at integer not null)");
+      } catch {
+        // Already exists
+      }
+      try {
         sqlite.exec("ALTER TABLE reminders ADD COLUMN task_type text");
       } catch {
         // Column already exists
@@ -589,6 +636,7 @@ export const createSqliteAdapter = (filePath: string): SqliteAdapter => {
         CREATE TABLE IF NOT EXISTS agent_store_entries (id text primary key, scope text not null, scope_id text not null, store_name text not null, key text not null, value text not null, created_at integer not null);
         CREATE TABLE IF NOT EXISTS training_runs (id text primary key, job_id text not null, backend text not null, status text not null, dataset_ref text, output_model_ref text, config text, created_at integer not null, finished_at integer);
         CREATE TABLE IF NOT EXISTS reminders (id text primary key, run_at integer not null, message text not null, conversation_id text, task_type text not null, status text not null, created_at integer not null, fired_at integer);
+        CREATE TABLE IF NOT EXISTS notifications (id text primary key, type text not null, source_id text not null, title text not null, message text not null, severity text not null, status text not null, created_at integer not null, updated_at integer not null, metadata text);
       `);
     }
   };

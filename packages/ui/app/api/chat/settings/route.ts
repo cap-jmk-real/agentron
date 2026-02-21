@@ -17,6 +17,7 @@ export async function GET() {
       temperature: 0.7,
       historyCompressAfter: 24,
       historyKeepRecent: 16,
+      plannerRecentMessages: 12,
       updatedAt: Date.now(),
     });
   }
@@ -66,6 +67,14 @@ export async function PATCH(request: Request) {
     const n = Number(payload.historyKeepRecent);
     historyKeepRecent = Number.isNaN(n) ? DEFAULT_KEEP_RECENT : Math.min(MAX_KEEP, Math.max(MIN_KEEP, Math.round(n)));
   }
+  const DEFAULT_PLANNER_RECENT = 12;
+  const MIN_PLANNER_RECENT = 1;
+  const MAX_PLANNER_RECENT = 100;
+  let plannerRecentMessages: number | undefined;
+  if (payload.plannerRecentMessages !== undefined) {
+    const n = Number(payload.plannerRecentMessages);
+    plannerRecentMessages = Number.isNaN(n) ? DEFAULT_PLANNER_RECENT : Math.min(MAX_PLANNER_RECENT, Math.max(MIN_PLANNER_RECENT, Math.round(n)));
+  }
 
   const rows = await db.select().from(chatAssistantSettings).where(eq(chatAssistantSettings.id, DEFAULT_ID));
   const now = Date.now();
@@ -81,6 +90,7 @@ export async function PATCH(request: Request) {
       temperature: temperature ?? 0.7,
       historyCompressAfter: historyCompressAfter ?? DEFAULT_COMPRESS_AFTER,
       historyKeepRecent: historyKeepRecent ?? DEFAULT_KEEP_RECENT,
+      plannerRecentMessages: plannerRecentMessages ?? DEFAULT_PLANNER_RECENT,
       updatedAt: now,
     });
     await db.insert(chatAssistantSettings).values(row).run();
@@ -99,6 +109,7 @@ export async function PATCH(request: Request) {
   if (temperature !== undefined) updates.temperature = temperature;
   if (historyCompressAfter !== undefined) updates.historyCompressAfter = historyCompressAfter;
   if (historyKeepRecent !== undefined) updates.historyKeepRecent = historyKeepRecent;
+  if (plannerRecentMessages !== undefined) updates.plannerRecentMessages = plannerRecentMessages;
 
   await db
     .update(chatAssistantSettings)

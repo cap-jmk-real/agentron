@@ -4,7 +4,8 @@ type OpenAIChatResponse = {
   id: string;
   choices?: Array<{
     message?: {
-      content?: string;
+      /** String (legacy) or array of parts (e.g. [{ type: "text", text: "..." }]) in newer APIs */
+      content?: string | Array<{ type?: string; text?: string }>;
       tool_calls?: Array<{
         id: string;
         type: string;
@@ -18,6 +19,17 @@ type OpenAIChatResponse = {
     total_tokens?: number;
   };
 };
+
+/** Normalize OpenAI-style content (string or array of parts) to a single string for LLMResponse.content */
+function normalizeContent(raw: string | Array<{ type?: string; text?: string }> | undefined): string {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw;
+  if (!Array.isArray(raw)) return String(raw);
+  return raw
+    .map((part) => (part && typeof part === "object" && typeof part.text === "string" ? part.text : ""))
+    .filter(Boolean)
+    .join("");
+}
 
 /** Ensure base URL has no trailing /v1 so we can append /v1/chat/completions once. */
 function normalizeOpenAIEndpoint(endpoint: string): string {
@@ -113,7 +125,7 @@ export const openAICompatibleChat = async (
 
   const data = (await response.json()) as OpenAIChatResponse;
   const msg = data.choices?.[0]?.message;
-  const content = msg?.content ?? "";
+  const content = normalizeContent(msg?.content);
 
   const rawToolCalls = msg?.tool_calls ?? [];
   const toolCalls = rawToolCalls

@@ -155,7 +155,7 @@ export type LayeredLayoutOptions = {
   startY?: number;
   stepX?: number;
   stepY?: number;
-  /** Pull parent nodes up by this amount so their visual center aligns with the median child (React Flow uses top-left as position). */
+  /** Set so the parent's vertical center aligns with the center of its children: use parentHeight/2 (React Flow positions by top-left). */
   parentCenterOffsetUp?: number;
 };
 
@@ -253,7 +253,9 @@ export function layoutNodesByGraph<T>(params: {
 
   const inDegreeForLayers = new Map<string, number>();
   for (const id of ids) inDegreeForLayers.set(id, 0);
-  for (const e of edges) {
+  type Edge = { source: string; target: string };
+  const edgesArr: Edge[] = edges as Edge[];
+  for (const e of edgesArr) {
     if (!idToItem.has(e.source) || !idToItem.has(e.target) || e.source === e.target) continue;
     if (feedbackEdge && e.source === feedbackEdge.source && e.target === feedbackEdge.target) continue;
     inDegreeForLayers.set(e.target, (inDegreeForLayers.get(e.target) ?? 0) + 1);
@@ -263,7 +265,7 @@ export function layoutNodesByGraph<T>(params: {
   while (q.length > 0) {
     const n = q.shift()!;
     topoForLayers.push(n);
-    for (const e of edges) {
+    for (const e of edgesArr) {
       if (e.source !== n) continue;
       if (!idToItem.has(e.target)) continue;
       if (feedbackEdge && e.source === feedbackEdge.source && e.target === feedbackEdge.target) continue;
@@ -298,39 +300,96 @@ export function layoutNodesByGraph<T>(params: {
 
   const yPos = new Map<string, number>();
 
+  const getChildrenInNextLayer = (id: string) =>
+    (successors.get(id) ?? []).filter((c) => layer.get(c) === (layer.get(id) ?? 0) + 1);
+
   for (let li = layerIndices.length - 1; li >= 0; li--) {
     const l = layerIndices[li];
     const layerNodes = byLayer.get(l)!;
 
     if (li === layerIndices.length - 1) {
-      for (let i = 0; i < layerNodes.length; i++) {
-        yPos.set(layerNodes[i], opts.startY + i * opts.stepY);
+      const parentOf = (id: string) => (incoming.get(id) ?? [])[0];
+      const byParent = new Map<string, string[]>();
+      for (const id of layerNodes) {
+        const p = parentOf(id);
+        const key = p ?? id;
+        if (!byParent.has(key)) byParent.set(key, []);
+        byParent.get(key)!.push(id);
+      }
+      const parentIds = [...byParent.keys()].sort();
+      let index = 0;
+      for (const pid of parentIds) {
+        const children = byParent.get(pid)!.sort();
+        for (const cid of children) {
+          yPos.set(cid, opts.startY + index * opts.stepY);
+          index++;
+        }
       }
     } else {
       for (const id of layerNodes) {
-        const children = (successors.get(id) ?? []).filter((c) => layer.get(c) === l + 1);
+        const children = getChildrenInNextLayer(id);
         if (children.length > 0) {
-          const childY = children.map((c) => yPos.get(c) ?? opts.startY).sort((a, b) => a - b);
-          const n = childY.length;
-          const medianY = n % 2 === 1
-            ? childY[Math.floor(n / 2)]
-            : (childY[n / 2 - 1] + childY[n / 2]) / 2;
-          yPos.set(id, medianY - parentOffsetUp);
+          const childY = children.map((c) => yPos.get(c) ?? opts.startY);
+          const minChildY = Math.min(...childY);
+          const maxChildY = Math.max(...childY);
+          const centerY = (minChildY + maxChildY) / 2;
+          yPos.set(id, centerY - parentOffsetUp);
         } else {
           yPos.set(id, opts.startY);
         }
       }
+    }
+  }
 
+  const subtreeBottom = new Map<string, number>();
+  const getDescendants = (id: string): string[] => {
+    const result = [id];
+    for (const c of getChildrenInNextLayer(id)) result.push(...getDescendants(c));
+    return result;
+  };
+  for (let li = layerIndices.length - 1; li >= 0; li--) {
+    const l = layerIndices[li];
+    const layerNodes = byLayer.get(l)!;
+    for (const id of layerNodes) {
+      const children = getChildrenInNextLayer(id);
+      const bottom = children.length > 0
+        ? Math.max(...children.map((c) => subtreeBottom.get(c) ?? yPos.get(c) ?? opts.startY))
+        : (yPos.get(id) ?? opts.startY);
+      subtreeBottom.set(id, bottom);
+    }
+  }
+
+  const minGap = opts.stepY * 0.3;
+  const shiftSubtree = (id: string, delta: number) => {
+    for (const d of getDescendants(id)) yPos.set(d, (yPos.get(d) ?? opts.startY) + delta);
+  };
+  const updateAncestorBottoms = (id: string, delta: number) => {
+    for (const p of incoming.get(id) ?? []) {
+      if (subtreeBottom.has(p)) {
+        subtreeBottom.set(p, subtreeBottom.get(p)! + delta);
+        updateAncestorBottoms(p, delta);
+      }
+    }
+  };
+  for (let li = 0; li < layerIndices.length; li++) {
+    const layerNodes = byLayer.get(layerIndices[li])!;
+    let changed = true;
+    while (changed) {
+      changed = false;
       const sorted = [...layerNodes].sort((a, b) => (yPos.get(a) ?? 0) - (yPos.get(b) ?? 0));
-      const needSpread = sorted.some(
-        (_, i) => i > 0 && ((yPos.get(sorted[i]) ?? 0) - (yPos.get(sorted[i - 1]) ?? 0) < opts.stepY)
-      );
-      if (needSpread && sorted.length > 0) {
-        const currentY = sorted.map((id) => yPos.get(id) ?? 0);
-        const centroid = currentY.reduce((s, y) => s + y, 0) / currentY.length;
-        const span = (sorted.length - 1) * opts.stepY;
-        const base = centroid - span / 2;
-        sorted.forEach((id, i) => yPos.set(id, base + i * opts.stepY));
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const a = sorted[i];
+        const b = sorted[i + 1];
+        const bottomA = subtreeBottom.get(a) ?? yPos.get(a) ?? opts.startY;
+        const topB = yPos.get(b) ?? opts.startY;
+        if (topB < bottomA + minGap) {
+          const delta = bottomA + minGap - topB;
+          shiftSubtree(b, delta);
+          subtreeBottom.set(b, (subtreeBottom.get(b) ?? topB) + delta);
+          updateAncestorBottoms(b, delta);
+          changed = true;
+          break;
+        }
       }
     }
   }

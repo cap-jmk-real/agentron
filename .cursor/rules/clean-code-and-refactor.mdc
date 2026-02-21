@@ -1,0 +1,25 @@
+---
+description: Clean, maintainable code — file size cap, reuse, refactor
+globs: "packages/**/*.ts,packages/**/*.tsx,apps/**/*.ts,apps/**/*.tsx"
+alwaysApply: false
+---
+
+# Clean code and refactoring
+
+When writing or editing code in this repo:
+
+## File size
+
+- **Keep files under 500 lines** when possible. If a file is approaching or over 500 lines, refactor: extract modules, hooks, utilities, or components into separate files and import them. Prefer many focused files over few large ones.
+
+## Maintainability and reuse
+
+- **Write reusable code.** Before adding logic, check if something similar already exists in the project (shared utils, hooks, components, types). Reuse it instead of duplicating.
+- **Extract and reuse.** When you add logic that could be used elsewhere, put it in a shared place (e.g. `packages/core`, `packages/ui/lib`, or a `_lib/` next to the feature) and call it from multiple call sites rather than copying code.
+- **Refactor cleanly.** When touching a large or messy file, improve structure: extract functions, constants, or types; split into smaller modules; keep functions and components focused and short. Leave the codebase in a better state than you found it when it’s reasonable to do so.
+
+## In practice
+
+- New features: small, focused modules and reuse of existing helpers.
+- Bug fixes or changes: consider a quick refactor if the file is already long or hard to follow.
+- No vanity refactors: don’t rewrite working code for style only; do extract and deduplicate when it aids clarity and reuse.

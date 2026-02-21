@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { getRegistry } from "@agentron-studio/runtime";
+import { IMPROVEMENT_SUBSETS } from "../../../app/api/_lib/db";
+import { AGENT_SPECIALIST_IMPROVEMENT_CLARIFICATION } from "../../../app/api/chat/route";
 import { resolveTemplateVars, executeTool } from "../../../app/api/chat/_lib/execute-tool";
 
 describe("execute-tool helpers", () => {
@@ -107,6 +110,463 @@ describe("execute-tool helpers", () => {
         undefined
       );
       expect(result).toEqual(expect.objectContaining({ error: "Workflow not found" }));
+    });
+
+    it("create_workflow then update_workflow and execute_workflow with id/workflowId (direct) works", async () => {
+      const createRes = await executeTool("create_workflow", { name: "Direct Id Test WF" }, undefined);
+      const wfId = (createRes as { id?: string }).id;
+      expect(typeof wfId).toBe("string");
+
+      const updateRes = await executeTool(
+        "update_workflow",
+        {
+          id: wfId,
+          nodes: [{ id: "n1", type: "agent", position: [0, 0], parameters: { agentId: "00000000-0000-0000-0000-000000000001" } }],
+          edges: [],
+        },
+        undefined
+      );
+      expect(updateRes).not.toEqual(expect.objectContaining({ error: "Workflow not found" }));
+      expect(updateRes).toEqual(expect.objectContaining({ id: wfId, message: expect.stringContaining("updated") }));
+
+      const execRes = await executeTool("execute_workflow", { workflowId: wfId }, undefined);
+      expect(execRes).not.toEqual(expect.objectContaining({ error: "Workflow id is required" }));
+      expect(execRes).not.toEqual(expect.objectContaining({ error: "Workflow not found" }));
+      expect(execRes).toEqual(expect.objectContaining({ workflowId: wfId }));
+    });
+
+    it("update_workflow and execute_workflow resolve workflowIdentifierField+workflowIdentifierValue (id) so same-turn create then update/run works", async () => {
+      const createRes = await executeTool("create_workflow", { name: "Resolver Test WF" }, undefined);
+      const wfId = (createRes as { id?: string }).id;
+      expect(typeof wfId).toBe("string");
+
+      const updateRes = await executeTool(
+        "update_workflow",
+        {
+          workflowIdentifierField: "id",
+          workflowIdentifierValue: wfId,
+          nodes: [{ id: "n1", type: "agent", position: [0, 0], parameters: { agentId: "00000000-0000-0000-0000-000000000001" } }],
+          edges: [],
+        },
+        undefined
+      );
+      expect(updateRes).not.toEqual(expect.objectContaining({ error: "Workflow not found" }));
+      expect(updateRes).not.toEqual(expect.objectContaining({ error: expect.stringMatching(/Workflow id is required/) }));
+      expect(updateRes).toEqual(expect.objectContaining({ id: wfId, message: expect.stringContaining("updated") }));
+
+      const execRes = await executeTool(
+        "execute_workflow",
+        { workflowIdentifierField: "id", workflowIdentifierValue: wfId },
+        undefined
+      );
+      expect(execRes).not.toEqual(expect.objectContaining({ error: "Workflow id is required" }));
+      expect(execRes).not.toEqual(expect.objectContaining({ error: "Workflow not found" }));
+      expect(execRes).toEqual(expect.objectContaining({ workflowId: wfId }));
+    });
+
+    it("update_workflow rejects name-based resolution (workflowIdentifierField name returns Workflow id is required)", async () => {
+      const result = await executeTool(
+        "update_workflow",
+        {
+          workflowIdentifierField: "name",
+          workflowIdentifierValue: "Some Workflow Name",
+          name: "X",
+        },
+        undefined
+      );
+      expect(result).toEqual(expect.objectContaining({ error: expect.stringMatching(/Workflow id is required/) }));
+    });
+
+    it("execute_workflow returns Workflow id is required when only workflowIdentifierField given without value", async () => {
+      const result = await executeTool(
+        "execute_workflow",
+        { workflowIdentifierField: "id", workflowIdentifierValue: "" },
+        undefined
+      );
+      expect(result).toEqual(expect.objectContaining({ error: expect.stringMatching(/Workflow id is required/) }));
+    });
+
+    it("update_workflow normalizes top-level agentId into parameters.agentId (LLM-style nodes)", async () => {
+      const createRes = await executeTool(
+        "create_workflow",
+        { name: "Test WF for agentId normalization" },
+        undefined
+      );
+      expect(createRes).not.toEqual(expect.objectContaining({ error: expect.any(String) }));
+      const wfId = (createRes as { id?: string }).id;
+      expect(typeof wfId).toBe("string");
+
+      const agentUuid = "1e4af0d1-bd36-4b7d-acaf-0f586261de7c";
+      const result = await executeTool(
+        "update_workflow",
+        {
+          id: wfId,
+          nodes: [
+            { id: "collector-node", type: "agent", agentId: agentUuid, config: { useVaultCred: false } },
+            { id: "learner-node", type: "agent", agentId: "5df0cdd6-e834-4c40-b060-ffb9c55a631d" },
+          ],
+          edges: [{ from: "collector-node", to: "learner-node" }],
+        },
+        undefined
+      );
+
+      expect(result).not.toEqual(
+        expect.objectContaining({
+          error: expect.stringContaining("without an agent selected"),
+        })
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: wfId,
+          message: expect.stringContaining("updated"),
+          nodes: 2,
+        })
+      );
+    });
+  });
+
+  describe("executeTool create_agent tool cap", () => {
+    it("rejects create_agent when toolIds.length exceeds MAX_TOOLS_PER_CREATED_AGENT (10)", async () => {
+      const elevenIds = Array.from({ length: 11 }, (_, i) => `tool-id-${i}`);
+      const result = await executeTool(
+        "create_agent",
+        { name: "Over-cap agent", toolIds: elevenIds, description: "Test", llmConfigId: "any" },
+        undefined
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          error: expect.stringMatching(/exceeds the maximum of 10 tools per agent/),
+          code: "TOOL_CAP_EXCEEDED",
+          maxToolsPerAgent: 10,
+        })
+      );
+      const err = result as { error?: string; code?: string; maxToolsPerAgent?: number };
+      expect(err.code).toBe("TOOL_CAP_EXCEEDED");
+      expect(err.maxToolsPerAgent).toBe(10);
+      expect(err.error).toBeDefined();
+      expect(err.error).toMatch(/Create multiple agents/);
+      expect(err.error).toMatch(/workflow/);
+    });
+
+    it("allows create_agent with 10 toolIds (at cap)", async () => {
+      const tenIds = Array.from({ length: 10 }, (_, i) => `tool-id-${i}`);
+      const result = await executeTool(
+        "create_agent",
+        { name: "At-cap agent", toolIds: tenIds, description: "Test", llmConfigId: "any" },
+        undefined
+      );
+      expect(result).not.toEqual(expect.objectContaining({ code: "TOOL_CAP_EXCEEDED" }));
+      expect((result as { error?: string }).error).toBeUndefined();
+      expect((result as { id?: string }).id).toBeDefined();
+    });
+  });
+
+  describe("executeTool heap tools (get_specialist_options, list_specialists)", () => {
+    it("get_specialist_options with registry returns option groups for all specialists", async () => {
+      const registry = getRegistry();
+      const result = await executeTool("get_specialist_options", {}, { registry });
+      expect(result).not.toEqual(expect.objectContaining({ error: expect.any(String) }));
+      const arr = result as Array<{ specialistId: string; optionGroups: Record<string, { label: string; toolIds: string[] }> }>;
+      expect(Array.isArray(arr)).toBe(true);
+      expect(arr.length).toBeGreaterThan(0);
+      const improveAgentsWorkflows = arr.find((o) => o.specialistId === "improve_agents_workflows");
+      expect(improveAgentsWorkflows).toBeDefined();
+      expect(improveAgentsWorkflows!.optionGroups).toHaveProperty("observe");
+      expect(improveAgentsWorkflows!.optionGroups.observe.toolIds).toContain("get_run_for_improvement");
+    });
+
+    it("get_specialist_options with registry and specialistId returns single specialist options", async () => {
+      const registry = getRegistry();
+      const result = await executeTool("get_specialist_options", { specialistId: "improve_agents_workflows" }, { registry });
+      const arr = result as Array<{ specialistId: string; optionGroups: Record<string, unknown> }>;
+      expect(Array.isArray(arr)).toBe(true);
+      expect(arr).toHaveLength(1);
+      expect(arr[0].specialistId).toBe("improve_agents_workflows");
+    });
+
+    it("get_specialist_options without registry returns error", async () => {
+      const result = await executeTool("get_specialist_options", {}, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: expect.stringContaining("Heap registry not available") }));
+    });
+
+    it("list_specialists with registry returns specialists array", async () => {
+      const registry = getRegistry();
+      const result = await executeTool("list_specialists", {}, { registry });
+      expect(result).not.toEqual(expect.objectContaining({ error: expect.any(String) }));
+      const obj = result as { specialists: Array<{ id: string; description?: string }> };
+      expect(obj.specialists).toBeDefined();
+      expect(Array.isArray(obj.specialists)).toBe(true);
+      expect(obj.specialists.map((s) => s.id)).toContain("improve_run");
+      expect(obj.specialists.map((s) => s.id)).toContain("improve_heap");
+      expect(obj.specialists.map((s) => s.id)).toContain("improve_agents_workflows");
+    });
+
+    it("list_specialists without registry returns error", async () => {
+      const result = await executeTool("list_specialists", {}, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: expect.stringContaining("Heap registry not available") }));
+    });
+  });
+
+  describe("list_tools improvement subsets", () => {
+    it("category improvement with no subset returns prompt_and_topology (production default)", async () => {
+      const result = await executeTool("list_tools", { category: "improvement" }, undefined);
+      expect(Array.isArray(result)).toBe(true);
+      const ids = (result as { id: string }[]).map((t) => t.id);
+      const expected = new Set(IMPROVEMENT_SUBSETS.prompt_and_topology);
+      expect(ids.length).toBe(expected.size);
+      ids.forEach((id) => expect(expected.has(id)).toBe(true));
+      expect(ids).not.toContain("trigger_training");
+      expect(ids).not.toContain("generate_training_data");
+      expect(ids).not.toContain("create_improvement_job");
+    });
+
+    it("subset training returns only act_training tool ids", async () => {
+      const result = await executeTool("list_tools", { category: "improvement", subset: "training" }, undefined);
+      expect(Array.isArray(result)).toBe(true);
+      const ids = (result as { id: string }[]).map((t) => t.id);
+      const expected = new Set(IMPROVEMENT_SUBSETS.training);
+      expect(ids.length).toBe(expected.size);
+      ids.forEach((id) => expect(expected.has(id)).toBe(true));
+      expect(ids).toContain("trigger_training");
+      expect(ids).toContain("generate_training_data");
+    });
+
+    it("subset prompt returns only act_prompt tool ids (no training)", async () => {
+      const result = await executeTool("list_tools", { category: "improvement", subset: "prompt" }, undefined);
+      expect(Array.isArray(result)).toBe(true);
+      const ids = (result as { id: string }[]).map((t) => t.id);
+      const expected = new Set(IMPROVEMENT_SUBSETS.prompt);
+      expect(ids.length).toBe(expected.size);
+      ids.forEach((id) => expect(expected.has(id)).toBe(true));
+      expect(ids).not.toContain("trigger_training");
+      expect(ids).not.toContain("generate_training_data");
+    });
+
+    it("subset topology returns only act_topology tool ids", async () => {
+      const result = await executeTool("list_tools", { category: "improvement", subset: "topology" }, undefined);
+      expect(Array.isArray(result)).toBe(true);
+      const ids = (result as { id: string }[]).map((t) => t.id);
+      const expected = new Set(IMPROVEMENT_SUBSETS.topology);
+      expect(ids.length).toBe(expected.size);
+      ids.forEach((id) => expect(expected.has(id)).toBe(true));
+      expect(ids).not.toContain("trigger_training");
+    });
+
+    it("subset prompt_and_topology returns observe + prompt + topology, no act_training tools", async () => {
+      const result = await executeTool("list_tools", { category: "improvement", subset: "prompt_and_topology" }, undefined);
+      expect(Array.isArray(result)).toBe(true);
+      const ids = (result as { id: string }[]).map((t) => t.id);
+      const expected = new Set(IMPROVEMENT_SUBSETS.prompt_and_topology);
+      expect(ids.length).toBe(expected.size);
+      ids.forEach((id) => expect(expected.has(id)).toBe(true));
+      expect(ids).not.toContain("trigger_training");
+      expect(ids).not.toContain("generate_training_data");
+      expect(ids).not.toContain("create_improvement_job");
+    });
+  });
+
+  describe("agent specialist prompt contains improvement clarification rule", () => {
+    it("AGENT_SPECIALIST_IMPROVEMENT_CLARIFICATION instructs to ask_user and use prompt_and_topology subset", () => {
+      expect(AGENT_SPECIALIST_IMPROVEMENT_CLARIFICATION).toContain("ask_user");
+      expect(AGENT_SPECIALIST_IMPROVEMENT_CLARIFICATION).toMatch(/prompt and workflow only/i);
+      expect(AGENT_SPECIALIST_IMPROVEMENT_CLARIFICATION).toMatch(/model training/i);
+      expect(AGENT_SPECIALIST_IMPROVEMENT_CLARIFICATION).toContain("prompt_and_topology");
+      expect(AGENT_SPECIALIST_IMPROVEMENT_CLARIFICATION).toMatch(/subset/i);
+    });
+  });
+
+  describe("improver topology: add agent to workflow and change relations", () => {
+    it("get_workflow then create_agent then update_workflow with new node and edges succeeds", async () => {
+      const createWf = await executeTool("create_workflow", { name: "Topology Test WF" }, undefined);
+      const wfId = (createWf as { id?: string }).id;
+      expect(typeof wfId).toBe("string");
+
+      const createAgent1 = await executeTool(
+        "create_agent",
+        { name: "First Node", description: "First agent", llmConfigId: "any" },
+        undefined
+      );
+      const agent1Id = (createAgent1 as { id?: string }).id;
+      expect(typeof agent1Id).toBe("string");
+
+      await executeTool(
+        "update_workflow",
+        {
+          id: wfId,
+          nodes: [{ id: "n1", type: "agent", position: [0, 0], parameters: { agentId: agent1Id } }],
+          edges: [],
+        },
+        undefined
+      );
+
+      const getWf = await executeTool("get_workflow", { id: wfId }, undefined);
+      expect((getWf as { error?: string }).error).toBeUndefined();
+      const existingNodes = (getWf as { nodes?: { id: string; type: string; parameters?: { agentId?: string } }[] }).nodes ?? [];
+      const existingEdges = (getWf as { edges?: { source: string; target: string }[] }).edges ?? [];
+
+      const createAgent2 = await executeTool(
+        "create_agent",
+        { name: "Second Node", description: "Second agent for topology test", llmConfigId: "any" },
+        undefined
+      );
+      const agent2Id = (createAgent2 as { id?: string }).id;
+      expect(typeof agent2Id).toBe("string");
+
+      const newNodes = [
+        ...existingNodes,
+        { id: "n2", type: "agent", position: [200, 0], parameters: { agentId: agent2Id } },
+      ];
+      const newEdges = [...existingEdges, { id: "e-n1-n2", source: "n1", target: "n2" }];
+
+      const updateRes = await executeTool(
+        "update_workflow",
+        { id: wfId, nodes: newNodes, edges: newEdges },
+        undefined
+      );
+      expect(updateRes).not.toEqual(expect.objectContaining({ error: expect.any(String) }));
+      expect((updateRes as { id?: string }).id).toBe(wfId);
+
+      const getWfAfter = await executeTool("get_workflow", { id: wfId }, undefined);
+      expect((getWfAfter as { error?: string }).error).toBeUndefined();
+      const nodesAfter = (getWfAfter as { nodes?: { id: string; parameters?: { agentId?: string } }[] }).nodes ?? [];
+      const edgesAfter = (getWfAfter as { edges?: { source: string; target: string }[] }).edges ?? [];
+      expect(nodesAfter.length).toBe(2);
+      expect(edgesAfter.length).toBe(1);
+      expect(edgesAfter[0].source).toBe("n1");
+      expect(edgesAfter[0].target).toBe("n2");
+    });
+  });
+
+  describe("executeTool trigger_training and spawn_instance", () => {
+    it("trigger_training with no jobId returns error containing jobId", async () => {
+      const result = await executeTool("trigger_training", {}, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: expect.stringContaining("jobId") }));
+    });
+
+    it("trigger_training with job_id only (snake_case) normalizes and returns Job not found", async () => {
+      const result = await executeTool(
+        "trigger_training",
+        { job_id: "non-existent-job-id", datasetRef: "", backend: "local" },
+        undefined
+      );
+      expect(result).toEqual(expect.objectContaining({ error: "Job not found" }));
+    });
+
+    it("trigger_training with invalid jobId returns Job not found", async () => {
+      const result = await executeTool(
+        "trigger_training",
+        { jobId: "non-existent-job-id", datasetRef: "", backend: "local" },
+        undefined
+      );
+      expect(result).toEqual(expect.objectContaining({ error: "Job not found" }));
+    });
+
+    it("spawn_instance without jobId returns error containing jobId", async () => {
+      const result = await executeTool("spawn_instance", {}, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: expect.stringContaining("jobId") }));
+    });
+
+    it("trigger_training with valid jobId creates run and get_training_status sees it", async () => {
+      const createRes = await executeTool("create_improvement_job", { name: "Trigger training test job" }, undefined);
+      const jobId = (createRes as { id?: string }).id;
+      expect(typeof jobId).toBe("string");
+
+      const triggerRes = await executeTool(
+        "trigger_training",
+        { jobId, datasetRef: "", backend: "local" },
+        undefined
+      );
+      expect(triggerRes).not.toEqual(expect.objectContaining({ error: expect.any(String) }));
+      const runId = (triggerRes as { runId?: string }).runId;
+      expect(typeof runId).toBe("string");
+
+      const statusRes = await executeTool("get_training_status", { runId }, undefined);
+      expect(statusRes).not.toEqual(expect.objectContaining({ error: "Run not found" }));
+      expect(statusRes).toEqual(expect.objectContaining({ runId, status: "pending" }));
+    });
+  });
+
+  describe("executeTool version/rollback tools", () => {
+    it("list_agent_versions returns error when agentId missing", async () => {
+      const result = await executeTool("list_agent_versions", {}, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: "agentId is required" }));
+    });
+
+    it("list_agent_versions returns error when agent not found", async () => {
+      const result = await executeTool("list_agent_versions", { agentId: "non-existent-agent-id" }, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: "Agent not found" }));
+    });
+
+    it("list_workflow_versions returns error when workflowId missing", async () => {
+      const result = await executeTool("list_workflow_versions", {}, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: expect.stringMatching(/Workflow id is required/) }));
+    });
+
+    it("list_workflow_versions returns error when workflow not found", async () => {
+      const result = await executeTool("list_workflow_versions", { workflowId: "non-existent-wf-id" }, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: "Workflow not found" }));
+    });
+
+    it("rollback_agent returns error when agentId missing", async () => {
+      const result = await executeTool("rollback_agent", {}, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: "agentId is required" }));
+    });
+
+    it("rollback_agent returns error when agent not found", async () => {
+      const result = await executeTool("rollback_agent", { agentId: "non-existent", version: 1 }, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: "Agent not found" }));
+    });
+
+    it("rollback_workflow returns error when workflowId missing", async () => {
+      const result = await executeTool("rollback_workflow", {}, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: expect.stringMatching(/Workflow id is required/) }));
+    });
+
+    it("rollback_workflow returns error when workflow not found", async () => {
+      const result = await executeTool("rollback_workflow", { workflowId: "non-existent", version: 1 }, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: "Workflow not found" }));
+    });
+
+    it("list_agent_versions returns array for existing agent (may be empty)", async () => {
+      const createRes = await executeTool(
+        "create_agent",
+        { name: "Version Test Agent", description: "For version tests", kind: "node", protocol: "native" },
+        undefined
+      );
+      const agentId = (createRes as { id?: string }).id;
+      expect(typeof agentId).toBe("string");
+      const listRes = await executeTool("list_agent_versions", { agentId }, undefined);
+      expect(Array.isArray(listRes)).toBe(true);
+      expect((listRes as unknown[]).every((r) => typeof (r as { id?: string }).id === "string" && typeof (r as { version?: number }).version === "number")).toBe(true);
+    });
+
+    it("list_workflow_versions returns array for existing workflow (may be empty)", async () => {
+      const createRes = await executeTool("create_workflow", { name: "Version Test WF" }, undefined);
+      const wfId = (createRes as { id?: string }).id;
+      expect(typeof wfId).toBe("string");
+      const listRes = await executeTool("list_workflow_versions", { workflowId: wfId }, undefined);
+      expect(Array.isArray(listRes)).toBe(true);
+      expect((listRes as unknown[]).every((r) => typeof (r as { id?: string }).id === "string" && typeof (r as { version?: number }).version === "number")).toBe(true);
+    });
+
+    it("rollback_agent with existing agent but invalid version returns version not found", async () => {
+      const createRes = await executeTool(
+        "create_agent",
+        { name: "Rollback Test Agent", description: "For rollback test", kind: "node", protocol: "native" },
+        undefined
+      );
+      const agentId = (createRes as { id?: string }).id;
+      expect(typeof agentId).toBe("string");
+      const result = await executeTool("rollback_agent", { agentId, version: 999 }, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: expect.stringMatching(/Version not found/) }));
+    });
+
+    it("rollback_workflow with existing workflow but invalid version returns version not found", async () => {
+      const createRes = await executeTool("create_workflow", { name: "Rollback Test WF" }, undefined);
+      const wfId = (createRes as { id?: string }).id;
+      expect(typeof wfId).toBe("string");
+      const result = await executeTool("rollback_workflow", { workflowId: wfId, version: 999 }, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: expect.stringMatching(/Version not found/) }));
     });
   });
 });

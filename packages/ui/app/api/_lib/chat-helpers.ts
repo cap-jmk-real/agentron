@@ -25,15 +25,36 @@ export async function normalizeOptionsWithLLM(
   return options;
 }
 
-/** When content asks the user to pick/choose but no ask_user is in toolResults, extract option labels via LLM so we can inject a synthetic ask_user. Returns null if content does not suggest options or extraction fails. */
+/** Extract option labels from bullet/list lines when content clearly asks the user to choose. Used as fallback when LLM returns []. */
+function extractOptionsFromBulletList(content: string): string[] | null {
+  const trimmed = (content ?? "").trim();
+  if (trimmed.length < 20) return null;
+  const asksToChoose = /\b(what would you like|pick one|choose one|choose an option|options?:|next steps?|please pick)\b/i.test(trimmed);
+  if (!asksToChoose) return null;
+  // Match lines that look like bullet options: "- Option", "• Option", "* Option", or " - Option"
+  const bulletRegex = /^\s*[-•*]\s+(.+)$/gm;
+  const options: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = bulletRegex.exec(trimmed)) !== null && options.length < 4) {
+    const label = m[1].trim();
+    if (label.length >= 2 && label.length <= 80) options.push(label);
+  }
+  return options.length >= 1 ? options.slice(0, 4) : null;
+}
+
+/** Extract option labels from content via a strict-format LLM call. If the LLM returns [] or parsing fails, falls back to extracting bullet-list lines when the content clearly asks the user to choose. Use when we need to inject a synthetic ask_user and no ask_user is in toolResults. Returns null if content too short or no options found. */
 export async function extractOptionsFromContentWithLLM(
   content: string,
   callLLM: (prompt: string) => Promise<string>
 ): Promise<string[] | null> {
   const trimmed = (content ?? "").trim();
   if (trimmed.length < 20) return null;
-  if (!/\b(pick one|choose one|please pick|which option|options for|what (would you )?like|please (choose|reply)|e\.g\.\s*["'])/i.test(trimmed)) return null;
-  const prompt = `Output ONLY a JSON array of strings: at most 4 option labels the user can choose (2-8 words each). If none or unclear, output [].\n\nMessage:\n${trimmed.slice(0, 6000)}\n\nJSON array only:`;
+  const prompt = `Output ONLY a JSON array of strings: at most 4 option labels the user can choose (2-8 words each). Extract from the message the exact labels for clickable options the user can pick. If there are no clear options or the message does not ask the user to choose, output []. No other text.
+
+Message:
+${trimmed.slice(0, 6000)}
+
+JSON array only:`;
   try {
     const out = await callLLM(prompt);
     const match = out.trim().match(/\[[\s\S]*\]/);
@@ -41,13 +62,13 @@ export async function extractOptionsFromContentWithLLM(
       const parsed = JSON.parse(match[0]) as unknown;
       if (Array.isArray(parsed) && parsed.length >= 1) {
         const labels = parsed.filter((x) => typeof x === "string").map((s) => String(s).trim()).filter(Boolean).slice(0, 4);
-        return labels.length >= 1 ? labels : null;
+        if (labels.length >= 1) return labels;
       }
     }
   } catch {
     // ignore
   }
-  return null;
+  return extractOptionsFromBulletList(trimmed);
 }
 
 /** Normalize ask_user options in tool results via strict LLM formatting. Returns new array with ask_user results having options replaced by LLM-normalized labels. */
@@ -142,21 +163,32 @@ export function getAssistantDisplayContent(
 
 /** Derive turn status and interactive prompt from tool results for done event. */
 export function getTurnStatusFromToolResults(
-  toolResults: { name: string; args: Record<string, unknown>; result: unknown }[]
-): { status: "completed" | "waiting_for_input"; interactivePrompt?: { question: string; options?: string[] } } {
-  const askUser = toolResults.find((r) => r.name === "ask_user" || r.name === "ask_credentials");
+  toolResults: { name: string; args: Record<string, unknown>; result: unknown }[],
+  options?: { useLastAskUser?: boolean }
+): { status: "completed" | "waiting_for_input"; interactivePrompt?: { question: string; options?: string[]; stepIndex?: number; stepTotal?: number } } {
+  const useLast = options?.useLastAskUser === true;
+  const askUser = useLast
+    ? [...toolResults].reverse().find((r) => r.name === "ask_user" || r.name === "ask_credentials")
+    : toolResults.find((r) => r.name === "ask_user" || r.name === "ask_credentials");
   const askRes = askUser?.result;
   if (askRes && typeof askRes === "object" && askRes !== null) {
-    const obj = askRes as { waitingForUser?: boolean; question?: string; options?: unknown[] };
+    const obj = askRes as { waitingForUser?: boolean; question?: string; options?: unknown[]; stepIndex?: number; stepTotal?: number };
     if (obj.waitingForUser === true) {
       const question = typeof obj.question === "string" ? obj.question.trim() : "Please provide the information or confirmation.";
       const options = Array.isArray(obj.options)
         ? obj.options.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim())
         : undefined;
-      return { status: "waiting_for_input", interactivePrompt: { question, options } };
+      const stepIndex = typeof obj.stepIndex === "number" && Number.isInteger(obj.stepIndex) ? obj.stepIndex : undefined;
+      const stepTotal = typeof obj.stepTotal === "number" && Number.isInteger(obj.stepTotal) ? obj.stepTotal : undefined;
+      const interactivePrompt: { question: string; options?: string[]; stepIndex?: number; stepTotal?: number } = { question, options };
+      if (stepIndex != null) interactivePrompt.stepIndex = stepIndex;
+      if (stepTotal != null) interactivePrompt.stepTotal = stepTotal;
+      return { status: "waiting_for_input", interactivePrompt };
     }
   }
-  const formatResp = toolResults.find((r) => r.name === "format_response");
+  const formatResp = useLast
+    ? [...toolResults].reverse().find((r) => r.name === "format_response")
+    : toolResults.find((r) => r.name === "format_response");
   const fmtRes = formatResp?.result;
   if (fmtRes && typeof fmtRes === "object" && fmtRes !== null) {
     const obj = fmtRes as { formatted?: boolean; summary?: string; needsInput?: string; options?: unknown[] };
@@ -173,6 +205,21 @@ export function getTurnStatusFromToolResults(
     }
   }
   return { status: "completed" };
+}
+
+/**
+ * Normalize option count in display content so the text matches the actual number of options.
+ * Replaces phrases like "four options", "4 options", "one of the X options" with the actual count.
+ */
+export function normalizeOptionCountInContent(content: string, actualCount: number): string {
+  if (actualCount < 0 || !Number.isInteger(actualCount)) return content;
+  const word = actualCount === 1 ? "option" : "options";
+  let out = content;
+  // "X option(s)" or "X options" where X is a digit
+  out = out.replace(/\b\d+\s*options?\b/gi, () => `${actualCount} ${word}`);
+  // "one of the X options" / "one of the four options"
+  out = out.replace(/\bone of the \d+\s*options?\b/gi, () => `one of the ${actualCount} ${word}`);
+  return out;
 }
 
 /** True when tool results include ask_user/ask_credentials or format_response in a "waiting for input" state. Used to create chat notifications and matches pending-input API logic. */
@@ -198,6 +245,59 @@ export function hasWaitingForInputInToolResults(
     }
     return false;
   });
+}
+
+/** True when tool results include format_response with non-empty summary or needsInput. Used to skip heap synthetic ask_user injection when the agent already presented a questionnaire via format_response. */
+export function hasFormatResponseWithContent(
+  toolResults: { name: string; result?: unknown }[]
+): boolean {
+  const fr = toolResults.find((r) => r.name === "format_response");
+  if (!fr?.result || typeof fr.result !== "object") return false;
+  const obj = fr.result as { summary?: string; needsInput?: string };
+  return Boolean(
+    (typeof obj.summary === "string" && obj.summary.trim() !== "") ||
+      (typeof obj.needsInput === "string" && obj.needsInput.trim() !== "")
+  );
+}
+
+export type DerivedInteractivePrompt = { question: string; options: string[] };
+
+/**
+ * Derive interactivePrompt (question + options) from display content using a strict-format LLM call.
+ * Use when the current ask_user in toolResults is for a different question (e.g. Q1) than what the user reads (e.g. "Next steps").
+ * Returns null if parsing fails or options length is not 2–4. No heuristics; LLM must return JSON only.
+ */
+export async function deriveInteractivePromptFromContentWithLLM(
+  displayContent: string,
+  callLLM: (prompt: string) => Promise<string>
+): Promise<DerivedInteractivePrompt | null> {
+  const trimmed = (displayContent ?? "").trim();
+  if (trimmed.length < 50) return null;
+  const prompt = `Given the assistant message below, output ONLY a JSON object with two keys: "question" (string, the single question the user should answer now, e.g. "Next steps") and "options" (array of 2–4 strings, the exact labels for clickable buttons the user can choose). Use the final choice list / Next steps if present. No other text.
+
+Message:
+${trimmed.slice(0, 6000)}
+
+JSON object only:`;
+  try {
+    const out = await callLLM(prompt);
+    const match = out.trim().match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[0]) as unknown;
+    if (parsed == null || typeof parsed !== "object" || !("question" in parsed) || !("options" in parsed))
+      return null;
+    const question = String((parsed as { question: unknown }).question ?? "").trim();
+    const options = Array.isArray((parsed as { options: unknown }).options)
+      ? (parsed as { options: unknown[] }).options
+          .filter((x): x is string => typeof x === "string")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    if (!question || options.length < 2 || options.length > 4) return null;
+    return { question, options };
+  } catch {
+    return null;
+  }
 }
 
 export type LastAssistantDeleteConfirmContext = {
@@ -240,4 +340,43 @@ export function getLastAssistantDeleteConfirmContext(
 
 export function userMessageMatchesFirstOption(userTrim: string, firstOption: string): boolean {
   return userTrim === firstOption || userTrim.toLowerCase() === firstOption.toLowerCase();
+}
+
+/** Build specialist outcome summary and append [Created agent id: ...] / [Created workflow id: ...] from tool results so next specialist receives exact UUIDs. */
+export function buildSpecialistSummaryWithCreatedIds(
+  content: string,
+  toolResults: { name: string; result?: unknown }[]
+): string {
+  let summary = (content ?? "").trim().slice(0, 16000) || (toolResults.length > 0 ? "Done." : "No output.");
+  for (const tr of toolResults) {
+    if (tr.name === "create_agent" && tr.result && typeof tr.result === "object" && "id" in tr.result && typeof (tr.result as { id: string }).id === "string") {
+      summary += `\n[Created agent id: ${(tr.result as { id: string }).id}]`;
+    }
+    if (tr.name === "create_workflow" && tr.result && typeof tr.result === "object" && "id" in tr.result && typeof (tr.result as { id: string }).id === "string") {
+      summary += `\n[Created workflow id: ${(tr.result as { id: string }).id}]`;
+    }
+  }
+  return summary;
+}
+
+/** Extract create_agent / create_workflow ids from tool results. */
+export function getCreatedIdsFromToolResults(toolResults: { name: string; result?: unknown }[]): { agentId?: string; workflowId?: string } {
+  const out: { agentId?: string; workflowId?: string } = {};
+  for (const tr of toolResults) {
+    if (tr.name === "create_agent" && tr.result && typeof tr.result === "object" && "id" in tr.result && typeof (tr.result as { id: string }).id === "string") {
+      out.agentId = (tr.result as { id: string }).id;
+    }
+    if (tr.name === "create_workflow" && tr.result && typeof tr.result === "object" && "id" in tr.result && typeof (tr.result as { id: string }).id === "string") {
+      out.workflowId = (tr.result as { id: string }).id;
+    }
+  }
+  return out;
+}
+
+/** Merge workflowId/agentId from tool results into a plan's extractedContext so the next turn (e.g. "Run it now") has ids. */
+export function mergeCreatedIdsIntoPlan<T extends { extractedContext?: Record<string, unknown> }>(plan: T, toolResults: { name: string; result?: unknown }[]): T {
+  const ids = getCreatedIdsFromToolResults(toolResults);
+  if (!ids.agentId && !ids.workflowId) return plan;
+  const extractedContext = { ...(plan.extractedContext ?? {}), ...(ids.workflowId != null && { workflowId: ids.workflowId }), ...(ids.agentId != null && { agentId: ids.agentId }) };
+  return { ...plan, extractedContext };
 }

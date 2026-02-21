@@ -13,19 +13,19 @@ export const AGENT_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "create_agent",
-    description: "Create a new agent. REQUIRED: name, description, llmConfigId, graphNodes with at least one 'llm' node (parameters.systemPrompt = concrete role/behavior). When the agent uses tools: pass toolIds AND add tool nodes plus graphEdges from each llm node to each tool node — so users see which tools each LLM can call. The system auto-injects missing tool nodes when toolIds are provided. Node agents need an LLM to decide when/how to call tools — even 'agent that runs container' requires an LLM. All changes are persisted.",
+    description: "Create a new agent. For a RUNNABLE agent (one that does something when a workflow runs it) you MUST provide a graph definition: pass systemPrompt and/or graphNodes with at least one 'llm' node whose parameters.systemPrompt is a concrete, non-empty string. An agent created with only name, description, llmConfigId, and toolIds but NO systemPrompt and NO graphNodes will have an empty graph and do nothing when executed. REQUIRED for runnable node agents: name, description, llmConfigId, and (systemPrompt OR graphNodes with at least one llm node and parameters.systemPrompt). When the agent uses tools: pass toolIds AND add tool nodes plus graphEdges from each llm node to each tool node. The system auto-injects missing tool nodes when toolIds are provided. All changes are persisted.",
     parameters: {
       type: "object",
       properties: {
         name: { type: "string", description: "Agent name" },
         kind: { type: "string", enum: ["node", "code"], description: "Agent kind" },
         protocol: { type: "string", enum: ["native", "mcp", "http"], description: "Protocol" },
-        description: { type: "string", description: "Short description of what the agent does (required)" },
-        systemPrompt: { type: "string", description: "REQUIRED for node agents. Concrete system prompt defining the agent's role and behavior. Also set this in each llm node's parameters.systemPrompt in graphNodes. Example: 'You are a helpful assistant that answers questions concisely.'" },
+        description: { type: "string", description: "Short description of what the agent does (required). Used as system prompt fallback if no systemPrompt/graphNodes provided." },
+        systemPrompt: { type: "string", description: "REQUIRED for runnable node agents. Concrete system prompt (role and behavior). Either pass this top-level and/or set parameters.systemPrompt on every llm node in graphNodes. Example: 'You are a Sales Navigator agent. Use the vault credential to authenticate, then run the saved search and return structured results.'" },
         llmConfigId: { type: "string", description: "ID of LLM provider from list_llm_providers. Required for node agents." },
         toolIds: { type: "array", items: { type: "string" }, description: "REQUIRED when agent uses tools. IDs from list_tools." },
-        graphNodes: { type: "array", description: "Agent graph nodes. Each llm: { id, type: 'llm', position: [x,y], parameters: { systemPrompt } }. Each tool: { id, type: 'tool', position: [x,y], parameters: { toolId } }. Add tool nodes when toolIds are provided so users see which tools each LLM uses." },
-        graphEdges: { type: "array", description: "Edges between nodes: [{ id, source: nodeId, target: nodeId }]. Connect each llm node to each tool node (source: llm id, target: tool id) to show decision flow." },
+        graphNodes: { type: "array", description: "REQUIRED for runnable node agents. At least one node: { id, type: 'llm', position: [100,100], parameters: { systemPrompt: '<concrete prompt>' } }. When toolIds are provided, add tool nodes and graphEdges from llm to each tool so the graph is complete." },
+        graphEdges: { type: "array", description: "Edges between nodes: [{ id, source: nodeId, target: nodeId }]. Connect each llm node to each tool node (source: llm id, target: tool id)." },
       },
       required: ["name", "description"],
     },
@@ -74,6 +74,28 @@ export const AGENT_TOOLS: AssistantToolDef[] = [
       type: "object",
       properties: { id: { type: "string" } },
       required: ["id"],
+    },
+  },
+  {
+    name: "list_agent_versions",
+    description: "List version history for an agent (id, version, created_at). Use before rollback_agent so the user can pick a version.",
+    parameters: {
+      type: "object",
+      properties: { agentId: { type: "string", description: "Agent ID" } },
+      required: ["agentId"],
+    },
+  },
+  {
+    name: "rollback_agent",
+    description: "Restore an agent to a previous version. Use list_agent_versions first to get version id or version number.",
+    parameters: {
+      type: "object",
+      properties: {
+        agentId: { type: "string", description: "Agent ID" },
+        versionId: { type: "string", description: "Version row id from list_agent_versions" },
+        version: { type: "number", description: "Version number (1-based) from list_agent_versions" },
+      },
+      required: ["agentId"],
     },
   },
   {

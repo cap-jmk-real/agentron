@@ -5,19 +5,20 @@
 
 import type { RouterOutput, HeapStep } from "./types";
 import type { SpecialistRegistry } from "./registry";
-import { TOP_LEVEL_CAP } from "./registry";
 
-const ROUTER_TOP_LEVEL_MAX = 7;
+/** Max options the model sees at once. Deeper exploration is recursive via delegation (sub-heap), not by showing the full tree. */
+export const ROUTER_OPTIONS_CAP = 10;
 
 /**
  * Builds the router prompt: user message + list of top-level specialist ids (with optional descriptions).
+ * Never shows more than ROUTER_OPTIONS_CAP options; further levels are reached by delegation at runtime.
  */
 export function buildRouterPrompt(
   userMessage: string,
   registry: SpecialistRegistry,
   options?: { includeDescriptions?: boolean }
 ): string {
-  const ids = registry.topLevelIds.slice(0, ROUTER_TOP_LEVEL_MAX);
+  const ids = registry.topLevelIds.slice(0, ROUTER_OPTIONS_CAP);
   const includeDescriptions = options?.includeDescriptions ?? true;
   const specialistList = ids
     .map((id) => {

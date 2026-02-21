@@ -24,10 +24,27 @@ export async function GET(request: Request) {
     start(controller) {
       const send = (data: object) => {
         try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          const raw = JSON.stringify(data);
+          controller.enqueue(encoder.encode(`data: ${raw}\n\n`));
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
-          if (!/already closed|Invalid state/i.test(msg)) throw e;
+          if (/already closed|Invalid state/i.test(msg)) return;
+          // Serialization or enqueue failed (e.g. circular ref in event); send minimal error so client stops loading
+          try {
+            const fallback =
+              typeof data === "object" && data !== null && "type" in data && (data as { type: string }).type === "done"
+                ? {
+                    type: "done" as const,
+                    content: (data as { content?: string }).content ?? "",
+                    messageId: (data as { messageId?: string }).messageId,
+                    userMessageId: (data as { userMessageId?: string }).userMessageId,
+                    conversationId: (data as { conversationId?: string }).conversationId,
+                  }
+                : { type: "error" as const, error: "Event delivery failed" };
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(fallback)}\n\n`));
+          } catch {
+            // ignore
+          }
         }
       };
 
@@ -43,22 +60,13 @@ export async function GET(request: Request) {
         }
       });
 
-      // Start pending job if any (run in background so we don't block the response)
+      // Start pending job if any (run in background so we don't block the response).
+      // If no job (e.g. another EventSource already took it, or React double-mount), stay subscribed
+      // so we still receive events published by the connection that runs the job.
       const job = takePendingJob(turnId);
-      // #region agent log
-      if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"e0760a"},body:JSON.stringify({sessionId:"e0760a",location:"chat/events/route.ts:job_taken",message:"events: job taken?",data:{turnId,jobTaken:!!job},hypothesisId:"H4",timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (job) {
         setImmediate(() => {
-          // #region agent log
-          if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"e0760a"},body:JSON.stringify({sessionId:"e0760a",location:"chat/events/route.ts:job_executing",message:"events: executing job",data:{turnId},hypothesisId:"H4",timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
           job().catch((err: unknown) => {
-            // #region agent log
-            const errMsg = err instanceof Error ? err.message : String(err);
-            const errName = err instanceof Error ? err.name : "";
-            if (typeof fetch !== "undefined") fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e0760a'},body:JSON.stringify({sessionId:'e0760a',location:'chat/events/route.ts:job_catch',message:'job rejected',data:{error:errMsg,name:errName,turnId},hypothesisId:'H4',timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
             send({ type: "error", error: "Turn failed" });
             finish(turnId);
             try {
@@ -69,8 +77,7 @@ export async function GET(request: Request) {
           });
         });
       }
-
-      // If no job, client may have connected late; they'll just wait for events or timeout.
+      // else: no job — another GET likely took it; we stay subscribed and receive the same events
       // Allow client to close the connection (request.signal) and unsubscribe
       request.signal?.addEventListener?.("abort", () => {
         unsub();

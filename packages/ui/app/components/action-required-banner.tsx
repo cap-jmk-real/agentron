@@ -3,60 +3,53 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { MessageCircle, X } from "lucide-react";
+import { NOTIFICATIONS_UPDATED_EVENT } from "../lib/notifications-events";
 
-type PendingRequest = {
-  runId: string;
-  question: string;
-  reason?: string;
-  suggestions?: string[];
-  targetName: string;
-  targetType: string;
-};
-
-type ChatPending = {
-  count: number;
-  conversations: { conversationId: string; title: string | null }[];
+type NotificationItem = {
+  id: string;
+  type: string;
+  sourceId: string;
+  title: string;
+  targetName?: string;
 };
 
 export default function ActionRequiredBanner() {
-  const [runs, setRuns] = useState<{ count: number; requests: PendingRequest[] }>({ count: 0, requests: [] });
-  const [chat, setChat] = useState<ChatPending>({ count: 0, conversations: [] });
+  const [runItems, setRunItems] = useState<NotificationItem[]>([]);
+  const [chatCount, setChatCount] = useState(0);
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    const fetchPending = () => {
-      Promise.all([
-        fetch("/api/runs/pending-help").then((r) => r.json()),
-        fetch("/api/chat/pending-input").then((r) => r.json()),
-      ])
-        .then(([runsData, chatData]) => {
-          setRuns({
-            count: typeof runsData.count === "number" ? runsData.count : 0,
-            requests: Array.isArray(runsData.requests) ? (runsData.requests as PendingRequest[]) : [],
-          });
-          setChat({
-            count: typeof chatData.count === "number" ? chatData.count : 0,
-            conversations: Array.isArray(chatData.conversations) ? chatData.conversations : [],
-          });
-        })
-        .catch(() => {
-          setRuns({ count: 0, requests: [] });
-          setChat({ count: 0, conversations: [] });
-        });
+    const fetchNotifications = async () => {
+      try {
+        const res = await fetch("/api/notifications?status=active&limit=100");
+        if (!res.ok) return;
+        const data = (await res.json()) as { items: NotificationItem[]; totalActiveCount: number };
+        const items = Array.isArray(data.items) ? data.items : [];
+        setRunItems(items.filter((n) => n.type === "run"));
+        setChatCount(items.filter((n) => n.type === "chat").length);
+      } catch {
+        setRunItems([]);
+        setChatCount(0);
+      }
     };
-    fetchPending();
-    const interval = setInterval(fetchPending, 10_000);
-    return () => clearInterval(interval);
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 10_000);
+    const onUpdated = () => { void fetchNotifications(); };
+    window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+    };
   }, []);
 
-  const totalCount = runs.count + chat.count;
+  const totalCount = runItems.length + chatCount;
   if (totalCount === 0 || dismissed) return null;
 
-  const runLabel = runs.count === 1 ? "1 run" : `${runs.count} runs`;
-  const chatLabel = chat.count === 1 ? "1 chat" : `${chat.count} chats`;
+  const runLabel = runItems.length === 1 ? "1 run" : `${runItems.length} runs`;
+  const chatLabel = chatCount === 1 ? "1 chat" : `${chatCount} chats`;
   const parts = [
-    runs.count > 0 ? `${runLabel} waiting for your input` : null,
-    chat.count > 0 ? `${chatLabel} need your decision` : null,
+    runItems.length > 0 ? `${runLabel} waiting for your input` : null,
+    chatCount > 0 ? `${chatLabel} need your decision` : null,
   ].filter(Boolean);
 
   return (
@@ -70,11 +63,11 @@ export default function ActionRequiredBanner() {
         <Link href="/chat" className="action-required-banner-cta">
           Open Chat to respond
         </Link>
-        {runs.requests.length > 0 && (
+        {runItems.length > 0 && (
           <span className="action-required-banner-links">
-            {runs.requests.slice(0, 3).map((r) => (
-              <Link key={r.runId} href={`/runs/${r.runId}`} className="action-required-banner-run-link">
-                {r.targetName || r.targetType || "Run"}
+            {runItems.slice(0, 3).map((r) => (
+              <Link key={r.id} href={`/runs/${r.sourceId}`} className="action-required-banner-run-link">
+                {r.targetName || "Run"}
               </Link>
             ))}
           </span>

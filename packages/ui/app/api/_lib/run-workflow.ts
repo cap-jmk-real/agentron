@@ -31,6 +31,7 @@ import {
   updateExecutionRunState,
   parseRunStateSharedContext,
 } from "./execution-events";
+import { appendExecutionLogStep } from "./execution-log";
 import {
   db,
   agents,
@@ -69,6 +70,7 @@ import {
   runContainerSession,
   runContainerBuild,
   runWriteFile,
+  destroyContainerSession,
   type ContainerStreamChunk,
 } from "./run-workflow-containers";
 
@@ -228,6 +230,15 @@ async function executeStudioTool(
     const label = typeof arg.label === "string" && arg.label.trim() ? (arg.label.trim() as "good" | "bad") : undefined;
     const limit = typeof arg.limit === "number" && arg.limit > 0 ? arg.limit : undefined;
     return getFeedbackForScope(targetId, { label, limit });
+  }
+  const improvementToolIds = new Set([
+    "create_improvement_job", "get_improvement_job", "list_improvement_jobs", "update_improvement_job",
+    "generate_training_data", "trigger_training", "get_training_status", "evaluate_model",
+    "decide_optimization_target", "get_technique_knowledge", "record_technique_insight", "propose_architecture", "spawn_instance",
+  ]);
+  if (improvementToolIds.has(toolId)) {
+    const { executeTool } = await import("../chat/_lib/execute-tool");
+    return executeTool(toolId, (typeof input === "object" && input !== null ? input : {}) as Record<string, unknown>, { conversationId: undefined, vaultKey: vaultKey ?? null });
   }
   if (toolId === "std-list-vault-credentials") {
     // #region agent log
@@ -416,6 +427,12 @@ export type ExecutionTraceStep = {
   toolCalls?: Array<{ name: string; argsSummary?: string; resultSummary?: string }>;
   /** When true, this step's input is the user's reply to a request_user_help (so the trail clearly shows the agent received it). */
   inputIsUserReply?: boolean;
+  /** When set, this step's output was passed to the given node (for "Sent to Agent Y" in runs UI). */
+  sentToNodeId?: string;
+  /** When set, name of the agent that receives this step's output (avoids lookup in UI). */
+  sentToAgentName?: string;
+  /** Optional short summary of LLM activity in this step (e.g. "3 rounds, 5 tool calls"). */
+  llmSummary?: string;
 };
 
 type NodeAgentGraph = {
@@ -593,7 +610,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
     }
     const resumeText = options.resumeUserResponse?.trim() ?? "";
     const looksLikeVaultApproval = /use vault|vault credentials|yes.*vault|approve.*vault/i.test(resumeText) && resumeText.length < 120;
-    const partnerMessage =
+    let partnerMessage =
       partnerOutput !== undefined
         ? (typeof partnerOutput === "string" ? partnerOutput : JSON.stringify(partnerOutput))
         : (resumeText !== ""
@@ -601,6 +618,16 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
             ? `The user has replied: "${resumeText}". They approved using vault credentials. Call std-list-vault-credentials to see which keys are stored, then std-get-vault-credential with the key that matches each field (username/email vs password). Use each returned .value in std-browser-automation fill. Do not ask the user to paste credentials. Do not call request_user_help again for the same question.`
             : `The user has replied to your previous request (the one you sent via request_user_help). Their reply: "${resumeText}". Proceed based on this reply; do not call request_user_help again for the same question.`)
           : FIRST_TURN_DEFAULT);
+    if (partnerMessage === FIRST_TURN_DEFAULT && config && (config.savedSearchUrl != null || config.autoUseVault != null)) {
+      const parts: string[] = [FIRST_TURN_DEFAULT];
+      if (config.savedSearchUrl != null && String(config.savedSearchUrl).trim()) {
+        parts.push(`Use the following saved search URL (provided by the workflow; do not call request_user_help to ask for the URL): ${String(config.savedSearchUrl).trim()}`);
+      }
+      if (config.autoUseVault === true || config.autoUseVault === "true") {
+        parts.push("Use vault credentials when needed (autoUseVault is enabled).");
+      }
+      partnerMessage = parts.join("\n\n");
+    }
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'run-workflow.ts:partnerMessage',message:'agent step partnerMessage',data:{fromResume:partnerOutput===undefined&&(options.resumeUserResponse?.length??0)>0,partnerMessageLen:typeof partnerMessage==='string'?partnerMessage.length:0},hypothesisId:'H4_H5',timestamp:Date.now()})}).catch(()=>{});
     // #endregion
@@ -768,7 +795,12 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
         const req = (input && typeof input === "object" && "messages" in (input as object))
           ? (input as { llmConfigId?: string; messages: unknown[]; tools?: unknown[] })
           : { messages: [{ role: "user" as const, content: String(input ?? "") }] };
+        await appendExecutionLogStep(runId, "llm_request", "Calling LLM…", { messages: req.messages });
         const res = await trackingCallLLM(req as Parameters<typeof trackingCallLLM>[0]);
+        await appendExecutionLogStep(runId, "llm_response", "Response", {
+          content: typeof res.content === "string" ? res.content : undefined,
+          usage: res.usage,
+        });
         return req.tools && Array.isArray(req.tools) && req.tools.length > 0 ? res : res.content;
       },
       callTool: async (toolId: string, input: unknown, override?: ToolOverride) => {
@@ -780,6 +812,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
           };
         }
         toolCallsForStep.push({ name: toolId, argsSummary: toolArgsSummary(toolId, input) });
+        await appendExecutionLogStep(runId, "tool_call", toolId, { toolId, input });
         // Emit progress so the run page shows "Executing: <toolId>" while waiting (avoids appearing stuck)
         await options.onProgress?.({ message: `Executing: ${toolId}`, toolId }, trail);
         if (toolId === "request_user_help") {
@@ -833,10 +866,11 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
             output: JSON.stringify(payload),
           }).where(eq(executions.id, runId)).run();
           try {
-            createRunNotification(runId, "waiting_for_user", { targetType: "workflow", targetId: workflowId });
+            await createRunNotification(runId, "waiting_for_user", { targetType: "workflow", targetId: workflowId });
           } catch {
             // ignore
           }
+          await appendExecutionLogStep(runId, "tool_result", toolId, { toolId, waitingForUser: true });
           throw new Error(WAITING_FOR_USER_MESSAGE);
         }
         const toolContext = {
@@ -904,6 +938,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
               const last = toolCallsForStep[toolCallsForStep.length - 1];
               last.resultSummary = (errMsg.split(/\n/)[0]?.trim() ?? errMsg).slice(0, 100);
             }
+            await appendExecutionLogStep(runId, "tool_result", toolId, { toolId, error: errMsg });
             throw toolErr;
           }
         }
@@ -969,6 +1004,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
               .run();
           }
         }
+        await appendExecutionLogStep(runId, "tool_result", toolId, { toolId, result });
         lastToolId = toolId;
         lastToolResult = result;
         return result;
@@ -1182,6 +1218,10 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
             return "completed";
           }
           if (nextNodeId) {
+            if (trail.length > 0) {
+              const lastStep = trail[trail.length - 1] as ExecutionTraceStep;
+              lastStep.sentToNodeId = nextNodeId;
+            }
             await updateExecutionRunState(runId, { currentNodeId: nextNodeId, round: nextRound });
             await enqueueExecutionEvent(runId, "NodeRequested", { nodeId: nextNodeId });
           }
@@ -1367,7 +1407,7 @@ export async function runWorkflowForRun(
       output: JSON.stringify(payload),
     }).where(eq(executions.id, runId)).run();
     try {
-      createRunNotification(runId, "completed", { targetType: "workflow", targetId: workflowId });
+      await createRunNotification(runId, "completed", { targetType: "workflow", targetId: workflowId });
     } catch {
       // ignore
     }
@@ -1399,7 +1439,7 @@ export async function runWorkflowForRun(
         output: JSON.stringify(payload),
       }).where(eq(executions.id, runId)).run();
       try {
-        createRunNotification(runId, "failed", { targetType: "workflow", targetId: workflowId });
+        await createRunNotification(runId, "failed", { targetType: "workflow", targetId: workflowId });
       } catch {
         // ignore
       }

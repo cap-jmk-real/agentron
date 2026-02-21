@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   const limit = Math.min(Number(searchParams.get("limit")) || 50, 200);
   const offset = Math.max(0, Number(searchParams.get("offset")) || 0);
 
-  const { items, totalActiveCount } = listNotifications({ status, types, limit, offset });
+  const { items, totalActiveCount } = await listNotifications({ status, types, limit, offset });
 
   // Enrich run notifications with targetName (workflow/agent name)
   const runIds = [...new Set(items.filter((n) => n.type === "run").map((n) => n.sourceId))];
@@ -65,7 +65,7 @@ export async function GET(request: Request) {
     }
     if (n.type === "chat") {
       const conversationTitle = conversationIdToTitle[n.sourceId] ?? (n.metadata?.conversationId as string) ?? n.sourceId;
-      return { ...n, conversationTitle };
+      return { ...n, conversationTitle, severity: "info" as const };
     }
     return n;
   });

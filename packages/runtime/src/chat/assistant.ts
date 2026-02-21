@@ -259,7 +259,9 @@ export async function runAssistant(
     return results;
   }
 
-  let toolResults = await extractAndRunToolCalls(rawContent, { todos: todos ?? [], maxSteps: todos?.length });
+  // Only cap by todo count when we have at least one todo; otherwise run all tool calls from the first message
+  const initialMaxSteps = (todos?.length ?? 0) > 0 ? todos!.length : undefined;
+  let toolResults = await extractAndRunToolCalls(rawContent, { todos: todos ?? [], maxSteps: initialMaxSteps });
 
   // If the model gave no tool calls but the user asked for action, nudge to output tool calls
   let effectiveAssistantContent = rawContent;
@@ -360,14 +362,21 @@ export async function runAssistant(
       .join("\n\n");
 
     const isFirstFollowUp = round === 0;
+    const hasToolCapExceeded = toolResults.some(
+      (r) =>
+        r.result != null &&
+        typeof r.result === "object" &&
+        (r.result as { code?: string }).code === "TOOL_CAP_EXCEEDED"
+    );
+    const firstFollowUpLead = hasToolCapExceeded
+      ? "One or more create_agent calls failed with TOOL_CAP_EXCEEDED (max 10 tools per agent). You MUST design and create a multi-agent system using an agentic pattern (pipeline A→B→C, evaluator-optimizer A↔B with maxRounds, role-based assembly line, or orchestrator-workers): create multiple agents (each with at most 10 tools and a clear role in that pattern) and report each with [Created agent id: ...]. If you have create_workflow and update_workflow, also create the workflow and wire these agents (nodes with parameters.agentId, edges, maxRounds) according to the pattern. If not (e.g. you are the agent specialist), respond with the agent ids and the chosen pattern so the workflow specialist can wire them. Then respond with a summary and options for the user."
+      : "Now, based on these tool results and the user's goal, continue. " +
+        "If you created workflow(s) and agent(s) above, you MUST call update_workflow for each workflow with the exact ids from the results (nodes with agentId, edges, maxRounds). Do NOT re-run create_agent or create_workflow. ";
     const followUpUserContent =
       "Earlier in this turn you already ran these tool calls:\n\n" +
       toolsSummary +
       "\n\n" +
-      (isFirstFollowUp
-        ? "Now, based on these tool results and the user's goal, continue. " +
-          "If you created workflow(s) and agent(s) above, you MUST call update_workflow for each workflow with the exact ids from the results (nodes with agentId, edges, maxRounds). Do NOT re-run create_agent or create_workflow. "
-        : "No further tool calls are needed. ") +
+      (isFirstFollowUp ? firstFollowUpLead : "No further tool calls are needed. ") +
       followUpSummaryInstruction +
       "\n\n" +
       followUpReminderText;
@@ -386,11 +395,12 @@ export async function runAssistant(
     lastAssistantContent = followUp.content;
     content = followUp.content;
 
-    // Parse and execute any tool calls in the follow-up (e.g. update_agent with data from prior tool results)
+    // Parse and execute any tool calls in the follow-up (e.g. update_agent, create_agent with data from prior tool results).
+    // Do not pass maxSteps here: we want to run ALL tool calls in the follow-up. (maxSteps on the first message limits
+    // initial batch; follow-ups can add more tools without being capped by the original todo count.)
     toolResults = await extractAndRunToolCalls(followUp.content, {
       startIndex: allToolResults.length,
       todos: todos ?? [],
-      maxSteps: todos?.length,
     });
     for (let i = 0; i < toolResults.length; i++) {
       allToolResults.push(toolResults[i]);

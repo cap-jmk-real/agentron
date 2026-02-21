@@ -1,0 +1,14 @@
+---
+description: Testing — coverage expectations, unit/integration, no LLM in tests
+globs: "**/*.test.ts,**/*.spec.ts,packages/ui/**/*.ts,packages/runtime/**/*.ts"
+alwaysApply: false
+---
+
+# Testing strategy
+
+- **Critical business logic:** ~90–100% unit test coverage. Non-critical: reasonable coverage. Infrastructure/trivial: optional if tested elsewhere. Gaps must be acknowledged and justified.
+- **Focus on branches, edge cases, failure modes.** Avoid testing implementation details; avoid brittle tests.
+- **Run coverage:** From repo root `npm run test:coverage`; HTML report in `packages/ui/coverage/index.html`.
+- **No LLM in tests** for code paths, data flow, tool execution. Use deterministic mocks (fixed `priorityOrder`/`refinedTask`, mock `runSpecialist`/LLM, fixture responses). Heap/chat/improvement tests: mock `get_run_for_improvement` and LLM; assert flow and DB, not model quality.
+- **Unit tests default;** integration tests only for multi-component/external boundaries. When fixing a bug, add a test that would have failed before the fix (see `bug-fix-add-tests` rule).
+- **Definition of done:** Core logic unit-tested; edge cases covered; heap/assistant tests use deterministic mocks. Before finalizing: run tests, run coverage, run build, run `npm run pre-push` before pushing.

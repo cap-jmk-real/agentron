@@ -6,6 +6,8 @@ import { appendLogLine } from "./api-logger";
 import {
   agents,
   workflows,
+  agentVersions,
+  workflowVersions,
   llmConfigs,
   tools,
   executions,
@@ -39,6 +41,8 @@ import {
   workflowQueue,
   conversationLocks,
   messageQueueLog,
+  executionLog,
+  notifications as notificationsTable,
 } from "@agentron-studio/core";
 import type {
   Agent,
@@ -110,6 +114,8 @@ export function runReset(): void {
 export {
   agents,
   workflows,
+  agentVersions,
+  workflowVersions,
   llmConfigs,
   tools,
   executions,
@@ -142,6 +148,8 @@ export {
   workflowQueue,
   conversationLocks,
   messageQueueLog,
+  executionLog,
+  notificationsTable,
 };
 
 export type ReminderTaskType = "message" | "assistant_task";
@@ -531,6 +539,7 @@ export const toChatAssistantSettingsRow = (s: ChatAssistantSettings) => ({
   temperature: s.temperature != null ? String(s.temperature) : null,
   historyCompressAfter: s.historyCompressAfter ?? null,
   historyKeepRecent: s.historyKeepRecent ?? null,
+  plannerRecentMessages: s.plannerRecentMessages ?? null,
   updatedAt: s.updatedAt
 });
 
@@ -544,6 +553,7 @@ export const fromChatAssistantSettingsRow = (row: typeof chatAssistantSettings.$
   temperature: row.temperature != null ? Number(row.temperature) : null,
   historyCompressAfter: row.historyCompressAfter ?? null,
   historyKeepRecent: row.historyKeepRecent ?? null,
+  plannerRecentMessages: row.plannerRecentMessages ?? null,
   updatedAt: row.updatedAt
 });
 
@@ -829,7 +839,89 @@ export const STANDARD_TOOLS: { id: string; name: string; description?: string }[
     name: "Get feedback for scope",
     description: "List recent feedback for a target (agent/workflow) as short rows: notes, input/output summaries. Use when improving from past feedback. Use targetId (agent or workflow id), optional label (good/bad), and limit (default 20, max 50).",
   },
+  { id: "get_agent", name: "Get agent", description: "Load agent by id (for prompt/topology improvement)." },
+  { id: "update_agent", name: "Update agent", description: "Update agent fields (name, description, systemPrompt, graphNodes, etc.)." },
+  { id: "apply_agent_prompt_improvement", name: "Apply agent prompt improvement", description: "Apply suggested prompt changes to an agent (agentId, improvement, optional autoApply)." },
+  { id: "list_agent_versions", name: "List agent versions", description: "List version history for an agent (for rollback)." },
+  { id: "rollback_agent", name: "Rollback agent", description: "Rollback agent to a previous version." },
+  { id: "get_workflow", name: "Get workflow", description: "Load workflow by id (nodes, edges) for topology improvement." },
+  { id: "update_workflow", name: "Update workflow", description: "Update workflow nodes and edges (add/remove agents, change connections)." },
+  { id: "list_workflows", name: "List workflows", description: "List workflows (id, name)." },
+  { id: "list_workflow_versions", name: "List workflow versions", description: "List version history for a workflow (for rollback)." },
+  { id: "rollback_workflow", name: "Rollback workflow", description: "Rollback workflow to a previous version." },
+  { id: "create_improvement_job", name: "Create improvement job", description: "Create a new improvement job (scope for training/feedback). Use with generate_training_data, trigger_training, get_training_status." },
+  { id: "get_improvement_job", name: "Get improvement job", description: "Get an improvement job by id (scopeType, scopeId, studentLlmConfigId, etc.)." },
+  { id: "list_improvement_jobs", name: "List improvement jobs", description: "List all improvement jobs (id, name, scopeType, scopeId, currentModelRef, lastTrainedAt)." },
+  { id: "update_improvement_job", name: "Update improvement job", description: "Update job fields: currentModelRef, instanceRefs, architectureSpec, lastTrainedAt." },
+  { id: "generate_training_data", name: "Generate training data", description: "Generate dataset for training. Strategy: from_feedback (user ratings), teacher, contrastive. Returns datasetRef for trigger_training." },
+  { id: "trigger_training", name: "Trigger training", description: "Start a training run for a job (jobId, datasetRef, backend). Returns runId; poll get_training_status(runId)." },
+  { id: "get_training_status", name: "Get training status", description: "Poll training run status by runId (status, outputModelRef, finishedAt)." },
+  { id: "evaluate_model", name: "Evaluate model", description: "Run evaluation for a job (jobId). Returns metrics stub; plug in eval set for real metrics." },
+  { id: "decide_optimization_target", name: "Decide optimization target", description: "Decide what to optimize (scopeType, scopeId). Returns target (e.g. model_instance) and reason." },
+  { id: "get_technique_knowledge", name: "Get technique knowledge", description: "Get playbook (teacher distillation, LoRA, from_feedback, etc.) and recent insights for a job (optional jobId)." },
+  { id: "record_technique_insight", name: "Record technique insight", description: "Record an insight (jobId, techniqueOrStrategy, outcome, summary) for future runs." },
+  { id: "propose_architecture", name: "Propose architecture", description: "Attach architecture spec to a job (jobId, spec). Next trigger_training uses it if backend supports." },
+  { id: "spawn_instance", name: "Spawn instance", description: "Same as trigger_training with addInstance: true (multi-instance training)." },
 ];
+
+/** Tool categories for list_tools(category) segmentation. Agent-creator specialists can request a subset. */
+export const TOOL_CATEGORIES: Record<string, string> = {
+  "std-list-vault-credentials": "vault",
+  "std-get-vault-credential": "vault",
+  "std-web-search": "web",
+  "std-fetch-url": "web",
+  "std-weather": "web",
+  "std-http-request": "web",
+  "std-browser": "browser",
+  "std-browser-automation": "browser",
+  "std-container-run": "containers",
+  "std-container-session": "containers",
+  "std-container-build": "containers",
+  "std-write-file": "files",
+  "std-request-user-help": "user_input",
+  "get_run_for_improvement": "improvement",
+  "get_feedback_for_scope": "improvement",
+  "get_agent": "improvement",
+  "update_agent": "improvement",
+  "apply_agent_prompt_improvement": "improvement",
+  "list_agent_versions": "improvement",
+  "rollback_agent": "improvement",
+  "get_workflow": "improvement",
+  "update_workflow": "improvement",
+  "list_workflows": "improvement",
+  "list_workflow_versions": "improvement",
+  "rollback_workflow": "improvement",
+  "create_improvement_job": "improvement",
+  "get_improvement_job": "improvement",
+  "list_improvement_jobs": "improvement",
+  "update_improvement_job": "improvement",
+  "generate_training_data": "improvement",
+  "trigger_training": "improvement",
+  "get_training_status": "improvement",
+  "evaluate_model": "improvement",
+  "decide_optimization_target": "improvement",
+  "get_technique_knowledge": "improvement",
+  "record_technique_insight": "improvement",
+  "propose_architecture": "improvement",
+  "spawn_instance": "improvement",
+};
+
+/** When category is "improvement", list_tools can filter by subset to return a short, relevant list instead of all improvement tools. */
+export const IMPROVEMENT_SUBSETS: Record<string, string[]> = {
+  observe: ["get_run_for_improvement", "get_feedback_for_scope"],
+  prompt: ["get_agent", "update_agent", "apply_agent_prompt_improvement", "list_agent_versions", "rollback_agent"],
+  topology: ["get_workflow", "update_workflow", "update_agent", "list_workflows", "list_workflow_versions", "rollback_workflow"],
+  prompt_and_topology: [
+    "get_run_for_improvement", "get_feedback_for_scope",
+    "get_agent", "update_agent", "apply_agent_prompt_improvement", "list_agent_versions", "rollback_agent",
+    "get_workflow", "update_workflow", "list_workflows", "list_workflow_versions", "rollback_workflow",
+  ],
+  training: [
+    "create_improvement_job", "get_improvement_job", "list_improvement_jobs", "update_improvement_job",
+    "generate_training_data", "trigger_training", "get_training_status", "evaluate_model",
+    "decide_optimization_target", "get_technique_knowledge", "record_technique_insight", "propose_architecture", "spawn_instance",
+  ],
+};
 
 /** Ensures default/built-in tools exist in the DB so they appear in the Tools list. */
 export async function ensureStandardTools(): Promise<void> {
@@ -931,6 +1023,8 @@ export async function ensureStandardTools(): Promise<void> {
     required: ["runId"],
   };
 
+  const genericImprovementInputSchema = { type: "object" as const, properties: {} as Record<string, unknown>, required: [] as string[] };
+
   for (const t of STANDARD_TOOLS) {
     const isContainerRun = t.id === "std-container-run";
     const isWebSearch = t.id === "std-web-search";
@@ -943,6 +1037,7 @@ export async function ensureStandardTools(): Promise<void> {
     const isListVaultCredentials = t.id === "std-list-vault-credentials";
     const isGetRunForImprovement = t.id === "get_run_for_improvement";
     const isGetFeedbackForScope = t.id === "get_feedback_for_scope";
+    const isOtherImprovementTool = TOOL_CATEGORIES[t.id] === "improvement" && !isGetRunForImprovement && !isGetFeedbackForScope;
     const configJson = t.description ? JSON.stringify({ description: t.description }) : "{}";
     if (!existingIds.has(t.id)) {
       await db
@@ -975,7 +1070,9 @@ export async function ensureStandardTools(): Promise<void> {
                                 ? JSON.stringify(getRunForImprovementInputSchema)
                                 : isGetFeedbackForScope
                                   ? JSON.stringify(getFeedbackForScopeInputSchema)
-                                  : null,
+                                  : isOtherImprovementTool
+                                    ? JSON.stringify(genericImprovementInputSchema)
+                                    : null,
           outputSchema: null,
         })
         .run();

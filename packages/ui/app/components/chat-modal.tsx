@@ -7,6 +7,7 @@ import { Send, ThumbsUp, ThumbsDown, Loader, Loader2, Minus, Copy, Check, Circle
 import { ChatMessageContent, ChatMessageResourceLinks, ChatToolResults, getAgentRequestFromToolResults, getAssistantMessageDisplayContent, getLoadingStatus, getMessageDisplayState, getSuggestedOptions, getSuggestedOptionsFromToolResults, hasAskUserWaitingForInput, messageContentIndicatesSuccess, messageHasSuccessfulToolResults, normalizeToolResults, ReasoningContent } from "./chat-message-content";
 import { performChatStreamSend } from "../hooks/useChatStream";
 import { useMinimumStepsDisplayTime, MIN_STEPS_DISPLAY_MS } from "../hooks/useMinimumStepsDisplayTime";
+import { NOTIFICATIONS_UPDATED_EVENT } from "../lib/notifications-events";
 
 /** Minimum time (ms) to show the loading status bar after sending (so option clicks show visible feedback). */
 const MIN_LOADING_DISPLAY_MS = 600;
@@ -76,7 +77,7 @@ type ToolResult = { name: string; args: Record<string, unknown>; result: unknown
 
 type TraceStep = { phase: string; label?: string; contentPreview?: string; inputPreview?: string; specialistId?: string; toolName?: string; toolInput?: unknown; toolOutput?: unknown };
 
-type InteractivePrompt = { question: string; options?: string[] };
+type InteractivePrompt = { question: string; options?: string[]; stepIndex?: number; stepTotal?: number };
 
 type Message = {
   id: string;
@@ -257,7 +258,7 @@ function ChatModalMessageRow({
                   {done ? (
                     <Check size={14} className="chat-steps-icon chat-steps-icon-done" aria-hidden />
                   ) : executing ? (
-                    <Loader size={14} className="chat-steps-icon chat-steps-icon-spin" aria-hidden />
+                    <Circle size={14} className="chat-steps-icon chat-steps-icon-open" aria-hidden />
                   ) : (
                     <Circle size={14} className="chat-steps-icon chat-steps-icon-open" aria-hidden />
                   )}
@@ -274,7 +275,7 @@ function ChatModalMessageRow({
           <p className="chat-rephrased-text">{msg.rephrasedPrompt}</p>
         </div>
       )}
-      {msg.role === "assistant" && (msg.traceSteps?.length ?? 0) > 0 && !effectiveHasFinalResponseContent && (
+      {msg.role === "assistant" && (msg.traceSteps?.length ?? 0) > 0 && !effectiveHasFinalResponseContent && !(loading && isLastMessage) && (
         <div className="chat-trace-steps chat-trace-steps-current" aria-label="Assistant working">
           {conversationId && (
             <a href={`/queues?conversation=${encodeURIComponent(conversationId)}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.25rem" }}>
@@ -282,7 +283,6 @@ function ChatModalMessageRow({
             </a>
           )}
           <div className="chat-trace-step-wrap chat-trace-step-wrap-left" style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: "0.5rem" }}>
-            <LogoLoading size={20} className="chat-bubble-logo-loading" aria-hidden />
             <span className="chat-trace-step">
               {getLoadingStatus(msg as Parameters<typeof getLoadingStatus>[0])}
             </span>
@@ -311,7 +311,7 @@ function ChatModalMessageRow({
               <div className="chat-msg-error-placeholder">
                 {isRetrying ? (
                   <p className="chat-section-error-retrying">
-                    <Loader size={14} className="spin" aria-hidden />
+                    <RotateCw size={14} aria-hidden />
                     Retrying…
                   </p>
                 ) : (
@@ -351,17 +351,25 @@ function ChatModalMessageRow({
                     : getSuggestedOptionsFromToolResults(list, displayState.displayContent || "");
                   if (opts.length === 0) return null;
                   const sendingForThisMsg = optionSending?.messageId === msg.id;
+                  const stepIndex = msg.interactivePrompt?.stepIndex;
+                  const stepTotal = msg.interactivePrompt?.stepTotal;
+                  const showStep = stepIndex != null && stepTotal != null && stepTotal > 0;
                   return (
-                    <div className="chat-inline-options" role="group" aria-label="Choose an option">
-                      <span className="chat-inline-options-label">Choose an option:</span>
-                      <ul className="chat-inline-options-list">
+                    <div className="chat-inline-options agent-request-block-options-wrap" role="group" aria-label="Choose an option" style={{ marginTop: "0.75rem" }}>
+                      {showStep && (
+                        <span className="agent-request-block-step-indicator" style={{ display: "block", marginBottom: "0.25rem", fontSize: "0.875rem", color: "var(--muted-foreground, #71717a)" }}>
+                          Step {stepIndex} of {stepTotal}
+                        </span>
+                      )}
+                      <span className="agent-request-block-options-label">Options</span>
+                      <ul className="agent-request-block-options-list">
                         {opts.map((opt, optIndex) => {
                           const isSendingThis = sendingForThisMsg && optionSending?.label === opt.label;
                           return (
                             <li key={`option-${optIndex}-${opt.value}`}>
                               <button
                                 type="button"
-                                className="chat-inline-option-btn"
+                                className="agent-request-block-option-btn"
                                 onClick={() => {
                                   setOptionSending({ messageId: msg.id, label: opt.label });
                                   void send(undefined, opt.label);
@@ -431,7 +439,7 @@ function ChatModalMessageRow({
                 const executing = msg.executingStepIndex === i;
                 return (
                   <li key={i} className={`chat-plan-todo-item ${done ? "chat-plan-todo-done" : ""} ${executing ? "chat-plan-todo-executing" : ""}`}>
-                    {done ? <Check size={12} className="chat-plan-todo-icon" /> : executing ? <Loader size={12} className="chat-plan-todo-icon chat-plan-todo-icon-spin" /> : <Circle size={12} className="chat-plan-todo-icon" />}
+                    {done ? <Check size={12} className="chat-plan-todo-icon" /> : executing ? <Circle size={12} className="chat-plan-todo-icon" /> : <Circle size={12} className="chat-plan-todo-icon" />}
                     <span>{todo}</span>
                   </li>
                 );
@@ -512,7 +520,9 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
   const lastLocalInputChangeAtRef = useRef<number>(0);
   const currentInputRef = useRef(input);
   const crossTabStateRef = useRef<{ messageCount: number; loading: boolean }>({ messageCount: 0, loading: false });
+  const latestMessageCountRef = useRef(0);
   currentInputRef.current = input;
+  latestMessageCountRef.current = messages.length;
 
   const resizeInput = useCallback(() => {
     const el = inputRef.current;
@@ -645,18 +655,23 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
 
   useEffect(() => {
     if (!open) return;
-    const fetchPending = () => {
-      fetch("/api/chat/pending-input")
+    const fetchPendingFromNotifications = () => {
+      fetch("/api/notifications?status=active&types=chat&limit=100")
         .then((r) => r.json())
         .then((d) => {
-          const list = Array.isArray(d.conversations) ? d.conversations : [];
-          setPendingInputIds(new Set(list.map((c: { conversationId: string }) => c.conversationId)));
+          const items = Array.isArray(d.items) ? d.items : [];
+          setPendingInputIds(new Set(items.map((n: { sourceId: string }) => n.sourceId)));
         })
         .catch(() => setPendingInputIds(new Set()));
     };
-    fetchPending();
-    const interval = setInterval(fetchPending, 5000);
-    return () => clearInterval(interval);
+    fetchPendingFromNotifications();
+    const interval = setInterval(fetchPendingFromNotifications, 5000);
+    const onUpdated = () => { fetchPendingFromNotifications(); };
+    window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+    };
   }, [open]);
 
   // Fetch conversation list when opening; if no conversation selected, prefer last-active or first
@@ -712,7 +727,8 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
               ...(m.interactivePrompt != null && { interactivePrompt: m.interactivePrompt as InteractivePrompt }),
             } as Message;
           });
-          const useApi = apiMessages.length >= restored.messages.length;
+          const currentCount = latestMessageCountRef.current;
+          const useApi = apiMessages.length >= restored.messages.length && apiMessages.length >= currentCount;
           if (useApi) {
             setMessages(apiMessages);
             setLoading(false);
@@ -725,21 +741,27 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
     fetch(`/api/chat?conversationId=${encodeURIComponent(conversationId)}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) {
-          setMessages(data.map((m: Record<string, unknown>) => {
-            const raw = m.toolCalls;
-            const toolResults = (Array.isArray(raw) ? normalizeToolResults(raw) : undefined) as ToolResult[] | undefined;
-            return {
-              id: m.id as string,
-              role: m.role as "user" | "assistant",
-              content: m.content as string,
-              toolResults,
-              ...(m.status !== undefined && { status: m.status as "completed" | "waiting_for_input" }),
-              ...(m.interactivePrompt != null && { interactivePrompt: m.interactivePrompt as InteractivePrompt }),
-            } as Message;
-          }));
-          setLoading(false);
+        if (!Array.isArray(data)) return;
+        const currentCount = latestMessageCountRef.current;
+        const useApi = data.length >= currentCount;
+        if (!useApi) {
+          setLoaded(true);
+          return;
         }
+        const msgs = data.map((m: Record<string, unknown>) => {
+          const raw = m.toolCalls;
+          const toolResults = (Array.isArray(raw) ? normalizeToolResults(raw) : undefined) as ToolResult[] | undefined;
+          return {
+            id: m.id as string,
+            role: m.role as "user" | "assistant",
+            content: m.content as string,
+            toolResults,
+            ...(m.status !== undefined && { status: m.status as "completed" | "waiting_for_input" }),
+            ...(m.interactivePrompt != null && { interactivePrompt: m.interactivePrompt as InteractivePrompt }),
+          } as Message;
+        });
+        setMessages(msgs);
+        setLoading(false);
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
@@ -1169,6 +1191,29 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
           }
           void fetchRunWaiting();
         }
+        if (conversationId) {
+          fetch(`/api/chat?conversationId=${encodeURIComponent(conversationId)}`, { cache: "no-store" })
+            .then((r) => r.json())
+            .then((data) => {
+              if (!Array.isArray(data)) return;
+              const currentCount = latestMessageCountRef.current;
+              if (data.length < currentCount) return;
+              const msgs = data.map((m: Record<string, unknown>) => {
+                const raw = m.toolCalls;
+                const toolResults = (Array.isArray(raw) ? normalizeToolResults(raw) : undefined) as ToolResult[] | undefined;
+                return {
+                  id: m.id as string,
+                  role: m.role as "user" | "assistant",
+                  content: m.content as string,
+                  toolResults,
+                  ...(m.status !== undefined && { status: m.status as "completed" | "waiting_for_input" }),
+                  ...(m.interactivePrompt != null && { interactivePrompt: m.interactivePrompt as InteractivePrompt }),
+                } as Message;
+              });
+              setMessages(msgs);
+            })
+            .catch(() => {});
+        }
       },
       onDone: fetchRunWaiting,
       onAbort: () => {
@@ -1575,10 +1620,10 @@ export default function ChatModal({ open, onClose, embedded, attachedContext, cl
           })()}
         </div>
 
-        {loading && lastMsg?.role === "assistant" && (() => {
+        {messages.length > 0 && loading && lastMsg?.role === "assistant" && (() => {
           const status = getLoadingStatus(lastMsg as Message & { traceSteps?: { phase: string; label?: string }[]; todos?: string[]; completedStepIndices?: number[]; executingStepIndex?: number; executingToolName?: string; executingSubStepLabel?: string; reasoning?: string });
           return (
-            <div className="chat-status-bar" aria-live="polite">
+            <div className="chat-status-bar" aria-live="polite" key="chat-status-bar">
               <LogoLoading size={18} className="chat-status-bar-logo" />
               <span>{status}</span>
             </div>

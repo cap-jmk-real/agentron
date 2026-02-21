@@ -1,6 +1,5 @@
-import path from "node:path";
-import fs from "node:fs";
-import { getDataDir } from "./db";
+import { eq, and, inArray, desc, sql } from "drizzle-orm";
+import { db, notificationsTable } from "./db";
 
 export type NotificationType = "run" | "chat" | "system";
 export type NotificationSeverity = "info" | "success" | "warning" | "error";
@@ -19,118 +18,155 @@ export type Notification = {
   metadata?: Record<string, unknown>;
 };
 
-const FILENAME = "notifications.json";
-
-function getPath(): string {
-  return path.join(getDataDir(), FILENAME);
-}
-
-function load(): Notification[] {
-  const p = getPath();
-  if (!fs.existsSync(p)) return [];
-  try {
-    const raw = fs.readFileSync(p, "utf-8");
-    const data = JSON.parse(raw);
-    return Array.isArray(data.items) ? (data.items as Notification[]) : [];
-  } catch {
-    return [];
+function rowToNotification(row: Record<string, unknown>): Notification {
+  const id = String(row.id ?? "");
+  const type = String(row.type ?? "");
+  const sourceId = String((row as { sourceId?: string }).sourceId ?? (row as { source_id?: string }).source_id ?? "");
+  const title = String(row.title ?? "");
+  const message = String(row.message ?? "");
+  const severity = String(row.severity ?? "info");
+  const status = String(row.status ?? "active");
+  const createdAt = Number((row as { createdAt?: number }).createdAt ?? (row as { created_at?: number }).created_at ?? 0);
+  const updatedAt = Number((row as { updatedAt?: number }).updatedAt ?? (row as { updated_at?: number }).updated_at ?? 0);
+  const rawMeta = row.metadata ?? (row as { metadata?: string }).metadata;
+  let metadata: Record<string, unknown> | undefined;
+  if (rawMeta != null && rawMeta !== "") {
+    try {
+      metadata = JSON.parse(String(rawMeta)) as Record<string, unknown>;
+    } catch {
+      metadata = undefined;
+    }
   }
-}
-
-function save(items: Notification[]): void {
-  const p = getPath();
-  fs.writeFileSync(p, JSON.stringify({ items }, null, 2), "utf-8");
+  return {
+    id,
+    type: type as NotificationType,
+    sourceId,
+    title,
+    message,
+    severity: severity as NotificationSeverity,
+    status: status as NotificationStatus,
+    createdAt,
+    updatedAt,
+    metadata,
+  };
 }
 
 /** List notifications with optional filters. Returns active count for badge. */
-export function listNotifications(options: {
+export async function listNotifications(options: {
   status?: NotificationStatus;
   types?: NotificationType[];
   limit?: number;
   offset?: number;
-}): { items: Notification[]; totalActiveCount: number } {
+}): Promise<{ items: Notification[]; totalActiveCount: number }> {
   const { status = "active", types, limit = 50, offset = 0 } = options;
-  const all = load();
-  const totalActiveCount = all.filter((n) => n.status === "active").length;
-  let filtered = status ? all.filter((n) => n.status === status) : all;
+
+  const conditions = [eq(notificationsTable.status, status)];
   if (types && types.length > 0) {
-    filtered = filtered.filter((n) => types.includes(n.type));
+    conditions.push(inArray(notificationsTable.type, types));
   }
-  filtered.sort((a, b) => b.createdAt - a.createdAt);
-  const items = filtered.slice(offset, offset + limit);
+  const where = conditions.length === 1 ? conditions[0] : and(...conditions);
+
+  const [totalRow] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(notificationsTable)
+    .where(eq(notificationsTable.status, "active"));
+  const totalActiveCount = Number(totalRow?.count ?? 0);
+
+  const rows = await db
+    .select()
+    .from(notificationsTable)
+    .where(where)
+    .orderBy(desc(notificationsTable.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  const items = rows.map(rowToNotification);
   return { items, totalActiveCount };
 }
 
 /** Mark one notification as cleared. Idempotent. */
-export function clearOne(id: string): boolean {
-  const all = load();
-  const idx = all.findIndex((n) => n.id === id);
-  if (idx === -1) return false;
-  if (all[idx].status === "cleared") return true;
+export async function clearOne(id: string): Promise<boolean> {
+  const [row] = await db.select().from(notificationsTable).where(eq(notificationsTable.id, id)).limit(1);
+  if (!row) return false;
+  if (row.status === "cleared") return true;
   const now = Date.now();
-  all[idx] = { ...all[idx], status: "cleared" as const, updatedAt: now };
-  save(all);
+  await db.update(notificationsTable).set({ status: "cleared", updatedAt: now }).where(eq(notificationsTable.id, id)).run();
   return true;
 }
 
 /** Mark multiple notifications as cleared by id. Idempotent. */
-export function clearBulk(ids: string[]): number {
+export async function clearBulk(ids: string[]): Promise<number> {
   if (ids.length === 0) return 0;
-  const all = load();
-  const idSet = new Set(ids);
-  let count = 0;
+  const [countRow] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(notificationsTable)
+    .where(and(eq(notificationsTable.status, "active"), inArray(notificationsTable.id, ids)));
+  const count = Number(countRow?.count ?? 0);
+  if (count === 0) return 0;
   const now = Date.now();
-  for (let i = 0; i < all.length; i++) {
-    if (idSet.has(all[i].id) && all[i].status === "active") {
-      all[i] = { ...all[i], status: "cleared" as const, updatedAt: now };
-      count++;
-    }
-  }
-  if (count > 0) save(all);
+  await db
+    .update(notificationsTable)
+    .set({ status: "cleared", updatedAt: now })
+    .where(and(eq(notificationsTable.status, "active"), inArray(notificationsTable.id, ids)))
+    .run();
   return count;
 }
 
 /** Clear all active notifications, optionally filtered by type. */
-export function clearAll(types?: NotificationType[]): number {
-  const all = load();
+export async function clearAll(types?: NotificationType[]): Promise<number> {
+  const where =
+    types && types.length > 0
+      ? and(eq(notificationsTable.status, "active"), inArray(notificationsTable.type, types))
+      : eq(notificationsTable.status, "active");
+  const [countRow] = await db.select({ count: sql<number>`count(*)` }).from(notificationsTable).where(where);
+  const count = Number(countRow?.count ?? 0);
+  if (count === 0) return 0;
   const now = Date.now();
-  let count = 0;
-  for (let i = 0; i < all.length; i++) {
-    if (all[i].status !== "active") continue;
-    if (types && types.length > 0 && !types.includes(all[i].type)) continue;
-    all[i] = { ...all[i], status: "cleared" as const, updatedAt: now };
-    count++;
-  }
-  if (count > 0) save(all);
+  await db.update(notificationsTable).set({ status: "cleared", updatedAt: now }).where(where).run();
   return count;
 }
 
 /** Clear active notifications with the given type and sourceId (e.g. one "chat needs input" per conversation). */
-export function clearActiveBySourceId(type: NotificationType, sourceId: string): number {
-  const all = load();
+export async function clearActiveBySourceId(type: NotificationType, sourceId: string): Promise<number> {
+  const where = and(
+    eq(notificationsTable.status, "active"),
+    eq(notificationsTable.type, type),
+    eq(notificationsTable.sourceId, sourceId)
+  );
+  const [countRow] = await db.select({ count: sql<number>`count(*)` }).from(notificationsTable).where(where);
+  const count = Number(countRow?.count ?? 0);
+  if (count === 0) return 0;
   const now = Date.now();
-  let count = 0;
-  for (let i = 0; i < all.length; i++) {
-    if (all[i].status !== "active" || all[i].type !== type || all[i].sourceId !== sourceId) continue;
-    all[i] = { ...all[i], status: "cleared" as const, updatedAt: now };
-    count++;
-  }
-  if (count > 0) save(all);
+  await db.update(notificationsTable).set({ status: "cleared", updatedAt: now }).where(where).run();
   return count;
 }
 
 /** Create a new notification (used by run/chat event wiring). */
-export function createNotification(entry: {
+export async function createNotification(entry: {
   type: NotificationType;
   sourceId: string;
   title: string;
   message?: string;
   severity?: NotificationSeverity;
   metadata?: Record<string, unknown>;
-}): Notification {
+}): Promise<Notification> {
   const now = Date.now();
-  const n: Notification = {
-    id: crypto.randomUUID(),
+  const id = crypto.randomUUID();
+  const metadataJson = entry.metadata != null ? JSON.stringify(entry.metadata) : null;
+  await db.insert(notificationsTable).values({
+    id,
+    type: entry.type,
+    sourceId: entry.sourceId,
+    title: entry.title,
+    message: entry.message ?? "",
+    severity: entry.severity ?? "info",
+    status: "active",
+    createdAt: now,
+    updatedAt: now,
+    metadata: metadataJson,
+  }).run();
+  return {
+    id,
     type: entry.type,
     sourceId: entry.sourceId,
     title: entry.title,
@@ -141,18 +177,14 @@ export function createNotification(entry: {
     updatedAt: now,
     metadata: entry.metadata,
   };
-  const all = load();
-  all.unshift(n);
-  save(all);
-  return n;
 }
 
 /** Create a run notification when status becomes completed, failed, or waiting_for_user. */
-export function createRunNotification(
+export async function createRunNotification(
   runId: string,
   status: "completed" | "failed" | "waiting_for_user",
   metadata?: { targetType?: string; targetId?: string }
-): Notification {
+): Promise<Notification> {
   const titles: Record<string, string> = {
     completed: "Run completed",
     failed: "Run failed",
@@ -170,14 +202,14 @@ export function createRunNotification(
 }
 
 /** Create a chat notification when a conversation is waiting for user input (ask_user / ask_credentials / format_response). Replaces any existing active chat notification for this conversation. */
-export function createChatNotification(conversationId: string): Notification {
-  clearActiveBySourceId("chat", conversationId);
+export async function createChatNotification(conversationId: string): Promise<Notification> {
+  await clearActiveBySourceId("chat", conversationId);
   return createNotification({
     type: "chat",
     sourceId: conversationId,
     title: "Chat needs your input",
     message: "Open the conversation to reply.",
-    severity: "warning",
+    severity: "info",
     metadata: { conversationId },
   });
 }

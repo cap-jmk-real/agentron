@@ -1,0 +1,14 @@
+---
+description: Chat tools — prefer server-side / skip-LLM paths for deterministic actions
+globs: packages/ui/app/api/chat/**/*.ts, packages/runtime/src/chat/tools/**/*.ts
+alwaysApply: false
+---
+
+# Chat assistant & tools: reduce LLM usage
+
+When adding or changing chat assistant tools (e.g. `route.ts` executeTool, runtime tools):
+
+- **Evaluate:** Does this tool sometimes require user confirmation, and is the next step deterministic (e.g. "run X", "delete these")? If yes, consider a **confirmation path**: server detects confirmation, runs the action, then calls the assistant once with a single injected message (skip rephrase).
+- **Patterns in use:** Shell approval (`continueShellApproval`), delete confirmation (server runs delete, injects message), synthetic messages via `shouldSkipRephrase()`.
+- **Implement when it makes sense:** Add detection (e.g. last tool results + user message), run tool(s) server-side, set `effectiveMessage` / flag so route skips rephrase. Do not add server-side paths for non-deterministic actions (those stay LLM-driven).
+- **Wire in:** `packages/ui/app/api/chat/route.ts` for payload handling and confirmation-path logic; keep tool contracts stable in `packages/runtime/src/chat/tools/` so the route can rely on result shapes.

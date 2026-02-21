@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { flushSync } from "react-dom";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   Send,
@@ -30,6 +31,7 @@ import {
 import { ChatMessageContent, ChatMessageResourceLinks, ChatToolResults, getAgentRequestFromToolResults, getAssistantMessageDisplayContent, getLoadingStatus, getMessageDisplayState, getSuggestedOptions, getSuggestedOptionsFromToolResults, hasAskUserWaitingForInput, messageContentIndicatesSuccess, messageHasSuccessfulToolResults, normalizeToolResults, ReasoningContent } from "./chat-message-content";
 import { performChatStreamSend } from "../hooks/useChatStream";
 import { useMinimumStepsDisplayTime, MIN_STEPS_DISPLAY_MS } from "../hooks/useMinimumStepsDisplayTime";
+import { NOTIFICATIONS_UPDATED_EVENT } from "../lib/notifications-events";
 
 /** Minimum time (ms) to show the loading status bar after sending (so option clicks show visible feedback). */
 const MIN_LOADING_DISPLAY_MS = 600;
@@ -49,6 +51,7 @@ import {
   getLastActiveConversationId,
 } from "../lib/chat-state-cache";
 import { getDraft, setDraft } from "../lib/chat-drafts";
+import { getConversationIdFromSearchParams } from "../lib/chat-url-params";
 
 /** UUID v4; works in insecure context where crypto.randomUUID is not available */
 function randomId(): string {
@@ -93,7 +96,7 @@ type ToolResult = { name: string; args: Record<string, unknown>; result: unknown
 
 type TraceStep = { phase: string; label?: string; contentPreview?: string; inputPreview?: string; specialistId?: string; toolName?: string; toolInput?: unknown; toolOutput?: unknown };
 
-type InteractivePrompt = { question: string; options?: string[] };
+type InteractivePrompt = { question: string; options?: string[]; stepIndex?: number; stepTotal?: number };
 
 type Message = {
   id: string;
@@ -265,7 +268,7 @@ function ChatSectionMessageRow({
           <p className="chat-section-rephrased-text">{msg.rephrasedPrompt}</p>
         </div>
       )}
-      {msg.role === "assistant" && (msg.traceSteps?.length ?? 0) > 0 && !effectiveHasFinalResponseContent && (
+      {msg.role === "assistant" && (msg.traceSteps?.length ?? 0) > 0 && !effectiveHasFinalResponseContent && !(loading && isLast) && (
         <div className="chat-section-trace-steps chat-section-trace-steps-current" aria-label="Assistant working">
           {conversationId && (
             <a href={`/queues?conversation=${encodeURIComponent(conversationId)}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.25rem" }}>
@@ -273,7 +276,6 @@ function ChatSectionMessageRow({
             </a>
           )}
           <div className="chat-section-trace-step-wrap chat-section-trace-step-wrap-left" style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: "0.5rem" }}>
-            <LogoLoading size={20} className="chat-section-bubble-logo-loading" aria-hidden />
             <span className="chat-section-trace-step">
               {getLoadingStatus(msg as Parameters<typeof getLoadingStatus>[0])}
             </span>
@@ -356,10 +358,7 @@ function ChatSectionMessageRow({
                           ) ? (
                             <Check size={12} />
                           ) : msg.executingStepIndex === i ? (
-                            <Loader
-                              size={12}
-                              className="spin"
-                            />
+                            <Circle size={12} />
                           ) : (
                             <Circle size={12} />
                           )}
@@ -391,7 +390,7 @@ function ChatSectionMessageRow({
               <div className="chat-section-error">
                 {isRetrying ? (
                   <p className="chat-section-error-retrying">
-                    <Loader size={14} className="spin" aria-hidden />
+                    <RotateCw size={14} aria-hidden />
                     Retrying…
                   </p>
                 ) : (
@@ -428,17 +427,25 @@ function ChatSectionMessageRow({
                     : getSuggestedOptionsFromToolResults(list, displayState.displayContent || "");
                   if (opts.length === 0) return null;
                   const sendingForThisMsg = optionSending?.messageId === msg.id;
+                  const stepIndex = msg.interactivePrompt?.stepIndex;
+                  const stepTotal = msg.interactivePrompt?.stepTotal;
+                  const showStep = stepIndex != null && stepTotal != null && stepTotal > 0;
                   return (
-                    <div className="chat-inline-options" role="group" aria-label="Choose an option">
-                      <span className="chat-inline-options-label">Choose an option:</span>
-                      <ul className="chat-inline-options-list">
+                    <div className="chat-inline-options agent-request-block-options-wrap" role="group" aria-label="Choose an option" style={{ marginTop: "0.75rem" }}>
+                      {showStep && (
+                        <span className="agent-request-block-step-indicator" style={{ display: "block", marginBottom: "0.25rem", fontSize: "0.875rem", color: "var(--muted-foreground, #71717a)" }}>
+                          Step {stepIndex} of {stepTotal}
+                        </span>
+                      )}
+                      <span className="agent-request-block-options-label">Options</span>
+                      <ul className="agent-request-block-options-list">
                         {opts.map((opt, optIndex) => {
                           const isSendingThis = sendingForThisMsg && optionSending?.label === opt.label;
                           return (
                             <li key={`option-${optIndex}-${opt.value}`}>
                               <button
                                 type="button"
-                                className="chat-inline-option-btn"
+                                className="agent-request-block-option-btn"
                                 onClick={() => {
                                   setOptionSending({ messageId: msg.id, label: opt.label });
                                   void send(opt.label);
@@ -499,11 +506,12 @@ export default function ChatSection({ onOpenSettings }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const replyToRunId = searchParams.get("runId")?.trim() || undefined;
+  const conversationFromUrl = getConversationIdFromSearchParams((k) => searchParams.get(k));
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(conversationFromUrl);
   const [conversationList, setConversationList] = useState<ConversationItem[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [noteDraft, setNoteDraft] = useState("");
@@ -541,6 +549,12 @@ export default function ChatSection({ onOpenSettings }: Props) {
   /** Current input value so broadcast handler can read latest without stale closure. */
   const currentInputRef = useRef(input);
   currentInputRef.current = input;
+  /** Latest message count so load effect's background fetch does not overwrite when we have more messages (e.g. in-progress turn). */
+  const latestMessageCountRef = useRef(0);
+  latestMessageCountRef.current = messages.length;
+  /** Current conversationId so notification-driven refetch can read latest without stale closure. */
+  const conversationIdRef = useRef<string | null>(conversationId);
+  conversationIdRef.current = conversationId;
 
   const resizeInput = useCallback(() => {
     const el = inputRef.current;
@@ -612,6 +626,10 @@ export default function ChatSection({ onOpenSettings }: Props) {
     fetchConversationList();
   }, [fetchConversationList]);
 
+  useEffect(() => {
+    if (conversationFromUrl) setConversationId(conversationFromUrl);
+  }, [conversationFromUrl]);
+
   // Content key for matching feedback to messages (stable across restore/API replace)
   const feedbackContentKey = useCallback((prev: string, out: string) => `${prev}\n\x00\n${out}`, []);
 
@@ -641,18 +659,23 @@ export default function ChatSection({ onOpenSettings }: Props) {
   }, [messages]);
 
   useEffect(() => {
-    const fetchPending = () => {
-      fetch("/api/chat/pending-input")
+    const fetchPendingFromNotifications = () => {
+      fetch("/api/notifications?status=active&types=chat&limit=100")
         .then((r) => r.json())
         .then((d) => {
-          const list = Array.isArray(d.conversations) ? d.conversations : [];
-          setPendingInputIds(new Set(list.map((c: { conversationId: string }) => c.conversationId)));
+          const items = Array.isArray(d.items) ? d.items : [];
+          setPendingInputIds(new Set(items.map((n: { sourceId: string }) => n.sourceId)));
         })
         .catch(() => setPendingInputIds(new Set()));
     };
-    fetchPending();
-    const interval = setInterval(fetchPending, 5000);
-    return () => clearInterval(interval);
+    fetchPendingFromNotifications();
+    const interval = setInterval(fetchPendingFromNotifications, 5000);
+    const onUpdated = () => { fetchPendingFromNotifications(); };
+    window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+    };
   }, []);
 
   const fetchRunWaiting = useCallback(() => {
@@ -724,6 +747,78 @@ export default function ChatSection({ onOpenSettings }: Props) {
     const interval = setInterval(fetchRunWaiting, 2000);
     return () => clearInterval(interval);
   }, [conversationId, fetchRunWaiting]);
+
+  useEffect(() => {
+    const syncRunBannerFromNotifications = () => {
+      fetch("/api/notifications?status=active&types=run&limit=1")
+        .then((r) => r.json())
+        .then((d) => {
+          const items = Array.isArray(d.items) ? d.items : [];
+          if (items.length === 0) {
+            setRunFinishedNotification(null);
+            return;
+          }
+          const first = items[0];
+          const runId = first.sourceId;
+          const status =
+            first.title && first.title.includes("needs your input")
+              ? "waiting_for_user"
+              : first.title && first.title.includes("failed")
+                ? "failed"
+                : "completed";
+          setRunFinishedNotification((prev) => (prev?.runId === runId ? prev : { runId, status }));
+          fetch(`/api/runs/${encodeURIComponent(runId)}`, { cache: "no-store" })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((run: { conversationId?: string | null } | null) => {
+              const runConvId = run?.conversationId ?? null;
+              if (runConvId && runConvId === conversationIdRef.current) {
+                fetch(`/api/chat?conversationId=${encodeURIComponent(runConvId)}`, { cache: "no-store" })
+                  .then((r) => r.json())
+                  .then((data) => {
+                    if (!Array.isArray(data)) return;
+                    const apiMessages = data.map((m: Record<string, unknown>) => {
+                      const raw = m.toolCalls;
+                      const toolResults = (Array.isArray(raw) ? normalizeToolResults(raw) : undefined) as ToolResult[] | undefined;
+                      return {
+                        id: m.id as string,
+                        role: m.role as "user" | "assistant",
+                        content: m.content as string,
+                        toolResults,
+                        ...(m.status !== undefined && { status: m.status as "completed" | "waiting_for_input" }),
+                        ...(m.interactivePrompt != null && { interactivePrompt: m.interactivePrompt as InteractivePrompt }),
+                        ...(m.todos != null && { todos: m.todos as string[] }),
+                        ...(m.completedStepIndices != null && { completedStepIndices: m.completedStepIndices as number[] }),
+                      } as Message;
+                    });
+                    setMessages((prev) => {
+                      const skip = apiMessages.length < prev.length;
+                      const lastPrev = prev[prev.length - 1];
+                      const lastApi = apiMessages[apiMessages.length - 1];
+                      const localRicher =
+                        lastPrev?.role === "assistant" &&
+                        lastApi?.role === "assistant" &&
+                        (lastPrev.content ?? "").trim().length > 0 &&
+                        (lastApi.content ?? "").trim().length === 0;
+                      if (skip || localRicher) return prev;
+                      return apiMessages;
+                    });
+                  })
+                  .catch(() => {});
+              }
+            })
+            .catch(() => {});
+        })
+        .catch(() => {});
+    };
+    syncRunBannerFromNotifications();
+    const interval = setInterval(syncRunBannerFromNotifications, 10_000);
+    const onUpdated = () => { syncRunBannerFromNotifications(); };
+    window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+    };
+  }, []);
 
   // When we have a waiting run but no question (e.g. from cache or run started outside chat), fetch agent-request by run ID
   useEffect(() => {
@@ -810,7 +905,7 @@ export default function ChatSection({ onOpenSettings }: Props) {
     const restored = loadChatState(conversationId);
     if (restored) {
       // #region agent log
-      if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({location:"chat-section:apply_restored",message:"apply restored cache",data:{msgLen:restored.messages.length,loading:restored.loading},hypothesisId:"H1_H3",timestamp:Date.now()})}).catch(()=>{});
+      if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"26876c"},body:JSON.stringify({sessionId:"26876c",location:"chat-section:apply_restored",message:"apply restored cache",data:{msgLen:restored.messages.length,loading:restored.loading},hypothesisId:"H4",timestamp:Date.now()})}).catch(()=>{});
       // #endregion
       const isFresh = Date.now() - restored.timestamp <= LOADING_FRESH_MS;
       const restoredLoading = restored.loading && isFresh;
@@ -841,12 +936,17 @@ export default function ChatSection({ onOpenSettings }: Props) {
               ...(m.completedStepIndices != null && { completedStepIndices: m.completedStepIndices as number[] }),
             } as Message;
           });
-          // Prefer API whenever it has same or more messages so refresh always shows latest
-          const useApi = apiMessages.length >= restored.messages.length;
-          // #region agent log
-          if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({location:"chat-section:api_done",message:"API fetch done",data:{useApi,apiLen:apiMessages.length,restoredLen:restored.messages.length},hypothesisId:"H1",timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
-          if (useApi) {
+          // Prefer API when it has at least as many messages as we had at restore; do not overwrite when we have more messages locally (in-progress or just-finished turn)
+          const currentCount = latestMessageCountRef.current;
+          const useApi = apiMessages.length >= restored.messages.length && apiMessages.length >= currentCount;
+          const lastRestored = restored.messages[restored.messages.length - 1];
+          const lastApi = apiMessages[apiMessages.length - 1];
+          const localRicher =
+            lastRestored?.role === "assistant" &&
+            lastApi?.role === "assistant" &&
+            (lastRestored.content ?? "").trim().length > 0 &&
+            (lastApi.content ?? "").trim().length === 0;
+          if (useApi && !localRicher) {
             crossTabStateRef.current = { messageCount: apiMessages.length, loading: false };
             setMessages(apiMessages);
             setLoading(false);
@@ -855,35 +955,54 @@ export default function ChatSection({ onOpenSettings }: Props) {
         .catch(() => {});
       return;
     }
+    const currentCountAtStart = latestMessageCountRef.current;
     // #region agent log
-    if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({location:"chat-section:load_no_cache",message:"load effect no cache, fetching",data:{conversationId},hypothesisId:"H1",timestamp:Date.now()})}).catch(()=>{});
+    if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"ce22a5"},body:JSON.stringify({sessionId:"ce22a5",location:"chat-section:load_no_cache",message:"load effect no cache, fetching",data:{conversationId,currentCount:currentCountAtStart},hypothesisId:"H1",timestamp:Date.now()})}).catch(()=>{});
     // #endregion
-    setLoaded(false);
+    // When we already have optimistic messages (e.g. just sent: user + placeholder), don't set loaded false so persist keeps running and UI doesn't flicker
+    if (currentCountAtStart < 2) setLoaded(false);
     fetch(`/api/chat?conversationId=${encodeURIComponent(conversationId)}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) {
-          // #region agent log
-          if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({location:"chat-section:load_no_cache_set",message:"no-cache fetch result applied",data:{apiLen:data.length,willSetEmpty:data.length===0},hypothesisId:"H1",timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
-          const msgs = data.map((m: Record<string, unknown>) => {
-            const raw = m.toolCalls;
-            const toolResults = (Array.isArray(raw) ? normalizeToolResults(raw) : undefined) as ToolResult[] | undefined;
-            return {
-              id: m.id as string,
-              role: m.role as "user" | "assistant",
-              content: m.content as string,
-              toolResults,
-              ...(m.status !== undefined && { status: m.status as "completed" | "waiting_for_input" }),
-              ...(m.interactivePrompt != null && { interactivePrompt: m.interactivePrompt as InteractivePrompt }),
-              ...(m.todos != null && { todos: m.todos as string[] }),
-              ...(m.completedStepIndices != null && { completedStepIndices: m.completedStepIndices as number[] }),
-            } as Message;
-          });
-          crossTabStateRef.current = { messageCount: msgs.length, loading: false };
-          setMessages(msgs);
-          setLoading(false);
+        if (!Array.isArray(data)) return;
+        const currentCount = latestMessageCountRef.current;
+        const useApi = data.length >= currentCount;
+        // #region agent log
+        if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"ce22a5"},body:JSON.stringify({sessionId:"ce22a5",location:"chat-section:load_no_cache_set",message:"no-cache fetch result",data:{apiLen:data.length,currentCount,useApi},hypothesisId:"H1",timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        if (!useApi) {
+          setLoaded(true);
+          return;
         }
+        const msgs = data.map((m: Record<string, unknown>) => {
+          const raw = m.toolCalls;
+          const toolResults = (Array.isArray(raw) ? normalizeToolResults(raw) : undefined) as ToolResult[] | undefined;
+          return {
+            id: m.id as string,
+            role: m.role as "user" | "assistant",
+            content: m.content as string,
+            toolResults,
+            ...(m.status !== undefined && { status: m.status as "completed" | "waiting_for_input" }),
+            ...(m.interactivePrompt != null && { interactivePrompt: m.interactivePrompt as InteractivePrompt }),
+            ...(m.todos != null && { todos: m.todos as string[] }),
+            ...(m.completedStepIndices != null && { completedStepIndices: m.completedStepIndices as number[] }),
+          } as Message;
+        });
+        let applied = false;
+        setMessages((prev) => {
+          const lastPrev = prev[prev.length - 1];
+          const lastApi = msgs[msgs.length - 1];
+          const localRicher =
+            lastPrev?.role === "assistant" &&
+            lastApi?.role === "assistant" &&
+            (lastPrev.content ?? "").trim().length > 0 &&
+            (lastApi.content ?? "").trim().length === 0;
+          if (localRicher) return prev;
+          applied = true;
+          return msgs;
+        });
+        crossTabStateRef.current = { messageCount: applied ? msgs.length : latestMessageCountRef.current, loading: false };
+        setLoading(false);
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
@@ -1056,6 +1175,7 @@ export default function ChatSection({ onOpenSettings }: Props) {
   const send = useCallback(async (textOverride?: string, extraBody?: Record<string, unknown>) => {
     const text = textOverride !== undefined ? textOverride : input.trim();
     if (!text || loading) return;
+    abortRef.current?.abort();
     setRunFinishedNotification(null);
     const sendingFromAgentRequestCard = textOverride !== undefined && runWaitingData != null;
     if (!sendingFromAgentRequestCard) {
@@ -1068,7 +1188,12 @@ export default function ChatSection({ onOpenSettings }: Props) {
     }
     const userMsg: Message = { id: randomId(), role: "user", content: text };
     const placeholderId = randomId();
-    setMessages((prev) => [...prev, userMsg, { id: placeholderId, role: "assistant", content: "" }]);
+    flushSync(() => {
+      setMessages((prev) => [...prev, userMsg, { id: placeholderId, role: "assistant", content: "" }]);
+    });
+    // #region agent log
+    if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"26876c"},body:JSON.stringify({sessionId:"26876c",location:"chat-section:send_flushed",message:"send: flushed user+placeholder",data:{messagesLen:messages.length,placeholderId:placeholderId.slice(0,8),conversationId:conversationId??null},hypothesisId:"H2",timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     loadingStartedAtRef.current = Date.now();
     if (minLoadingTimerRef.current) {
       clearTimeout(minLoadingTimerRef.current);
@@ -1127,17 +1252,14 @@ export default function ChatSection({ onOpenSettings }: Props) {
           }
           void fetchRunWaiting();
         } else {
-          setRunFinishedNotification(null);
+          setRunFinishedNotification({ runId, status });
         }
-        if (status === "waiting_for_user" && conversationId) {
+        if (conversationId) {
           fetch(`/api/chat?conversationId=${encodeURIComponent(conversationId)}`, { cache: "no-store" })
             .then((r) => r.json())
             .then((data) => {
               if (!Array.isArray(data)) return;
-              // #region agent log
-              if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({location:"chat-section:onRunFinished_setMessages",message:"onRunFinished fetch applying messages",data:{apiLen:Array.isArray(data)?data.length:0},hypothesisId:"H3",timestamp:Date.now()})}).catch(()=>{});
-              // #endregion
-              setMessages(data.map((m: Record<string, unknown>) => {
+              const apiMessages = data.map((m: Record<string, unknown>) => {
                 const raw = m.toolCalls;
                 const toolResults = (Array.isArray(raw) ? normalizeToolResults(raw) : undefined) as ToolResult[] | undefined;
                 return {
@@ -1150,7 +1272,19 @@ export default function ChatSection({ onOpenSettings }: Props) {
                   ...(m.todos != null && { todos: m.todos as string[] }),
                   ...(m.completedStepIndices != null && { completedStepIndices: m.completedStepIndices as number[] }),
                 } as Message;
-              }));
+              });
+              setMessages((prev) => {
+                const skip = apiMessages.length < prev.length;
+                const lastPrev = prev[prev.length - 1];
+                const lastApi = apiMessages[apiMessages.length - 1];
+                const localRicher =
+                  lastPrev?.role === "assistant" &&
+                  lastApi?.role === "assistant" &&
+                  (lastPrev.content ?? "").trim().length > 0 &&
+                  (lastApi.content ?? "").trim().length === 0;
+                if (skip || localRicher) return prev;
+                return apiMessages;
+              });
             })
             .catch(() => {});
         }
@@ -1336,7 +1470,7 @@ export default function ChatSection({ onOpenSettings }: Props) {
         </header>
 
         <div className="chat-section-messages" ref={scrollRef}>
-          {!loaded ? (
+          {!loaded && messages.length === 0 ? (
             <div className="chat-section-loading">Loading…</div>
           ) : messages.length === 0 ? (
             <div className="chat-section-welcome">
@@ -1413,10 +1547,15 @@ export default function ChatSection({ onOpenSettings }: Props) {
           )}
         </div>
 
-        {loaded && messages.length > 0 && loading && lastMsg?.role === "assistant" && (() => {
+        {(() => {
+          const statusBarShow = messages.length > 0 && loading && lastMsg?.role === "assistant";
+          // #region agent log
+          if (typeof fetch !== "undefined") fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"26876c"},body:JSON.stringify({sessionId:"26876c",location:"chat-section:status_bar_condition",message:"status bar visibility",data:{messagesLen:messages.length,loading,lastRole:lastMsg?.role??null,lastId:lastMsg?.id?.slice(0,8)??null,traceStepsLen:lastMsg?.role==="assistant"?((lastMsg as Message).traceSteps?.length??0):0,statusBarShow},hypothesisId:"H1",timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
+          if (!statusBarShow) return null;
           const status = getLoadingStatus(lastMsg as Message & { traceSteps?: { phase: string; label?: string }[]; todos?: string[]; completedStepIndices?: number[]; executingStepIndex?: number; executingToolName?: string; executingSubStepLabel?: string; reasoning?: string });
           return (
-            <div className="chat-section-status-bar" aria-live="polite">
+            <div className="chat-section-status-bar" aria-live="polite" key="chat-status-bar">
               <LogoLoading size={18} className="chat-section-status-bar-logo" />
               <span>{status}</span>
             </div>

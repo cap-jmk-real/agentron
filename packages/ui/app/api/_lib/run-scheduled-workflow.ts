@@ -56,7 +56,7 @@ export async function runOneScheduledWorkflow(workflowId: string, branchId?: str
     const payload = executionOutputSuccess(output ?? context, trail);
     await db.update(executions).set({ status: "completed", finishedAt: Date.now(), output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
     try {
-      createRunNotification(runId, "completed", { targetType: "workflow", targetId: workflowId });
+      await createRunNotification(runId, "completed", { targetType: "workflow", targetId: workflowId });
     } catch {
       // ignore
     }
@@ -71,7 +71,7 @@ export async function runOneScheduledWorkflow(workflowId: string, branchId?: str
     const payload = executionOutputFailure(message, { message, stack: err instanceof Error ? err.stack : undefined });
     await db.update(executions).set({ status: "failed", finishedAt: Date.now(), output: JSON.stringify(payload) }).where(eq(executions.id, runId)).run();
     try {
-      createRunNotification(runId, "failed", { targetType: "workflow", targetId: workflowId });
+      await createRunNotification(runId, "failed", { targetType: "workflow", targetId: workflowId });
     } catch {
       // ignore
     }

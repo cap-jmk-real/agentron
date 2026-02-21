@@ -46,9 +46,22 @@ type ExecutionTraceStep = {
   toolCalls?: Array<{ name: string; argsSummary?: string; resultSummary?: string }>;
   /** When true, this step's input is the user's reply to request_user_help (agent received it). */
   inputIsUserReply?: boolean;
+  sentToNodeId?: string;
+  sentToAgentName?: string;
+  llmSummary?: string;
 };
 
 type RunLogEntry = { level: string; message: string; payload?: string | null; createdAt: number };
+
+type ExecutionLogStep = {
+  id: string;
+  executionId: string;
+  sequence: number;
+  phase: string;
+  label: string | null;
+  payload: string | null;
+  createdAt: number;
+};
 
 type Run = {
   id: string;
@@ -350,11 +363,13 @@ function buildShellLog(trail: ExecutionTraceStep[]): string {
 
 function TrailStepCard({
   step,
+  nextStep,
   outputsOnly,
   runId,
 }: {
   step: ExecutionTraceStep;
   index: number;
+  nextStep?: ExecutionTraceStep;
   outputsOnly: boolean;
   runId?: string;
 }) {
@@ -367,6 +382,7 @@ function TrailStepCard({
   const toolCalls = step.toolCalls ?? [];
   const containerWasInvoked = toolCalls.some((t) => t.name === "std-container-run" || t.name === "std-container-session");
   const showNoContainerWarning = isWaitingForUser && !containerWasInvoked && toolCalls.length > 0;
+  const sentToName = step.sentToAgentName ?? nextStep?.agentName;
 
   return (
     <div className="run-trail-step">
@@ -377,6 +393,11 @@ function TrailStepCard({
         )}
         <span className="run-trail-step-name">{step.agentName}</span>
         <span className="run-trail-step-node">({step.nodeId})</span>
+        {sentToName && (
+          <span className="run-trail-step-sent-to" style={{ marginLeft: "0.5rem", color: "var(--text-muted)", fontSize: "0.85em" }}>
+            → Sent to {sentToName}
+          </span>
+        )}
         {isWaitingForUser && (
           <span className="run-trail-step-waiting-badge">
             Waiting for your input
@@ -505,6 +526,11 @@ function TrailStepCard({
               <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "inherit", fontSize: "0.85rem" }}>{toolOutputError}</pre>
             </div>
           )}
+          {step.llmSummary && (
+            <div style={{ marginBottom: "0.75rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+              <span className="run-trail-step-field-label">LLM</span> {step.llmSummary}
+            </div>
+          )}
           {hasOutput && !isContainerLikeOutput(step.output) && (
             <div>
               <div className="run-trail-step-field-label">Output</div>
@@ -599,6 +625,7 @@ export default function RunDetailPage() {
   const [submittingOption, setSubmittingOption] = useState<string | null>(null);
   /** Error from last respond attempt (e.g. run no longer waiting); cleared on next load or submit. */
   const [replyError, setReplyError] = useState<string | null>(null);
+  const [executionLogSteps, setExecutionLogSteps] = useState<ExecutionLogStep[]>([]);
   const liveLogEndRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async (silent?: boolean) => {
@@ -645,6 +672,31 @@ export default function RunDetailPage() {
     const interval = setInterval(() => void load(true), 500);
     return () => clearInterval(interval);
   }, [run?.status, load]);
+
+  const fetchTrace = useCallback(() => {
+    if (!run?.id) return;
+    fetch(`/api/runs/${encodeURIComponent(run.id)}/trace`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.executionLog)) {
+          setExecutionLogSteps(data.executionLog);
+        } else {
+          setExecutionLogSteps([]);
+        }
+      })
+      .catch(() => setExecutionLogSteps([]));
+  }, [run?.id]);
+
+  useEffect(() => {
+    fetchTrace();
+  }, [fetchTrace]);
+
+  // While run is in progress, keep execution log updated
+  useEffect(() => {
+    if (run?.status !== "running") return;
+    const interval = setInterval(fetchTrace, 800);
+    return () => clearInterval(interval);
+  }, [run?.status, fetchTrace]);
 
   useEffect(() => {
     if (!run?.id || run.targetType !== "workflow") return;
@@ -1450,19 +1502,82 @@ export default function RunDetailPage() {
                 <span>{executingMessage ?? "Workflow is running…"}</span>
               </div>
             ) : (
-              trail
-                .slice()
-                .sort((a, b) => a.order - b.order)
-                .map((step, i) => (
+              (() => {
+                const sorted = trail.slice().sort((a, b) => a.order - b.order);
+                return sorted.map((step, i) => (
                   <TrailStepCard
                     key={`${step.nodeId}-${step.order}-${i}`}
                     step={step}
                     index={i}
+                    nextStep={sorted[i + 1]}
                     outputsOnly={showOutputsOnly}
                     runId={run?.id}
                   />
-                ))
+                ));
+              })()
             )}
+          </div>
+        </div>
+      )}
+
+      {executionLogSteps.length > 0 && (
+        <div className="run-detail-card" style={{ marginBottom: "1rem" }}>
+          <div className="run-detail-section" style={{ marginBottom: "0.5rem" }}>
+            <div className="run-detail-label" style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+              <ListOrdered size={16} /> Execution log (LLM &amp; tool steps)
+            </div>
+            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: "0.25rem 0 0 0" }}>
+              Same detail level as the Agentron message queue: each LLM request/response and tool call/result in order. Use for debugging.
+            </p>
+          </div>
+          <div style={{ maxHeight: "min(60vh, 480px)", overflowY: "auto", overflowX: "hidden" }}>
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              {executionLogSteps.map((step) => {
+                let payloadObj: Record<string, unknown> | null = null;
+                if (step.payload) {
+                  try {
+                    payloadObj = JSON.parse(step.payload) as Record<string, unknown>;
+                  } catch {
+                    payloadObj = null;
+                  }
+                }
+                const label = step.label ?? step.phase;
+                return (
+                  <li
+                    key={step.id}
+                    style={{
+                      padding: "0.4rem 0.6rem",
+                      background: "var(--surface-muted)",
+                      borderRadius: "var(--radius)",
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                      <span style={{ color: "var(--text-muted)", minWidth: "1.5rem" }}>#{step.sequence}</span>
+                      <span style={{ fontWeight: 500 }}>{step.phase}</span>
+                      {label !== step.phase && <span style={{ color: "var(--text-muted)" }}>{label}</span>}
+                    </div>
+                    {payloadObj != null && Object.keys(payloadObj).length > 0 && (
+                      <pre
+                        style={{
+                          margin: "0.35rem 0 0",
+                          padding: "0.35rem 0.5rem",
+                          background: "var(--bg)",
+                          borderRadius: 4,
+                          fontSize: "0.75rem",
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                          maxHeight: 180,
+                          overflow: "auto",
+                        }}
+                      >
+                        {JSON.stringify(payloadObj, null, 2)}
+                      </pre>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </div>
       )}

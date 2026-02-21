@@ -6,6 +6,14 @@ import {
   normalizeAskUserOptionsInToolResults,
   extractOptionsFromContentWithLLM,
   hasWaitingForInputInToolResults,
+  hasFormatResponseWithContent,
+  deriveInteractivePromptFromContentWithLLM,
+  getTurnStatusFromToolResults,
+  normalizeOptionCountInContent,
+  getAssistantDisplayContent,
+  buildSpecialistSummaryWithCreatedIds,
+  getCreatedIdsFromToolResults,
+  mergeCreatedIdsIntoPlan,
 } from "../../../app/api/_lib/chat-helpers";
 
 describe("chat-helpers", () => {
@@ -158,7 +166,8 @@ describe("chat-helpers", () => {
 
   describe("extractOptionsFromContentWithLLM", () => {
     it("returns null when content does not suggest options", async () => {
-      const callLLM = async () => '["A", "B"]';
+      // No heuristics; LLM is always called for long enough content. Mock returns [] when no options.
+      const callLLM = async () => "[]";
       expect(await extractOptionsFromContentWithLLM("Just a normal message.", callLLM)).toBeNull();
       expect(await extractOptionsFromContentWithLLM("", callLLM)).toBeNull();
     });
@@ -176,6 +185,24 @@ describe("chat-helpers", () => {
       };
       const content = "Please pick one option: a) Yes b) No";
       expect(await extractOptionsFromContentWithLLM(content, callLLM)).toBeNull();
+    });
+
+    it("falls back to bullet-list extraction when LLM returns [] and content has options list", async () => {
+      const callLLM = async () => "[]";
+      const content = `Summary: Workflow updated.
+
+What would you like me to do next?
+- Run it now (I will execute the workflow and report results).
+- Change vault policy to "Auto-use vault creds" before running.
+- Modify the agent or workflow (tell me what to change).
+- Not now / stop.`;
+      const out = await extractOptionsFromContentWithLLM(content, callLLM);
+      expect(out).toEqual([
+        "Run it now (I will execute the workflow and report results).",
+        "Change vault policy to \"Auto-use vault creds\" before running.",
+        "Modify the agent or workflow (tell me what to change).",
+        "Not now / stop.",
+      ]);
     });
   });
 
@@ -236,6 +263,218 @@ describe("chat-helpers", () => {
       expect(
         hasWaitingForInputInToolResults([{ name: "list_workflows", result: [] }])
       ).toBe(false);
+    });
+  });
+
+  describe("hasFormatResponseWithContent", () => {
+    it("returns true when format_response has non-empty summary", () => {
+      expect(
+        hasFormatResponseWithContent([{ name: "format_response", result: { summary: "Done." } }])
+      ).toBe(true);
+    });
+
+    it("returns true when format_response has non-empty needsInput", () => {
+      expect(
+        hasFormatResponseWithContent([{ name: "format_response", result: { needsInput: "Pick one" } }])
+      ).toBe(true);
+    });
+
+    it("returns false when format_response is absent", () => {
+      expect(hasFormatResponseWithContent([{ name: "ask_user", result: {} }])).toBe(false);
+    });
+
+    it("returns false when format_response has empty summary and needsInput", () => {
+      expect(
+        hasFormatResponseWithContent([{ name: "format_response", result: { summary: "", needsInput: "" } }])
+      ).toBe(false);
+    });
+  });
+
+  describe("getAssistantDisplayContent", () => {
+    it("returns content when content is non-empty (e.g. heap summary)", () => {
+      const summary = "I've created the workflow and wired the agents. You can run it now.";
+      expect(getAssistantDisplayContent(summary, [])).toBe(summary);
+      expect(getAssistantDisplayContent(summary, [{ name: "list_tools", args: {}, result: [] }])).toBe(summary);
+    });
+
+    it("returns ask_user question when content is empty and ask_user present", () => {
+      const toolResults = [
+        { name: "ask_user", args: {}, result: { question: "Which option?", options: ["A", "B"] } },
+      ];
+      expect(getAssistantDisplayContent("", toolResults)).toBe("Which option?");
+    });
+
+    it("returns format_response summary when formatted and no long content", () => {
+      const toolResults = [
+        {
+          name: "format_response",
+          args: {},
+          result: { formatted: true, summary: "Workflow created.", needsInput: "" },
+        },
+      ];
+      expect(getAssistantDisplayContent("", toolResults)).toBe("Workflow created.");
+    });
+  });
+
+  describe("deriveInteractivePromptFromContentWithLLM", () => {
+    it("returns question and options when callLLM returns valid JSON", async () => {
+      const callLLM = async () => '{"question":"Next steps","options":["A","B","C"]}';
+      const longContent =
+        "Summary of the questionnaire and instructions.\n\nNext steps (pick one): A, B, or C.";
+      const res = await deriveInteractivePromptFromContentWithLLM(longContent, callLLM);
+      expect(res).toEqual({ question: "Next steps", options: ["A", "B", "C"] });
+    });
+
+    it("returns null when content too short", async () => {
+      const callLLM = async () => "{}";
+      const res = await deriveInteractivePromptFromContentWithLLM("Hi", callLLM);
+      expect(res).toBeNull();
+    });
+
+    it("returns null when callLLM returns invalid JSON", async () => {
+      const callLLM = async () => "not json";
+      const res = await deriveInteractivePromptFromContentWithLLM(
+        "Long message with next steps here.",
+        callLLM
+      );
+      expect(res).toBeNull();
+    });
+
+    it("returns null when options length is not 2-4", async () => {
+      const callLLM = async () => '{"question":"Q","options":["only one"]}';
+      const res = await deriveInteractivePromptFromContentWithLLM("Long message.", callLLM);
+      expect(res).toBeNull();
+    });
+  });
+
+  describe("getTurnStatusFromToolResults", () => {
+    it("returns first ask_user when useLastAskUser not set", () => {
+      const toolResults = [
+        { name: "ask_user", args: {}, result: { waitingForUser: true, question: "First?", options: ["A", "B"] } },
+        { name: "ask_user", args: {}, result: { waitingForUser: true, question: "Last?", options: ["X", "Y", "Z"] } },
+      ];
+      const out = getTurnStatusFromToolResults(toolResults);
+      expect(out.status).toBe("waiting_for_input");
+      expect(out.interactivePrompt?.question).toBe("First?");
+      expect(out.interactivePrompt?.options).toEqual(["A", "B"]);
+    });
+
+    it("returns last ask_user when useLastAskUser true", () => {
+      const toolResults = [
+        { name: "ask_user", args: {}, result: { waitingForUser: true, question: "First?", options: ["A", "B"] } },
+        { name: "ask_user", args: {}, result: { waitingForUser: true, question: "Last?", options: ["X", "Y", "Z"] } },
+      ];
+      const out = getTurnStatusFromToolResults(toolResults, { useLastAskUser: true });
+      expect(out.status).toBe("waiting_for_input");
+      expect(out.interactivePrompt?.question).toBe("Last?");
+      expect(out.interactivePrompt?.options).toEqual(["X", "Y", "Z"]);
+    });
+
+    it("returns completed when no ask_user", () => {
+      const out = getTurnStatusFromToolResults([{ name: "list_agents", args: {}, result: [] }]);
+      expect(out.status).toBe("completed");
+      expect(out.interactivePrompt).toBeUndefined();
+    });
+  });
+
+  describe("normalizeOptionCountInContent", () => {
+    it("replaces digit option count with actual count", () => {
+      expect(normalizeOptionCountInContent("pick one of the 4 options above", 3)).toBe(
+        "pick one of the 3 options above"
+      );
+    });
+
+    it("replaces one of the X options with actual count", () => {
+      expect(normalizeOptionCountInContent("Choose one of the 4 options.", 3)).toBe(
+        "Choose one of the 3 options."
+      );
+    });
+
+    it("leaves content unchanged when actualCount is invalid", () => {
+      const content = "pick one of the 4 options";
+      expect(normalizeOptionCountInContent(content, -1)).toBe(content);
+      expect(normalizeOptionCountInContent(content, 1.5)).toBe(content);
+    });
+
+    it("uses singular option when actualCount is 1", () => {
+      expect(normalizeOptionCountInContent("Pick one of the 2 options", 1)).toBe(
+        "Pick one of the 1 option"
+      );
+    });
+  });
+
+  describe("buildSpecialistSummaryWithCreatedIds", () => {
+    it("appends [Created workflow id: <uuid>] when create_workflow is in tool results", () => {
+      const wfId = "ff2cb7fe-bc5f-427e-ba9c-7cb971dee20c";
+      const summary = buildSpecialistSummaryWithCreatedIds("Done.", [
+        { name: "create_workflow", result: { id: wfId, name: "Test WF", message: "Created" } },
+      ]);
+      expect(summary).toContain("[Created workflow id: " + wfId + "]");
+    });
+
+    it("appends [Created agent id: <uuid>] when create_agent is in tool results", () => {
+      const agentId = "60a658ca-2a22-4fc9-b0ff-9f206d5d51b8";
+      const summary = buildSpecialistSummaryWithCreatedIds("Done.", [
+        { name: "create_agent", result: { id: agentId, name: "Test Agent", message: "Created" } },
+      ]);
+      expect(summary).toContain("[Created agent id: " + agentId + "]");
+    });
+
+    it("appends both when create_workflow and create_agent are in tool results", () => {
+      const wfId = "wf-uuid-1";
+      const agentId = "agent-uuid-1";
+      const summary = buildSpecialistSummaryWithCreatedIds("Summary", [
+        { name: "create_agent", result: { id: agentId } },
+        { name: "create_workflow", result: { id: wfId } },
+      ]);
+      expect(summary).toContain("[Created agent id: " + agentId + "]");
+      expect(summary).toContain("[Created workflow id: " + wfId + "]");
+    });
+
+    it("does not append when result has no id or wrong shape", () => {
+      const summary = buildSpecialistSummaryWithCreatedIds("Done.", [
+        { name: "create_workflow", result: {} },
+        { name: "create_workflow", result: { name: "X" } },
+      ]);
+      expect(summary).toBe("Done.");
+    });
+  });
+
+  describe("getCreatedIdsFromToolResults", () => {
+    it("returns workflowId and agentId from create_workflow and create_agent results", () => {
+      const wfId = "ff2cb7fe-bc5f-427e-ba9c-7cb971dee20c";
+      const agentId = "60a658ca-2a22-4fc9-b0ff-9f206d5d51b8";
+      const out = getCreatedIdsFromToolResults([
+        { name: "create_workflow", result: { id: wfId } },
+        { name: "create_agent", result: { id: agentId } },
+      ]);
+      expect(out.workflowId).toBe(wfId);
+      expect(out.agentId).toBe(agentId);
+    });
+
+    it("returns empty when no create_workflow/create_agent or no id in result", () => {
+      expect(getCreatedIdsFromToolResults([])).toEqual({});
+      expect(getCreatedIdsFromToolResults([{ name: "create_workflow", result: {} }])).toEqual({});
+    });
+  });
+
+  describe("mergeCreatedIdsIntoPlan", () => {
+    it("merges workflowId and agentId from tool results into plan extractedContext", () => {
+      const wfId = "wf-uuid-1";
+      const agentId = "agent-uuid-1";
+      const plan = { refinedTask: "Create and run", priorityOrder: ["agent", "workflow"], extractedContext: { savedSearchId: "123" } };
+      const toolResults = [
+        { name: "create_agent", result: { id: agentId } },
+        { name: "create_workflow", result: { id: wfId } },
+      ];
+      const merged = mergeCreatedIdsIntoPlan(plan, toolResults);
+      expect(merged.extractedContext).toEqual({ savedSearchId: "123", workflowId: wfId, agentId });
+    });
+
+    it("returns plan unchanged when no create_workflow/create_agent ids in tool results", () => {
+      const plan = { refinedTask: "Run", extractedContext: { a: 1 } };
+      expect(mergeCreatedIdsIntoPlan(plan, [])).toBe(plan);
+      expect(mergeCreatedIdsIntoPlan(plan, [{ name: "ask_user", result: {} }])).toBe(plan);
     });
   });
 });

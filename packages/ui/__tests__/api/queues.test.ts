@@ -152,6 +152,114 @@ describe("Queues message-log API", () => {
     }
   });
 
+  it("GET /api/queues/message-log returns error steps with errorCode and message for debugging", async () => {
+    const convId = "msglog-error-" + Date.now();
+    const now = Date.now();
+    const id1 = "err-step-" + now;
+    const payload = { error: "Request failed or connection lost.", errorCode: "CHAT_TURN_ERROR" };
+    await db.insert(messageQueueLog).values({
+      id: id1,
+      conversationId: convId,
+      messageId: null,
+      type: "error",
+      phase: null,
+      label: "Error",
+      payload: JSON.stringify(payload),
+      createdAt: now,
+    }).run();
+    try {
+      const res = await getMessageLog(new Request(`http://localhost/api/queues/message-log?conversationId=${encodeURIComponent(convId)}`));
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(Array.isArray(data.steps)).toBe(true);
+      expect(data.steps).toHaveLength(1);
+      expect(data.steps[0].id).toBe(id1);
+      expect(data.steps[0].type).toBe("error");
+      expect(data.steps[0].label).toBe("Error");
+      const parsed = JSON.parse(data.steps[0].payload) as Record<string, unknown>;
+      expect(parsed.error).toBe("Request failed or connection lost.");
+      expect(parsed.errorCode).toBe("CHAT_TURN_ERROR");
+    } finally {
+      await db.delete(messageQueueLog).where(eq(messageQueueLog.conversationId, convId)).run();
+    }
+  });
+
+  it("GET /api/queues/message-log returns planner_response step with raw planner output for debugging", async () => {
+    const convId = "msglog-planner-" + Date.now();
+    const now = Date.now();
+    const id1 = "planner-step-" + now;
+    const rawPlannerOutput = '{"priorityOrder": ["general", "agent"], "refinedTask": "Create an agent.", "extractedContext": {"savedSearchUrl": "https://example.com/search"}}';
+    const parsedPlan = { priorityOrder: ["general", "agent"], refinedTask: "Create an agent.", extractedContext: { savedSearchUrl: "https://example.com/search" } };
+    const payload = JSON.stringify({
+      type: "trace_step",
+      phase: "planner_response",
+      label: "Planner output",
+      rawResponse: rawPlannerOutput,
+      parsedPlan,
+    });
+    await db.insert(messageQueueLog).values({
+      id: id1,
+      conversationId: convId,
+      messageId: null,
+      type: "trace_step",
+      phase: "planner_response",
+      label: "Planner output",
+      payload,
+      createdAt: now,
+    }).run();
+    try {
+      const res = await getMessageLog(new Request(`http://localhost/api/queues/message-log?conversationId=${encodeURIComponent(convId)}`));
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(Array.isArray(data.steps)).toBe(true);
+      expect(data.steps).toHaveLength(1);
+      expect(data.steps[0].id).toBe(id1);
+      expect(data.steps[0].phase).toBe("planner_response");
+      expect(data.steps[0].label).toBe("Planner output");
+      const parsed = JSON.parse(data.steps[0].payload) as Record<string, unknown>;
+      expect(parsed.rawResponse).toBe(rawPlannerOutput);
+      expect(parsed.parsedPlan).toEqual(parsedPlan);
+    } finally {
+      await db.delete(messageQueueLog).where(eq(messageQueueLog.conversationId, convId)).run();
+    }
+  });
+
+  it("GET /api/queues/message-log returns planner_response step with empty rawResponse (UI shows placeholder)", async () => {
+    const convId = "msglog-planner-empty-" + Date.now();
+    const now = Date.now();
+    const id1 = "planner-empty-" + now;
+    const payload = JSON.stringify({
+      type: "trace_step",
+      phase: "planner_response",
+      label: "Planner output",
+      rawResponse: "",
+      parsedPlan: { priorityOrder: ["general"], refinedTask: "Do something." },
+    });
+    await db.insert(messageQueueLog).values({
+      id: id1,
+      conversationId: convId,
+      messageId: null,
+      type: "trace_step",
+      phase: "planner_response",
+      label: "Planner output",
+      payload,
+      createdAt: now,
+    }).run();
+    try {
+      const res = await getMessageLog(new Request(`http://localhost/api/queues/message-log?conversationId=${encodeURIComponent(convId)}`));
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(Array.isArray(data.steps)).toBe(true);
+      expect(data.steps).toHaveLength(1);
+      expect(data.steps[0].phase).toBe("planner_response");
+      const parsed = JSON.parse(data.steps[0].payload) as Record<string, unknown>;
+      expect(parsed.rawResponse).toBe("");
+      expect(parsed.parsedPlan).toEqual({ priorityOrder: ["general"], refinedTask: "Do something." });
+    } finally {
+      await db.delete(messageQueueLog).where(eq(messageQueueLog.conversationId, convId)).run();
+    }
+  });
+
   it("GET /api/queues/message-log with conversationId and limit paginates steps", async () => {
     const convId = "msglog-pag-" + Date.now();
     const now = Date.now();

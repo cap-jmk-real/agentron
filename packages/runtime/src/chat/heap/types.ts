@@ -11,6 +11,29 @@ export interface RouterOutput {
   refinedTask: string;
 }
 
+/** Planner output: route plus extracted context and per-specialist instructions. */
+export interface PlannerOutput {
+  priorityOrder: HeapStep[];
+  refinedTask: string;
+  /** URLs, IDs, file paths etc. extracted from the user message. */
+  extractedContext?: Record<string, unknown>;
+  instructionsForGeneral?: string;
+  instructionsForAgent?: string;
+  instructionsForWorkflow?: string;
+  /** improve_run: current run/session only (no DB). */
+  instructionsForImproveRun?: string;
+  /** improve_heap: registry, planner. */
+  instructionsForImproveHeap?: string;
+  /** improve_agents_workflows: workflow agents and workflows (studio DB). */
+  instructionsForImproveAgentsWorkflows?: string;
+  /** @deprecated Use instructionsForImproveAgentsWorkflows. Kept for backward compat. */
+  instructionsForImprovement?: string;
+  /** @deprecated Use instructionsForImproveRun. Kept for backward compat. */
+  instructionsForImprovementSession?: string;
+  /** @deprecated Use instructionsForImproveHeap. Kept for backward compat. */
+  instructionsForImprovementHeap?: string;
+}
+
 /** Result from running one specialist. May include a sub-heap to run (delegation). */
 export interface SpecialistResult {
   /** Short summary for context (1–2 lines). */

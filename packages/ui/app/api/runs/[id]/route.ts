@@ -52,7 +52,7 @@ export async function PATCH(request: Request, { params }: Params) {
   if (runStatus === "completed" || runStatus === "failed" || runStatus === "waiting_for_user") {
     const row = rows[0];
     try {
-      createRunNotification(id, runStatus, {
+      await createRunNotification(id, runStatus, {
         targetType: row.targetType,
         targetId: row.targetId,
       });

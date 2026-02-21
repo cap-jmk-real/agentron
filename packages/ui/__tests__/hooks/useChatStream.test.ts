@@ -40,7 +40,7 @@ describe("useChatStream", () => {
         { id: "ph", role: "assistant", content: "" },
         { id: "other", role: "user", content: "x" },
       ]);
-      const placeholder = next.find((m) => m.id === "ph");
+      const placeholder = next.find((m: { id: string }) => m.id === "ph");
       expect(placeholder?.traceSteps).toEqual([
         { phase: "step2", label: "Step 2", contentPreview: "preview" },
       ]);
@@ -115,7 +115,7 @@ describe("useChatStream", () => {
       const next = updater([
         { id: "ph", role: "assistant", content: "", completedStepIndices: [0] },
       ]);
-      const placeholder = next.find((m) => m.id === "ph");
+      const placeholder = next.find((m: { id: string }) => m.id === "ph");
       expect(placeholder?.completedStepIndices).toEqual([0, 1]);
     });
 
@@ -228,7 +228,7 @@ describe("useChatStream", () => {
       expect(ctx.onRunFinished).not.toHaveBeenCalled();
     });
 
-    it("done with execute_workflow status failed does not call onRunFinished", () => {
+    it("done with execute_workflow status failed calls onRunFinished", () => {
       const ctx = mockCtx();
       processChatStreamEvent(
         {
@@ -240,7 +240,22 @@ describe("useChatStream", () => {
         },
         ctx
       );
-      expect(ctx.onRunFinished).not.toHaveBeenCalled();
+      expect(ctx.onRunFinished).toHaveBeenCalledWith("run-1", "failed", undefined);
+    });
+
+    it("done with execute_workflow status cancelled calls onRunFinished", () => {
+      const ctx = mockCtx();
+      processChatStreamEvent(
+        {
+          type: "done",
+          content: "Run was stopped",
+          toolResults: [
+            { name: "execute_workflow", args: {}, result: { id: "run-2", status: "cancelled", message: "Run was stopped by the user." } },
+          ],
+        },
+        ctx
+      );
+      expect(ctx.onRunFinished).toHaveBeenCalledWith("run-2", "cancelled", undefined);
     });
 
     it("done with execute_workflow result missing id does not call onRunFinished", () => {
@@ -303,8 +318,8 @@ describe("useChatStream", () => {
   });
 
   describe("mapApiMessagesToMessage", () => {
-    const noopNormalize = (raw: unknown) =>
-      Array.isArray(raw) ? raw.map((t: { name?: string; args?: unknown; result?: unknown }) => ({ name: t.name ?? "", args: t.args ?? {}, result: t.result })) : [];
+    const noopNormalize = (raw: unknown): { name: string; args: Record<string, unknown>; result: unknown }[] =>
+      Array.isArray(raw) ? raw.map((t: { name?: string; args?: unknown; result?: unknown }) => ({ name: t.name ?? "", args: (t.args ?? {}) as Record<string, unknown>, result: t.result })) : [];
 
     it("returns empty array for non-array input", () => {
       expect(mapApiMessagesToMessage(null as unknown as unknown[], noopNormalize)).toEqual([]);

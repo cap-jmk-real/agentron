@@ -1,0 +1,18 @@
+---
+description: Agentron Studio repo — build verification and pre-push
+alwaysApply: true
+---
+
+# Project: Agentron Studio
+
+Commands run from **repo root** (this directory when cloned).
+
+## Build verification
+
+- After modifying code, run the relevant build: `npm run build:ui` (UI/core/runtime), `npm run build:docs` (apps/docs), or for desktop: `npm run build:ui` then `npm run dist --workspace apps/desktop`.
+- Before pushing: run `npm run pre-push` (typecheck, lint, test, build:ui, build:docs, desktop dist). Fix build/typecheck failures before considering the change complete.
+- If desktop build fails with "file is being used", close Agentron Studio and any Explorer windows showing `apps/desktop/release/`, then retry.
+
+## Testing
+
+- Run tests: `npm test` or `npm run test:coverage`. When fixing a bug, add or update a test that would have failed before the fix (see `bug-fix-add-tests` rule).

@@ -9,6 +9,8 @@ export type ChatStreamToolResult = {
 export type ChatStreamInteractivePrompt = {
   question: string;
   options?: string[];
+  stepIndex?: number;
+  stepTotal?: number;
 };
 
 /** Cursor-like incremental content; optional, can be sent before "done". */

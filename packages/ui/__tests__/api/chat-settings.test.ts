@@ -11,6 +11,8 @@ describe("Chat settings API", () => {
     expect(data).toHaveProperty("temperature");
     expect(data).toHaveProperty("historyCompressAfter");
     expect(data).toHaveProperty("historyKeepRecent");
+    expect(data).toHaveProperty("plannerRecentMessages");
+    expect(typeof data.plannerRecentMessages === "number" || data.plannerRecentMessages === null).toBe(true);
   });
 
   it("PATCH /api/chat/settings updates settings", async () => {
@@ -39,6 +41,7 @@ describe("Chat settings API", () => {
           recentSummariesCount: 5,
           historyCompressAfter: 50,
           historyKeepRecent: 20,
+          plannerRecentMessages: 15,
         }),
       })
     );
@@ -47,6 +50,7 @@ describe("Chat settings API", () => {
     expect(data.recentSummariesCount).toBe(5);
     expect(data.historyCompressAfter).toBe(50);
     expect(data.historyKeepRecent).toBe(20);
+    expect(data.plannerRecentMessages).toBe(15);
   });
 
   it("PATCH /api/chat/settings with invalid JSON returns 200 with existing state", async () => {

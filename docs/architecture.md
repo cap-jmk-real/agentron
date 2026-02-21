@@ -48,3 +48,7 @@ The Studio uses shared contract definitions for any Server-compatible API (wheth
 
 For **sandbox site hosting** (agents hosting websites in their container, with domain routing and Docker/K8s), see [sandbox-site-hosting.md](sandbox-site-hosting.md) and set **SANDBOX_BACKEND_HOST** when Studio runs in Docker or K8s.
 
+## Chat backend (heap, planning, context)
+
+When the chat uses heap mode (multi-specialist routing), the backend runs a planner, then executes specialists in a heap. For how the planner, heap, context, and message queue interact — and how to debug “wrong route” or “planner didn’t see previous message” — see [chat-backend-heap-planning-context.md](chat-backend-heap-planning-context.md).
+

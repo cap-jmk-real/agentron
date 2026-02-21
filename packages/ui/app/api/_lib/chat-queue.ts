@@ -45,7 +45,11 @@ async function acquireLock(conversationId: string): Promise<void> {
 }
 
 async function releaseLock(conversationId: string): Promise<void> {
-  await Promise.resolve(db.delete(conversationLocks).where(eq(conversationLocks.conversationId, conversationId)).run());
+  try {
+    await db.delete(conversationLocks).where(eq(conversationLocks.conversationId, conversationId)).run();
+  } catch {
+    // Ensure we don't leave the handler's finally block throwing; next turn can still try to acquire
+  }
 }
 
 export type RunSerializedByConversationOptions = {

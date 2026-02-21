@@ -1,3 +1,7 @@
+**Canonical rules:** All Cursor rules for this repo live in **`.cursor/rules/*.mdc`** (this folder). Clone the repo and open it as the workspace root — Cursor will load these rules for you and any other dev/machine. This file is a long-form reference; the .mdc rules are what Cursor uses for scoping.
+
+---
+
 ## UI Style Guide
 
 When working on the UI (especially `packages/ui/app/` and `packages/ui/app/globals.css`), follow this guide for consistency and maintainability.
@@ -40,7 +44,7 @@ Tests are **not written for vanity metrics**, but coverage is used as a **risk s
 * **Critical business logic**:
 
   * Must be covered by **unit tests**
-  * Expected coverage: **~90x   x       –100%**
+  * Expected coverage: **~90–100%**
 
 * **Non-critical logic / glue code**:
 
@@ -149,6 +153,8 @@ Whenever code behavior changes:
 * Update or add tests accordingly
 * Remove obsolete tests
 * Ensure test names still reflect behavior
+
+**When fixing a bug:** Add (or update) a corresponding test that would have failed before the fix and passes after it, so the same bug cannot recur. See `.cursor/rules/bug-fix-add-tests.mdc` for details.
 
 Failing tests are treated as:
 
@@ -279,6 +285,6 @@ When you **create or significantly change** a chat assistant tool:
 
 ---
 
-## Promopt Generation
+## Prompt generation
 
-*
+(Reserved for future prompt-generation rules.)

@@ -63,6 +63,8 @@ export interface ChatAssistantSettings {
   historyCompressAfter: number | null;
   /** When compressing, keep this many most recent messages in full. Default 16. Must be less than historyCompressAfter. */
   historyKeepRecent: number | null;
+  /** Number of past messages to include in recent conversation for the planner (heap mode). Default 12. */
+  plannerRecentMessages: number | null;
   updatedAt: number;
 }
 
