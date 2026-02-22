@@ -13,6 +13,7 @@ import {
 } from "./db";
 import { getWorkflowMaxSelfFixRetries } from "./app-settings";
 import { createRunNotification } from "./notifications-store";
+import { ensureRunFailureSideEffects } from "./run-failure-side-effects";
 import { withContainerInstallHint } from "./container-manager";
 import { RUN_CANCELLED_MESSAGE, WAITING_FOR_USER_MESSAGE } from "./run-workflow";
 
@@ -129,7 +130,7 @@ export async function runOneScheduledWorkflow(
       .where(eq(executions.id, runId))
       .run();
     try {
-      await createRunNotification(runId, "failed", {
+      await ensureRunFailureSideEffects(runId, {
         targetType: "workflow",
         targetId: workflowId,
       });

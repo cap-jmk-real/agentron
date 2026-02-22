@@ -58,6 +58,24 @@ describe("Remote servers API", () => {
     expect(data.authType).toBe("password");
   });
 
+  it("POST /api/remote-servers creates server with custom port", async () => {
+    const res = await listPost(
+      new Request("http://localhost/api/remote-servers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          host: "host.local",
+          user: "u",
+          authType: "key",
+          port: 2222,
+        }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.port).toBe(2222);
+  });
+
   it("POST /api/remote-servers creates server with modelBaseUrl", async () => {
     const res = await listPost(
       new Request("http://localhost/api/remote-servers", {

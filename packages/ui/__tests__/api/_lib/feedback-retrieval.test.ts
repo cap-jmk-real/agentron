@@ -72,6 +72,36 @@ describe("feedback-retrieval", () => {
       };
       expect(feedbackToEmbeddingText(fb)).toBeTruthy();
     });
+
+    it("uses empty string for null input and output", () => {
+      const fb = {
+        id: "f5",
+        targetType: "chat",
+        targetId: "chat",
+        input: null,
+        output: null,
+        label: "label",
+        notes: null,
+      };
+      const text = feedbackToEmbeddingText(fb);
+      expect(text).toContain("label");
+      expect(text).toBeTruthy();
+    });
+
+    it("returns combined as-is when length exactly 2000", () => {
+      const fb = {
+        id: "f6",
+        targetType: "chat",
+        targetId: "chat",
+        input: "a".repeat(1995),
+        output: "",
+        label: "x",
+        notes: null,
+      };
+      const text = feedbackToEmbeddingText(fb);
+      expect(text.length).toBe(2000);
+      expect(text.endsWith("…")).toBe(false);
+    });
   });
 
   describe("getRelevantFeedbackForScope", () => {

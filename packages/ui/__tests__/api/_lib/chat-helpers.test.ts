@@ -178,6 +178,30 @@ describe("chat-helpers", () => {
     });
   });
 
+  describe("extractOptionsFromContentWithLLM", () => {
+    it("returns null when content is too short", async () => {
+      const callLLM = async () => "[]";
+      expect(await extractOptionsFromContentWithLLM("Hi", callLLM)).toBeNull();
+      expect(await extractOptionsFromContentWithLLM("", callLLM)).toBeNull();
+    });
+
+    it("returns bullet options when LLM returns empty array and bullet list present", async () => {
+      const content = "What would you like? Pick one.\n- Yes\n- No";
+      const callLLM = async () => "[]";
+      const out = await extractOptionsFromContentWithLLM(content, callLLM);
+      expect(out).toEqual(["Yes", "No"]);
+    });
+
+    it("returns null when LLM throws and no bullet options", async () => {
+      const content = "This is a long message but no bullets and no pick one phrase here.";
+      const callLLM = async () => {
+        throw new Error("LLM fail");
+      };
+      const out = await extractOptionsFromContentWithLLM(content, callLLM);
+      expect(out).toBeNull();
+    });
+  });
+
   describe("extractOptionsFromBulletList", () => {
     it("returns null when content too short", () => {
       expect(extractOptionsFromBulletList("Hi")).toBeNull();

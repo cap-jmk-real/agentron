@@ -143,6 +143,52 @@ describe("Settings Telegram API", () => {
     expect(data.notificationChatId).toBe("123456789");
   });
 
+  it("PATCH /api/settings/telegram updates botTokenEnvVar", async () => {
+    const res = await PATCH(
+      new Request("http://localhost/api/settings/telegram", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ botTokenEnvVar: "TELEGRAM_BOT_TOKEN" }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toHaveProperty("enabled");
+  });
+
+  it("PATCH /api/settings/telegram ignores notificationChatId when not a string", async () => {
+    await PATCH(
+      new Request("http://localhost/api/settings/telegram", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationChatId: "999" }),
+      })
+    );
+    const res = await PATCH(
+      new Request("http://localhost/api/settings/telegram", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationChatId: 123 }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.notificationChatId).toBe("999");
+  });
+
+  it("PATCH /api/settings/telegram with invalid JSON body applies no updates", async () => {
+    const res = await PATCH(
+      new Request("http://localhost/api/settings/telegram", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: "not json",
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(typeof data.enabled).toBe("boolean");
+  });
+
   it("POST /api/settings/telegram/test returns 400 when no token", async () => {
     const res = await testPost(
       new Request("http://localhost/api/settings/telegram/test", {
@@ -169,6 +215,98 @@ describe("Settings Telegram API", () => {
     const data = await res.json();
     expect(data.ok).toBe(false);
     expect(data.error).toBeDefined();
+  });
+
+  it("POST /api/settings/telegram/test with body.token non-string uses saved token", async () => {
+    await PATCH(
+      new Request("http://localhost/api/settings/telegram", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ botToken: "saved-token-when-token-not-string" }),
+      })
+    );
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      if (u.includes("getMe")) {
+        return new Response(JSON.stringify({ ok: true, result: { username: "FallbackBot" } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return originalFetch(url as Request);
+    });
+    try {
+      const res = await testPost(
+        new Request("http://localhost/api/settings/telegram/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: 123 }),
+        })
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+      expect(data.username).toBe("@FallbackBot");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("POST /api/settings/telegram/test with saved token and empty body uses saved token", async () => {
+    await PATCH(
+      new Request("http://localhost/api/settings/telegram", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ botToken: "saved-token-for-test" }),
+      })
+    );
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      if (u.includes("getMe")) {
+        return new Response(JSON.stringify({ ok: true, result: { username: "SavedBot" } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return originalFetch(url as Request);
+    });
+    try {
+      const res = await testPost(
+        new Request("http://localhost/api/settings/telegram/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        })
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+      expect(data.username).toBe("@SavedBot");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("POST /api/settings/telegram/test returns 500 with Test failed when fetch throws non-Error", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(() => Promise.reject("network error"));
+    try {
+      const res = await testPost(
+        new Request("http://localhost/api/settings/telegram/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: "any" }),
+        })
+      );
+      expect(res.status).toBe(500);
+      const data = await res.json();
+      expect(data.ok).toBe(false);
+      expect(data.error).toBe("Test failed");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("POST /api/settings/telegram/test with valid mock token returns ok true", async () => {
@@ -228,6 +366,35 @@ describe("Settings Telegram API", () => {
     }
   });
 
+  it("POST /api/settings/telegram/test returns ok true with username undefined when getMe result has no username", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      if (u.includes("getMe")) {
+        return new Response(JSON.stringify({ ok: true, result: {} }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return originalFetch(url as Request);
+    });
+    try {
+      const res = await testPost(
+        new Request("http://localhost/api/settings/telegram/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: "any" }),
+        })
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+      expect(data.username).toBeUndefined();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("POST /api/settings/telegram/test returns ok false when Telegram API returns ok false", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn(
@@ -249,6 +416,60 @@ describe("Settings Telegram API", () => {
       const data = await res.json();
       expect(data.ok).toBe(false);
       expect(data.error).toBe("Unauthorized");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("POST /api/settings/telegram/test returns ok false with res.statusText when response not ok and no description", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: false }), {
+          status: 400,
+          statusText: "Bad Request",
+          headers: { "Content-Type": "application/json" },
+        })
+    );
+    try {
+      const res = await testPost(
+        new Request("http://localhost/api/settings/telegram/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: "x" }),
+        })
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(false);
+      expect(data.error).toBe("Bad Request");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("POST /api/settings/telegram/test returns ok false with Telegram API error when response not ok and no description or statusText", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({}), {
+          status: 500,
+          statusText: "",
+          headers: { "Content-Type": "application/json" },
+        })
+    );
+    try {
+      const res = await testPost(
+        new Request("http://localhost/api/settings/telegram/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: "x" }),
+        })
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(false);
+      expect(data.error).toBe("Telegram API error");
     } finally {
       globalThis.fetch = originalFetch;
     }

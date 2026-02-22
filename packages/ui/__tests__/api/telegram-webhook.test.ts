@@ -154,6 +154,25 @@ describe("Telegram webhook API", () => {
     }
   });
 
+  it("POST /api/telegram/webhook returns 200 when secret required and matches", async () => {
+    const orig = process.env.TELEGRAM_WEBHOOK_SECRET;
+    process.env.TELEGRAM_WEBHOOK_SECRET = "correct-secret";
+    try {
+      const res = await POST(
+        new Request("http://localhost:3000/api/telegram/webhook?secret=correct-secret", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: { chat: { id: 123 }, text: "Hi" } }),
+        })
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+    } finally {
+      process.env.TELEGRAM_WEBHOOK_SECRET = orig;
+    }
+  });
+
   it("POST /api/telegram/webhook handles request with invalid url without crashing", async () => {
     const req = new Request("http://localhost:3000/api/telegram/webhook", {
       method: "POST",

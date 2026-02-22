@@ -212,6 +212,8 @@ CRITICAL: When the user selects "Run it now" (or similar) from your options, you
 
 export const BLOCK_CONTEXT = `Context: You receive full conversation history for this chat (summarized when very long so you still know what happened). You also receive "Stored preferences" and "Recent conversation summaries" from other chats. Use this context so you know what was already discussed, created, or agreed — the user may reference "the output you gave me", "same as before", or "what we decided" — resolve from history. When the user states a clear preference or asks you to remember something, use the remember tool. When they ask to change how many recent summaries are used, use set_assistant_setting (recentSummariesCount, 1–10). When the user asks to retry, redo, or repeat the last message (e.g. 'retry the last message', 'try again', 'okay retry the last message'), call retry_last_message to get the last user message, then respond to it in your reply.`;
 
+export const BLOCK_CONNECTOR_AUTH = `Knowledge connectors (list_connector_items, connector_read_item, connector_update_item): When a tool result returns an error that mentions authentication, credentials, env var, token, or service account, tell the user to open **Knowledge → Connectors** in the sidebar, select the connector, and set the required credential (env var or key). Do not invent env var names. When list_connectors returns an empty list and the user asks to sync, list, or read from a source (Notion, Drive, etc.), tell them they have no connectors and should add one in Knowledge → Connectors first.`;
+
 /** Ordered blocks; all are always included. No derivation — the LLM routes. */
 const ALL_BLOCKS = [
   BLOCK_BASE,
@@ -235,6 +237,7 @@ const ALL_BLOCKS = [
   BLOCK_IMPROVEMENT,
   BLOCK_DISAMBIGUATE,
   BLOCK_CONTEXT,
+  BLOCK_CONNECTOR_AUTH,
 ];
 
 /** Single system prompt composed from all blocks. Routing is always done by the LLM. */

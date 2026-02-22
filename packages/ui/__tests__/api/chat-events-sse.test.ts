@@ -28,6 +28,15 @@ describe("Chat events SSE", () => {
     expect(res.status).toBe(400);
   });
 
+  it("GET /api/chat/events with empty or whitespace turnId returns 400", async () => {
+    const resEmpty = await getChatEvents(new Request("http://localhost/api/chat/events?turnId="));
+    expect(resEmpty.status).toBe(400);
+    const resSpace = await getChatEvents(
+      new Request("http://localhost/api/chat/events?turnId=%20%20")
+    );
+    expect(resSpace.status).toBe(400);
+  });
+
   it("second GET with same turnId receives events and does not get Connection issue when first GET took the job", async () => {
     try {
       await db.delete(llmConfigs).where(eq(llmConfigs.id, FIXTURE_LLM_ID)).run();

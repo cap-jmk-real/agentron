@@ -13,10 +13,15 @@ export const OPENCLAW_TOOLS: AssistantToolDef[] = [
           description:
             "The message or command to send to OpenClaw (e.g. 'Check my calendar for tomorrow', 'Send an email to ...')",
         },
+        sandboxId: {
+          type: "string",
+          description:
+            "When the OpenClaw gateway runs inside a sandbox (e.g. from create_sandbox with an OpenClaw image), pass this sandbox id to run the command inside the container (localhost); no port-forward or gateway URL needed.",
+        },
         gatewayUrl: {
           type: "string",
           description:
-            "Override gateway URL for this call (e.g. ws://127.0.0.1:<hostPort>); use when multiple OpenClaw containers are run and you need to target one.",
+            "Override gateway URL for this call (e.g. ws://127.0.0.1:<hostPort>); use when multiple OpenClaw containers are run and you need to target one. Ignored when sandboxId is set.",
         },
       },
       required: ["content"],
@@ -30,10 +35,15 @@ export const OPENCLAW_TOOLS: AssistantToolDef[] = [
       type: "object",
       properties: {
         limit: { type: "number", description: "Maximum number of messages to return (default 20)" },
+        sandboxId: {
+          type: "string",
+          description:
+            "When the OpenClaw gateway runs inside a sandbox (e.g. from create_sandbox), pass this to run the command inside the container (localhost). Ignored when gatewayUrl is used.",
+        },
         gatewayUrl: {
           type: "string",
           description:
-            "Override gateway URL for this call (e.g. ws://127.0.0.1:<hostPort>); use when multiple OpenClaw containers are run.",
+            "Override gateway URL for this call (e.g. ws://127.0.0.1:<hostPort>); use when multiple OpenClaw containers are run. Ignored when sandboxId is set.",
         },
       },
       required: [],
@@ -46,10 +56,16 @@ export const OPENCLAW_TOOLS: AssistantToolDef[] = [
     parameters: {
       type: "object",
       properties: {
+        sandboxId: {
+          type: "string",
+          description:
+            "When the OpenClaw gateway runs inside a sandbox, pass this to run the command inside the container. Ignored when gatewayUrl is used.",
+        },
+        runId: { type: "string", description: "Optional run id to abort (default: current run)" },
         gatewayUrl: {
           type: "string",
           description:
-            "Override gateway URL for this call (e.g. ws://127.0.0.1:<hostPort>); use when multiple OpenClaw containers are run.",
+            "Override gateway URL for this call (e.g. ws://127.0.0.1:<hostPort>). Ignored when sandboxId is set.",
         },
       },
       required: [],

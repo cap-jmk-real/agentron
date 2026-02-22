@@ -10,7 +10,8 @@ import {
   parseRunStateSharedContext,
   type ExecutionRunStateRow,
 } from "../../../app/api/_lib/execution-events";
-import { db, executions, toExecutionRow } from "../../../app/api/_lib/db";
+import { db, executions, executionEvents, toExecutionRow } from "../../../app/api/_lib/db";
+import { eq } from "drizzle-orm";
 
 describe("execution-events", () => {
   const executionId = crypto.randomUUID();
@@ -236,5 +237,30 @@ describe("execution-events", () => {
     expect(
       parseRunStateSharedContext({ sharedContext: "not json" } as ExecutionRunStateRow)
     ).toEqual({});
+  });
+
+  it("getExecutionEventsForRun returns null payload for event row with invalid JSON payload", async () => {
+    const runId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: runId,
+          targetType: "workflow",
+          targetId: crypto.randomUUID(),
+          status: "running",
+        })
+      )
+      .run();
+    const eventId = await enqueueExecutionEvent(runId, "NodeCompleted", { x: 1 });
+    await db
+      .update(executionEvents)
+      .set({ payload: "invalid json {" })
+      .where(eq(executionEvents.id, eventId))
+      .run();
+    const events = await getExecutionEventsForRun(runId);
+    const ev = events.find((e) => e.id === eventId);
+    expect(ev).toBeDefined();
+    expect(ev!.payload).toBeNull();
   });
 });

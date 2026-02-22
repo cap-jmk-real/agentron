@@ -437,6 +437,11 @@ export function getMessageDisplayState(
   };
 }
 
+const SPECIALIST_DISPLAY_NAMES: Record<string, string> = { knowledge: "Knowledge" };
+function specialistLabel(id: string): string {
+  return SPECIALIST_DISPLAY_NAMES[id] ?? id;
+}
+
 /** Status string for loading indicator (modal and section). */
 export function getLoadingStatus(msg: {
   traceSteps?: { phase: string; label?: string; specialistId?: string; toolName?: string }[];
@@ -450,19 +455,21 @@ export function getLoadingStatus(msg: {
     (msg.traceSteps?.length ?? 0) > 0 ? msg.traceSteps![msg.traceSteps!.length - 1] : undefined;
   const isCallingLlm = lastTrace?.phase === "llm_request";
   if (isCallingLlm)
-    return lastTrace?.specialistId ? `Calling LLM… (${lastTrace.specialistId})` : "Calling LLM…";
+    return lastTrace?.specialistId
+      ? `Calling LLM… (${specialistLabel(lastTrace.specialistId)})`
+      : "Calling LLM…";
   const isLlmResponse = lastTrace?.phase === "llm_response";
   if (isLlmResponse)
     return lastTrace?.specialistId
-      ? `Response received (${lastTrace.specialistId})`
+      ? `Response received (${specialistLabel(lastTrace.specialistId)})`
       : "Response received";
   const heapTool = lastTrace?.phase === "heap_tool" || lastTrace?.phase === "heap_tool_done";
   if (heapTool && lastTrace && "specialistId" in lastTrace && "toolName" in lastTrace)
-    return `${(lastTrace as { specialistId: string }).specialistId} → ${(lastTrace as { toolName: string }).toolName}`;
+    return `${specialistLabel((lastTrace as { specialistId: string }).specialistId)} → ${(lastTrace as { toolName: string }).toolName}`;
   const heapSpecialist =
     lastTrace?.phase === "heap_specialist" || lastTrace?.phase === "heap_specialist_done";
   if (heapSpecialist && lastTrace && "specialistId" in lastTrace)
-    return `Specialist ${(lastTrace as { specialistId: string }).specialistId}…`;
+    return `Specialist ${specialistLabel((lastTrace as { specialistId: string }).specialistId)}…`;
   const total = msg.todos?.length ?? 0;
   const allDone = total > 0 && (msg.completedStepIndices?.length ?? 0) === total;
   if (allDone) return "Completing…";

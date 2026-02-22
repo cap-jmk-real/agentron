@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { AGENT_SPECIALIST_IMPROVEMENT_CLARIFICATION } from "../../../app/api/chat/route";
 import { resolveTemplateVars, executeTool } from "../../../app/api/chat/_lib/execute-tool";
 import { getAppSettings } from "../../../app/api/_lib/app-settings";
+import { readConnectorItem } from "../../../app/api/rag/connectors/_lib/connector-write";
 
 vi.mock("../../../app/api/_lib/container-manager", () => ({
   getContainerManager: () => ({
@@ -39,6 +40,20 @@ vi.mock("@agentron-studio/runtime", async (importOriginal) => {
     searchWeb: vi.fn().mockResolvedValue({ results: [] }),
   };
 });
+
+vi.mock("../../../app/api/rag/ingest/route", () => ({
+  ingestOneDocument: vi.fn(),
+}));
+
+vi.mock("../../../app/api/_lib/rag", () => ({
+  getDeploymentCollectionId: vi.fn().mockResolvedValue(null),
+  retrieveChunks: vi.fn(),
+}));
+
+vi.mock("../../../app/api/rag/connectors/_lib/connector-write", () => ({
+  readConnectorItem: vi.fn().mockResolvedValue({ error: "Connector not found" }),
+  updateConnectorItem: vi.fn().mockResolvedValue({ error: "Connector not found" }),
+}));
 
 describe("execute-tool helpers", () => {
   describe("resolveTemplateVars", () => {
@@ -485,6 +500,65 @@ describe("execute-tool helpers", () => {
       expect(ids).not.toContain("trigger_training");
       expect(ids).not.toContain("generate_training_data");
       expect(ids).not.toContain("create_improvement_job");
+    });
+
+    it("list_tools without category returns all tools", async () => {
+      const result = await executeTool("list_tools", {}, undefined);
+      expect(Array.isArray(result)).toBe(true);
+      expect((result as { id: string }[]).length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("retry_last_message and format_response", () => {
+    it("retry_last_message without conversationId returns no conversation context", async () => {
+      const result = await executeTool("retry_last_message", {}, undefined);
+      expect(result).toEqual(
+        expect.objectContaining({
+          lastUserMessage: null,
+          message: "No conversation context.",
+        })
+      );
+    });
+
+    it("format_response with formatted true returns summary and needsInput", async () => {
+      const result = await executeTool(
+        "format_response",
+        {
+          formatted: true,
+          summary: "Done",
+          needsInput: "optional",
+        },
+        undefined
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          formatted: true,
+          summary: "Done",
+          needsInput: "optional",
+        })
+      );
+    });
+  });
+
+  describe("get_tool and create_tool", () => {
+    it("get_tool returns error when tool not found", async () => {
+      const result = await executeTool("get_tool", { id: "non-existent-tool-id-999" }, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: "Tool not found" }));
+    });
+
+    it("create_tool with empty name uses Unnamed tool", async () => {
+      const result = await executeTool(
+        "create_tool",
+        { name: "   ", protocol: "native", config: {} },
+        undefined
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: expect.any(String),
+          name: "Unnamed tool",
+          message: expect.stringContaining("Unnamed tool"),
+        })
+      );
     });
   });
 
@@ -1173,6 +1247,68 @@ describe("execute-tool helpers", () => {
       const hostPort = (result as { hostPort: number }).hostPort;
       expect(hostPort).toBeGreaterThanOrEqual(1);
       expect(hostPort).toBeLessThanOrEqual(65535);
+    });
+  });
+
+  describe("connector tools", () => {
+    it("list_connectors returns array of { id, type, collectionId }", async () => {
+      const result = await executeTool("list_connectors", {}, undefined);
+      expect(Array.isArray(result)).toBe(true);
+      (result as { id: string; type: string; collectionId: string }[]).forEach((row) => {
+        expect(row).toHaveProperty("id");
+        expect(row).toHaveProperty("type");
+        expect(row).toHaveProperty("collectionId");
+      });
+    });
+
+    it("list_connector_items returns error when connector not found", async () => {
+      const result = await executeTool(
+        "list_connector_items",
+        { connectorId: "non-existent-connector-id" },
+        undefined
+      );
+      expect(result).toEqual({ error: "Connector not found" });
+    });
+
+    it("list_connector_items returns error when connectorId missing", async () => {
+      const result = await executeTool("list_connector_items", {}, undefined);
+      expect(result).toEqual({ error: "connectorId required" });
+    });
+
+    it("connector_read_item returns error when connector not found", async () => {
+      const result = await executeTool(
+        "connector_read_item",
+        { connectorId: "non-existent", itemId: "/any/path" },
+        undefined
+      );
+      expect(result).toEqual({ error: "Connector not found" });
+    });
+
+    it("connector_update_item returns error when connector not found", async () => {
+      const result = await executeTool(
+        "connector_update_item",
+        { connectorId: "non-existent", itemId: "/any/path", content: "x" },
+        undefined
+      );
+      expect(result).toEqual({ error: "Connector not found" });
+    });
+
+    it("ingest_deployment_documents returns error when no deployment collection", async () => {
+      const result = await executeTool("ingest_deployment_documents", {}, undefined);
+      expect(result).toHaveProperty("error");
+      expect((result as { error: string }).error).toContain("No deployment collection");
+    });
+
+    it("connector tool error appends Knowledge → Connectors hint for auth-like errors", async () => {
+      vi.mocked(readConnectorItem).mockResolvedValueOnce({ error: "Unauthorized" });
+      const result = await executeTool(
+        "connector_read_item",
+        { connectorId: "any", itemId: "any" },
+        undefined
+      );
+      expect(result).toHaveProperty("error");
+      expect((result as { error: string }).error).toContain("Knowledge → Connectors");
+      expect((result as { error: string }).error).toContain("Unauthorized");
     });
   });
 });

@@ -80,6 +80,37 @@ describe("Tasks API", () => {
     expect(data.tasks.some((t: { id: string }) => t.id === taskId)).toBe(true);
   });
 
+  it("GET /api/tasks?status=approved returns empty tasks when none approved", async () => {
+    const res = await listGet(new Request("http://localhost/api/tasks?status=approved"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.tasks).toEqual([]);
+    expect(data.agents).toEqual({});
+    expect(data.workflows).toEqual({});
+  });
+
+  it("POST /api/tasks accepts optional id in body", async () => {
+    const customTaskId = "custom-task-id-67890";
+    const res = await listPost(
+      new Request("http://localhost/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: customTaskId,
+          workflowId,
+          agentId,
+          stepId: "step-custom-id",
+          stepName: "Step",
+          label: "Label",
+          status: "pending_approval",
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.id).toBe(customTaskId);
+  });
+
   it("GET /api/tasks?status=approved returns only approved tasks", async () => {
     const res = await listGet(new Request("http://localhost/api/tasks?status=approved"));
     expect(res.status).toBe(200);
@@ -138,6 +169,36 @@ describe("Tasks API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.status).toBe("approved");
+  });
+
+  it("PATCH /api/tasks/:id approve without output keeps existing output and uses default resolvedBy", async () => {
+    const resCreate = await listPost(
+      new Request("http://localhost/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workflowId,
+          agentId,
+          stepId: "approve-no-out",
+          stepName: "Approve",
+          label: "Approve without output",
+          status: "pending_approval",
+        }),
+      })
+    );
+    const created = await resCreate.json();
+    const res = await patchOne(
+      new Request("http://localhost/api/tasks/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "approved" }),
+      }),
+      { params: Promise.resolve({ id: created.id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.status).toBe("approved");
+    expect(data.resolvedBy).toBe("user");
   });
 
   it("PATCH /api/tasks/:id rejects task with output and resolvedBy", async () => {

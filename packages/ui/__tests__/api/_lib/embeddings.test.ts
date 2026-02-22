@@ -229,5 +229,31 @@ describe("embeddings", () => {
       const enc = await encRes.json();
       await expect(embed(enc.id, ["hello"])).rejects.toThrow("Embedding provider not found");
     });
+
+    it("throws when API returns data that is not an array", async () => {
+      const encId = (globalThis as { __embedTestConfigId?: string }).__embedTestConfigId;
+      if (!encId) return;
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ data: null }),
+      }) as typeof fetch;
+      await expect(embed(encId, ["hello"])).rejects.toThrow("returned 0 vectors for 1 inputs");
+    });
+
+    it("legacy path uses multiple texts in request body", async () => {
+      const encId = (globalThis as { __embedTestConfigId?: string }).__embedTestConfigId;
+      if (!encId) return;
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: [{ embedding: [0.1, 0.2] }, { embedding: [0.3, 0.4] }],
+          }),
+      }) as typeof fetch;
+      const result = await embed(encId, ["a", "b"]);
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual([0.1, 0.2]);
+      expect(result[1]).toEqual([0.3, 0.4]);
+    });
   });
 });

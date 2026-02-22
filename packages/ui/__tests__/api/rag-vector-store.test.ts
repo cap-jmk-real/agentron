@@ -47,6 +47,32 @@ describe("RAG vector-store API", () => {
     createdId = data.id;
   });
 
+  it("POST /api/rag/vector-store creates store with optional id and without config", async () => {
+    const customId = "custom-vs-id-" + Date.now();
+    const res = await listPost(
+      new Request("http://localhost/api/rag/vector-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: customId,
+          name: "Minimal Store",
+          type: "bundled",
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.id).toBe(customId);
+    expect(data.name).toBe("Minimal Store");
+    expect(data.config).toBeUndefined();
+    const listRes = await listGet();
+    expect(listRes.status).toBe(200);
+    const list = await listRes.json();
+    const found = list.find((s: { id: string }) => s.id === customId);
+    expect(found).toBeDefined();
+    expect(found.config).toBeUndefined();
+  });
+
   it("GET /api/rag/vector-store/:id returns 404 for unknown id", async () => {
     const res = await getOne(new Request("http://localhost/api/rag/vector-store/x"), {
       params: Promise.resolve({ id: "non-existent-vs-id" }),
@@ -75,6 +101,32 @@ describe("RAG vector-store API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.name).toBe("Updated Vector Store");
+  });
+
+  it("PUT /api/rag/vector-store/:id returns 400 for invalid JSON", async () => {
+    const res = await putOne(
+      new Request("http://localhost/api/rag/vector-store/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: "not json",
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("PUT /api/rag/vector-store/:id updates config", async () => {
+    const res = await putOne(
+      new Request("http://localhost/api/rag/vector-store/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: { endpoint: "http://localhost:6334" } }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.config).toEqual({ endpoint: "http://localhost:6334" });
   });
 
   it("DELETE /api/rag/vector-store/:id removes store", async () => {

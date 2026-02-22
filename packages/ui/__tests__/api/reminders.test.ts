@@ -98,6 +98,19 @@ describe("Reminders API", () => {
     expect(data.error).toContain("message");
   });
 
+  it("POST /api/reminders returns 400 when message is whitespace only", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "   ", inMinutes: 10 }),
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("message");
+  });
+
   it("POST /api/reminders returns 400 when at invalid", async () => {
     const res = await POST(
       new Request("http://localhost/api/reminders", {
@@ -171,6 +184,32 @@ describe("Reminders API", () => {
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toBeDefined();
+  });
+
+  it("POST /api/reminders returns 400 when inMinutes is 0", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "x", inMinutes: 0 }),
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toMatch(/at|inMinutes|required/);
+  });
+
+  it("POST /api/reminders returns 400 when inMinutes is negative", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "x", inMinutes: -5 }),
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toMatch(/at|inMinutes|required/);
   });
 
   it("POST /api/reminders returns 400 when at is not a valid date string", async () => {

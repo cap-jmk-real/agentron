@@ -137,6 +137,43 @@ describe("RAG upload API", () => {
     vi.mocked(s3.putObject).mockResolvedValue(undefined);
   });
 
+  it("POST /api/rag/upload returns 502 with string message when putObject throws non-Error", async () => {
+    const s3 = await import("../../app/api/_lib/s3");
+    vi.mocked(s3.putObject).mockRejectedValueOnce("non-error throw");
+    const form = new FormData();
+    form.append("file", new Blob(["x"]), "a.txt");
+    form.append("collectionId", collectionId);
+    const res = await uploadPost(
+      new Request("http://localhost/api/rag/upload", { method: "POST", body: form })
+    );
+    expect(res.status).toBe(502);
+    const data = await res.json();
+    expect(data.error).toContain("Bucket upload failed");
+    expect(data.error).toContain("non-error throw");
+    vi.mocked(s3.putObject).mockResolvedValue(undefined);
+  });
+
+  it("POST /api/rag/upload uses existing upload dir on second upload to same collection", async () => {
+    const form1 = new FormData();
+    form1.append("file", new Blob(["first"]), "first.txt");
+    form1.append("collectionId", collectionId);
+    const res1 = await uploadPost(
+      new Request("http://localhost/api/rag/upload", { method: "POST", body: form1 })
+    );
+    expect(res1.status).toBe(201);
+    const form2 = new FormData();
+    form2.append("file", new Blob(["second"]), "second.txt");
+    form2.append("collectionId", collectionId);
+    const res2 = await uploadPost(
+      new Request("http://localhost/api/rag/upload", { method: "POST", body: form2 })
+    );
+    expect(res2.status).toBe(201);
+    const data2 = await res2.json();
+    expect(data2.id).toBeDefined();
+    expect(data2.collectionId).toBe(collectionId);
+    expect(data2.originalName).toBe("second.txt");
+  });
+
   it("POST /api/rag/upload writes to local dir when document store is not S3/MinIO", async () => {
     const encRes = await encPost(
       new Request("http://localhost/api/rag/encoding-config", {

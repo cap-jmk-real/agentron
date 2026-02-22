@@ -263,6 +263,33 @@ describe("Stats API", () => {
     expect(res.status).toBe(404);
   });
 
+  it("GET /api/stats/agents/:id returns empty timeSeries and runs when agent has no token usage", async () => {
+    const createRes = await agentsPost(
+      new Request("http://localhost/api/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Stats Agent No Usage",
+          kind: "node",
+          type: "internal",
+          protocol: "native",
+          capabilities: [],
+          scopes: [],
+        }),
+      })
+    );
+    const created = await createRes.json();
+    const res = await agentStatsGet(new Request("http://localhost/api/stats/agents/x"), {
+      params: Promise.resolve({ id: created.id }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.agent.id).toBe(created.id);
+    expect(data.summary.totalRuns).toBe(0);
+    expect(data.timeSeries).toEqual([]);
+    expect(data.runs).toEqual([]);
+  });
+
   it("GET /api/stats/agents/:id includes run with null estimatedCost as 0", async () => {
     const createRes = await agentsPost(
       new Request("http://localhost/api/agents", {
@@ -359,6 +386,61 @@ describe("Stats API", () => {
     expect(withCost).toBeDefined();
   });
 
+  it("GET /api/stats/agents/:id returns timeSeries with count 2 when two rows on same day", async () => {
+    const createRes = await agentsPost(
+      new Request("http://localhost/api/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Stats Agent Same Day",
+          kind: "node",
+          type: "internal",
+          protocol: "native",
+          capabilities: [],
+          scopes: [],
+        }),
+      })
+    );
+    const created = await createRes.json();
+    const sameDay = Date.now();
+    await db
+      .insert(tokenUsage)
+      .values([
+        {
+          id: crypto.randomUUID(),
+          agentId: created.id,
+          workflowId: null,
+          provider: "openai",
+          model: "gpt-4",
+          promptTokens: 1,
+          completionTokens: 1,
+          estimatedCost: "0",
+          createdAt: sameDay,
+        },
+        {
+          id: crypto.randomUUID(),
+          agentId: created.id,
+          workflowId: null,
+          provider: "openai",
+          model: "gpt-4",
+          promptTokens: 2,
+          completionTokens: 2,
+          estimatedCost: "0",
+          createdAt: sameDay + 1000,
+        },
+      ])
+      .run();
+    const res = await agentStatsGet(new Request("http://localhost/api/stats/agents/x"), {
+      params: Promise.resolve({ id: created.id }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.summary.totalRuns).toBe(2);
+    expect(data.timeSeries.length).toBe(1);
+    expect(data.timeSeries[0].count).toBe(2);
+    expect(data.timeSeries[0].promptTokens).toBe(3);
+  });
+
   it("GET /api/stats/agents/:id returns stats for existing agent", async () => {
     const createRes = await agentsPost(
       new Request("http://localhost/api/agents", {
@@ -439,6 +521,30 @@ describe("Stats API", () => {
     expect(data.workflow.id).toBe(workflowId);
   });
 
+  it("GET /api/stats/workflows/:id returns empty agents array when workflow has no token usage", async () => {
+    const createRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Stats Workflow No Usage",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    const created = await createRes.json();
+    const res = await workflowStatsGet(new Request("http://localhost/api/stats/workflows/x"), {
+      params: Promise.resolve({ id: created.id }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.workflow.id).toBe(created.id);
+    expect(data.summary.totalRuns).toBe(0);
+    expect(data.agents).toEqual([]);
+  });
+
   it("GET /api/stats/workflows/:id returns agent breakdown when workflow has token usage", async () => {
     if (!workflowId || !agentId) return;
     await db
@@ -467,6 +573,82 @@ describe("Stats API", () => {
     expect(data.agents[0]).toHaveProperty("name");
     expect(data.agents[0]).toHaveProperty("promptTokens");
     expect(data.agents[0]).toHaveProperty("estimatedCost");
+  });
+
+  it("GET /api/stats/workflows/:id returns agent name Unknown when token row has agentId null", async () => {
+    const wfRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Workflow Unknown Agent",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    const wf = await wfRes.json();
+    await db
+      .insert(tokenUsage)
+      .values({
+        id: crypto.randomUUID(),
+        agentId: null,
+        workflowId: wf.id,
+        provider: "openai",
+        model: "gpt-4",
+        promptTokens: 1,
+        completionTokens: 1,
+        estimatedCost: "0",
+        createdAt: Date.now(),
+      })
+      .run();
+    const res = await workflowStatsGet(new Request("http://localhost/api/stats/workflows/x"), {
+      params: Promise.resolve({ id: wf.id }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.agents.length).toBe(1);
+    expect(data.agents[0].name).toBe("Unknown");
+  });
+
+  it("GET /api/stats/workflows/:id returns agent name Unknown when token row has agentId not in agents table", async () => {
+    const wfRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Workflow Orphan Agent Id",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    const wf = await wfRes.json();
+    const deletedAgentId = "00000000-0000-0000-0000-000000000099";
+    await db
+      .insert(tokenUsage)
+      .values({
+        id: crypto.randomUUID(),
+        agentId: deletedAgentId,
+        workflowId: wf.id,
+        provider: "openai",
+        model: "gpt-4",
+        promptTokens: 2,
+        completionTokens: 2,
+        estimatedCost: "0",
+        createdAt: Date.now(),
+      })
+      .run();
+    const res = await workflowStatsGet(new Request("http://localhost/api/stats/workflows/x"), {
+      params: Promise.resolve({ id: wf.id }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.agents.length).toBe(1);
+    expect(data.agents[0].id).toBe(deletedAgentId);
+    expect(data.agents[0].name).toBe("Unknown");
   });
 
   it("GET /api/stats/workflows/:id includes null estimatedCost in totalCost reduce", async () => {
@@ -542,6 +724,44 @@ describe("Stats API", () => {
     const agentEntry = data.agents.find(
       (a: { id: string }) => a.id === "deleted-or-unknown-agent-id"
     );
+    expect(agentEntry).toBeDefined();
+    expect(agentEntry.name).toBe("Unknown");
+  });
+
+  it("GET /api/stats/workflows/:id returns Unknown for token row with null agentId", async () => {
+    const createRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Workflow Null Agent Id",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    const created = await createRes.json();
+    await db
+      .insert(tokenUsage)
+      .values({
+        id: crypto.randomUUID(),
+        agentId: null,
+        workflowId: created.id,
+        provider: "openai",
+        model: "gpt-4",
+        promptTokens: 2,
+        completionTokens: 2,
+        estimatedCost: "0",
+        createdAt: Date.now(),
+      })
+      .run();
+    const res = await workflowStatsGet(new Request("http://localhost/api/stats/workflows/x"), {
+      params: Promise.resolve({ id: created.id }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const agentEntry = data.agents.find((a: { id: string }) => a.id === "unknown");
     expect(agentEntry).toBeDefined();
     expect(agentEntry.name).toBe("Unknown");
   });

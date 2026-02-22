@@ -6,7 +6,7 @@ type Store = {
   runs: Map<string, any>;
 };
 
-const getGlobalStore = (): Store => {
+export const getGlobalStore = (): Store => {
   const globalAny = globalThis as typeof globalThis & { __agentronStore?: Store };
   if (!globalAny.__agentronStore) {
     globalAny.__agentronStore = {

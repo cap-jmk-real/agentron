@@ -1,0 +1,46 @@
+---
+title: Assisted coding & GitHub
+description: Connect GitHub to auto-report run errors as issues and add an "Assisted by Agentron" badge to your repo.
+---
+
+# Assisted coding & GitHub
+
+You can connect Agentron to a GitHub repository so that **workflow run errors are automatically reported as GitHub issues**. Each issue includes the error details, a link to the run, and an "Assisted coding by Agentron" attribution.
+
+---
+
+## GitHub integration (Settings)
+
+1. Open **Settings → GitHub** in Agentron.
+2. Create a [GitHub Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token) with `repo` scope (or `public_repo` for public repos only).
+3. Enter the token and the **default repository** (owner and repo name).
+4. Enable **Auto-report run errors to GitHub Issues**.
+5. Optionally set **Issue labels** (e.g. `agentron`, `run-error`). If left empty, issues are created with labels `agentron` and `run-error` by default.
+6. Click **Save**.
+
+When a workflow run fails, Agentron creates a GitHub issue in the default repo with:
+
+- Run ID and link to the run in Agentron (if `AGENTRON_BASE_URL` is set)
+- Error message and stack trace
+- A short summary of the last steps
+- A footer: *Reported by [Agentron](https://agentron.dev) · [Assisted coding](https://agentron.dev/docs/assisted-coding).*
+
+The same run is only reported once (debounced by run id for 10 minutes) so duplicate code paths do not create duplicate issues.
+
+---
+
+## README badge (Built with Agentron)
+
+You can add a badge to your repository README to show that the project uses Agentron for assisted coding:
+
+```markdown
+[![Assisted by Agentron](https://img.shields.io/badge/Assisted%20by-Agentron-6B7280?style=flat&logo=github)](https://agentron.dev)
+```
+
+Or a simpler text link:
+
+```markdown
+Built with [Agentron](https://agentron.dev) (assisted coding).
+```
+
+Replace the badge URL or link if your docs or marketing use a different domain.

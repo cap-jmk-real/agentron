@@ -134,6 +134,23 @@ describe("RAG ingest API", () => {
     expect(data.chunks).toBeGreaterThan(0);
   });
 
+  it("POST /api/rag/ingest with collectionId returns 200 and body with documents and chunks", async () => {
+    const res = await ingestPost(
+      new Request("http://localhost/api/rag/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collectionId }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data).toHaveProperty("documents");
+    expect(data).toHaveProperty("chunks");
+    expect(data.documents).toBeGreaterThanOrEqual(0);
+    expect(data.chunks).toBeGreaterThanOrEqual(0);
+  });
+
   it("POST /api/rag/ingest returns 502 when getObject fails", async () => {
     const s3 = await import("../../app/api/_lib/s3");
     vi.mocked(s3.getObject).mockRejectedValueOnce(new Error("Bucket unavailable"));

@@ -61,4 +61,15 @@ describe("workflow-queue", () => {
       expect(j).toHaveProperty("createdAt");
     });
   });
+
+  it("listWorkflowQueueJobs filters by status when opts.status provided", async () => {
+    const jobs = await listWorkflowQueueJobs({ status: "queued", limit: 5 });
+    expect(Array.isArray(jobs)).toBe(true);
+    jobs.forEach((j) => expect(j.status).toBe("queued"));
+  });
+
+  it("getWorkflowQueueJob returns null for unknown job id", async () => {
+    const job = await getWorkflowQueueJob("non-existent-job-id-12345");
+    expect(job).toBeNull();
+  });
 });

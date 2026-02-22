@@ -692,6 +692,84 @@ main {
   color: var(--text-muted);
 }
 
+/* Knowledge section headers */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+.section-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
+/* Knowledge connectors: provider picker and connector list cards */
+.connector-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.connector-picker-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0.75rem;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text);
+  transition: background 0.15s, border-color 0.15s;
+}
+.connector-picker-card:hover {
+  background: var(--surface);
+  border-color: var(--primary);
+}
+.connector-picker-card .connector-picker-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+.connector-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  margin-bottom: 0.5rem;
+}
+.connector-card-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.connector-card-meta {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+.connector-card-meta strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+.connector-card-meta span {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.connector-card-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
 /* Agent stats: daily bar segments – high contrast input vs output */
 .agent-stats-bar-segment-in {
   background: var(--stats-bar-input);

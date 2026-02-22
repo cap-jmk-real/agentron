@@ -4,6 +4,7 @@
     "workflow",
     "agent",
     "tools",
+    "knowledge",
     "improve_run",
     "improve_heap",
     "improve_agents_workflows"
@@ -77,6 +78,19 @@
         "list_custom_functions",
         "get_custom_function",
         "update_custom_function"
+      ]
+    },
+    {
+      "id": "knowledge",
+      "description": "Knowledge connectors: list connectors, list items, read or update content in Notion, Drive, local folders, etc. Use list_connectors to discover connector ids.",
+      "toolNames": [
+        "list_connectors",
+        "list_connector_items",
+        "connector_read_item",
+        "connector_update_item",
+        "ingest_deployment_documents",
+        "ask_user",
+        "format_response"
       ]
     },
     {

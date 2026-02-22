@@ -1,6 +1,7 @@
 import { json } from "../../_lib/response";
 import { db, executions, runLogs, workflows, agents, fromExecutionRow } from "../../_lib/db";
 import { createRunNotification } from "../../_lib/notifications-store";
+import { ensureRunFailureSideEffects } from "../../_lib/run-failure-side-effects";
 import { eq, asc } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
@@ -74,7 +75,7 @@ export async function PATCH(request: Request, { params }: Params) {
     .where(eq(executions.id, id))
     .run();
   const runStatus = body.status as string | undefined;
-  if (runStatus === "completed" || runStatus === "failed" || runStatus === "waiting_for_user") {
+  if (runStatus === "completed" || runStatus === "waiting_for_user") {
     const row = rows[0];
     try {
       await createRunNotification(id, runStatus, {
@@ -83,6 +84,16 @@ export async function PATCH(request: Request, { params }: Params) {
       });
     } catch {
       // ignore notification errors
+    }
+  } else if (runStatus === "failed") {
+    const row = rows[0];
+    try {
+      await ensureRunFailureSideEffects(id, {
+        targetType: row.targetType,
+        targetId: row.targetId,
+      });
+    } catch {
+      // ignore
     }
   }
   const updated = await db.select().from(executions).where(eq(executions.id, id));

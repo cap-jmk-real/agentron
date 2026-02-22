@@ -210,6 +210,71 @@ describe("Vault credentials API", () => {
     expect(data.total).toBe(1);
   });
 
+  it("POST /api/vault/credentials/import returns 400 when content-type is not JSON or multipart", async () => {
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain", Cookie: cookieHeader },
+        body: "key,value",
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toMatch(/JSON|multipart|entries/);
+  });
+
+  it("POST /api/vault/credentials/import returns 400 when multipart form has no file", async () => {
+    const form = new FormData();
+    form.append("other", "not-a-file");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toMatch(/file|csv/);
+  });
+
+  it("POST /api/vault/credentials/import returns 400 when JSON file content is invalid", async () => {
+    const form = new FormData();
+    form.append("file", new Blob(["not valid json {"], { type: "application/json" }), "data.json");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("Invalid JSON");
+  });
+
+  it("POST /api/vault/credentials/import parses JSON file with keys array as entries with empty value", async () => {
+    const form = new FormData();
+    form.append(
+      "file",
+      new Blob([JSON.stringify({ keys: ["key-a", "key-b"] })], { type: "application/json" }),
+      "keys.json"
+    );
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(0);
+    expect(data.total).toBe(2);
+    expect(Array.isArray(data.errors)).toBe(true);
+    expect(data.errors.some((e: string) => e.includes("empty value"))).toBe(true);
+  });
+
   it("POST /api/vault/credentials/import parses CSV with name,password header", async () => {
     const csv = "name,password\nuser1,secret1\nuser2,secret2";
     const form = new FormData();
@@ -246,6 +311,91 @@ describe("Vault credentials API", () => {
 
   it("POST /api/vault/credentials/import parses CSV line with no comma as single cell", async () => {
     const csv = "key,value\nsingle,val\nnocomma";
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "import.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import skips CSV row with empty key cell", async () => {
+    const csv = "key,value\n,val\nused-key,used-val";
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "import.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import skips CSV row with empty value cell in parseCsv", async () => {
+    const csv = "key,value\nvalid-key,secret\nkey-no-value,";
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "import.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import skips CSV row with empty key cell in parseCsv", async () => {
+    const csv = "key,value\n,only-value\nk2,v2";
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "import.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import parses CSV with quoted field containing comma", async () => {
+    const csv = 'key,value\n"key,with,comma",secret-value';
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "import.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import skips CSV row with only one column", async () => {
+    const csv = "key,value\na,b\nsingle-column";
     const form = new FormData();
     form.append("file", new Blob([csv], { type: "text/csv" }), "import.csv");
     const res = await importPost(
@@ -386,6 +536,23 @@ describe("Vault credentials API", () => {
     expect(data.total).toBe(1);
   });
 
+  it("POST /api/vault/credentials/import treats file with unknown extension as CSV content", async () => {
+    const text = "key,value\nunknown-ext,secret";
+    const form = new FormData();
+    form.append("file", new File([text], "data.unknown", { type: "application/octet-stream" }));
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
   it("POST /api/vault/credentials/import imports from CSV file (multipart)", async () => {
     const csv = "key,value\nmy-service,secret123\nother,pass";
     const form = new FormData();
@@ -402,6 +569,74 @@ describe("Vault credentials API", () => {
     expect(data.ok).toBe(true);
     expect(data.imported).toBe(2);
     expect(data.total).toBe(2);
+  });
+
+  it("POST /api/vault/credentials/import accepts form field csv", async () => {
+    const csv = "key,value\nfrom-csv-field,secret-csv";
+    const form = new FormData();
+    form.append("csv", new Blob([csv], { type: "text/csv" }), "data.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import parses CSV with label header", async () => {
+    const csv = "label,value\nmy-label,my-secret";
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "labels.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import parses CSV with username header", async () => {
+    const csv = "username,password\nmyuser,mypass";
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "users.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import imports from JSON file (multipart with .json)", async () => {
+    const json = JSON.stringify({ entries: [{ key: "json-file-key", value: "json-file-secret" }] });
+    const form = new FormData();
+    form.append("file", new Blob([json], { type: "application/json" }), "creds.json");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
   });
 
   it("POST /api/vault/credentials/import returns 400 when no file in multipart", async () => {
@@ -430,6 +665,141 @@ describe("Vault credentials API", () => {
     const data = await res.json();
     expect(data.imported).toBe(0);
     expect(data.total).toBe(0);
+  });
+
+  it("POST /api/vault/credentials/import accepts multipart with csv form field", async () => {
+    const csv = "key,value\nfrom-csv-field,secret";
+    const form = new FormData();
+    form.append("csv", new Blob([csv], { type: "text/csv" }), "data.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import parses CSV with label,value header", async () => {
+    const csv = "label,value\nmylabel,myval";
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "import.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import parses CSV with username header", async () => {
+    const csv = "username,password\nu1,p1";
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "import.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import handles empty file as zero entries", async () => {
+    const form = new FormData();
+    form.append("file", new Blob([""], { type: "text/csv" }), "empty.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(0);
+    expect(data.total).toBe(0);
+  });
+
+  it("POST /api/vault/credentials/import parses CSV with service,password header", async () => {
+    const csv = "service,password\nsvc1,pass1";
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "import.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import parses CSV with service,value header", async () => {
+    const csv = "service,value\nsvc2,val2";
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "import.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import parses CSV with label,caption header (label-only branch)", async () => {
+    const csv = "label,caption\nmykey,myval";
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "labels.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import parses CSV with username,login header (username-only branch)", async () => {
+    const csv = "username,login\nu1,secret1";
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "users.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
   });
 
   it("POST /api/vault/credentials/import accepts multipart JSON file with entries array", async () => {
@@ -479,6 +849,40 @@ describe("Vault credentials API", () => {
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toContain("Invalid JSON");
+  });
+
+  it("POST /api/vault/credentials/import accepts multipart JSON file with no entries or keys array", async () => {
+    const json = JSON.stringify({ other: true });
+    const form = new FormData();
+    form.append("file", new Blob([json], { type: "application/json" }), "data.json");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(0);
+    expect(data.total).toBe(0);
+  });
+
+  it("POST /api/vault/credentials/import skips entry with empty key", async () => {
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+        body: JSON.stringify({
+          entries: [{ key: "   ", value: "some-value" }],
+        }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(0);
+    expect(data.total).toBe(1);
+    expect(data.errors).toBeUndefined();
   });
 
   it("POST /api/vault/credentials/import skips empty value and reports errors", async () => {

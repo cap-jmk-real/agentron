@@ -112,5 +112,17 @@ describe("Backup API", () => {
     expect(res.status).toBe(500);
     const data = await res.json();
     expect(data.error).toBe("reset failed");
+    vi.restoreAllMocks();
+  });
+
+  it("POST /api/backup/reset returns 500 with generic message when thrown value is not Error", async () => {
+    vi.spyOn(db, "runReset").mockImplementationOnce(() => {
+      throw "string throw";
+    });
+    const res = await resetPost();
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.error).toBe("Reset failed");
+    vi.restoreAllMocks();
   });
 });

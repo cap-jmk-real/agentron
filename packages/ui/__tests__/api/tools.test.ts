@@ -32,6 +32,27 @@ describe("Tools API", () => {
     createdId = data.id;
   });
 
+  it("POST /api/tools accepts optional id in body", async () => {
+    const customId = "custom-tool-id-12345";
+    const res = await listPost(
+      new Request("http://localhost/api/tools", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: customId,
+          name: "Custom Id Tool",
+          protocol: "native",
+          config: {},
+          inputSchema: { type: "object", properties: {}, required: [] },
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.id).toBe(customId);
+    expect(data.name).toBe("Custom Id Tool");
+  });
+
   it("GET /api/tools/:id returns tool", async () => {
     if (!createdId) return;
     const res = await getOne(new Request("http://localhost/api/tools/x"), {
@@ -125,6 +146,26 @@ describe("Tools API", () => {
     const data = await res.json();
     expect(data.outputSchema).toEqual(newOutputSchema);
     expect(data.id).toBe(stdTool.id);
+  });
+
+  it("PUT /api/tools/:id with empty body for standard tool keeps existing schemas", async () => {
+    const listRes = await listGet();
+    const list = await listRes.json();
+    const stdTool = list.find((t: { id: string }) => t.id.startsWith("std-"));
+    if (!stdTool) return;
+    const res = await putOne(
+      new Request("http://localhost/api/tools/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: stdTool.id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBe(stdTool.id);
+    expect(data.inputSchema).toEqual(stdTool.inputSchema);
+    expect(data.outputSchema).toEqual(stdTool.outputSchema);
   });
 
   it("DELETE /api/tools/:id returns 400 for standard tool", async () => {

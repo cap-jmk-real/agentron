@@ -14,6 +14,17 @@ One e2e test that exercises a **real** scenario: the Studio chat assistant (agen
 - **In CI:** No real OpenClaw is expected. The test skips when the Gateway is not reachable — so CI does not need to run OpenClaw unless we explicitly add a step that spawns a container for this test (and then must clean it up).
 - When running the test locally (or in a pipeline that opts in): start the Gateway first, e.g. `openclaw gateway`, or run OpenClaw in a container and set `OPENCLAW_GATEWAY_URL`. If token auth is enabled, set `OPENCLAW_GATEWAY_TOKEN`.
 
+### Full E2E (real send + history)
+
+When the e2e **starts a container** (no Gateway on host), the container token typically has **no usable scopes** (gateway returns "missing scope: operator.read" or "operator.write"). Passing the test despite denied RPCs would be a failed test. So when the gateway was started in a container (`fromContainer`), the test **fails** with a clear message directing you to use a host gateway for full e2e. The e2e optionally runs `openclaw onboard --non-interactive ...` inside the container to try to obtain a token with full scopes; if the image supports it and the gateway hot-reloads that config, the test may pass with the container.
+
+To get **full E2E** (real send, runId, and openclaw_history with messages), use **Option A: Host gateway** (see `docs/openclaw-integration.md` § Option A and `docs/openclaw-agent-command-execution-plan.md`):
+
+1. On the host, run `openclaw onboard` (or ensure the gateway has a token with operator.write).
+2. Start the gateway on the host: `openclaw gateway` (or your usual method).
+3. Set `OPENCLAW_GATEWAY_URL` and `OPENCLAW_GATEWAY_TOKEN` to that gateway’s URL and token.
+4. Run the OpenClaw e2e; it will see the gateway is reachable, **skip** starting a container, and use your gateway. The test will then assert runId and at least one message in history.
+
 **Skip rule:** At the start of the test, call `openclawHealth()`. If the Gateway is not reachable, **skip** the test with a clear message.
 
 ---

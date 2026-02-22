@@ -127,6 +127,44 @@ describe("RAG encoding config API", () => {
     expect(res.status).toBe(404);
   });
 
+  it("GET /api/rag/encoding-config/:id returns embeddingProviderId and endpoint undefined when null", async () => {
+    const res = await encGet(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.embeddingProviderId).toBeUndefined();
+    expect(data.endpoint).toBeUndefined();
+  });
+
+  it("PUT /api/rag/encoding-config/:id returns 400 for invalid JSON", async () => {
+    const res = await encPut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: "not json",
+      }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBeDefined();
+  });
+
+  it("PUT /api/rag/encoding-config/:id with empty body returns 200 and current config", async () => {
+    const res = await encPut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBe(id);
+  });
+
   it("DELETE /api/rag/encoding-config/:id removes config", async () => {
     const res = await encDelete(new Request("http://localhost/x", { method: "DELETE" }), {
       params: Promise.resolve({ id }),
@@ -147,6 +185,19 @@ describe("RAG document store API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
+  });
+
+  it("POST /api/rag/document-store returns 400 for invalid JSON", async () => {
+    const res = await storePost(
+      new Request("http://localhost/api/rag/document-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not valid json",
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBeDefined();
   });
 
   it("POST /api/rag/document-store creates store", async () => {
@@ -171,10 +222,83 @@ describe("RAG document store API", () => {
     id = data.id;
   });
 
+  it("GET /api/rag/document-store/:id returns 404 for unknown id", async () => {
+    const res = await storeGet(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id: "non-existent-document-store-id" }),
+    });
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toContain("Not found");
+  });
+
   it("GET /api/rag/document-store/:id returns store", async () => {
     const res = await storeGet(new Request("http://localhost/x"), {
       params: Promise.resolve({ id }),
     });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBe(id);
+  });
+
+  it("GET /api/rag/document-store/:id returns region/endpoint/credentialsRef undefined when null", async () => {
+    const minimalRes = await storePost(
+      new Request("http://localhost/api/rag/document-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Minimal store",
+          type: "minio",
+          bucket: "b",
+        }),
+      })
+    );
+    expect(minimalRes.status).toBe(201);
+    const minimal = await minimalRes.json();
+    const res = await storeGet(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id: minimal.id }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.region).toBeUndefined();
+    expect(data.endpoint).toBeUndefined();
+    expect(data.credentialsRef).toBeUndefined();
+  });
+
+  it("PUT /api/rag/document-store/:id returns 404 for unknown id", async () => {
+    const res = await storePut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Updated" }),
+      }),
+      { params: Promise.resolve({ id: "non-existent-document-store-id" }) }
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("PUT /api/rag/document-store/:id returns 400 for invalid JSON", async () => {
+    const res = await storePut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: "not json",
+      }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBeDefined();
+  });
+
+  it("PUT /api/rag/document-store/:id with empty body returns 200 and unchanged store", async () => {
+    const res = await storePut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id }) }
+    );
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.id).toBe(id);
@@ -192,6 +316,97 @@ describe("RAG document store API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.bucket).toBe("agentron-docs-v2");
+  });
+
+  it("PUT /api/rag/document-store/:id updates type only", async () => {
+    const res = await storePut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "s3" }),
+      }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.type).toBe("s3");
+  });
+
+  it("PUT /api/rag/document-store/:id updates name only", async () => {
+    const res = await storePut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Renamed store" }),
+      }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.name).toBe("Renamed store");
+  });
+
+  it("PUT /api/rag/document-store/:id updates region only", async () => {
+    const res = await storePut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ region: "us-east-1" }),
+      }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.region).toBe("us-east-1");
+  });
+
+  it("PUT /api/rag/document-store/:id updates endpoint only", async () => {
+    const res = await storePut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: "http://minio:9001" }),
+      }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.endpoint).toBe("http://minio:9001");
+  });
+
+  it("PUT /api/rag/document-store/:id updates credentialsRef only", async () => {
+    const res = await storePut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credentialsRef: "vault-ref-1" }),
+      }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.credentialsRef).toBe("vault-ref-1");
+  });
+
+  it("PUT /api/rag/document-store/:id updates bucket only", async () => {
+    const res = await storePut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bucket: "new-bucket-only" }),
+      }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.bucket).toBe("new-bucket-only");
+  });
+
+  it("DELETE /api/rag/document-store/:id returns 404 for unknown id", async () => {
+    const res = await storeDelete(new Request("http://localhost/x", { method: "DELETE" }), {
+      params: Promise.resolve({ id: "non-existent-document-store-id" }),
+    });
+    expect(res.status).toBe(404);
   });
 
   it("DELETE /api/rag/document-store/:id removes store", async () => {
@@ -270,6 +485,15 @@ describe("RAG collections API", () => {
     collId = data.id;
   });
 
+  it("GET /api/rag/collections/:id returns 404 for unknown id", async () => {
+    const res = await collGet(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id: "non-existent-collection-id" }),
+    });
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toContain("Not found");
+  });
+
   it("GET /api/rag/collections/:id returns collection", async () => {
     const res = await collGet(new Request("http://localhost/x"), {
       params: Promise.resolve({ id: collId }),
@@ -278,6 +502,56 @@ describe("RAG collections API", () => {
     const data = await res.json();
     expect(data.id).toBe(collId);
     expect(data.scope).toBe("deployment");
+  });
+
+  it("GET /api/rag/collections/:id returns agentId and vectorStoreId undefined when null", async () => {
+    const res = await collGet(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id: collId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.agentId).toBeUndefined();
+    expect(data.vectorStoreId).toBeUndefined();
+  });
+
+  it("PUT /api/rag/collections/:id returns 404 for unknown id", async () => {
+    const res = await collPut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Any" }),
+      }),
+      { params: Promise.resolve({ id: "non-existent-collection-id" }) }
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("PUT /api/rag/collections/:id returns 400 for invalid JSON", async () => {
+    const res = await collPut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: "not json",
+      }),
+      { params: Promise.resolve({ id: collId }) }
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBeDefined();
+  });
+
+  it("PUT /api/rag/collections/:id with empty body returns 200 and current collection", async () => {
+    const res = await collPut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: collId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBe(collId);
   });
 
   it("PUT /api/rag/collections/:id updates collection", async () => {
@@ -292,6 +566,13 @@ describe("RAG collections API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.name).toBe("Deployment knowledge (updated)");
+  });
+
+  it("DELETE /api/rag/collections/:id returns 404 for unknown id", async () => {
+    const res = await collDelete(new Request("http://localhost/x", { method: "DELETE" }), {
+      params: Promise.resolve({ id: "non-existent-collection-id" }),
+    });
+    expect(res.status).toBe(404);
   });
 
   it("DELETE /api/rag/collections/:id removes collection", async () => {

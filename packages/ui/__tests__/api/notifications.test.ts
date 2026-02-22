@@ -4,6 +4,7 @@ import { POST as clearPost } from "../../app/api/notifications/clear/route";
 import {
   createNotification,
   createChatNotification,
+  createRunNotification,
   clearActiveBySourceId,
   clearAll,
   clearBulk,
@@ -17,6 +18,7 @@ import {
   agents,
   conversations,
   toExecutionRow,
+  notificationsTable,
 } from "../../app/api/_lib/db";
 import { POST as workflowsPost } from "../../app/api/workflows/route";
 import { POST as agentsPost } from "../../app/api/agents/route";
@@ -158,6 +160,24 @@ describe("Notifications API", () => {
     expect(data.items.length).toBeLessThanOrEqual(10);
   });
 
+  it("GET /api/notifications clamps limit to 200", async () => {
+    const res = await GET(new Request("http://localhost/api/notifications?limit=500"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.items.length).toBeLessThanOrEqual(200);
+  });
+
+  it("GET /api/notifications respects offset param", async () => {
+    await createNotification({ type: "run", sourceId: "r1", title: "A", severity: "info" });
+    await createNotification({ type: "run", sourceId: "r2", title: "B", severity: "info" });
+    await createNotification({ type: "run", sourceId: "r3", title: "C", severity: "info" });
+    const res = await GET(new Request("http://localhost/api/notifications?limit=2&offset=1"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.items.length).toBeLessThanOrEqual(2);
+    expect(data.totalActiveCount).toBe(3);
+  });
+
   it("clearBulk with empty array returns 0", async () => {
     const cleared = await clearBulk([]);
     expect(cleared).toBe(0);
@@ -166,6 +186,54 @@ describe("Notifications API", () => {
   it("clearOne with non-existent id returns false", async () => {
     const ok = await clearOne("00000000-0000-0000-0000-000000000000");
     expect(ok).toBe(false);
+  });
+
+  it("clearOne when already cleared returns true (idempotent)", async () => {
+    const n = await createNotification({
+      type: "run",
+      sourceId: "r1",
+      title: "Done",
+      severity: "info",
+    });
+    await clearOne(n.id);
+    const ok = await clearOne(n.id);
+    expect(ok).toBe(true);
+  });
+
+  it("createRunNotification creates notification for completed, failed, waiting_for_user", async () => {
+    const completed = await createRunNotification("run-1", "completed");
+    expect(completed.title).toBe("Run completed");
+    expect(completed.severity).toBe("success");
+    const failed = await createRunNotification("run-2", "failed");
+    expect(failed.title).toBe("Run failed");
+    expect(failed.severity).toBe("error");
+    const waiting = await createRunNotification("run-3", "waiting_for_user");
+    expect(waiting.title).toBe("Run needs your input");
+    expect(waiting.severity).toBe("warning");
+  });
+
+  it("listNotifications returns notification with undefined metadata when row has invalid JSON metadata", async () => {
+    const id = crypto.randomUUID();
+    const now = Date.now();
+    await db
+      .insert(notificationsTable)
+      .values({
+        id,
+        type: "run",
+        sourceId: "r1",
+        title: "Bad meta",
+        message: "",
+        severity: "info",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+        metadata: "{ invalid json",
+      })
+      .run();
+    const { items } = await listNotifications({});
+    const found = items.find((i: { id: string }) => i.id === id);
+    expect(found).toBeDefined();
+    expect(found!.metadata).toBeUndefined();
   });
 
   it("clearAll with types filter clears only matching types", async () => {

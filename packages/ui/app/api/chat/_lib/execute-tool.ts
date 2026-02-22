@@ -72,6 +72,19 @@ import { getFeedbackForScope } from "../../_lib/feedback-for-scope";
 import { getRunForImprovement } from "../../_lib/run-for-improvement";
 import { enqueueWorkflowResume } from "../../_lib/workflow-queue";
 import { getDeploymentCollectionId, retrieveChunks } from "../../_lib/rag";
+import { ragConnectors, ragDocuments } from "@agentron-studio/core";
+import {
+  browseLocalPath,
+  browseGoogleDrive,
+  browseDropbox,
+  browseOneDrive,
+  browseNotion,
+  browseConfluence,
+  browseGitBook,
+  browseBookStack,
+} from "../../rag/connectors/_lib/browse";
+import { readConnectorItem, updateConnectorItem } from "../../rag/connectors/_lib/connector-write";
+import { ingestOneDocument } from "../../rag/ingest/route";
 import { testRemoteConnection } from "../../_lib/remote-test";
 import { randomAgentName, randomWorkflowName } from "../../_lib/naming";
 import { openclawSend, openclawHistory, openclawAbort } from "../../_lib/openclaw-client";
@@ -125,6 +138,21 @@ import { executeToolHandlersWorkflowsRunsReminders } from "./execute-tool-handle
 
 type GraphNode = import("./execute-tool-shared").GraphNode;
 type GraphEdge = import("./execute-tool-shared").GraphEdge;
+
+const CONNECTOR_AUTH_HINT =
+  " Configure this connector in Knowledge → Connectors and set the required credential (env var or key).";
+
+function appendConnectorAuthHint(errorMessage: string): string {
+  const lower = errorMessage.toLowerCase();
+  if (
+    /auth|credential|env var|token|service account|unauthorized|401|403|not set|missing.*key|invalid.*key/i.test(
+      lower
+    )
+  ) {
+    return errorMessage + CONNECTOR_AUTH_HINT;
+  }
+  return errorMessage;
+}
 
 export async function executeTool(
   name: string,
@@ -1195,6 +1223,102 @@ export async function executeTool(
           version: nextWfVersion,
         };
         if (updateWorkflowWarning) result.warning = updateWorkflowWarning;
+        return result;
+      }
+      case "list_connectors": {
+        const rows = await db.select().from(ragConnectors);
+        return rows.map((r) => ({
+          id: r.id,
+          type: r.type,
+          collectionId: r.collectionId,
+        }));
+      }
+      case "ingest_deployment_documents": {
+        const collectionId = await getDeploymentCollectionId();
+        if (!collectionId) {
+          return {
+            error:
+              "No deployment collection. Create a collection with scope 'deployment' in Knowledge → Collections.",
+          };
+        }
+        const docRows = await db
+          .select({ id: ragDocuments.id })
+          .from(ragDocuments)
+          .where(eq(ragDocuments.collectionId, collectionId));
+        let totalChunks = 0;
+        const errors: string[] = [];
+        for (const row of docRows) {
+          try {
+            const r = await ingestOneDocument(row.id);
+            totalChunks += r.chunks;
+          } catch (err) {
+            errors.push(`${row.id}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+        return {
+          message: `Ingested ${docRows.length} documents, ${totalChunks} chunks.`,
+          documents: docRows.length,
+          chunks: totalChunks,
+          ...(errors.length > 0 ? { errors } : {}),
+        };
+      }
+      case "list_connector_items": {
+        const connectorId = a.connectorId as string;
+        if (!connectorId) return { error: "connectorId required" };
+        const connRows = await db
+          .select()
+          .from(ragConnectors)
+          .where(eq(ragConnectors.id, connectorId));
+        if (connRows.length === 0) return { error: "Connector not found" };
+        const connector = connRows[0];
+        const config = connector.config
+          ? (JSON.parse(connector.config) as Record<string, unknown>)
+          : {};
+        const limit = typeof a.limit === "number" ? Math.min(a.limit, 500) : 200;
+        const pageToken = typeof a.pageToken === "string" ? a.pageToken : undefined;
+        try {
+          if (
+            connector.type === "filesystem" ||
+            connector.type === "obsidian_vault" ||
+            connector.type === "logseq_graph"
+          ) {
+            const dirPath = config.path as string | undefined;
+            if (!dirPath || typeof dirPath !== "string")
+              return { error: "Connector has no config.path" };
+            const result = browseLocalPath(dirPath, undefined, { limit, pageToken });
+            return result;
+          }
+          if (connector.type === "google_drive") {
+            return await browseGoogleDrive(config, { limit, pageToken });
+          }
+          if (connector.type === "dropbox")
+            return await browseDropbox(config, { limit, pageToken });
+          if (connector.type === "onedrive") return await browseOneDrive(config, { limit });
+          if (connector.type === "notion") return await browseNotion(config, { limit });
+          if (connector.type === "confluence") return await browseConfluence(config, { limit });
+          if (connector.type === "gitbook") return await browseGitBook(config);
+          if (connector.type === "bookstack") return await browseBookStack(config);
+          return { error: `Browse not implemented for connector type: ${connector.type}` };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return { error: appendConnectorAuthHint(msg) };
+        }
+      }
+      case "connector_read_item": {
+        const connectorId = a.connectorId as string;
+        const itemId = a.itemId as string;
+        if (!connectorId || !itemId) return { error: "connectorId and itemId required" };
+        const result = await readConnectorItem(connectorId, itemId);
+        if ("error" in result) return { error: appendConnectorAuthHint(result.error) };
+        return result;
+      }
+      case "connector_update_item": {
+        const connectorId = a.connectorId as string;
+        const itemId = a.itemId as string;
+        const content = typeof a.content === "string" ? a.content : "";
+        if (!connectorId || !itemId) return { error: "connectorId and itemId required" };
+        const result = await updateConnectorItem(connectorId, itemId, content);
+        if ("error" in result) return { error: appendConnectorAuthHint(result.error) };
         return result;
       }
       default: {

@@ -2,8 +2,26 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, Trash2, Database, Settings, FolderOpen, Box, Cloud } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import {
+  ArrowLeft,
+  Plus,
+  Trash2,
+  Database,
+  Settings,
+  FolderOpen,
+  Box,
+  Cloud,
+  ListFilter,
+  CheckSquare,
+  Square,
+} from "lucide-react";
 import ConfirmModal from "../components/confirm-modal";
+import {
+  getConnectorTypeMeta,
+  getConnectorTypesForPicker,
+  type ConnectorTypeId,
+} from "./_lib/connector-types";
 
 type EncodingConfig = {
   id: string;
@@ -62,6 +80,7 @@ type Connector = {
   config: Record<string, unknown>;
   status: string;
   lastSyncAt?: number;
+  lastError?: string;
   createdAt: number;
 };
 
@@ -74,6 +93,17 @@ type DocItem = {
   createdAt: number;
 };
 
+type BrowseItem = { id: string; name: string; type?: string; path?: string };
+
+const TEXT_BASED_CONNECTOR_TYPES = new Set([
+  "notion",
+  "obsidian_vault",
+  "logseq_graph",
+  "confluence",
+  "gitbook",
+  "bookstack",
+]);
+
 function StudioDocumentsList({
   collectionId,
   onIngest,
@@ -83,6 +113,10 @@ function StudioDocumentsList({
 }) {
   const [docs, setDocs] = useState<DocItem[]>([]);
   const [ingestingId, setIngestingId] = useState<string | null>(null);
+  const [ingestAllStatus, setIngestAllStatus] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
   useEffect(() => {
     fetch(`/api/rag/documents?collectionId=${encodeURIComponent(collectionId)}`)
       .then((r) => r.json())
@@ -90,6 +124,7 @@ function StudioDocumentsList({
       .catch(() => setDocs([]));
   }, [collectionId]);
   const runIngest = async (documentId: string) => {
+    setIngestAllStatus(null);
     setIngestingId(documentId);
     try {
       const res = await fetch("/api/rag/ingest", {
@@ -98,8 +133,37 @@ function StudioDocumentsList({
         body: JSON.stringify({ documentId }),
       });
       const data = await res.json().catch(() => ({}));
-      if (res.ok) alert(`Ingested ${data.chunks ?? 0} chunks.`);
-      else alert(data?.error || "Ingest failed");
+      if (res.ok) {
+        setIngestAllStatus({
+          type: "success",
+          message: `Ingested ${data.chunks ?? 0} chunks.`,
+        });
+      } else {
+        setIngestAllStatus({ type: "error", message: data?.error || "Ingest failed" });
+      }
+      onIngest();
+    } finally {
+      setIngestingId(null);
+    }
+  };
+  const runIngestAll = async () => {
+    setIngestAllStatus(null);
+    setIngestingId("all");
+    try {
+      const res = await fetch("/api/rag/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collectionId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setIngestAllStatus({
+          type: "success",
+          message: `Ingested ${data.documents ?? 0} documents, ${data.chunks ?? 0} chunks.`,
+        });
+      } else {
+        setIngestAllStatus({ type: "error", message: data?.error || "Ingest all failed" });
+      }
       onIngest();
     } finally {
       setIngestingId(null);
@@ -108,7 +172,31 @@ function StudioDocumentsList({
   if (docs.length === 0) return null;
   return (
     <div style={{ marginTop: "1rem" }}>
-      <h4 style={{ margin: "0 0 0.35rem", fontSize: "0.9rem" }}>Uploaded documents</h4>
+      <h4 style={{ margin: "0 0 0.35rem", fontSize: "0.9rem" }}>Documents (uploads + synced)</h4>
+      <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", margin: "0 0 0.5rem" }}>
+        Connectors that sync to this collection appear here. Ingest makes them searchable in chat.
+      </p>
+      {ingestAllStatus && (
+        <p
+          style={{
+            fontSize: "0.85rem",
+            margin: "0 0 0.35rem",
+            color: ingestAllStatus.type === "error" ? "var(--error)" : "var(--success)",
+          }}
+        >
+          {ingestAllStatus.message}
+        </p>
+      )}
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
+        <button
+          type="button"
+          className="button button-small"
+          onClick={runIngestAll}
+          disabled={!!ingestingId}
+        >
+          {ingestingId === "all" ? "Ingesting all…" : "Ingest all"}
+        </button>
+      </div>
       <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: "0.85rem" }}>
         {docs.map((d) => (
           <li
@@ -152,6 +240,12 @@ export default function KnowledgePage() {
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [syncingConnectorId, setSyncingConnectorId] = useState<string | null>(null);
+  const [connectorForItems, setConnectorForItems] = useState<Connector | null>(null);
+  const [browseItems, setBrowseItems] = useState<BrowseItem[]>([]);
+  const [browseLoading, setBrowseLoading] = useState(false);
+  const [browseNextToken, setBrowseNextToken] = useState<string | undefined>(undefined);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  const [savingSelection, setSavingSelection] = useState(false);
 
   // Encoding form
   const [encName, setEncName] = useState("");
@@ -159,7 +253,7 @@ export default function KnowledgePage() {
   const [encProvider, setEncProvider] = useState("openai");
   const [encModel, setEncModel] = useState("text-embedding-3-small");
   const [encDimensions, setEncDimensions] = useState("1536");
-  const [encLocalModels, setEncLocalModels] = useState<{ name: string }[]>([]);
+  const [encLocalModels, setEncLocalModels] = useState<{ name: string; dimensions?: number }[]>([]);
   const [savingEnc, setSavingEnc] = useState(false);
 
   // Store form
@@ -185,10 +279,16 @@ export default function KnowledgePage() {
   );
   const [savingVecStore, setSavingVecStore] = useState(false);
 
-  const [connectorType, setConnectorType] = useState<"google_drive">("google_drive");
+  const [connectorType, setConnectorType] = useState<ConnectorTypeId | "">("google_drive");
   const [connectorCollectionId, setConnectorCollectionId] = useState("");
   const [connectorFolderId, setConnectorFolderId] = useState("root");
   const [connectorServiceAccountKeyRef, setConnectorServiceAccountKeyRef] = useState("");
+  const [connectorPath, setConnectorPath] = useState("");
+  const [connectorIngestAfterSync, setConnectorIngestAfterSync] = useState(true);
+  const [connectorAccessTokenRef, setConnectorAccessTokenRef] = useState("");
+  const [connectorBaseUrl, setConnectorBaseUrl] = useState("");
+  const [connectorTokenId, setConnectorTokenId] = useState("");
+  const [connectorTokenSecret, setConnectorTokenSecret] = useState("");
   const [savingConnector, setSavingConnector] = useState(false);
 
   const loadAll = useCallback(async () => {
@@ -219,6 +319,106 @@ export default function KnowledgePage() {
     loadAll().finally(() => setLoading(false));
   }, [loadAll]);
 
+  const openSelectItems = (c: Connector) => {
+    setConnectorForItems(c);
+    const includeIds = c.config?.includeIds;
+    setSelectedItemIds(
+      new Set(
+        Array.isArray(includeIds)
+          ? includeIds.filter((x): x is string => typeof x === "string")
+          : []
+      )
+    );
+    setBrowseItems([]);
+    setBrowseNextToken(undefined);
+  };
+
+  useEffect(() => {
+    if (!connectorForItems) return;
+    setBrowseLoading(true);
+    fetch(`/api/rag/connectors/${connectorForItems.id}/items?limit=200`)
+      .then((r) => r.json())
+      .then((d: { items?: BrowseItem[]; nextPageToken?: string; error?: string }) => {
+        if (d.error) {
+          setBrowseItems([]);
+          return;
+        }
+        setBrowseItems(d.items || []);
+        setBrowseNextToken(d.nextPageToken);
+      })
+      .catch(() => setBrowseItems([]))
+      .finally(() => setBrowseLoading(false));
+  }, [connectorForItems?.id]);
+
+  const runSyncAll = async () => {
+    if (!connectorForItems) return;
+    setSavingSelection(true);
+    try {
+      const nextConfig = { ...connectorForItems.config };
+      delete nextConfig.includeIds;
+      await fetch(`/api/rag/connectors/${connectorForItems.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: nextConfig }),
+      });
+      setConnectorForItems(null);
+      await loadAll();
+    } finally {
+      setSavingSelection(false);
+    }
+  };
+
+  const runSaveSelection = async () => {
+    if (!connectorForItems) return;
+    setSavingSelection(true);
+    try {
+      const nextConfig = {
+        ...connectorForItems.config,
+        includeIds: Array.from(selectedItemIds),
+      };
+      await fetch(`/api/rag/connectors/${connectorForItems.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: nextConfig }),
+      });
+      setConnectorForItems(null);
+      await loadAll();
+    } finally {
+      setSavingSelection(false);
+    }
+  };
+
+  const toggleItemId = (id: string) => {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllBrowse = () => {
+    setSelectedItemIds(new Set(browseItems.map((i) => i.id)));
+  };
+  const deselectAllBrowse = () => {
+    setSelectedItemIds(new Set());
+  };
+
+  const loadMoreBrowse = () => {
+    if (!connectorForItems || !browseNextToken) return;
+    setBrowseLoading(true);
+    fetch(
+      `/api/rag/connectors/${connectorForItems.id}/items?limit=200&pageToken=${encodeURIComponent(browseNextToken)}`
+    )
+      .then((r) => r.json())
+      .then((d: { items?: BrowseItem[]; nextPageToken?: string; error?: string }) => {
+        if (d.error) return;
+        setBrowseItems((prev) => [...prev, ...(d.items || [])]);
+        setBrowseNextToken(d.nextPageToken);
+      })
+      .finally(() => setBrowseLoading(false));
+  };
+
   const selectedEncProvider = embeddingProviders.find((p) => p.id === encEmbeddingProviderId);
   useEffect(() => {
     if (!encEmbeddingProviderId || selectedEncProvider?.type !== "local") {
@@ -227,7 +427,7 @@ export default function KnowledgePage() {
     }
     fetch(`/api/rag/embedding-providers/${encodeURIComponent(encEmbeddingProviderId)}/models`)
       .then((r) => r.json())
-      .then((d: { models?: { name: string }[] }) =>
+      .then((d: { models?: { name: string; dimensions?: number }[] }) =>
         setEncLocalModels(Array.isArray(d?.models) ? d.models : [])
       )
       .catch(() => setEncLocalModels([]));
@@ -302,9 +502,48 @@ export default function KnowledgePage() {
     }
   };
 
+  const buildConnectorConfig = (): Record<string, unknown> => {
+    let base: Record<string, unknown> = {};
+    if (connectorType === "google_drive") {
+      base = {
+        folderId: connectorFolderId || "root",
+        serviceAccountKeyRef: connectorServiceAccountKeyRef || undefined,
+      };
+    } else if (
+      connectorType === "filesystem" ||
+      connectorType === "obsidian_vault" ||
+      connectorType === "logseq_graph"
+    ) {
+      base = { path: connectorPath || undefined };
+    } else if (connectorType === "dropbox") {
+      base = {
+        path: connectorPath || "",
+        accessTokenRef: connectorAccessTokenRef || undefined,
+      };
+    } else if (
+      connectorType === "onedrive" ||
+      connectorType === "notion" ||
+      connectorType === "gitbook"
+    ) {
+      base = { accessTokenRef: connectorAccessTokenRef || undefined };
+    } else if (connectorType === "confluence") {
+      base = {
+        baseUrl: connectorBaseUrl || undefined,
+        accessTokenRef: connectorAccessTokenRef || undefined,
+      };
+    } else if (connectorType === "bookstack") {
+      base = {
+        baseUrl: connectorBaseUrl || undefined,
+        tokenId: connectorTokenId || undefined,
+        tokenSecret: connectorTokenSecret || undefined,
+      };
+    }
+    return { ...base, ingestAfterSync: connectorIngestAfterSync };
+  };
+
   const createConnector = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!connectorCollectionId) return;
+    if (!connectorCollectionId || !connectorType) return;
     setSavingConnector(true);
     try {
       await fetch("/api/rag/connectors", {
@@ -313,16 +552,18 @@ export default function KnowledgePage() {
         body: JSON.stringify({
           type: connectorType,
           collectionId: connectorCollectionId,
-          config: {
-            folderId: connectorFolderId || "root",
-            serviceAccountKeyRef: connectorServiceAccountKeyRef || undefined,
-          },
+          config: buildConnectorConfig(),
         }),
       });
       await loadAll();
       setConnectorCollectionId("");
       setConnectorFolderId("root");
       setConnectorServiceAccountKeyRef("");
+      setConnectorPath("");
+      setConnectorAccessTokenRef("");
+      setConnectorBaseUrl("");
+      setConnectorTokenId("");
+      setConnectorTokenSecret("");
       setShowConnectorForm(false);
     } finally {
       setSavingConnector(false);
@@ -561,11 +802,17 @@ export default function KnowledgePage() {
                           <select
                             className="select"
                             value={encModel}
-                            onChange={(e) => setEncModel(e.target.value)}
+                            onChange={(e) => {
+                              const name = e.target.value;
+                              setEncModel(name);
+                              const model = encLocalModels.find((m) => m.name === name);
+                              if (model?.dimensions != null)
+                                setEncDimensions(String(model.dimensions));
+                            }}
                           >
                             {encLocalModels.map((m) => (
                               <option key={m.name} value={m.name}>
-                                {m.name}
+                                {m.dimensions != null ? `${m.name} (${m.dimensions}d)` : m.name}
                               </option>
                             ))}
                           </select>
@@ -636,7 +883,9 @@ export default function KnowledgePage() {
                 </ul>
                 <p style={{ color: "var(--text-muted)", fontSize: "0.82rem", marginTop: "0.5rem" }}>
                   Configure embedding endpoints in Settings → Embedding, then choose one here and
-                  select the model. Used to vectorize documents and queries for RAG.
+                  select the model. Embedding size depends on the model; selecting a model may set
+                  dimensions—you can change them if needed. Used to vectorize documents and queries
+                  for RAG. See the docs for a table of common model names and dimensions.
                 </p>
                 {embeddingProviders.length === 0 && (
                   <p
@@ -660,14 +909,7 @@ export default function KnowledgePage() {
 
             {activeTab === "connectors" && (
               <section>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: "0.75rem",
-                  }}
-                >
+                <div className="section-header">
                   <h2 style={{ margin: 0, fontSize: "1rem" }}>Connectors</h2>
                   <button
                     type="button"
@@ -677,20 +919,15 @@ export default function KnowledgePage() {
                     <Plus size={14} /> Add
                   </button>
                 </div>
-                <p
-                  style={{
-                    fontSize: "0.85rem",
-                    color: "var(--text-muted)",
-                    marginBottom: "0.75rem",
-                  }}
-                >
-                  Sync external sources (e.g. Google Drive) into a collection&apos;s document store.
-                  Synced files appear as documents; run Ingest on them to add to the vector store.
+                <p className="section-desc">
+                  Sync external sources (Google Drive, Notion, local folders, etc.) into a
+                  collection&apos;s document store. Synced files appear as documents; run Ingest on
+                  them to add to the vector store.
                 </p>
                 {showConnectorForm && (
                   <form
                     onSubmit={createConnector}
-                    className="form"
+                    className="form connector-form"
                     style={{
                       marginBottom: "1rem",
                       padding: "1rem",
@@ -699,14 +936,30 @@ export default function KnowledgePage() {
                     }}
                   >
                     <div className="field">
-                      <label>Type</label>
-                      <select
-                        className="select"
-                        value={connectorType}
-                        onChange={(e) => setConnectorType(e.target.value as "google_drive")}
-                      >
-                        <option value="google_drive">Google Drive</option>
-                      </select>
+                      <label>Connection type</label>
+                      <div className="connector-picker-grid">
+                        {getConnectorTypesForPicker().map((meta) => (
+                          <button
+                            key={meta.id}
+                            type="button"
+                            className="connector-picker-card"
+                            onClick={() => setConnectorType(meta.id)}
+                            style={{
+                              borderColor: connectorType === meta.id ? "var(--primary)" : undefined,
+                            }}
+                          >
+                            <img
+                              src={meta.logoPath}
+                              alt=""
+                              className="connector-picker-logo"
+                              onError={(e) => {
+                                e.currentTarget.src = "/connectors/placeholder.svg";
+                              }}
+                            />
+                            <span>{meta.label}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <div className="field">
                       <label>Collection</label>
@@ -724,27 +977,134 @@ export default function KnowledgePage() {
                         ))}
                       </select>
                     </div>
-                    <div className="field">
-                      <label>Folder ID (optional)</label>
+                    <div
+                      className="field"
+                      style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+                    >
                       <input
-                        className="input"
-                        value={connectorFolderId}
-                        onChange={(e) => setConnectorFolderId(e.target.value)}
-                        placeholder="root or Google Drive folder ID"
+                        type="checkbox"
+                        id="connector-ingest-after-sync"
+                        checked={connectorIngestAfterSync}
+                        onChange={(e) => setConnectorIngestAfterSync(e.target.checked)}
                       />
+                      <label htmlFor="connector-ingest-after-sync" style={{ margin: 0 }}>
+                        Ingest after sync (chunk and embed new documents after each sync)
+                      </label>
                     </div>
-                    <div className="field">
-                      <label>Service account key (env var name)</label>
-                      <input
-                        className="input"
-                        value={connectorServiceAccountKeyRef}
-                        onChange={(e) => setConnectorServiceAccountKeyRef(e.target.value)}
-                        placeholder="GOOGLE_SERVICE_ACCOUNT_JSON"
-                      />
-                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                        Env var containing the full service account JSON key.
-                      </span>
-                    </div>
+                    {connectorType === "google_drive" && (
+                      <>
+                        <div className="field">
+                          <label>Folder ID (optional)</label>
+                          <input
+                            className="input"
+                            value={connectorFolderId}
+                            onChange={(e) => setConnectorFolderId(e.target.value)}
+                            placeholder="root or Google Drive folder ID"
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Service account key (env var name)</label>
+                          <input
+                            className="input"
+                            value={connectorServiceAccountKeyRef}
+                            onChange={(e) => setConnectorServiceAccountKeyRef(e.target.value)}
+                            placeholder="GOOGLE_SERVICE_ACCOUNT_JSON"
+                          />
+                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                            Env var containing the full service account JSON key.
+                          </span>
+                        </div>
+                      </>
+                    )}
+                    {(connectorType === "filesystem" ||
+                      connectorType === "obsidian_vault" ||
+                      connectorType === "logseq_graph") && (
+                      <div className="field">
+                        <label>Path (absolute directory path)</label>
+                        <input
+                          className="input"
+                          value={connectorPath}
+                          onChange={(e) => setConnectorPath(e.target.value)}
+                          placeholder="e.g. /path/to/vault or C:\vault"
+                          required
+                        />
+                      </div>
+                    )}
+                    {(connectorType === "dropbox" ||
+                      connectorType === "onedrive" ||
+                      connectorType === "notion" ||
+                      connectorType === "gitbook") && (
+                      <div className="field">
+                        <label>Access token (env var name)</label>
+                        <input
+                          className="input"
+                          value={connectorAccessTokenRef}
+                          onChange={(e) => setConnectorAccessTokenRef(e.target.value)}
+                          placeholder="e.g. DROPBOX_TOKEN"
+                          required={!!connectorType}
+                        />
+                      </div>
+                    )}
+                    {connectorType === "dropbox" && (
+                      <div className="field">
+                        <label>Folder path (optional)</label>
+                        <input
+                          className="input"
+                          value={connectorPath}
+                          onChange={(e) => setConnectorPath(e.target.value)}
+                          placeholder="e.g. / or /Folder"
+                        />
+                      </div>
+                    )}
+                    {(connectorType === "confluence" || connectorType === "bookstack") && (
+                      <div className="field">
+                        <label>Base URL</label>
+                        <input
+                          className="input"
+                          value={connectorBaseUrl}
+                          onChange={(e) => setConnectorBaseUrl(e.target.value)}
+                          placeholder="https://your-domain.atlassian.net/wiki or https://wiki.example.com"
+                          required={connectorType === "confluence" || connectorType === "bookstack"}
+                        />
+                      </div>
+                    )}
+                    {connectorType === "confluence" && (
+                      <div className="field">
+                        <label>Access token (env var name)</label>
+                        <input
+                          className="input"
+                          value={connectorAccessTokenRef}
+                          onChange={(e) => setConnectorAccessTokenRef(e.target.value)}
+                          placeholder="CONFLUENCE_TOKEN"
+                          required
+                        />
+                      </div>
+                    )}
+                    {connectorType === "bookstack" && (
+                      <>
+                        <div className="field">
+                          <label>Token ID (env var name or value)</label>
+                          <input
+                            className="input"
+                            value={connectorTokenId}
+                            onChange={(e) => setConnectorTokenId(e.target.value)}
+                            placeholder="BOOKSTACK_TOKEN_ID"
+                            required
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Token secret (env var name or value)</label>
+                          <input
+                            className="input"
+                            type="password"
+                            value={connectorTokenSecret}
+                            onChange={(e) => setConnectorTokenSecret(e.target.value)}
+                            placeholder="BOOKSTACK_TOKEN_SECRET"
+                            required
+                          />
+                        </div>
+                      </>
+                    )}
                     <button
                       type="submit"
                       className="button button-primary"
@@ -754,52 +1114,80 @@ export default function KnowledgePage() {
                     </button>
                   </form>
                 )}
-                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                  {connectors.map((c) => (
-                    <li
-                      key={c.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        padding: "0.5rem 0",
-                        borderBottom: "1px solid var(--border)",
-                      }}
-                    >
-                      <span>
-                        <strong>{c.type}</strong> →{" "}
-                        {collections.find((x) => x.id === c.collectionId)?.name ?? c.collectionId} ·{" "}
-                        {c.status}
-                        {c.lastSyncAt
-                          ? ` · last sync ${new Date(c.lastSyncAt).toLocaleString()}`
-                          : ""}
-                      </span>
-                      <div style={{ display: "flex", gap: "0.35rem" }}>
-                        <button
-                          type="button"
-                          className="button button-small"
-                          onClick={() => runConnectorSync(c.id)}
-                          disabled={!!syncingConnectorId}
-                        >
-                          {syncingConnectorId === c.id ? "Syncing…" : "Sync"}
-                        </button>
-                        <button
-                          type="button"
-                          className="button button-danger button-small"
-                          onClick={() =>
-                            setDeleteTarget({ type: "connectors", id: c.id, name: c.type })
-                          }
-                        >
-                          <Trash2 size={12} />
-                        </button>
+                <div className="connector-list">
+                  {connectors.map((c) => {
+                    const meta = getConnectorTypeMeta(c.type);
+                    const label = meta?.label ?? c.type;
+                    const logoPath = meta?.logoPath ?? "/connectors/placeholder.svg";
+                    return (
+                      <div key={c.id} className="connector-card">
+                        <img
+                          src={logoPath}
+                          alt=""
+                          className="connector-card-logo"
+                          onError={(e) => {
+                            e.currentTarget.src = "/connectors/placeholder.svg";
+                          }}
+                        />
+                        <div className="connector-card-meta">
+                          <strong>{label}</strong>
+                          <span>
+                            →{" "}
+                            {collections.find((x) => x.id === c.collectionId)?.name ??
+                              c.collectionId}{" "}
+                            · {c.status}
+                            {c.lastSyncAt
+                              ? ` · last sync ${new Date(c.lastSyncAt).toLocaleString()}`
+                              : ""}
+                          </span>
+                          {c.status === "error" && c.lastError && (
+                            <span
+                              style={{
+                                display: "block",
+                                fontSize: "0.8rem",
+                                color: "var(--error)",
+                                marginTop: "0.25rem",
+                              }}
+                            >
+                              Last error: {c.lastError}
+                            </span>
+                          )}
+                        </div>
+                        <div className="connector-card-actions">
+                          <button
+                            type="button"
+                            className="button button-small"
+                            onClick={() => openSelectItems(c)}
+                            title="Choose which items to sync"
+                          >
+                            <ListFilter size={12} /> Select items
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-small"
+                            onClick={() => runConnectorSync(c.id)}
+                            disabled={!!syncingConnectorId}
+                          >
+                            {syncingConnectorId === c.id ? "Syncing…" : "Sync"}
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-danger button-small"
+                            onClick={() =>
+                              setDeleteTarget({ type: "connectors", id: c.id, name: label })
+                            }
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </div>
-                    </li>
-                  ))}
-                </ul>
+                    );
+                  })}
+                </div>
                 {connectors.length === 0 && !showConnectorForm && (
                   <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-                    No connectors. Add one to sync Google Drive (or other sources) into a
-                    collection.
+                    No connectors. Add one to sync Google Drive, Notion, local folders, or other
+                    sources into a collection.
                   </p>
                 )}
               </section>
@@ -1222,8 +1610,9 @@ export default function KnowledgePage() {
                         margin: "0 0 0.5rem",
                       }}
                     >
-                      Upload .txt or .md files. Then click Ingest to chunk and embed into the vector
-                      store so chat can use them.
+                      Connectors that sync to the deployment collection are searchable in chat after
+                      you Ingest their documents. Upload .txt or .md files, or sync from Connectors;
+                      then Ingest to chunk and embed so chat can use them.
                     </p>
                     <form
                       onSubmit={async (e) => {
@@ -1260,6 +1649,136 @@ export default function KnowledgePage() {
           </>
         )}
       </div>
+
+      {connectorForItems && (
+        <div
+          className="modal-overlay"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={() => !savingSelection && setConnectorForItems(null)}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: "28rem",
+              width: "90%",
+              maxHeight: "85vh",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: "0 0 0.5rem" }}>Select items to sync</h3>
+            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
+              Only selected items will be synced. Clear selection and use &quot;Sync all&quot; to
+              sync everything.
+            </p>
+            {TEXT_BASED_CONNECTOR_TYPES.has(connectorForItems.type) && (
+              <button
+                type="button"
+                className="button button-primary"
+                style={{ marginBottom: "0.75rem" }}
+                onClick={runSyncAll}
+                disabled={savingSelection}
+              >
+                Sync all (no filter)
+              </button>
+            )}
+            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
+              <button
+                type="button"
+                className="button button-small"
+                onClick={selectAllBrowse}
+                disabled={browseItems.length === 0}
+              >
+                <CheckSquare size={12} /> Select all
+              </button>
+              <button type="button" className="button button-small" onClick={deselectAllBrowse}>
+                <Square size={12} /> Deselect all
+              </button>
+            </div>
+            {browseLoading && browseItems.length === 0 ? (
+              <p style={{ color: "var(--text-muted)" }}>Loading items…</p>
+            ) : (
+              <ul
+                style={{
+                  listStyle: "none",
+                  margin: 0,
+                  padding: "0.25rem",
+                  overflow: "auto",
+                  flex: 1,
+                  minHeight: "8rem",
+                  maxHeight: "20rem",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius)",
+                }}
+              >
+                {browseItems.map((item) => (
+                  <li
+                    key={item.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.35rem 0.5rem",
+                      borderRadius: "var(--radius)",
+                      cursor: "pointer",
+                      background: selectedItemIds.has(item.id) ? "var(--bg-subtle)" : undefined,
+                    }}
+                    onClick={() => toggleItemId(item.id)}
+                  >
+                    {selectedItemIds.has(item.id) ? (
+                      <CheckSquare size={16} style={{ flexShrink: 0 }} />
+                    ) : (
+                      <Square size={16} style={{ flexShrink: 0 }} />
+                    )}
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {item.name}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {browseNextToken && (
+              <button
+                type="button"
+                className="button button-small"
+                style={{ marginTop: "0.5rem" }}
+                onClick={loadMoreBrowse}
+                disabled={browseLoading}
+              >
+                {browseLoading ? "Loading…" : "Load more"}
+              </button>
+            )}
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={runSaveSelection}
+                disabled={savingSelection}
+              >
+                {savingSelection ? "Saving…" : "Save selection"}
+              </button>
+              <button
+                type="button"
+                className="button"
+                onClick={() => setConnectorForItems(null)}
+                disabled={savingSelection}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmModal
         open={!!deleteTarget}

@@ -55,6 +55,34 @@ describe("Feedback API", () => {
     expect(Array.isArray(data)).toBe(true);
   });
 
+  it("GET /api/feedback with empty executionId returns all feedback", async () => {
+    const res = await listGet(new Request("http://localhost/api/feedback?executionId="));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+  });
+
+  it("POST /api/feedback accepts optional id in body", async () => {
+    const customId = "custom-feedback-id-67890";
+    const res = await listPost(
+      new Request("http://localhost/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: customId,
+          targetType: "workflow",
+          targetId: "wf-1",
+          input: "",
+          output: "",
+          label: "bad",
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.id).toBe(customId);
+  });
+
   it("GET /api/feedback filters by executionId when provided", async () => {
     const execId = "exec-filter-" + Date.now();
     await listPost(

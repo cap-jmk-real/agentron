@@ -148,6 +148,21 @@ describe("Skills API", () => {
     expect(data.config).toEqual({ foo: "bar", count: 1 });
   });
 
+  it("PUT /api/skills/:id with body that has no updatable fields returns 200 and current skill", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unknownField: "ignored" }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBe(createdId);
+  });
+
   it("PUT /api/skills/:id returns 404 for unknown id", async () => {
     const res = await putOne(
       new Request("http://localhost/api/skills/x", {
@@ -236,6 +251,33 @@ describe("Skills API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.description).toBe("Updated description only");
+  });
+
+  it("PUT /api/skills/:id with only name preserves existing config", async () => {
+    const createRes = await listPost(
+      new Request("http://localhost/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Skill For Config Preserve",
+          type: "prompt",
+          config: { preserved: true },
+        }),
+      })
+    );
+    const created = await createRes.json();
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Name Only Update" }),
+      }),
+      { params: Promise.resolve({ id: created.id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.name).toBe("Name Only Update");
+    expect(data.config).toEqual({ preserved: true });
   });
 
   it("PUT /api/skills/:id updates config with object", async () => {

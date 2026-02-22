@@ -24,6 +24,30 @@ describe("Update check API", () => {
     }
   });
 
+  it("GET /api/update-check uses npm_package_version when AGENTRON_APP_VERSION unset", async () => {
+    const orig = process.env.AGENTRON_APP_VERSION;
+    delete process.env.AGENTRON_APP_VERSION;
+    process.env.npm_package_version = "0.0.1";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({ tag_name: "v0.0.2", html_url: "https://example.com", body: null }),
+      })
+    );
+    try {
+      const res = await GET();
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.available).toBe(true);
+      expect(data.version).toBe("0.0.2");
+    } finally {
+      if (orig !== undefined) process.env.AGENTRON_APP_VERSION = orig;
+      delete process.env.npm_package_version;
+    }
+  });
+
   it("GET /api/update-check returns available: false when GitHub fetch fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network error")));
     process.env.AGENTRON_APP_VERSION = "0.1.0";

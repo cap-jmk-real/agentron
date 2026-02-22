@@ -52,6 +52,11 @@ export const MISC_TOOLS: AssistantToolDef[] = [
           type: "string",
           description: "Container image (e.g. node:22-slim, python:3.12-slim)",
         },
+        env: {
+          type: "object",
+          description:
+            "Optional env vars for the container (e.g. OPENCLAW_E2E_TOKEN for e2e token injection).",
+        },
       },
       required: ["image"],
     },

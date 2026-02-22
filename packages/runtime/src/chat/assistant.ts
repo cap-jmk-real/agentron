@@ -19,6 +19,7 @@ export interface StudioContext {
   agents?: { id: string; name: string; kind: string }[];
   workflows?: { id: string; name: string; executionMode: string }[];
   llmProviders?: { id: string; provider: string; model: string }[];
+  connectors?: { id: string; type: string }[];
 }
 
 export interface AssistantOptions {
@@ -109,6 +110,12 @@ export async function runAssistant(
     if (llmProviders.length > 0) {
       parts.push(
         `LLM providers (use these IDs as llmConfigId when creating/updating agents):\n${llmProviders.map((p) => `- ${p.id}: ${p.provider} / ${p.model}`).join("\n")}`
+      );
+    }
+    const connectors = Array.isArray(ctx.connectors) ? ctx.connectors : [];
+    if (connectors.length > 0) {
+      parts.push(
+        `Knowledge connectors (use these IDs with list_connector_items, connector_read_item, connector_update_item):\n${connectors.map((c) => `- ${c.id}: ${c.type}`).join("\n")}`
       );
     }
     if (parts.length > 0) {

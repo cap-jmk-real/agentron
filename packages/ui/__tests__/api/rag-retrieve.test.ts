@@ -3,6 +3,21 @@ import { POST } from "../../app/api/rag/retrieve/route";
 import * as rag from "../../app/api/_lib/rag";
 
 describe("RAG retrieve API", () => {
+  it("POST /api/rag/retrieve treats non-string query as empty", async () => {
+    vi.spyOn(rag, "getDeploymentCollectionId").mockResolvedValue(null);
+    const res = await POST(
+      new Request("http://localhost/api/rag/retrieve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: 123 }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.chunks).toEqual([]);
+    vi.restoreAllMocks();
+  });
+
   it("POST /api/rag/retrieve returns 400 for invalid JSON", async () => {
     const res = await POST(
       new Request("http://localhost/api/rag/retrieve", {
@@ -125,5 +140,19 @@ describe("RAG retrieve API", () => {
     expect(data).toHaveProperty("chunks");
     expect(Array.isArray(data.chunks)).toBe(true);
     vi.restoreAllMocks();
+  });
+
+  it("POST /api/rag/retrieve with collectionId and no limit uses collection scope for effective limit", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/rag/retrieve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collectionId: "scope-coll-id", query: "test" }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toHaveProperty("chunks");
+    expect(Array.isArray(data.chunks)).toBe(true);
   });
 });

@@ -340,6 +340,7 @@ const sections: NavSection[] = [
       { label: "Embedding", href: "/settings/embedding", icon: icons.embedding },
       { label: "Local Models", href: "/settings/local", icon: icons.localModels },
       { label: "Telegram", href: "/settings/telegram", icon: icons.telegram },
+      { label: "GitHub", href: "/settings/github", icon: icons.github },
       { label: "Container Engine", href: "/settings/container", icon: icons.container },
       { label: "General", href: "/settings", icon: icons.settings },
     ],

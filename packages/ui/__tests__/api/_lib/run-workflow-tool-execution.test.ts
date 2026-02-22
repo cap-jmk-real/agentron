@@ -119,4 +119,14 @@ describe("run-workflow-tool-execution std-web-search", () => {
       results: [],
     });
   });
+
+  it("returns error object when searchWeb throws non-Error", async () => {
+    vi.mocked(searchWeb).mockRejectedValueOnce("plain string error");
+    const result = await stdWebSearch({ query: "q" });
+    expect(result).toEqual({
+      error: "Web search failed",
+      message: "plain string error",
+      results: [],
+    });
+  });
 });

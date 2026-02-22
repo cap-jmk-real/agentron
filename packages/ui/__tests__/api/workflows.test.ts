@@ -8,7 +8,7 @@ import {
 import { POST as executePost } from "../../app/api/workflows/[id]/execute/route";
 import { GET as versionsGet } from "../../app/api/workflows/[id]/versions/route";
 import { POST as rollbackPost } from "../../app/api/workflows/[id]/rollback/route";
-import { db, workflows, workflowVersions } from "../../app/api/_lib/db";
+import { db, workflows, workflowVersions, executions } from "../../app/api/_lib/db";
 import { eq } from "drizzle-orm";
 import * as workflowQueue from "../../app/api/_lib/workflow-queue";
 import {
@@ -149,6 +149,21 @@ describe("Workflows API", () => {
     expect(data.id).toBeDefined();
   });
 
+  it("POST /api/workflows/:id/execute uses default when body.maxSelfFixRetries is number NaN", async () => {
+    if (!createdId) return;
+    const req = {
+      json: async () => ({ maxSelfFixRetries: Number.NaN }),
+      url: "http://localhost/api/workflows/x/execute",
+      headers: new Headers(),
+    } as unknown as Request;
+    const res = await executePost(req, {
+      params: Promise.resolve({ id: createdId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBeDefined();
+  });
+
   it("POST /api/workflows/:id/execute accepts body with maxSelfFixRetries", async () => {
     if (!createdId) return;
     const res = await executePost(
@@ -165,6 +180,21 @@ describe("Workflows API", () => {
     expect(data.targetType).toBe("workflow");
   });
 
+  it("POST /api/workflows/:id/execute floors maxSelfFixRetries when float", async () => {
+    if (!createdId) return;
+    const res = await executePost(
+      new Request("http://localhost/api/workflows/x/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxSelfFixRetries: 7.5 }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBeDefined();
+  });
+
   it("POST /api/workflows/:id/execute uses default maxSelfFixRetries when body is invalid JSON", async () => {
     if (!createdId) return;
     const res = await executePost(
@@ -179,6 +209,21 @@ describe("Workflows API", () => {
     const data = await res.json();
     expect(data.id).toBeDefined();
     expect(data.targetType).toBe("workflow");
+  });
+
+  it("POST /api/workflows/:id/execute uses default maxSelfFixRetries when body has non-number", async () => {
+    if (!createdId) return;
+    const res = await executePost(
+      new Request("http://localhost/api/workflows/x/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxSelfFixRetries: "3" }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBeDefined();
   });
 
   it("POST /api/workflows/:id/execute accepts maxSelfFixRetries 0", async () => {
@@ -203,6 +248,21 @@ describe("Workflows API", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ maxSelfFixRetries: 15 }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBeDefined();
+  });
+
+  it("POST /api/workflows/:id/execute clamps negative maxSelfFixRetries to 0", async () => {
+    if (!createdId) return;
+    const res = await executePost(
+      new Request("http://localhost/api/workflows/x/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxSelfFixRetries: -5 }),
       }),
       { params: Promise.resolve({ id: createdId }) }
     );
@@ -247,6 +307,124 @@ describe("Workflows API", () => {
     (workflowQueue.waitForJob as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
       new Error("Container not found")
     );
+    const res = await executePost(
+      new Request("http://localhost/api/workflows/x/execute", { method: "POST" }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.status).toBe("failed");
+    expect(data.output).toBeDefined();
+  });
+
+  it("POST /api/workflows/:id/execute returns 200 when waitForJob throws WaitingForUserError with empty trail", async () => {
+    if (!createdId) return;
+    (workflowQueue.waitForJob as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new WaitingForUserError(WAITING_FOR_USER_MESSAGE, [])
+    );
+    const res = await executePost(
+      new Request("http://localhost/api/workflows/x/execute", { method: "POST" }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBeDefined();
+    expect(data.status).toBe("running");
+  });
+
+  it("POST /api/workflows/:id/execute returns 200 when WaitingForUserError trail update throws (inner catch)", async () => {
+    if (!createdId) return;
+    const trail = [{ nodeId: "n1", agentId: "a1", agentName: "Agent", order: 0 }];
+    (workflowQueue.waitForJob as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new WaitingForUserError(WAITING_FOR_USER_MESSAGE, trail)
+    );
+    const originalUpdate = db.update.bind(db);
+    let runCallCount = 0;
+    const updateSpy = vi.spyOn(db, "update").mockImplementation((table: unknown) => {
+      const chain = originalUpdate(table as Parameters<typeof db.update>[0]);
+      if (table !== executions) return chain;
+      const c = chain as { set: (v: unknown) => { where: (w: unknown) => { run: () => void } } };
+      return {
+        set: (v: unknown) => ({
+          where: (w: unknown) => ({
+            run: () => {
+              runCallCount++;
+              if (runCallCount === 1) throw new Error("update failed");
+              return c.set(v).where(w).run();
+            },
+          }),
+        }),
+      } as ReturnType<typeof db.update>;
+    });
+    try {
+      const res = await executePost(
+        new Request("http://localhost/api/workflows/x/execute", { method: "POST" }),
+        { params: Promise.resolve({ id: createdId }) }
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.id).toBeDefined();
+    } finally {
+      updateSpy.mockRestore();
+    }
+  });
+
+  it("POST /api/workflows/:id/execute merges trail into existing output when run output is string", async () => {
+    if (!createdId) return;
+    const trail = [{ nodeId: "n1", agentId: "a1", agentName: "Agent", order: 0 }];
+    (workflowQueue.waitForJob as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new WaitingForUserError(WAITING_FOR_USER_MESSAGE, trail)
+    );
+    vi.spyOn(db, "select").mockImplementationOnce(
+      () =>
+        ({
+          from: () => ({
+            where: () => Promise.resolve([{ output: '{"question":"existing"}' }]),
+          }),
+        }) as ReturnType<typeof db.select>
+    );
+    const res = await executePost(
+      new Request("http://localhost/api/workflows/x/execute", { method: "POST" }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const output = typeof data.output === "string" ? JSON.parse(data.output) : data.output;
+    expect(output).toHaveProperty("trail");
+    expect(output.trail).toEqual(trail);
+    expect(output.question).toBe("existing");
+  });
+
+  it("POST /api/workflows/:id/execute merges trail when run output is object (non-string)", async () => {
+    if (!createdId) return;
+    const trail = [{ nodeId: "n2", agentId: "a2", agentName: "B", order: 1 }];
+    (workflowQueue.waitForJob as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new WaitingForUserError(WAITING_FOR_USER_MESSAGE, trail)
+    );
+    vi.spyOn(db, "select").mockImplementationOnce(
+      () =>
+        ({
+          from: () => ({
+            where: () => Promise.resolve([{ output: { question: "from-object", step: 1 } }]),
+          }),
+        }) as ReturnType<typeof db.select>
+    );
+    const res = await executePost(
+      new Request("http://localhost/api/workflows/x/execute", { method: "POST" }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const output = typeof data.output === "string" ? JSON.parse(data.output) : data.output;
+    expect(output).toHaveProperty("trail");
+    expect(output.trail).toEqual(trail);
+    expect(output.question).toBe("from-object");
+    expect(output.step).toBe(1);
+  });
+
+  it("POST /api/workflows/:id/execute returns 200 and status failed when waitForJob throws non-Error", async () => {
+    if (!createdId) return;
+    (workflowQueue.waitForJob as ReturnType<typeof vi.fn>).mockRejectedValueOnce("string error");
     const res = await executePost(
       new Request("http://localhost/api/workflows/x/execute", { method: "POST" }),
       { params: Promise.resolve({ id: createdId }) }
@@ -359,6 +537,36 @@ describe("Workflows API", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ version: 999 }),
+        }),
+        { params: Promise.resolve({ id: createdId }) }
+      );
+      expect(res.status).toBe(404);
+      const data = await res.json();
+      expect(data.error).toContain("Version not found");
+    });
+
+    it("POST /api/workflows/:id/rollback returns 404 when body has version as non-number", async () => {
+      if (!createdId) return;
+      const res = await rollbackPost(
+        new Request("http://localhost/api/workflows/x/rollback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ version: "2" }),
+        }),
+        { params: Promise.resolve({ id: createdId }) }
+      );
+      expect(res.status).toBe(404);
+      const data = await res.json();
+      expect(data.error).toContain("Version not found");
+    });
+
+    it("POST /api/workflows/:id/rollback treats invalid JSON body as empty and returns 404", async () => {
+      if (!createdId) return;
+      const res = await rollbackPost(
+        new Request("http://localhost/api/workflows/x/rollback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "not json",
         }),
         { params: Promise.resolve({ id: createdId }) }
       );

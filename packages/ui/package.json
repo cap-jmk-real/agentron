@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e-llm": "vitest run --config vitest.e2e.config.ts",
+    "test:e2e-openclaw": "vitest run --config vitest.e2e.openclaw.config.ts",
     "export-heap-snapshot": "vitest run __tests__/scripts/export-heap-snapshot.test.ts"
   },
   "dependencies": {

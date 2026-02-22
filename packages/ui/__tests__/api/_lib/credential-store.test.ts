@@ -33,6 +33,11 @@ describe("credential-store", () => {
     expect(await getStoredCredential("any", null)).toBeNull();
   });
 
+  it("getStoredCredential returns null when credentialKey is blank after trim", async () => {
+    expect(await getStoredCredential("", vaultKey)).toBeNull();
+    expect(await getStoredCredential("   ", vaultKey)).toBeNull();
+  });
+
   it("getStoredCredential returns null for unknown key", async () => {
     expect(await getStoredCredential("nonexistent_key_xyz", vaultKey)).toBeNull();
   });
@@ -51,6 +56,20 @@ describe("credential-store", () => {
   it("setStoredCredential does nothing when vaultKey is null", async () => {
     await setStoredCredential("locked", "secret", true, null);
     expect(await getStoredCredential("locked", vaultKey)).toBeNull();
+  });
+
+  it("setStoredCredential does nothing when value is empty or whitespace", async () => {
+    await setStoredCredential("empty_val", "", true, vaultKey);
+    expect(await getStoredCredential("empty_val", vaultKey)).toBeNull();
+    await setStoredCredential("ws_val", "   ", true, vaultKey);
+    expect(await getStoredCredential("ws_val", vaultKey)).toBeNull();
+  });
+
+  it("getStoredCredential returns null when decrypt fails", async () => {
+    await setStoredCredential("decrypt_me", "secret", true, vaultKey);
+    const otherSalt = crypto.randomBytes(16).toString("base64url");
+    const wrongKey = deriveVaultKey("wrong-password", otherSalt);
+    expect(await getStoredCredential("decrypt_me", wrongKey)).toBeNull();
   });
 
   it("listStoredCredentialKeys returns keys and createdAt", async () => {
@@ -77,6 +96,11 @@ describe("credential-store", () => {
     expect(await updateStoredCredential("k", "v", null)).toBe(false);
   });
 
+  it("updateStoredCredential returns false when value is empty or whitespace", async () => {
+    expect(await updateStoredCredential("k", "", vaultKey)).toBe(false);
+    expect(await updateStoredCredential("k", "   ", vaultKey)).toBe(false);
+  });
+
   it("deleteStoredCredential removes credential", async () => {
     await setStoredCredential("to_delete", "x", true, vaultKey);
     const ok = await deleteStoredCredential("to_delete", vaultKey);
@@ -86,5 +110,9 @@ describe("credential-store", () => {
 
   it("deleteStoredCredential returns false when vaultKey is null", async () => {
     expect(await deleteStoredCredential("any", null)).toBe(false);
+  });
+
+  it("clearAllStoredCredentials returns 0 when vaultKey is null", async () => {
+    expect(await clearAllStoredCredentials(null)).toBe(0);
   });
 });

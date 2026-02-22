@@ -10,6 +10,7 @@ export default defineConfig({
       path.resolve(__dirname, "__tests__/e2e/e2e-setup.ts"),
     ],
     include: ["__tests__/e2e/**/*.e2e.ts"],
+    exclude: ["**/openclaw.e2e.ts"],
     testTimeout: 120_000,
     maxWorkers: process.env.CI ? 2 : 4,
   },

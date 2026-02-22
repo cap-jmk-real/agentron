@@ -47,6 +47,50 @@ describe("Agents API", () => {
     createdId = data.id;
   });
 
+  it("POST /api/agents uses payload.id when provided", async () => {
+    const customId = "custom-agent-id-12345";
+    const res = await listPost(
+      new Request("http://localhost/api/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: customId,
+          name: "Custom Id Agent",
+          kind: "node",
+          type: "internal",
+          protocol: "native",
+          capabilities: [],
+          scopes: [],
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.id).toBe(customId);
+  });
+
+  it("POST /api/agents uses random name when name missing or empty", async () => {
+    const res = await listPost(
+      new Request("http://localhost/api/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "node",
+          type: "internal",
+          protocol: "native",
+          capabilities: [],
+          scopes: [],
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.id).toBeDefined();
+    expect(data.name).toBeDefined();
+    expect(typeof data.name).toBe("string");
+    expect(data.name.length).toBeGreaterThan(0);
+  });
+
   it("GET /api/agents/:id returns agent", async () => {
     if (!createdId) return;
     const res = await getOne(new Request("http://localhost/api/agents/x"), {
@@ -85,6 +129,28 @@ describe("Agents API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.name).toBe("Updated Agent");
+  });
+
+  it("PUT /api/agents/:id with no definition leaves definition unchanged", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/agents/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "No Def Agent",
+          kind: "node",
+          type: "internal",
+          protocol: "native",
+          capabilities: [],
+          scopes: [],
+        }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.name).toBe("No Def Agent");
   });
 
   it("PUT /api/agents/:id syncs toolIds from graph nodes", async () => {

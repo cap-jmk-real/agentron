@@ -40,6 +40,19 @@ describe("Vault create API", () => {
     expect(data.error).toContain("masterPassword");
   });
 
+  it("POST /api/vault/create returns 400 when body is invalid JSON", async () => {
+    const res = await createPost(
+      new Request("http://localhost/api/vault/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not json",
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("masterPassword");
+  });
+
   it("POST /api/vault/create returns 400 when masterPassword empty", async () => {
     const res = await createPost(
       new Request("http://localhost/api/vault/create", {
@@ -49,6 +62,19 @@ describe("Vault create API", () => {
       })
     );
     expect(res.status).toBe(400);
+  });
+
+  it("POST /api/vault/create returns 400 when masterPassword not a string", async () => {
+    const res = await createPost(
+      new Request("http://localhost/api/vault/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ masterPassword: 123 }),
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("masterPassword");
   });
 
   it("POST /api/vault/create creates vault and returns 201 with Set-Cookie", async () => {
@@ -78,10 +104,45 @@ describe("Vault create API", () => {
     expect(data.error).toContain("already exists");
   });
 
+  it("GET /api/vault/status returns vaultExists false when no vault", async () => {
+    await db.delete(vaultMeta).where(eq(vaultMeta.id, "default")).run();
+    const res = await statusGet(new Request("http://localhost/api/vault/status"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.vaultExists).toBe(false);
+    expect(data.locked).toBe(true);
+    // Recreate vault for subsequent tests
+    await createPost(
+      new Request("http://localhost/api/vault/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ masterPassword: "test-vault-password-123" }),
+      })
+    );
+  });
+
   it("GET /api/vault/status returns vaultExists true when vault exists", async () => {
     const res = await statusGet(new Request("http://localhost/api/vault/status"));
     expect(res.status).toBe(200);
     const data = await res.json();
+    expect(data.vaultExists).toBe(true);
+  });
+
+  it("GET /api/vault/status returns locked false when request has vault cookie", async () => {
+    const unlockRes = await unlockPost(
+      new Request("http://localhost/api/vault/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ masterPassword: "test-vault-password-123" }),
+      })
+    );
+    const cookie = unlockRes.headers.get("Set-Cookie") ?? "";
+    const res = await statusGet(
+      new Request("http://localhost/api/vault/status", { headers: { Cookie: cookie } })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.locked).toBe(false);
     expect(data.vaultExists).toBe(true);
   });
 
@@ -93,12 +154,38 @@ describe("Vault create API", () => {
     expect(res.headers.get("Set-Cookie")).toBeDefined();
   });
 
+  it("POST /api/vault/unlock returns 400 when body is invalid JSON", async () => {
+    const res = await unlockPost(
+      new Request("http://localhost/api/vault/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not valid json",
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("masterPassword");
+  });
+
   it("POST /api/vault/unlock returns 400 when masterPassword missing", async () => {
     const res = await unlockPost(
       new Request("http://localhost/api/vault/unlock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("masterPassword");
+  });
+
+  it("POST /api/vault/unlock returns 400 when masterPassword not a string", async () => {
+    const res = await unlockPost(
+      new Request("http://localhost/api/vault/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ masterPassword: 123 }),
       })
     );
     expect(res.status).toBe(400);

@@ -59,6 +59,19 @@ describe("Shell command execute API", () => {
     expect(data.error).toContain("command");
   });
 
+  it("POST /api/shell-command/execute returns 400 when command is not a string", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/shell-command/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: 123 }),
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("command");
+  });
+
   it("POST /api/shell-command/execute returns 500 when runShellCommand throws", async () => {
     vi.mocked(runShellCommand).mockRejectedValueOnce(new Error("Exec failed"));
     const res = await POST(

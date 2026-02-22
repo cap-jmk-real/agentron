@@ -62,6 +62,8 @@ export default defineConfig({
         "**/api/remote-servers/test/**",
         // _lib: browser-only or long-running. See __tests__/README.md.
         "**/api/_lib/telegram-polling.ts",
+        // Empty stub; no executable code. See __tests__/lib/suggested-models.test.ts.
+        "**/settings/local/suggested-models.ts",
       ],
     },
   },

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   getSuggestedOptionsFromToolResults,
   getSuggestedOptions,
+  getLoadingStatus,
 } from "../../app/components/chat-message-content";
 
 describe("options from ask_user only (LLM-formatted, no regex parsing)", () => {
@@ -80,6 +81,32 @@ describe("options from ask_user only (LLM-formatted, no regex parsing)", () => {
     it("returns empty when no result or no options array", () => {
       expect(getSuggestedOptions(undefined, "Choose: a) One b) Two")).toEqual([]);
       expect(getSuggestedOptions({ result: { question: "What?" } }, "a) One")).toEqual([]);
+    });
+  });
+
+  describe("getLoadingStatus", () => {
+    it("displays specialistId knowledge as Knowledge in loading status", () => {
+      const msg = {
+        traceSteps: [
+          { phase: "heap_tool", specialistId: "knowledge", toolName: "list_connectors" },
+        ],
+      };
+      expect(getLoadingStatus(msg)).toContain("Knowledge");
+      expect(getLoadingStatus(msg)).toContain("list_connectors");
+    });
+
+    it("displays Calling LLM… (Knowledge) when phase is llm_request and specialistId is knowledge", () => {
+      const msg = {
+        traceSteps: [{ phase: "llm_request", specialistId: "knowledge" }],
+      };
+      expect(getLoadingStatus(msg)).toBe("Calling LLM… (Knowledge)");
+    });
+
+    it("displays Response received (Knowledge) when phase is llm_response and specialistId is knowledge", () => {
+      const msg = {
+        traceSteps: [{ phase: "llm_response", specialistId: "knowledge" }],
+      };
+      expect(getLoadingStatus(msg)).toBe("Response received (Knowledge)");
     });
   });
 });

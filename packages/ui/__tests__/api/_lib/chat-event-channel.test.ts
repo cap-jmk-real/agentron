@@ -79,4 +79,24 @@ describe("chat-event-channel", () => {
   it("takePendingJob returns undefined when no job", () => {
     expect(takePendingJob("nonexistent")).toBeUndefined();
   });
+
+  it("publish does nothing when no subscribers for turnId", () => {
+    const turnId = "turn-nosub-" + Date.now();
+    expect(() => publish(turnId, { type: "step", index: 0 })).not.toThrow();
+  });
+
+  it("publish continues to other subscribers when one throws", () => {
+    const turnId = "turn-throw-" + Date.now();
+    const ok = vi.fn();
+    const bad = vi.fn().mockImplementation(() => {
+      throw new Error("subscriber error");
+    });
+    subscribe(turnId, bad);
+    subscribe(turnId, ok);
+
+    publish(turnId, { type: "event" });
+    expect(bad).toHaveBeenCalledTimes(1);
+    expect(ok).toHaveBeenCalledTimes(1);
+    expect(ok).toHaveBeenCalledWith({ type: "event" });
+  });
 });

@@ -8,6 +8,8 @@ export interface SandboxConfig {
   ports?: Record<string, number>;
   /** If true, run the image default CMD instead of "sleep infinity". Use for images that run a service (e.g. OpenClaw gateway). */
   useImageCmd?: boolean;
+  /** Optional command and args (replaces image CMD). Used with useImageCmd to e.g. run "gateway --bind lan". */
+  cmd?: string[];
 }
 
 export interface Sandbox {

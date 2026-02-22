@@ -88,7 +88,11 @@ export class PodmanManager {
     }
 
     if (config?.useImageCmd) {
+      if (config.cmd?.length) {
+        args.push("--entrypoint", "/bin/sh");
+      }
       args.push(image);
+      if (config.cmd?.length) args.push(...config.cmd);
     } else {
       args.push(image, "sleep", "infinity");
     }

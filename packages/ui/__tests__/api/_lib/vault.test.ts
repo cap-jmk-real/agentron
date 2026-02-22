@@ -84,4 +84,15 @@ describe("vault", () => {
     expect(decryptFromCookie("  ")).toBeNull();
     expect(decryptFromCookie("not.three.parts")).toBeNull();
   });
+
+  it("decryptFromCookie returns null when value has three parts but invalid ciphertext", () => {
+    expect(decryptFromCookie("a.b.c")).toBeNull();
+  });
+
+  it("getVaultKeyFromRequest returns null when cookie header has other cookies but not vault", () => {
+    const req = new Request("http://localhost", {
+      headers: { cookie: "other=value; foo=bar" },
+    });
+    expect(getVaultKeyFromRequest(req)).toBeNull();
+  });
 });

@@ -1,10 +1,10 @@
 /**
  * Specialist registry: ids, per-specialist tool arrays, optional delegateTargets.
- * Caps: 10 tools per specialist, 7 top-level ids, 7 delegateTargets per delegator.
+ * Caps: 10 tools per specialist, 8 top-level ids, 7 delegateTargets per delegator.
  */
 
 export const SPECIALIST_TOOL_CAP = 10;
-export const TOP_LEVEL_CAP = 7;
+export const TOP_LEVEL_CAP = 8;
 export const DELEGATE_TARGETS_CAP = 7;
 
 /** Structured option group for querying the heap: label + tool ids in that group. */
@@ -386,6 +386,20 @@ function buildDefaultRegistry(): SpecialistRegistry {
         "Planner: outputs structured plan (priorityOrder, refinedTask, extractedContext, instructionsFor*); no DB tools",
       toolNames: [],
     },
+    {
+      id: "knowledge",
+      description:
+        "Knowledge connectors: list connectors, list items, read or update content in Notion, Drive, local folders, etc. Use list_connectors to discover connector ids.",
+      toolNames: [
+        "list_connectors",
+        "list_connector_items",
+        "connector_read_item",
+        "connector_update_item",
+        "ingest_deployment_documents",
+        "ask_user",
+        "format_response",
+      ],
+    },
   ];
 
   return buildRegistryFromSpecs(specs, [
@@ -393,6 +407,7 @@ function buildDefaultRegistry(): SpecialistRegistry {
     "workflow",
     "agent",
     "tools",
+    "knowledge",
     "improve_run",
     "improve_heap",
     "improve_agents_workflows",

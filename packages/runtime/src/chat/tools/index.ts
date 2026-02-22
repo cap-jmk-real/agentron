@@ -13,6 +13,7 @@ import { REMINDER_TOOLS } from "./reminder-tools";
 import { OPENAPI_TOOLS } from "./openapi-tools";
 import { HEAP_TOOLS } from "./heap-tools";
 import { CUSTOM_FUNCTION_TOOLS } from "./custom-function-tools";
+import { CONNECTOR_TOOLS } from "./connector-tools";
 
 export type { AssistantToolDef } from "./types";
 export { SYSTEM_PROMPT, BLOCK_AGENTIC_PATTERNS, BLOCK_DESIGN_AGENTS } from "./prompt";
@@ -24,6 +25,7 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
   ...HEAP_TOOLS,
   ...OPENAPI_TOOLS,
   ...CUSTOM_FUNCTION_TOOLS,
+  ...CONNECTOR_TOOLS,
   ...WORKFLOW_TOOLS,
   ...MISC_TOOLS,
   ...REMOTE_TOOLS,

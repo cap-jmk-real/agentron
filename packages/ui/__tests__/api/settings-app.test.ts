@@ -272,6 +272,19 @@ describe("Settings app API", () => {
     expect(data.addedCommands == null || data.addedCommands.length === 0).toBe(true);
   });
 
+  it("PATCH /api/settings/app addShellCommand with whitespace-only adds nothing", async () => {
+    const patchRes = await PATCH(
+      new Request("http://localhost/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ addShellCommand: "   \t  " }),
+      })
+    );
+    expect(patchRes.status).toBe(200);
+    const data = await patchRes.json();
+    expect(data.addedCommands == null || data.addedCommands.length === 0).toBe(true);
+  });
+
   it("PATCH /api/settings/app accepts workflowMaxSelfFixRetries 0", async () => {
     const patchRes = await PATCH(
       new Request("http://localhost/api/settings/app", {
@@ -373,12 +386,77 @@ describe("Settings app API", () => {
     expect(data.googleCseKey).toBe("prior");
   });
 
+  it("PATCH /api/settings/app ignores non-string braveSearchApiKey and googleCseCx", async () => {
+    await PATCH(
+      new Request("http://localhost/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          webSearchProvider: "google",
+          googleCseKey: "key",
+          googleCseCx: "cx-id",
+        }),
+      })
+    );
+    const patchRes = await PATCH(
+      new Request("http://localhost/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          braveSearchApiKey: 999,
+          googleCseCx: 123,
+        }),
+      })
+    );
+    expect(patchRes.status).toBe(200);
+    const data = await patchRes.json();
+    expect(data.braveSearchApiKey).not.toBe(999);
+    expect(data.googleCseKey).toBe("key");
+    expect(data.googleCseCx).not.toBe(123);
+  });
+
   it("PATCH /api/settings/app accepts whitespace-only googleCseCx (trim branch)", async () => {
     const patchRes = await PATCH(
       new Request("http://localhost/api/settings/app", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ googleCseCx: "   \t  " }),
+      })
+    );
+    expect(patchRes.status).toBe(200);
+  });
+
+  it("PATCH /api/settings/app accepts whitespace-only braveSearchApiKey (trim to undefined branch)", async () => {
+    await PATCH(
+      new Request("http://localhost/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ webSearchProvider: "brave", braveSearchApiKey: "key" }),
+      })
+    );
+    const patchRes = await PATCH(
+      new Request("http://localhost/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ braveSearchApiKey: "   \t  " }),
+      })
+    );
+    expect(patchRes.status).toBe(200);
+  });
+
+  it("PATCH /api/settings/app accepts whitespace-only googleCseKey (trim to undefined branch)", async () => {
+    await PATCH(
+      new Request("http://localhost/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ webSearchProvider: "google", googleCseKey: "k", googleCseCx: "cx" }),
+      })
+    );
+    const patchRes = await PATCH(
+      new Request("http://localhost/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ googleCseKey: "   " }),
       })
     );
     expect(patchRes.status).toBe(200);
@@ -424,6 +502,21 @@ describe("Settings app API", () => {
       expect(res.status).toBe(500);
       const data = await res.json();
       expect(data.error).toBe("engine fail");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("GET /api/settings/app returns 500 with generic message when getAppSettings throws non-Error", async () => {
+    const mod = await import("../../app/api/_lib/app-settings");
+    const spy = vi.spyOn(mod, "getAppSettings").mockImplementationOnce(() => {
+      throw "string error";
+    });
+    try {
+      const res = await GET();
+      expect(res.status).toBe(500);
+      const data = await res.json();
+      expect(data.error).toBe("Failed to load settings");
     } finally {
       spy.mockRestore();
     }

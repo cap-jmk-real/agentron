@@ -7,15 +7,19 @@ export const runtime = "nodejs";
 export async function GET() {
   const rows = await db.select().from(ragConnectors);
   return json(
-    rows.map((r) => ({
-      id: r.id,
-      type: r.type,
-      collectionId: r.collectionId,
-      config: r.config ? JSON.parse(r.config) : {},
-      status: r.status,
-      lastSyncAt: r.lastSyncAt ?? undefined,
-      createdAt: r.createdAt,
-    }))
+    rows.map((r) => {
+      const config = r.config ? (JSON.parse(r.config) as Record<string, unknown>) : {};
+      return {
+        id: r.id,
+        type: r.type,
+        collectionId: r.collectionId,
+        config,
+        status: r.status,
+        lastSyncAt: r.lastSyncAt ?? undefined,
+        lastError: typeof config.lastError === "string" ? config.lastError : undefined,
+        createdAt: r.createdAt,
+      };
+    })
   );
 }
 

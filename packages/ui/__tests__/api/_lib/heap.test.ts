@@ -44,6 +44,7 @@ describe("heap registry", () => {
       "workflow",
       "agent",
       "tools",
+      "knowledge",
       "improve_run",
       "improve_heap",
       "improve_agents_workflows",
@@ -98,7 +99,7 @@ describe("heap registry", () => {
     };
     const capped = applyRegistryCaps(reg);
     expect(capped.topLevelIds).toHaveLength(TOP_LEVEL_CAP);
-    expect(capped.topLevelIds).toEqual(["a", "b", "c", "d", "e", "f", "g"]);
+    expect(capped.topLevelIds).toEqual(["a", "b", "c", "d", "e", "f", "g", "h"]);
   });
 
   it("applyRegistryCaps trims toolNames to SPECIALIST_TOOL_CAP", () => {
@@ -203,7 +204,7 @@ describe("heap registry", () => {
       "ask_user",
       "format_response",
     ]);
-    // Default registry is at TOP_LEVEL_CAP (7), so overlay id is not appended to topLevelIds
+    // Default registry is at TOP_LEVEL_CAP (8), so overlay id is not appended to topLevelIds
     expect(merged.topLevelIds.length).toBe(TOP_LEVEL_CAP);
     expect(merged.topLevelIds).not.toContain("custom_specialist");
 

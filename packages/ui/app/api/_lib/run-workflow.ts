@@ -7,6 +7,7 @@ import { db, executions, runLogs, executionOutputSuccess, executionOutputFailure
 import { withContainerInstallHint } from "./container-manager";
 import { getWorkflowMaxSelfFixRetries } from "./app-settings";
 import { createRunNotification } from "./notifications-store";
+import { ensureRunFailureSideEffects } from "./run-failure-side-effects";
 import { destroyContainerSession, type ContainerStreamChunk } from "./run-workflow-containers";
 import {
   WAITING_FOR_USER_MESSAGE,
@@ -285,7 +286,7 @@ export async function runWorkflowForRun(
         .where(eq(executions.id, runId))
         .run();
       try {
-        await createRunNotification(runId, "failed", {
+        await ensureRunFailureSideEffects(runId, {
           targetType: "workflow",
           targetId: workflowId,
         });

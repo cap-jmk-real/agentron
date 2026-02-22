@@ -107,6 +107,7 @@ import {
 import { openclawSend, openclawHistory, openclawAbort } from "../../_lib/openclaw-client";
 import { eq, asc, desc, isNotNull, and, like, inArray } from "drizzle-orm";
 import type { LLMTraceCall, LLMConfig } from "@agentron-studio/core";
+import { ragConnectors } from "@agentron-studio/core";
 import {
   runAssistant,
   buildFeedbackInjection,
@@ -159,6 +160,13 @@ import {
 } from "./chat-route-shared";
 import { runHeapModeTurn } from "./chat-route-heap";
 import { executeTurnImpl, type ExecuteTurnState } from "./chat-route-execute-turn";
+
+/** Build connectors array for StudioContext from RAG connector rows. Used so unit tests can assert the mapping. */
+export function studioContextConnectorsFromRows(
+  rows: { id: string; type: string }[]
+): { id: string; type: string }[] {
+  return rows.map((r) => ({ id: r.id, type: r.type }));
+}
 
 export async function runChatPost(request: Request): Promise<Response> {
   const payload = await request.json();
@@ -708,13 +716,14 @@ export async function runChatPost(request: Request): Promise<Response> {
   }
   const crossChatContextTrimmed = crossChatContext.trim() || undefined;
 
-  // Load studio context so the assistant knows available tools, agents, workflows, LLM providers
+  // Load studio context so the assistant knows available tools, agents, workflows, LLM providers, connectors
   await ensureStandardTools();
-  const [agentRows, workflowRows, toolRows, llmRows] = await Promise.all([
+  const [agentRows, workflowRows, toolRows, llmRows, connectorRows] = await Promise.all([
     db.select().from(agents),
     db.select().from(workflows),
     db.select().from(tools),
     db.select().from(llmConfigs),
+    db.select().from(ragConnectors),
   ]);
   const agentIds = chatSettings?.contextAgentIds;
   const workflowIds = chatSettings?.contextWorkflowIds;
@@ -723,6 +732,7 @@ export async function runChatPost(request: Request): Promise<Response> {
   const safeAgentRows = Array.isArray(agentRows) ? agentRows : [];
   const safeWorkflowRows = Array.isArray(workflowRows) ? workflowRows : [];
   const safeLlmRows = Array.isArray(llmRows) ? llmRows : [];
+  const safeConnectorRows = Array.isArray(connectorRows) ? connectorRows : [];
   const studioContext: StudioContext = {
     tools: (toolIdsFilter == null || toolIdsFilter.length === 0
       ? safeToolRows.map(fromToolRow)
@@ -739,6 +749,7 @@ export async function runChatPost(request: Request): Promise<Response> {
     llmProviders: safeLlmRows
       .map(fromLlmConfigRow)
       .map((c) => ({ id: c.id, provider: c.provider, model: c.model })),
+    connectors: studioContextConnectorsFromRows(safeConnectorRows),
   };
 
   // Load custom pricing overrides

@@ -1,7 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { GET as statsGet } from "../../app/api/system-stats/route";
 import { GET as historyGet } from "../../app/api/system-stats/history/route";
-import { getCachedSystemStats } from "../../app/api/_lib/system-stats";
+import {
+  getCachedSystemStats,
+  collectSystemStats,
+  pushHistory,
+  getHistory,
+} from "../../app/api/_lib/system-stats";
 
 describe("System stats API", () => {
   it("GET /api/system-stats returns snapshot with ram, process, cpu, disk, gpu", async () => {
@@ -31,9 +36,39 @@ describe("System stats API", () => {
   });
 
   it("getCachedSystemStats returns same snapshot within cache TTL", () => {
-    const a = getCachedSystemStats();
-    const b = getCachedSystemStats();
-    expect(a.ts).toBe(b.ts);
-    expect(a.ram.total).toBe(b.ram.total);
+    vi.useFakeTimers();
+    try {
+      getCachedSystemStats(); // prime cache
+      const a = getCachedSystemStats();
+      const b = getCachedSystemStats();
+      expect(a).toBe(b);
+      expect(a.ts).toBe(b.ts);
+      expect(a.ram.total).toBe(b.ram.total);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("collectSystemStats returns snapshot with required shape", () => {
+    const snapshot = collectSystemStats();
+    expect(snapshot.ts).toBeGreaterThan(0);
+    expect(snapshot.ram).toEqual(
+      expect.objectContaining({
+        total: expect.any(Number),
+        free: expect.any(Number),
+        used: expect.any(Number),
+      })
+    );
+    expect(snapshot.cpu.loadAvg).toHaveLength(3);
+    expect(Array.isArray(snapshot.gpu)).toBe(true);
+  });
+
+  it("pushHistory and getHistory append and return history", () => {
+    const before = getHistory().length;
+    const snapshot = collectSystemStats();
+    pushHistory(snapshot);
+    const after = getHistory();
+    expect(after.length).toBeGreaterThanOrEqual(before);
+    expect(after[after.length - 1].ts).toBe(snapshot.ts);
   });
 });

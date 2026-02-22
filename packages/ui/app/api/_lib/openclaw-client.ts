@@ -4,23 +4,26 @@
  * Protocol from openclaw/openclaw src/gateway: ConnectParams schema (frames.ts), client ids (client-info.ts).
  * - client.id must be one of GATEWAY_CLIENT_IDS (e.g. gateway-client, openclaw-control-ui).
  * - client.mode must be one of GATEWAY_CLIENT_MODES (webchat, cli, ui, backend, node, probe, test).
- * - device is optional; omit when no valid signature (schema requires NonEmptyString for device fields).
+ * - All connections must include device identity (id, publicKey, signature of connect.challenge nonce); we sign the challenge and send device.
  * - Gateway may send connect.challenge first; client then sends connect. Official client also sends connect after 750ms.
  */
 
 import WebSocket from "ws";
+import { signChallenge } from "./openclaw-device-identity";
 
 const DEFAULT_GATEWAY_URL = "ws://127.0.0.1:18789";
 const PROTOCOL_VERSION = 3;
 const CONNECT_TIMEOUT_MS = 8000;
 const RPC_TIMEOUT_MS = 60000;
 const DEFAULT_SESSION_KEY = "default";
-/** Delay before sending connect when no connect.challenge received (matches official client queueConnect). */
-const CONNECT_DELAY_MS = 750;
+/** If no connect.challenge received after this time, send connect without device (fallback for older gateways). */
+const CONNECT_FALLBACK_MS = 5000;
 
 /** Allowed by OpenClaw gateway schema (src/gateway/protocol/schema/primitives.ts, client-info.ts). */
 const OPENCLAW_CLIENT_ID = "gateway-client";
 const OPENCLAW_CLIENT_MODE = "backend";
+const OPENCLAW_CONTROL_UI_ID = "openclaw-control-ui";
+const OPENCLAW_CONTROL_UI_MODE = "ui";
 
 function getGatewayUrl(): string {
   return (
@@ -42,6 +45,22 @@ function originForUrl(wsUrl: string): string {
   }
 }
 
+/** When using Control UI bypass behind a proxy, send Host as gateway's real address so the gateway accepts (it checks Host for localhost). */
+const GATEWAY_PORT_BEHIND_PROXY = 18788;
+
+function wsHeaders(wsUrl: string): Record<string, string> {
+  const headers: Record<string, string> = { Origin: originForUrl(wsUrl) };
+  if (useControlUiBypass()) {
+    try {
+      const u = new URL(wsUrl);
+      headers.Host = `${u.hostname === "127.0.0.1" ? "127.0.0.1" : u.hostname}:${GATEWAY_PORT_BEHIND_PROXY}`;
+    } catch {
+      headers.Host = `127.0.0.1:${GATEWAY_PORT_BEHIND_PROXY}`;
+    }
+  }
+  return headers;
+}
+
 type ResFrame = {
   type: "res";
   id: string;
@@ -51,19 +70,31 @@ type ResFrame = {
 };
 type EventFrame = { type: "event"; event: string; payload?: unknown };
 
-/** Build connect params matching OpenClaw ConnectParamsSchema. Omit device (no valid signature). */
-function buildConnectParams(token: string | undefined): Record<string, unknown> {
+type ChallengePayload = { nonce: string; ts?: number };
+
+/** When true, connect as Control UI and omit device so gateway.controlUi.dangerouslyDisableDeviceAuth allows token-only (e.g. container port-forward). */
+function useControlUiBypass(): boolean {
+  return process.env.OPENCLAW_USE_CONTROL_UI_BYPASS === "1";
+}
+
+/** Build connect params matching OpenClaw ConnectParamsSchema. Includes device identity when challenge is provided, unless useControlUiBypass. */
+function buildConnectParams(
+  token: string | undefined,
+  challenge?: ChallengePayload,
+  options?: { controlUiBypass?: boolean }
+): Record<string, unknown> {
+  const bypass = options?.controlUiBypass ?? useControlUiBypass();
   const connectParams: Record<string, unknown> = {
     minProtocol: PROTOCOL_VERSION,
     maxProtocol: PROTOCOL_VERSION,
     client: {
-      id: OPENCLAW_CLIENT_ID,
+      id: bypass ? OPENCLAW_CONTROL_UI_ID : OPENCLAW_CLIENT_ID,
       version: "0.1",
       platform: typeof process !== "undefined" ? process.platform : "node",
-      mode: OPENCLAW_CLIENT_MODE,
+      mode: bypass ? OPENCLAW_CONTROL_UI_MODE : OPENCLAW_CLIENT_MODE,
     },
     role: "operator",
-    scopes: ["operator.read", "operator.write", "operator.admin", "operator.approvals", "operator.pairing"],
+    scopes: ["operator.admin", "operator.read", "operator.write"],
     caps: [],
     commands: [],
     permissions: {},
@@ -71,6 +102,14 @@ function buildConnectParams(token: string | undefined): Record<string, unknown> 
     userAgent: "agentron-studio/0.1",
   };
   if (token) connectParams.auth = { token };
+  if (challenge?.nonce && !bypass)
+    connectParams.device = signChallenge(challenge, {
+      token,
+      clientId: (connectParams.client as { id?: string }).id,
+      clientMode: (connectParams.client as { mode?: string }).mode,
+      role: connectParams.role as string,
+      scopes: connectParams.scopes as string[],
+    });
   return connectParams;
 }
 
@@ -87,17 +126,17 @@ export async function openclawRpc<T = unknown>(
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(url, {
       handshakeTimeout: CONNECT_TIMEOUT_MS,
-      headers: { Origin: originForUrl(url) },
+      headers: wsHeaders(url),
     });
     const reqId = `agentron-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const connectId = `agentron-connect-${Date.now()}`;
     let resolved = false;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let connectSent = false;
-    const sendConnectAndRpc = () => {
+    const sendConnectAndRpc = (challenge?: ChallengePayload) => {
       if (connectSent || ws.readyState !== WebSocket.OPEN) return;
       connectSent = true;
-      const connectParams = buildConnectParams(token);
+      const connectParams = buildConnectParams(token, challenge);
       ws.send(
         JSON.stringify({ type: "req", id: connectId, method: "connect", params: connectParams })
       );
@@ -137,7 +176,7 @@ export async function openclawRpc<T = unknown>(
     }, timeoutMs);
 
     ws.on("open", () => {
-      setTimeout(sendConnectAndRpc, CONNECT_DELAY_MS);
+      setTimeout(() => sendConnectAndRpc(), CONNECT_FALLBACK_MS);
     });
     ws.on("error", (err) => fail(err instanceof Error ? err : new Error(String(err))));
     ws.on("close", (code, reason) => {
@@ -150,8 +189,20 @@ export async function openclawRpc<T = unknown>(
         const raw = Buffer.isBuffer(data) ? data.toString("utf8") : String(data);
         const msg = JSON.parse(raw) as ResFrame | EventFrame;
 
-        if ((msg as EventFrame).type === "event" && (msg as EventFrame).event === "connect.challenge") {
-          if (!connectSent) sendConnectAndRpc();
+        if (
+          (msg as EventFrame).type === "event" &&
+          (msg as EventFrame).event === "connect.challenge"
+        ) {
+          const ev = msg as EventFrame & {
+            payload?: { nonce?: string; ts?: number };
+            nonce?: string;
+            ts?: number;
+          };
+          const payload =
+            ev.payload ?? (ev.nonce != null ? { nonce: ev.nonce, ts: ev.ts } : undefined);
+          const nonce = payload?.nonce ?? (typeof ev.nonce === "string" ? ev.nonce : undefined);
+          if (!connectSent && nonce) sendConnectAndRpc({ nonce, ts: payload?.ts });
+          else if (!connectSent) sendConnectAndRpc();
           return;
         }
 
@@ -194,14 +245,14 @@ export async function openclawHealth(options?: {
   return new Promise((resolve) => {
     const ws = new WebSocket(url, {
       handshakeTimeout: 5000,
-      headers: { Origin: originForUrl(url) },
+      headers: wsHeaders(url),
     });
     const connectId = `agentron-connect-${Date.now()}`;
     let connectSent = false;
-    const sendConnect = () => {
+    const sendConnect = (challenge?: ChallengePayload) => {
       if (connectSent || ws.readyState !== WebSocket.OPEN) return;
       connectSent = true;
-      const connectParams = buildConnectParams(token);
+      const connectParams = buildConnectParams(token, challenge);
       ws.send(
         JSON.stringify({ type: "req", id: connectId, method: "connect", params: connectParams })
       );
@@ -227,7 +278,7 @@ export async function openclawHealth(options?: {
     };
 
     ws.on("open", () => {
-      setTimeout(sendConnect, CONNECT_DELAY_MS);
+      setTimeout(() => sendConnect(), CONNECT_FALLBACK_MS);
     });
     ws.on("error", (err) => {
       clearTimeout(timeout);
@@ -237,7 +288,7 @@ export async function openclawHealth(options?: {
     ws.on("close", (code, reason) => {
       clearTimeout(timeout);
       if (code === 1000) return;
-      const reasonStr = typeof reason === "string" ? reason : reason?.toString() ?? "";
+      const reasonStr = typeof reason === "string" ? reason : (reason?.toString() ?? "");
       const detail =
         reasonStr || code === 1006
           ? `WebSocket closed: code=${code}${reasonStr ? ` reason=${reasonStr}` : ""}`
@@ -248,13 +299,25 @@ export async function openclawHealth(options?: {
       try {
         const raw = Buffer.isBuffer(data) ? data.toString("utf8") : String(data);
         const msg = JSON.parse(raw) as ResFrame | EventFrame;
-        if ((msg as EventFrame).type === "event" && (msg as EventFrame).event === "connect.challenge") {
-          if (!connectSent) sendConnect();
+        if (
+          (msg as EventFrame).type === "event" &&
+          (msg as EventFrame).event === "connect.challenge"
+        ) {
+          const ev = msg as EventFrame & {
+            payload?: { nonce?: string; ts?: number };
+            nonce?: string;
+            ts?: number;
+          };
+          const payload =
+            ev.payload ?? (ev.nonce != null ? { nonce: ev.nonce, ts: ev.ts } : undefined);
+          const nonce = payload?.nonce ?? (typeof ev.nonce === "string" ? ev.nonce : undefined);
+          if (!connectSent && nonce) sendConnect({ nonce, ts: payload?.ts });
+          else if (!connectSent) sendConnect(undefined);
           return;
         }
         if ((msg as ResFrame).type === "res" && (msg as ResFrame).id === connectId) {
           const res = msg as ResFrame;
-          finish(res.ok, res.ok ? undefined : res.error?.message ?? "Connect failed");
+          finish(res.ok, res.ok ? undefined : (res.error?.message ?? "Connect failed"));
         }
       } catch {
         // ignore parse errors

@@ -47,6 +47,59 @@ describe("Chat conversations [id] API", () => {
     expect(data.rating).toBe(5);
   });
 
+  it("PATCH /api/chat/conversations/:id with empty body returns conversation unchanged", async () => {
+    const res = await PATCH(
+      new Request("http://localhost/api/chat/conversations/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: conversationId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.title).toBeDefined();
+  });
+
+  it("PATCH /api/chat/conversations/:id accepts rating null and note empty string", async () => {
+    const res = await PATCH(
+      new Request("http://localhost/api/chat/conversations/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating: null, note: "" }),
+      }),
+      { params: Promise.resolve({ id: conversationId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.rating).toBeNull();
+    expect(data.note).toBeNull();
+  });
+
+  it("PATCH /api/chat/conversations/:id returns 404 for unknown id", async () => {
+    const res = await PATCH(
+      new Request("http://localhost/api/chat/conversations/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "X" }),
+      }),
+      { params: Promise.resolve({ id: "non-existent-conv-id" }) }
+    );
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe("Not found");
+  });
+
+  it("DELETE /api/chat/conversations/:id returns 404 for unknown id", async () => {
+    const res = await DELETE(
+      new Request("http://localhost/api/chat/conversations/x", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "non-existent-conv-id" }) }
+    );
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe("Not found");
+  });
+
   it("DELETE /api/chat/conversations/:id removes conversation", async () => {
     const res = await DELETE(
       new Request("http://localhost/api/chat/conversations/x", { method: "DELETE" }),

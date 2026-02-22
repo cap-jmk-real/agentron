@@ -49,4 +49,35 @@ describe("execution-log", () => {
     expect(parsed.length).toBeLessThanOrEqual(8001);
     expect(parsed.endsWith("…")).toBe(true);
   });
+
+  it("appendExecutionLogStep accepts string payload (capPayload string path) and stores as-is when under limit", async () => {
+    const id5 = crypto.randomUUID();
+    await appendExecutionLogStep(
+      id5,
+      "tool_result",
+      "t",
+      "short string" as unknown as Record<string, unknown>
+    );
+    const log = await getExecutionLogForRun(id5);
+    expect(log).toHaveLength(1);
+    expect(log[0].payload).toBe('"short string"');
+  });
+
+  it("appendExecutionLogStep caps long string payload", async () => {
+    const id6 = crypto.randomUUID();
+    const longString = "x".repeat(10000);
+    await appendExecutionLogStep(
+      id6,
+      "tool_result",
+      "t",
+      longString as unknown as Record<string, unknown>
+    );
+    const log = await getExecutionLogForRun(id6);
+    expect(log).toHaveLength(1);
+    const payloadStr = log[0].payload as string;
+    expect(payloadStr).toMatch(/^".*"$/);
+    const parsed = JSON.parse(payloadStr) as string;
+    expect(parsed.length).toBeLessThanOrEqual(8001);
+    expect(parsed.endsWith("…")).toBe(true);
+  });
 });

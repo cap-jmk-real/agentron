@@ -66,6 +66,13 @@ describe("scheduled-workflows", () => {
       expect(ms).toBeGreaterThan(0);
       expect(Number.isFinite(ms)).toBe(true);
     });
+
+    it("returns ms until tomorrow when given time today has already passed", () => {
+      const ms = nextDailyMs(0, 0);
+      expect(ms).toBeGreaterThan(0);
+      expect(Number.isFinite(ms)).toBe(true);
+      expect(ms).toBeLessThanOrEqual(25 * 60 * 60 * 1000);
+    });
   });
 
   describe("nextWeeklyMs", () => {
@@ -73,6 +80,14 @@ describe("scheduled-workflows", () => {
       const ms = nextWeeklyMs([0, 1, 2, 3, 4, 5, 6]);
       expect(ms).toBeGreaterThan(0);
       expect(Number.isFinite(ms)).toBe(true);
+    });
+
+    it("returns ms for next occurrence when current day is not in list", () => {
+      const today = new Date().getDay();
+      const nextDay = (today + 1) % 7;
+      const ms = nextWeeklyMs([nextDay]);
+      expect(ms).toBeGreaterThan(0);
+      expect(ms).toBeLessThanOrEqual(7 * 24 * 60 * 60 * 1000 + 1000);
     });
   });
 });

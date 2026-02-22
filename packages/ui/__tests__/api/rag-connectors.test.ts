@@ -31,6 +31,186 @@ describe("RAG connectors API", () => {
     expect(res.status).toBe(400);
   });
 
+  it("POST /api/rag/connectors with optional id uses provided id", async () => {
+    const encRes = await encPost(
+      new Request("http://localhost/api/rag/encoding-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Enc for id",
+          provider: "openai",
+          modelOrEndpoint: "text-embedding-3-small",
+          dimensions: 1536,
+        }),
+      })
+    );
+    const enc = await encRes.json();
+    const storeRes = await storePost(
+      new Request("http://localhost/api/rag/document-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Store for id",
+          type: "minio",
+          bucket: "b",
+          endpoint: "http://localhost:9000",
+        }),
+      })
+    );
+    const store = await storeRes.json();
+    const collRes = await collPost(
+      new Request("http://localhost/api/rag/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Coll for id",
+          scope: "agent",
+          encodingConfigId: enc.id,
+          documentStoreId: store.id,
+        }),
+      })
+    );
+    const coll = await collRes.json();
+    const customId = "custom-connector-id-" + Date.now();
+    const res = await listPost(
+      new Request("http://localhost/api/rag/connectors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: customId,
+          type: "filesystem",
+          collectionId: coll.id,
+          config: { path: "/tmp" },
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.id).toBe(customId);
+  });
+
+  it("GET /api/rag/connectors returns lastError when config has lastError string", async () => {
+    const encRes = await encPost(
+      new Request("http://localhost/api/rag/encoding-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Enc lastErr",
+          provider: "openai",
+          modelOrEndpoint: "text-embedding-3-small",
+          dimensions: 1536,
+        }),
+      })
+    );
+    const enc = await encRes.json();
+    const storeRes = await storePost(
+      new Request("http://localhost/api/rag/document-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Store lastErr",
+          type: "minio",
+          bucket: "b",
+          endpoint: "http://localhost:9000",
+        }),
+      })
+    );
+    const store = await storeRes.json();
+    const collRes = await collPost(
+      new Request("http://localhost/api/rag/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Coll lastErr",
+          scope: "agent",
+          encodingConfigId: enc.id,
+          documentStoreId: store.id,
+        }),
+      })
+    );
+    const coll = await collRes.json();
+    await listPost(
+      new Request("http://localhost/api/rag/connectors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "filesystem",
+          collectionId: coll.id,
+          config: { path: "/tmp", lastError: "sync failed" },
+        }),
+      })
+    );
+    const listRes = await listGet();
+    expect(listRes.status).toBe(200);
+    const list = await listRes.json();
+    const withError = list.find(
+      (c: { config: { lastError?: string } }) => c.config?.lastError === "sync failed"
+    );
+    expect(withError).toBeDefined();
+    expect(withError.lastError).toBe("sync failed");
+  });
+
+  it("GET /api/rag/connectors returns lastError undefined when config.lastError is not string", async () => {
+    const encRes = await encPost(
+      new Request("http://localhost/api/rag/encoding-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Enc noLastErr",
+          provider: "openai",
+          modelOrEndpoint: "text-embedding-3-small",
+          dimensions: 1536,
+        }),
+      })
+    );
+    const enc = await encRes.json();
+    const storeRes = await storePost(
+      new Request("http://localhost/api/rag/document-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Store noLastErr",
+          type: "minio",
+          bucket: "b",
+          endpoint: "http://localhost:9000",
+        }),
+      })
+    );
+    const store = await storeRes.json();
+    const collRes = await collPost(
+      new Request("http://localhost/api/rag/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Coll noLastErr",
+          scope: "agent",
+          encodingConfigId: enc.id,
+          documentStoreId: store.id,
+        }),
+      })
+    );
+    const coll = await collRes.json();
+    await listPost(
+      new Request("http://localhost/api/rag/connectors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "filesystem",
+          collectionId: coll.id,
+          config: { lastError: 999 },
+        }),
+      })
+    );
+    const listRes = await listGet();
+    expect(listRes.status).toBe(200);
+    const list = await listRes.json();
+    const withNonString = list.find(
+      (c: { config: { lastError?: unknown } }) => c.config && c.config.lastError === 999
+    );
+    expect(withNonString).toBeDefined();
+    expect(withNonString.lastError).toBeUndefined();
+  });
+
   it("POST /api/rag/connectors creates connector", async () => {
     const encRes = await encPost(
       new Request("http://localhost/api/rag/encoding-config", {

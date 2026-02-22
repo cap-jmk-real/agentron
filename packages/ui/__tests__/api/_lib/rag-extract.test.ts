@@ -39,5 +39,10 @@ describe("rag-extract", () => {
       expect(typeof text).toBe("string");
       expect(text.length).toBeGreaterThanOrEqual(0);
     });
+
+    it("treats empty mimeType as unknown and returns utf-8", async () => {
+      const buf = Buffer.from("content", "utf-8");
+      expect(await extractText(buf, "")).toBe("content");
+    });
   });
 });

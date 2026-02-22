@@ -93,4 +93,14 @@ describe("run-scheduled-workflow", () => {
     expect(row).toBeDefined();
     expect(row!.status).toBe("completed");
   });
+
+  it("on runWorkflow throwing non-Error sets status failed with string message", async () => {
+    mockRunWorkflow.mockRejectedValueOnce("plain string failure");
+    await runOneScheduledWorkflow(workflowId);
+    const row = await getLatestExecutionForWorkflow(workflowId);
+    expect(row).toBeDefined();
+    expect(row!.status).toBe("failed");
+    const output = JSON.parse(row!.output ?? "{}");
+    expect(output.error ?? output.message).toContain("plain string failure");
+  });
 });

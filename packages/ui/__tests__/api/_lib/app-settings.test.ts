@@ -31,6 +31,11 @@ describe("app-settings", () => {
     expect(getMaxFileUploadBytes()).toBe(50 * 1024 * 1024);
   });
 
+  it("getMaxFileUploadBytes returns default when file has invalid JSON", () => {
+    fs.writeFileSync(getSettingsPath(), "not json {", "utf-8");
+    expect(getMaxFileUploadBytes()).toBe(50 * 1024 * 1024);
+  });
+
   it("getMaxFileUploadBytes returns default when invalid or out of range", () => {
     writeSettings({ maxFileUploadBytes: NaN });
     expect(getMaxFileUploadBytes()).toBe(50 * 1024 * 1024);
@@ -159,6 +164,13 @@ describe("app-settings", () => {
     expect(updated.maxFileUploadBytes).toBe(20 * 1024 * 1024);
     const clamped = updateAppSettings({ maxFileUploadBytes: 0 });
     expect(clamped.maxFileUploadBytes).toBe(1024 * 1024);
+  });
+
+  it("updateAppSettings leaves maxFileUploadBytes unchanged when update is NaN", () => {
+    writeSettings({ maxFileUploadBytes: 10 * 1024 * 1024 });
+    const before = getAppSettings().maxFileUploadBytes;
+    updateAppSettings({ maxFileUploadBytes: Number.NaN });
+    expect(getAppSettings().maxFileUploadBytes).toBe(before);
   });
 
   it("updateAppSettings updates containerEngine and shellCommandAllowlist", () => {

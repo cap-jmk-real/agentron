@@ -67,4 +67,34 @@ describe("Chat settings API", () => {
     const data = await res.json();
     expect(data).toHaveProperty("id", "default");
   });
+
+  it("PATCH /api/chat/settings clears customSystemPrompt when null or empty string", async () => {
+    await PATCH(
+      new Request("http://localhost/api/chat/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customSystemPrompt: "Temporary" }),
+      })
+    );
+    const res = await PATCH(
+      new Request("http://localhost/api/chat/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customSystemPrompt: null }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.customSystemPrompt).toBeNull();
+    const res2 = await PATCH(
+      new Request("http://localhost/api/chat/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customSystemPrompt: "" }),
+      })
+    );
+    expect(res2.status).toBe(200);
+    const data2 = await res2.json();
+    expect(data2.customSystemPrompt).toBeNull();
+  });
 });

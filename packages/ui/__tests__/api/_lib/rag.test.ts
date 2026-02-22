@@ -323,5 +323,102 @@ describe("rag", () => {
       expect(chunks).toEqual([]);
       vi.restoreAllMocks();
     });
+
+    it("scores zero when vector length differs from query (cosineSimilarity branch)", async () => {
+      await db
+        .insert(ragVectors)
+        .values({
+          id: crypto.randomUUID(),
+          collectionId,
+          documentId: "doc-diff-len",
+          chunkIndex: 0,
+          text: "different length vector",
+          embedding: JSON.stringify([0.1, 0.1, 0.1, 0.1]),
+          createdAt: Date.now(),
+        })
+        .run();
+      const chunks = await retrieveChunks(collectionId, "query", 10);
+      const diffLen = chunks.find((c) => c.text === "different length vector");
+      expect(diffLen).toBeDefined();
+      expect(diffLen?.score).toBe(0);
+    });
+
+    it("scores zero when embedding is zero vector (cosineSimilarity denom branch)", async () => {
+      await db
+        .insert(ragVectors)
+        .values({
+          id: crypto.randomUUID(),
+          collectionId,
+          documentId: "doc-zero",
+          chunkIndex: 0,
+          text: "zero vector",
+          embedding: JSON.stringify([0, 0, 0]),
+          createdAt: Date.now(),
+        })
+        .run();
+      const chunks = await retrieveChunks(collectionId, "query", 10);
+      const zero = chunks.find((c) => c.text === "zero vector");
+      expect(zero).toBeDefined();
+      expect(zero?.score).toBe(0);
+    });
+
+    it("uses bundled store when vectorStoreId points to non-existent store", async () => {
+      const encRes = await encPost(
+        new Request("http://localhost/api/rag/encoding-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Enc fallback",
+            provider: "openai",
+            modelOrEndpoint: "text-embedding-3-small",
+            dimensions: 3,
+          }),
+        })
+      );
+      const encData = await encRes.json();
+      const storeRes = await storePost(
+        new Request("http://localhost/api/rag/document-store", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Store fallback",
+            type: "minio",
+            bucket: "b",
+            endpoint: "http://localhost:9000",
+          }),
+        })
+      );
+      const storeData = await storeRes.json();
+      const collRes = await collPost(
+        new Request("http://localhost/api/rag/collections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Coll with missing vector store",
+            scope: "agent",
+            encodingConfigId: encData.id,
+            documentStoreId: storeData.id,
+            vectorStoreId: "00000000-0000-0000-0000-000000000000",
+          }),
+        })
+      );
+      if (collRes.status !== 201) return;
+      const collData = await collRes.json();
+      const now = Date.now();
+      await db
+        .insert(ragVectors)
+        .values({
+          id: crypto.randomUUID(),
+          collectionId: collData.id,
+          documentId: "doc1",
+          chunkIndex: 0,
+          text: "bundled fallback chunk",
+          embedding: JSON.stringify([0.1, 0.1, 0.1]),
+          createdAt: now,
+        })
+        .run();
+      const chunks = await retrieveChunks(collData.id, "query", 5);
+      expect(chunks.some((c) => c.text === "bundled fallback chunk")).toBe(true);
+    });
   });
 });

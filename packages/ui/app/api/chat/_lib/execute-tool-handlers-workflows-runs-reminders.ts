@@ -71,9 +71,11 @@ import { getContainerManager, withContainerInstallHint } from "../../_lib/contai
 import { addSandboxSiteBinding } from "../../_lib/sandbox-site-bindings";
 import { getStoredCredential } from "../../_lib/credential-store";
 import { createRunNotification } from "../../_lib/notifications-store";
+import { ensureRunFailureSideEffects } from "../../_lib/run-failure-side-effects";
 import { scheduleReminder, cancelReminderTimeout } from "../../_lib/reminder-scheduler";
 import { runShellCommand } from "../../_lib/shell-exec";
 import { openclawSend, openclawHistory, openclawAbort } from "../../_lib/openclaw-client";
+import { runOpenclawRpcInContainer } from "../../_lib/openclaw-in-container";
 import { testRemoteConnection } from "../../_lib/remote-test";
 import {
   getAppSettings,
@@ -318,12 +320,77 @@ export async function executeToolHandlersWorkflowsRunsReminders(
       const id = crypto.randomUUID();
       const name = (a.name as string) || `sandbox-${id.slice(0, 8)}`;
       const image = a.image as string;
-      const config: { useImageCmd?: boolean; env?: Record<string, string> } =
+      const envArg =
+        a.env && typeof a.env === "object" && !Array.isArray(a.env)
+          ? (a.env as Record<string, string>)
+          : undefined;
+      const config: { useImageCmd?: boolean; env?: Record<string, string>; cmd?: string[] } =
         typeof image === "string" && image.toLowerCase().includes("openclaw")
-          ? {
-              useImageCmd: true,
-              env: { OPENCLAW_GATEWAY_TOKEN: "e2e-openclaw-token" },
-            }
+          ? (() => {
+              // Break-glass: patch config so token-only Control UI connect works. Gateway listens on loopback:18788; proxy on 0.0.0.0:18789 forwards to it so gateway sees 127.0.0.1 (allowInsecureAuth allows then).
+              const patchScript = [
+                'const fs=require("fs");',
+                'const paths=["/root/.openclaw/openclaw.json","/home/node/.openclaw/openclaw.json"];',
+                'const strip=(s)=>s.replace(/\\/\\/[^\\n]*/g,"").replace(/\\/\\*[\\s\\S]*?\\*\\//g,"");',
+                "let ok=false;",
+                'for(const p of paths){try{const c=JSON.parse(strip(fs.readFileSync(p,"utf8")));c.gateway=c.gateway||{};c.gateway.port=18788;c.gateway.bind="loopback";c.gateway.controlUi=c.gateway.controlUi||{};c.gateway.controlUi.dangerouslyDisableDeviceAuth=true;c.gateway.controlUi.allowInsecureAuth=true;fs.writeFileSync(p,JSON.stringify(c,null,2));ok=true;}catch(e){}}',
+                "if(!ok)process.exit(1);",
+              ].join("");
+              // Optional: configure Ollama/local model so the agent can reply without cloud API keys. Set OPENCLAW_AGENT_MODEL (e.g. ollama/llama3.3) and optionally OPENCLAW_OLLAMA_BASE_URL (e.g. http://host.containers.internal:11434/v1). Requires network so container can reach host.
+              const ollamaPatchScript = [
+                'const fs=require("fs");',
+                'const paths=["/root/.openclaw/openclaw.json","/home/node/.openclaw/openclaw.json"];',
+                'const strip=(s)=>s.replace(/\\/\\/[^\\n]*/g,"").replace(/\\/\\*[\\s\\S]*?\\*\\//g,"");',
+                "const model=process.env.OPENCLAW_AGENT_MODEL;",
+                'const baseUrl=process.env.OPENCLAW_OLLAMA_BASE_URL||"http://host.containers.internal:11434/v1";',
+                "let ok=false;",
+                "if(!model){process.exit(0);}",
+                'for(const p of paths){try{const c=JSON.parse(strip(fs.readFileSync(p,"utf8")));c.models=c.models||{};c.models.providers=c.models.providers||{};c.models.providers.ollama={baseUrl,apiKey:"ollama-local",api:"openai-responses",models:[]};c.agents=c.agents||{};c.agents.defaults=c.agents.defaults||{};c.agents.defaults.model=c.agents.defaults.model||{};if(typeof c.agents.defaults.model==="string")c.agents.defaults.model={primary:c.agents.defaults.model};c.agents.defaults.model.primary=model;fs.writeFileSync(p,JSON.stringify(c,null,2));ok=true;}catch(e){}}',
+                "if(!ok)process.exit(1);",
+              ].join("");
+              // TCP proxy: listen 0.0.0.0:18789, forward to 127.0.0.1:18788. Keep process alive (handle errors, no exit on listen failure).
+              const proxyScript =
+                'var n=require("net");var s=n.createServer(function(sock){var c=n.createConnection(18788,"127.0.0.1",function(){sock.pipe(c);c.pipe(sock)});c.on("error",function(){sock.destroy()});sock.on("error",function(){c.destroy()})});s.on("error",function(e){console.error("proxy error",e.message||e)});s.listen(18789,"0.0.0.0",function(){if(this.listening)process.stderr.write("proxy listening\\n")});setInterval(function(){},86400000)';
+              // Single base64 startup script in env so -c string is minimal (avoids quoting/parsing on Windows).
+              const patchB64 = Buffer.from(patchScript, "utf8").toString("base64");
+              const ollamaPatchB64 = Buffer.from(ollamaPatchScript, "utf8").toString("base64");
+              const proxyB64 = Buffer.from(proxyScript, "utf8").toString("base64");
+              const useOllama =
+                (envArg && (envArg.OPENCLAW_AGENT_MODEL || envArg.OPENCLAW_OLLAMA_BASE_URL)) ||
+                false;
+              const startupScript = [
+                '[ -n "$OPENCLAW_E2E_TOKEN" ] && node openclaw.mjs config set gateway.auth.token "$OPENCLAW_E2E_TOKEN" ; true',
+                "node openclaw.mjs onboard --non-interactive --accept-risk --flow quickstart --mode local --skip-channels --skip-skills --skip-daemon --skip-ui --skip-health",
+                '[ -n "$OPENCLAW_E2E_TOKEN" ] && node openclaw.mjs config set gateway.auth.token "$OPENCLAW_E2E_TOKEN" ; true',
+                'echo "$OC_PATCH_B64" | base64 -d | node',
+                'echo "$OC_OLLAMA_PATCH_B64" | base64 -d | node',
+                '(mkdir -p /tmp/oc-client && echo \'{"name":"oc-client","dependencies":{"ws":"^8.18.0"}}\' > /tmp/oc-client/package.json && cd /tmp/oc-client && npm install --omit=dev 2>/dev/null) &',
+                "( node openclaw.mjs gateway --allow-unconfigured & )",
+                '( echo "$OC_PROXY_B64" | base64 -d | node & )',
+                "sleep 12",
+              ].join("\n");
+              const startupB64 = Buffer.from(startupScript, "utf8").toString("base64");
+              // Minimal -c: no nested && or quotes that can break under PowerShell/Windows.
+              const cmdStr = 'echo "$OC_STARTUP_B64" | base64 -d | sh ; exec sleep infinity';
+              const baseConfig: {
+                useImageCmd: true;
+                network?: boolean;
+                env?: Record<string, string>;
+                cmd: string[];
+              } = {
+                useImageCmd: true,
+                cmd: ["-c", cmdStr],
+                env: {
+                  ...envArg,
+                  OC_STARTUP_B64: startupB64,
+                  OC_PATCH_B64: patchB64,
+                  OC_OLLAMA_PATCH_B64: ollamaPatchB64,
+                  OC_PROXY_B64: proxyB64,
+                },
+              };
+              if (useOllama) baseConfig.network = true;
+              return baseConfig;
+            })()
           : {};
       let containerId: string | undefined;
       let status = "creating";
@@ -854,7 +921,7 @@ export async function executeToolHandlersWorkflowsRunsReminders(
           .where(eq(executions.id, runId))
           .run();
         try {
-          await createRunNotification(runId, "failed", {
+          await ensureRunFailureSideEffects(runId, {
             targetType: "workflow",
             targetId: workflowId,
           });
@@ -1771,8 +1838,53 @@ export async function executeToolHandlersWorkflowsRunsReminders(
       return { message: "Guardrail deleted." };
     }
     case "send_to_openclaw": {
-      const content = (a.content as string)?.trim();
+      const content =
+        (typeof a.content === "string" && a.content.trim()) ||
+        (typeof a.message === "string" && a.message.trim()) ||
+        (typeof (a as { text?: string }).text === "string" &&
+          (a as { text?: string }).text?.trim()) ||
+        (() => {
+          for (const v of Object.values(a)) {
+            if (typeof v === "string" && v.trim() && !v.startsWith("ws://")) return v.trim();
+          }
+          return "";
+        })();
       if (!content) return { error: "content is required" };
+      const sandboxId = (a.sandboxId as string)?.trim();
+      if (sandboxId) {
+        const rows = await db.select().from(sandboxes).where(eq(sandboxes.id, sandboxId));
+        if (rows.length === 0) return { error: "Sandbox not found" };
+        const sb = fromSandboxRow(rows[0]);
+        if (!sb.containerId) return { error: "Sandbox has no container" };
+        if (!sb.image?.toLowerCase().includes("openclaw"))
+          return { error: "Sandbox is not an OpenClaw container" };
+        const podman = getContainerManager();
+        const { payload, error } = await runOpenclawRpcInContainer(
+          sb.containerId,
+          "chat.send",
+          {
+            sessionKey: "default",
+            message: content,
+            idempotencyKey: `agentron-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          },
+          (cid, cmd) => podman.exec(cid, cmd)
+        );
+        if (error) {
+          const hint =
+            error.includes("running containers") || error.includes("container state")
+              ? " Container may have stopped or exec failed. Check container logs."
+              : " Make sure the OpenClaw Gateway is running in the container (e.g. create_sandbox with OpenClaw image).";
+          return {
+            error: `OpenClaw: ${error}`,
+            message: hint.trim(),
+          };
+        }
+        const result = payload as { runId?: string; status?: string };
+        return {
+          ...result,
+          message: result?.runId ? "Message sent to OpenClaw." : (result?.status ?? "Sent."),
+        };
+      }
       const gatewayUrl =
         typeof a.gatewayUrl === "string" ? (a.gatewayUrl as string).trim() : undefined;
       let url = gatewayUrl;
@@ -1799,6 +1911,32 @@ export async function executeToolHandlersWorkflowsRunsReminders(
       }
     }
     case "openclaw_history": {
+      const sandboxIdHist = (a.sandboxId as string)?.trim();
+      if (sandboxIdHist) {
+        const rows = await db.select().from(sandboxes).where(eq(sandboxes.id, sandboxIdHist));
+        if (rows.length === 0) return { error: "Sandbox not found", messages: [] };
+        const sb = fromSandboxRow(rows[0]);
+        if (!sb.containerId) return { error: "Sandbox has no container", messages: [] };
+        if (!sb.image?.toLowerCase().includes("openclaw"))
+          return { error: "Sandbox is not an OpenClaw container", messages: [] };
+        const limit = typeof a.limit === "number" && a.limit > 0 ? Math.min(a.limit, 50) : 20;
+        const podman = getContainerManager();
+        const { payload, error } = await runOpenclawRpcInContainer(
+          sb.containerId,
+          "chat.history",
+          { sessionKey: "default", limit },
+          (cid, cmd) => podman.exec(cid, cmd)
+        );
+        if (error) return { error: `OpenClaw: ${error}`, messages: [] };
+        const raw = payload as
+          | { messages?: Array<{ role?: string; content?: string }> }
+          | Array<{ role?: string; content?: string }>;
+        const messages = Array.isArray(raw) ? raw : (raw?.messages ?? []);
+        return {
+          messages,
+          message: `Last ${messages.length} message(s) from OpenClaw.`,
+        };
+      }
       const gatewayUrl =
         typeof a.gatewayUrl === "string" ? (a.gatewayUrl as string).trim() : undefined;
       let url = gatewayUrl;
@@ -1823,6 +1961,25 @@ export async function executeToolHandlersWorkflowsRunsReminders(
       }
     }
     case "openclaw_abort": {
+      const sandboxIdAbort = (a.sandboxId as string)?.trim();
+      if (sandboxIdAbort) {
+        const rows = await db.select().from(sandboxes).where(eq(sandboxes.id, sandboxIdAbort));
+        if (rows.length === 0) return { error: "Sandbox not found" };
+        const sb = fromSandboxRow(rows[0]);
+        if (!sb.containerId) return { error: "Sandbox has no container" };
+        if (!sb.image?.toLowerCase().includes("openclaw"))
+          return { error: "Sandbox is not an OpenClaw container" };
+        const podman = getContainerManager();
+        const runId = typeof a.runId === "string" ? a.runId.trim() : undefined;
+        const { error } = await runOpenclawRpcInContainer(
+          sb.containerId,
+          "chat.abort",
+          { sessionKey: "default", ...(runId ? { runId } : {}) },
+          (cid, cmd) => podman.exec(cid, cmd)
+        );
+        if (error) return { error: `OpenClaw: ${error}`, message: "Could not abort." };
+        return { message: "OpenClaw run aborted." };
+      }
       const gatewayUrl =
         typeof a.gatewayUrl === "string" ? (a.gatewayUrl as string).trim() : undefined;
       let url = gatewayUrl;

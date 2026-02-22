@@ -92,6 +92,42 @@ describe("Queues API", () => {
     }
   });
 
+  it("GET /api/queues returns activeChatTraces with empty toolCalls/llmTrace when stored value is not array", async () => {
+    const convId = "queues-test-trace-invalid-" + Date.now();
+    const now = Date.now();
+    await db
+      .insert(conversationLocks)
+      .values({ conversationId: convId, startedAt: now, createdAt: now })
+      .run();
+    const msgId = "msg-invalid-" + Date.now();
+    await db
+      .insert(chatMessages)
+      .values({
+        id: msgId,
+        conversationId: convId,
+        role: "assistant",
+        content: "Done.",
+        toolCalls: "null",
+        llmTrace: "{}",
+        createdAt: now - 100,
+      })
+      .run();
+    try {
+      const res = await GET();
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      const trace = data.activeChatTraces.find(
+        (t: { conversationId: string }) => t.conversationId === convId
+      );
+      expect(trace).toBeDefined();
+      expect(trace.toolCalls).toEqual([]);
+      expect(trace.llmTrace).toEqual([]);
+    } finally {
+      await db.delete(chatMessages).where(eq(chatMessages.id, msgId)).run();
+      await db.delete(conversationLocks).where(eq(conversationLocks.conversationId, convId)).run();
+    }
+  });
+
   it("GET /api/queues returns messageQueueLog steps for locked conversations", async () => {
     const convId = "queues-test-mqlog-" + Date.now();
     const now = Date.now();

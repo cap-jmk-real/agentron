@@ -1,0 +1,21 @@
+---
+title: Embedding models and dimensions
+description: Reference table of common embedding model names and their vector dimensions for RAG encoding configs.
+---
+
+# Embedding models and dimensions
+
+When you create an **encoding config** in Knowledge (or Settings), you choose an embedding provider and model. The **dimensions** value must match the model's output size. Use this table to look up dimensions for common models.
+
+| Model name | Dimensions |
+| ---------- | ---------- |
+| nomic-embed-text | 768 |
+| all-minilm | 384 |
+| mxbai-embed-large | 1024 |
+| text-embedding-3-small | 1536 |
+| text-embedding-3-large | 3072 |
+| text-embedding-ada-002 | 1536 |
+
+**In the app:** If you use a **local (Ollama)** embedding provider, the model dropdown in Knowledge may show dimensions next to each model name (e.g. `nomic-embed-text (768d)`). Selecting a model can auto-fill dimensions; you can still change the value if needed.
+
+**Ollama:** Pull an embedding model first, e.g. `ollama pull nomic-embed-text`. Dimensions for known models are shown in the app; for others, check the model card or use the value from your provider's documentation.

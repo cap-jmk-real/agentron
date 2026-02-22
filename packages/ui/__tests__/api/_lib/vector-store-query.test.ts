@@ -75,6 +75,18 @@ describe("vector-store-query", () => {
       );
     });
 
+    it("returns empty array when response has no result key", async () => {
+      const mockFetch = vi.mocked(fetch);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as Response);
+
+      const result = await queryQdrant("c", [0], 1, {});
+
+      expect(result).toEqual([]);
+    });
+
     it("includes api-key header when apiKeyRef is set and env has value", async () => {
       const orig = process.env.TEST_API_KEY_REF;
       process.env.TEST_API_KEY_REF = "secret-key";

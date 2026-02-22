@@ -101,4 +101,20 @@ describe("chat-queue", () => {
     const result = await secondPromise;
     expect(result).toBe("second");
   });
+
+  it("removes stale lock and acquires when previous lock is older than 5 min", async () => {
+    const convId = "conv-stale-" + Date.now();
+    const staleAt = Date.now() - 6 * 60 * 1000;
+    await db
+      .insert(conversationLocks)
+      .values({ conversationId: convId, startedAt: staleAt, createdAt: staleAt })
+      .run();
+    const result = await runSerializedByConversation(convId, async () => "after-stale");
+    expect(result).toBe("after-stale");
+    const rows = await db
+      .select()
+      .from(conversationLocks)
+      .where(eq(conversationLocks.conversationId, convId));
+    expect(rows.length).toBe(0);
+  });
 });
