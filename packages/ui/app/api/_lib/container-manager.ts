@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 import { platform } from "node:os";
 import { PodmanManager } from "@agentron-studio/runtime";
 import { getContainerEngine } from "./app-settings";
@@ -65,8 +65,8 @@ export async function verifyContainerEngine(): Promise<{ ok: boolean; error?: st
         proc.stderr?.on("data", (d: Buffer) => {
           stderr += d.toString();
         });
-        (proc as ChildProcess).on("error", reject);
-        (proc as ChildProcess).on("close", (code: number | null) =>
+        (proc as NodeJS.EventEmitter).on("error", reject);
+        (proc as NodeJS.EventEmitter).on("close", (code: number | null) =>
           code === 0 ? resolve() : reject(new Error(stderr || `exit ${code}`))
         );
       });

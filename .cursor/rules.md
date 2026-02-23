@@ -191,7 +191,7 @@ Before presenting code, the agent asks:
 * Did I run the unit tests?
 * Did I run the test coverage (`npm run test:coverage`) and check the report?
 * Did I run the build (and fix any errors)?
-* Before pushing: did I run `npm run pre-push` (or all CI steps: typecheck, lint, test, build:ui, build:docs, desktop dist) locally to save CI minutes?
+* Before pushing: did I run `pnpm run ci:local` (CI steps plus build:ui and desktop dist) locally to verify the full pipeline?
 
 ---
 
@@ -199,12 +199,12 @@ Before presenting code, the agent asks:
 
 After modifying code, **always run the relevant build(s)** to catch and fix potential build errors before considering the change complete.
 
-- **Before pushing:** Run `npm run pre-push` to run all CI steps locally (typecheck, lint, test, build:ui, build:docs, desktop dist) and avoid wasting CI minutes. If the desktop build fails with "file is being used", close Agentron Studio, any Explorer windows showing `apps/desktop/release/`, and restart Cursor so the watcher excludes take effect (see `.vscode/settings.json`).
+- **Before pushing:** Run `pnpm run ci:local` to run CI steps plus build:ui and desktop dist; fix any failures so the full pipeline is verified locally. If desktop dist fails with "file is being used", close Agentron Studio and any Explorer windows showing `apps/desktop/release/`, then retry.
 
 - **Default:** Run `npm run build:ui` when changing app/UI, packages/ui, packages/core, or packages/runtime code.
 - **Docs:** Run `npm run build:docs` when changing anything under `apps/docs/`.
 - **Desktop (Electron):** When changing `apps/desktop` or anything the desktop app depends on, run `npm run build:ui` then `npm run dist --workspace apps/desktop` to verify the Electron build and installer packaging.
-- **Before pushing:** Run `npm run pre-push` so all CI checks pass locally and CI minutes are not wasted.
+- **Before pushing:** Run `pnpm run ci:local` so all CI checks pass locally and CI minutes are not wasted.
 - If the build or typecheck fails, fix the errors and re-run until they pass. Do not leave broken builds.
 
 ---

@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 
 export const REMOTE_CONNECTION_GUIDANCE = `
 If the connection failed, try:
@@ -93,7 +93,7 @@ export async function testRemoteConnection(params: {
     proc.stderr?.on("data", (d) => {
       stderr += d;
     });
-    (proc as ChildProcess).on("close", (code: number | null) => {
+    (proc as NodeJS.EventEmitter).on("close", (code: number | null) => {
       if (code === 0) finish({ ok: true, message: "SSH connection succeeded." });
       else
         finish({
@@ -102,7 +102,7 @@ export async function testRemoteConnection(params: {
           guidance: REMOTE_CONNECTION_GUIDANCE,
         });
     });
-    (proc as ChildProcess).on("error", (err: Error) =>
+    (proc as NodeJS.EventEmitter).on("error", (err: Error) =>
       finish({
         ok: false,
         message: "Failed to run ssh: " + err.message,

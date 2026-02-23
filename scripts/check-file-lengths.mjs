@@ -2,6 +2,7 @@
 /**
  * Fail CI if any tracked source file exceeds MAX_LINES.
  * Scans packages/ and apps/ (excluding build/generated dirs).
+ * With --optional, print offenders but exit 0 (match CI continue-on-error).
  */
 import fs from "fs";
 import path from "path";
@@ -61,12 +62,13 @@ for (const root of [packagesDir, appsDir]) {
   }
 }
 
+const optional = process.argv.includes("--optional");
 if (offenders.length > 0) {
   console.error(`Error: ${offenders.length} file(s) exceed ${MAX_LINES} lines:\n`);
   for (const { relative, lines } of offenders.sort((a, b) => b.lines - a.lines)) {
     console.error(`  ${lines}  ${relative}`);
   }
-  process.exit(1);
+  process.exit(optional ? 0 : 1);
 }
 
 console.log(`All tracked source files are within ${MAX_LINES} lines.`);

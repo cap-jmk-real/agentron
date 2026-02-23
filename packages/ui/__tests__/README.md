@@ -50,7 +50,7 @@ These areas are **not** covered by unit tests by design; they are either integra
 
 **Mission-critical and tested:** Vault crypto and create/status (`_lib/vault`, `api/vault/create`, `api/vault/status`), credential storage (`_lib/credential-store`), RAG ingest/upload (with mocks where needed), functions execute (404/400 paths), and RAG connectors by id are in scope and have dedicated tests. Only non-critical or truly external paths remain excluded.
 
-**Coverage target:** 70% lines/statements/functions and 100% branches for in-scope code (see `vitest.config.ts`). Gaps are closed by adding tests, not by excluding code (see `.cursor/rules/coverage-and-test-failures.mdc`). **Before pushing:** run `npm run check` (or `npm run pre-push`) so typecheck, lint, tests, and coverage run.
+**Coverage target:** 70% lines/statements/functions and 100% branches for in-scope code (see `vitest.config.ts`). Gaps are closed by adding tests, not by excluding code (see `.cursor/rules/coverage-and-test-failures.mdc`). **Before pushing:** run `pnpm run ci:local` so typecheck, lint, tests, coverage, and build:docs run (same as CI).
 
 ## Troubleshooting
 

@@ -1,4 +1,4 @@
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { platform } from "node:os";
 import { promisify } from "node:util";
 import type { SandboxConfig } from "@agentron-studio/core";
@@ -35,7 +35,7 @@ export class PodmanManager {
       const argList = args.map(escapePsArg).join(" ");
       const cmd = `${pathRefresh}; & ${binArg} ${argList}`;
       return new Promise((resolve, reject) => {
-        const proc: ChildProcess = spawn(
+        const proc = spawn(
           "powershell.exe",
           ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd],
           {
@@ -50,21 +50,24 @@ export class PodmanManager {
         proc.stderr?.on("data", (d: Buffer) => {
           stderr += d.toString();
         });
-        proc.on("error", reject);
-        proc.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
-          if (code === 0) resolve({ stdout, stderr });
-          else {
-            const err = new Error(stderr || stdout || `exit ${code ?? signal}`) as Error & {
-              stdout?: string;
-              stderr?: string;
-              code?: number;
-            };
-            err.stdout = stdout;
-            err.stderr = stderr;
-            err.code = code ?? (signal === "SIGKILL" ? 137 : 1);
-            reject(err);
+        (proc as NodeJS.EventEmitter).on("error", reject);
+        (proc as NodeJS.EventEmitter).on(
+          "close",
+          (code: number | null, signal: NodeJS.Signals | null) => {
+            if (code === 0) resolve({ stdout, stderr });
+            else {
+              const err = new Error(stderr || stdout || `exit ${code ?? signal}`) as Error & {
+                stdout?: string;
+                stderr?: string;
+                code?: number;
+              };
+              err.stdout = stdout;
+              err.stderr = stderr;
+              err.code = code ?? (signal === "SIGKILL" ? 137 : 1);
+              reject(err);
+            }
           }
-        });
+        );
       });
     }
     return run(this.bin, args, { timeout: DEFAULT_TIMEOUT, shell: true });
@@ -135,7 +138,7 @@ export class PodmanManager {
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     const isWin = platform() === "win32";
     const args = ["exec", containerId, "sh", "-c", command];
-    let proc: ChildProcess;
+    let proc: ReturnType<typeof spawn>;
     if (isWin) {
       const pathRefresh =
         "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')";
@@ -161,14 +164,17 @@ export class PodmanManager {
         stderrChunks.push(chunk);
         if (onChunk) onChunk({ stderr: chunk.toString("utf8") });
       });
-      proc.on("error", (err: Error) => reject(err));
-      proc.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
-        const stdout = Buffer.concat(stdoutChunks).toString("utf8");
-        const stderr = Buffer.concat(stderrChunks).toString("utf8");
-        const exitCode =
-          code !== null && code !== undefined ? code : signal === "SIGKILL" ? 137 : 1;
-        resolve({ stdout, stderr, exitCode });
-      });
+      (proc as NodeJS.EventEmitter).on("error", (err: Error) => reject(err));
+      (proc as NodeJS.EventEmitter).on(
+        "close",
+        (code: number | null, signal: NodeJS.Signals | null) => {
+          const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+          const stderr = Buffer.concat(stderrChunks).toString("utf8");
+          const exitCode =
+            code !== null && code !== undefined ? code : signal === "SIGKILL" ? 137 : 1;
+          resolve({ stdout, stderr, exitCode });
+        }
+      );
     });
   }
 

@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 import { platform } from "node:os";
 
 /**
@@ -80,9 +80,9 @@ export function runShellCommand(
     proc.stderr?.on("data", (d) => {
       stderr += String(d);
     });
-    (proc as ChildProcess).on("close", (code: number | null) =>
+    (proc as NodeJS.EventEmitter).on("close", (code: number | null) =>
       resolve({ stdout, stderr, exitCode: code ?? -1 })
     );
-    (proc as ChildProcess).on("error", () => resolve({ stdout, stderr, exitCode: -1 }));
+    (proc as NodeJS.EventEmitter).on("error", () => resolve({ stdout, stderr, exitCode: -1 }));
   });
 }

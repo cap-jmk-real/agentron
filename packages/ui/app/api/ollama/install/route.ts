@@ -1,6 +1,6 @@
 import { json } from "../../_lib/response";
 import { getSystemResources } from "@agentron-studio/runtime";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 
 export const runtime = "nodejs";
 
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
           try {
             (child.stdout as NodeJS.EventEmitter | undefined)?.removeAllListeners();
             (child.stderr as NodeJS.EventEmitter | undefined)?.removeAllListeners();
-            (child as ChildProcess).removeAllListeners();
+            (child as NodeJS.EventEmitter).removeAllListeners();
           } catch {
             // ignore
           }
@@ -75,11 +75,11 @@ export async function POST(request: Request) {
 
         child.stdout?.on("data", write);
         child.stderr?.on("data", write);
-        (child as ChildProcess).on("close", (code: number | null) => {
+        (child as NodeJS.EventEmitter).on("close", (code: number | null) => {
           signal.removeEventListener("abort", onAbort);
           (child.stdout as NodeJS.EventEmitter | undefined)?.removeAllListeners();
           (child.stderr as NodeJS.EventEmitter | undefined)?.removeAllListeners();
-          (child as ChildProcess).removeAllListeners();
+          (child as NodeJS.EventEmitter).removeAllListeners();
           if (code === 0) {
             try {
               controller.enqueue(enc.encode("\n\nInstall complete. Starting Ollama...\n"));
@@ -99,11 +99,11 @@ export async function POST(request: Request) {
             // ignore
           }
         });
-        (child as ChildProcess).on("error", (err: Error) => {
+        (child as NodeJS.EventEmitter).on("error", (err: Error) => {
           signal.removeEventListener("abort", onAbort);
           (child.stdout as NodeJS.EventEmitter | undefined)?.removeAllListeners();
           (child.stderr as NodeJS.EventEmitter | undefined)?.removeAllListeners();
-          (child as ChildProcess).removeAllListeners();
+          (child as NodeJS.EventEmitter).removeAllListeners();
           try {
             controller.enqueue(enc.encode(`Error: ${err.message}\n`));
           } catch {

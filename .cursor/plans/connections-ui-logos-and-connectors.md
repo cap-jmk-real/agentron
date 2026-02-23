@@ -113,7 +113,7 @@ Per `.cursor/rules/coverage-and-test-failures.mdc`, `.cursor/rules/bug-fix-add-t
 ### 3.5 Checklist before considering the change complete
 
 - Run `npm run test:coverage` from repo root; fix any coverage regression; do not add new coverage exclusions for connector code.
-- Run `npm run pre-push` (format, typecheck, lint, test, build).
+- Run `pnpm run ci:local` (same as CI: format, typecheck, lint, test:coverage, file-lengths, build:docs).
 - New connector type (e.g. Dropbox) = new sync branches → new tests for those branches; update connector-types and connector-types test.
 
 ---
@@ -146,4 +146,4 @@ Per `.cursor/rules/coverage-and-test-failures.mdc`, `.cursor/rules/bug-fix-add-t
 
 1. **Essential connectors:** Tier 1 (Google Drive, Dropbox, OneDrive); Tier 2 (Notion, Confluence, GitBook, BookStack); Tier 3 (Obsidian, LogSeq, Roam); Tier 4 (GitHub, GitLab, Jira, Linear, Slack, Discord); Tier 5 (Readwise, Coda). UI and metadata prepared for Tiers 1–3 at minimum; sync only for Google Drive now, then Dropbox/OneDrive/Notion/Obsidian–LogSeq (local path) as prioritised.
 2. **UI:** Logos and card-based Connectors tab; shared connector-types metadata for all tiers; optional Settings page logos.
-3. **Testing:** Full branch coverage for connector API and sync route; new connector-types unit test; every new connector type gets tests when sync is implemented; no new coverage exclusions; `npm run pre-push` must pass.
+3. **Testing:** Full branch coverage for connector API and sync route; new connector-types unit test; every new connector type gets tests when sync is implemented; no new coverage exclusions; `pnpm run ci:local` must pass.

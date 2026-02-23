@@ -53,6 +53,15 @@ When you need desktop packaging dependencies:
 npm run install:desktop
 ```
 
+## Match CI locally
+
+To get the **same typecheck and checks as CI** (and avoid "passes locally, fails in CI"):
+
+1. **Node:** Use the version in `.nvmrc` (e.g. `nvm use` or `fnm use`).
+2. **pnpm:** The repo pins `packageManager` in `package.json`; with Corepack enabled (`corepack enable`) you get the same pnpm version as CI.
+3. **Install:** Run `pnpm install --frozen-lockfile` (or at least `pnpm install`) so dependencies match the lockfile.
+4. **Run CI checks:** `pnpm run ci:local` — runs CI steps (format:check, typecheck, lint, test:coverage, file-lengths, build:docs) plus build:ui and desktop dist so you verify the full pipeline locally before pushing.
+
 ## E2E tests with local LLMs (optional)
 
 Run end-to-end tests against a real local LLM (Ollama). **Single command** (from repo root):

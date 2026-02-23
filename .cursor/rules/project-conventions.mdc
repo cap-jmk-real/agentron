@@ -1,5 +1,5 @@
 ---
-description: Agentron Studio repo — build verification and pre-push
+description: Agentron Studio repo — build verification and ci:local (match CI)
 alwaysApply: true
 ---
 
@@ -10,7 +10,7 @@ Commands run from **repo root** (this directory when cloned).
 ## Build verification
 
 - After modifying code, run the relevant build: `npm run build:ui` (UI/core/runtime), `npm run build:docs` (apps/docs), or for desktop: `npm run build:ui` then `npm run dist --workspace apps/desktop`.
-- Before pushing: run `npm run pre-push` (format check, typecheck, lint, test, build:ui, build:docs, desktop dist). Fix format/typecheck/build failures before considering the change complete. See `format-rules` for formatting.
+- Before pushing: run `pnpm run ci:local` (CI steps plus build:ui and desktop dist) to verify format, typecheck, lint, tests, docs, UI build, and desktop packaging. Fix format/typecheck/build failures before considering the change complete. See `format-rules` for formatting.
 - If desktop build fails with "file is being used", close Agentron Studio and any Explorer windows showing `apps/desktop/release/`, then retry.
 
 ## Lint

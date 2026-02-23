@@ -15,4 +15,4 @@ alwaysApply: false
 - **Run coverage:** From repo root `npm run test:coverage`; HTML report in `packages/ui/coverage/index.html`.
 - **No LLM in tests** for code paths, data flow, tool execution. Use deterministic mocks (fixed `priorityOrder`/`refinedTask`, mock `runSpecialist`/LLM, fixture responses). Heap/chat/improvement tests: mock `get_run_for_improvement` and LLM; assert flow and DB, not model quality.
 - **Unit tests default;** integration tests only for multi-component/external boundaries. When fixing a bug, add a test that would have failed before the fix (see `bug-fix-add-tests` rule).
-- **Definition of done:** Core logic unit-tested; branches and edge cases covered; unittestable code documented and tested at boundary where feasible. Before finalizing: run tests, run coverage, run build, run `npm run pre-push` before pushing.
+- **Definition of done:** Core logic unit-tested; branches and edge cases covered; unittestable code documented and tested at boundary where feasible. Before finalizing: run tests, run coverage, run build, run `pnpm run ci:local` before pushing.
