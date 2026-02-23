@@ -1,18 +1,21 @@
 # Agentron — Enterprise-Ready Local AI Agent Orchestration & Automation
 
-[![CI](https://github.com/cap-jmk-real/agentron/actions/workflows/ci.yml/badge.svg)](https://github.com/cap-jmk-real/agentron/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/cap-jmk-real/agentron/graph/badge.svg)](https://codecov.io/gh/cap-jmk-real/agentron)
-[![Lines of code](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cap-jmk-real/agentron/main/badges/loc.json)](https://github.com/cap-jmk-real/agentron)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)](https://www.typescriptlang.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
-[![Local-first](https://img.shields.io/badge/local--first-sqlite%20%2B%20Electron-8B5CF6)](INSTALL.md)
+[![CI](https://img.shields.io/github/actions/workflow/status/cap-jmk-real/agentron/ci.yml?style=flat-square&label=CI)](https://github.com/cap-jmk-real/agentron/actions/workflows/ci.yml)
+[![coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cap-jmk-real/agentron/main/badges/coverage.json&style=flat-square)](https://codecov.io/gh/cap-jmk-real/agentron)
+[![lines of code](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cap-jmk-real/agentron/main/badges/loc.json&style=flat-square)](https://github.com/cap-jmk-real/agentron)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Local-first](https://img.shields.io/badge/local--first-SQLite%20%2B%20Electron-8B5CF6?style=flat-square)](INSTALL.md)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-0ea5e9?style=flat-square&logo=readthedocs&logoColor=white)](https://cap-jmk-real.github.io/agentron/)
+
+*From left: **CI** (tests on main), **coverage** (UI unit tests), **lines of code**; then stack and docs.*
 
 **Agentron** is an **enterprise-ready, local-first** platform for **AI agent orchestration** and **workflow automation**. Design and run multi-agent systems entirely on your own infrastructure—no cloud lock-in, full data privacy, and optional desktop deployment.
 
 - **Local-first & self-hosted** — SQLite storage, optional Electron desktop app; run on-premise or air-gapped.
 - **Visual agent builder** — Node-based graphs (LLM, tools, decision nodes) plus code agents (JavaScript/Python/TypeScript) in sandboxes.
 - **Multi-agent workflows** — Orchestrate agents in graphs with configurable rounds; built-in chat assistant that creates and edits agents, workflows, and tools via natural language.
-- **Tools & integrations** — Native, HTTP, and MCP tools; RAG/knowledge; Podman sandboxes; OpenAI, Anthropic, Ollama, and remote LLM support; OpenClaw gateway integration (send commands, history, abort) for steering a local OpenClaw instance from chat.
+- **Tools & integrations** — Native, HTTP, and MCP tools; **RAG/knowledge connectors** for **Notion, Google Drive, Dropbox, OneDrive, Confluence, GitBook**, and local folders; Podman sandboxes; OpenAI, Anthropic, Ollama, and remote LLM support; OpenClaw gateway integration (send commands, history, abort) for steering a local OpenClaw instance from chat.
 
 Ideal for teams that need **local AI automation**, **privacy-first agent orchestration**, and **multi-agent workflow** control without depending on cloud-only platforms.
 
@@ -23,6 +26,8 @@ Ideal for teams that need **local AI automation**, **privacy-first agent orchest
 1. Clone the repo and enter the project: `git clone <repo-url> && cd agentron`
 2. Install dependencies: `npm run install:ui` or `pnpm install` (UI only) or `npm install` (full, including desktop)
 3. Run the app: `npm run dev:ui` or `pnpm run dev:ui` then open http://localhost:3000
+
+**Desktop app:** You can install Agentron as a standalone **Electron app** (no Node.js required on your machine). Download the installer from the [Docs → Download](https://cap-jmk-real.github.io/agentron/docs/download) page or [GitHub Releases](https://github.com/cap-jmk-real/agentron/releases); the app starts the UI automatically and stores data locally.
 
 Full step-by-step instructions, troubleshooting, and desktop build details: **[INSTALL.md](INSTALL.md)**.
 
@@ -70,8 +75,8 @@ The script starts Ollama if needed, **pulls the default E2E model if missing**, 
 | Qwen 3 8B (default)   | *(none)* or `E2E_LLM_MODEL=qwen3:8b`   | More parameters, better for heap e2e |
 | Qwen 3 14B            | `E2E_LLM_MODEL=qwen3:14b`              | Larger, higher quality               |
 | Qwen 2.5 3B           | `E2E_LLM_MODEL=qwen2.5:3b`             | Faster, smaller                      |
-| Llama 3.2             | `E2E_LLM_MODEL=llama3.2`               | Script auto-pulls if missing         |
-| Phi-3                 | `E2E_LLM_MODEL=phi3`                   | Script auto-pulls if missing          |
+| Llama 3.2             | `E2E_LLM_MODEL=llama3.2`               | Meta's versatile model; script auto-pulls if missing |
+| Phi-3                 | `E2E_LLM_MODEL=phi3`                   | Microsoft small, fast model; script auto-pulls if missing |
 
 **Optional env:** `OLLAMA_BASE_URL` (default `http://localhost:11434`), `E2E_SAVE_ARTIFACTS=1`, `E2E_LOG_DIR`.
 

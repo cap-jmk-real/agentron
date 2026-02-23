@@ -12,7 +12,7 @@ export default defineConfig({
     maxWorkers: process.env.CI ? 2 : undefined,
     coverage: {
       provider: "v8",
-      reporter: ["text", "text-summary", "html", "lcov"],
+      reporter: ["text", "text-summary", "html", "lcov", "json-summary"],
       include: ["app/**/*.ts"],
       thresholds: {
         lines: 70,

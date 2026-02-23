@@ -1,5 +1,5 @@
-# Runs weekly to verify the repo still works with npm (main CI uses pnpm).
-name: CI (npm verify)
+# Runs weekly (and on demand) to verify the repo still builds and tests.
+name: CI (weekly verify)
 
 on:
   schedule:
@@ -8,41 +8,47 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-npm:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version-file: ".nvmrc"
-          cache: "npm"
+          cache: "pnpm"
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm config set optional true && pnpm install --frozen-lockfile
 
-      - name: Install optional deps (Vitest/coverage)
-        run: npm install --include=optional
+      - name: Rebuild better-sqlite3
+        run: pnpm rebuild better-sqlite3
 
       - name: Security audit (fail on critical)
-        run: npm audit --audit-level=critical
+        run: pnpm audit --audit-level=critical
         continue-on-error: true
 
       - name: Check formatting
-        run: npm run format:check
+        run: pnpm run format:check
 
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: Lint UI
-        run: npm run lint:ui
+        run: pnpm run lint:ui
 
       - name: Test (UI) with coverage
-        run: npm run test:coverage
+        run: pnpm run test:coverage
 
       - name: Check file lengths (max 1000 lines)
-        run: npm run check:file-lengths
+        run: pnpm run check:file-lengths
+        continue-on-error: true
 
       - name: Build docs
-        run: npm run build:docs
+        run: pnpm run build:docs

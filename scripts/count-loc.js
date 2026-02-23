@@ -55,6 +55,7 @@ if (writeBadge) {
     label: "lines of code",
     message: formatCount(total),
     color: "blue",
+    style: "flat-square",
   };
   fs.writeFileSync(path.join(badgesDir, "loc.json"), JSON.stringify(badge) + "\n", "utf8");
 }
