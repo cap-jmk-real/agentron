@@ -17,6 +17,7 @@ pnpm-lock.yaml
 *.log
 # Docs / assets that have their own formatting
 badges
+apps/docs/public/heap-snapshot.json
 *.md
 *.mdx
 *.svg

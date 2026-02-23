@@ -10,6 +10,8 @@ export default defineConfig({
     testTimeout: 10000,
     // Parallel workers; each worker has its own DB/data dir via vitest.setup.ts (VITEST_POOL_ID).
     maxWorkers: process.env.CI ? 2 : undefined,
+    // On Windows, fork pool often faster than threads (Node worker_threads overhead).
+    pool: process.platform === "win32" && !process.env.CI ? "forks" : undefined,
     coverage: {
       provider: "v8",
       reporter: ["text", "text-summary", "html", "lcov", "json-summary"],
