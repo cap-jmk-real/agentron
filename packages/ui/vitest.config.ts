@@ -1,5 +1,16 @@
+import os from "node:os";
 import path from "node:path";
 import { defineConfig } from "vitest/config";
+
+function ciMaxWorkers(): number | undefined {
+  if (!process.env.CI) return undefined;
+  if (process.platform === "win32") {
+    // Windows CI is slower; use more workers to parallelize (I/O and DB-heavy tests benefit).
+    const cpus = os.cpus().length || 2;
+    return Math.min(8, Math.max(6, cpus + 4));
+  }
+  return 2;
+}
 
 export default defineConfig({
   test: {
@@ -9,7 +20,11 @@ export default defineConfig({
     include: ["__tests__/**/*.test.ts"],
     testTimeout: 10000,
     // Parallel workers; each worker has its own DB/data dir via vitest.setup.ts (VITEST_POOL_ID).
-    maxWorkers: process.env.CI ? (process.platform === "win32" ? 4 : 2) : undefined,
+    // Override in CI with VITEST_MAX_WORKERS (e.g. 8) to speed up Windows.
+    maxWorkers: (() => {
+      const n = Number(process.env.VITEST_MAX_WORKERS);
+      return Number.isInteger(n) && n > 0 ? n : ciMaxWorkers();
+    })(),
     // On Windows, fork pool is faster than threads (Node worker_threads overhead); use in CI too.
     pool: process.platform === "win32" ? "forks" : undefined,
     coverage: {

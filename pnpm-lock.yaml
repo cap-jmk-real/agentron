@@ -84,6 +84,9 @@ importers:
       esbuild:
         specifier: ^0.25.0
         version: 0.25.12
+      node-gyp:
+        specifier: ^11.2.0
+        version: 11.5.0
       pngjs:
         specifier: ^7.0.0
         version: 7.0.0

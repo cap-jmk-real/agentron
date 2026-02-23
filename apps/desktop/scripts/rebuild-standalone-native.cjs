@@ -121,9 +121,23 @@ function main() {
     process.exit(1);
   }
 
-  const nodeGypPath = path.join(repoRoot, "node_modules", "node-gyp", "bin", "node-gyp.js");
+  let nodeGypPath = path.join(repoRoot, "node_modules", "node-gyp", "bin", "node-gyp.js");
   if (!fs.existsSync(nodeGypPath)) {
-    console.error("node-gyp not found at", nodeGypPath, "- ensure dependencies are installed.");
+    try {
+      const pkgPath = require.resolve("node-gyp/package.json", {
+        paths: [repoRoot, desktopDir],
+      });
+      nodeGypPath = path.join(path.dirname(pkgPath), "bin", "node-gyp.js");
+    } catch (_) {
+      // ignore
+    }
+  }
+  if (!fs.existsSync(nodeGypPath)) {
+    console.error(
+      "node-gyp not found at",
+      path.join(repoRoot, "node_modules", "node-gyp", "bin", "node-gyp.js"),
+      "- ensure dependencies are installed."
+    );
     process.exit(1);
   }
 
