@@ -38,16 +38,37 @@ function packageNameFromStandalonePath(srcPath) {
   return first || path.basename(srcPath);
 }
 
+const standaloneNodeModules = path.join(standaloneSource, "node_modules");
+
 /**
  * Resolve package from repo (root or packages/ui) and return its root dir.
+ * Tries require.resolve first, then the pnpm layout path implied by the broken symlink.
  */
-function resolvePackageFromRepo(packageName) {
+function resolvePackageFromRepo(packageName, brokenSymlinkPath) {
   for (const searchRoot of [repoRoot, uiDir]) {
     try {
       const pkgJsonPath = require.resolve(packageName + "/package.json", { paths: [searchRoot] });
       return path.dirname(pkgJsonPath);
     } catch {
       // continue
+    }
+  }
+  // Fallback: symlink target path in standalone may mirror repo layout (e.g. .pnpm/semver@x/node_modules/semver)
+  if (brokenSymlinkPath && brokenSymlinkPath.startsWith(standaloneNodeModules + path.sep)) {
+    try {
+      const linkTarget = fs.readlinkSync(brokenSymlinkPath);
+      const targetInStandalone = path.resolve(path.dirname(brokenSymlinkPath), linkTarget);
+      const relFromNodeModules = path.relative(standaloneNodeModules, targetInStandalone);
+      if (!relFromNodeModules.startsWith("..")) {
+        for (const searchRoot of [uiDir, repoRoot]) {
+          const candidate = path.join(searchRoot, "node_modules", relFromNodeModules);
+          if (fs.existsSync(candidate)) {
+            return candidate;
+          }
+        }
+      }
+    } catch {
+      // ignore
     }
   }
   return null;
@@ -73,7 +94,7 @@ function copyOne(srcPath, destPath, copyRecursiveRef) {
     } catch (err) {
       if (err.code === "ENOENT") {
         const packageName = packageNameFromStandalonePath(srcPath);
-        const repoPkgRoot = resolvePackageFromRepo(packageName);
+        const repoPkgRoot = resolvePackageFromRepo(packageName, srcPath);
         if (repoPkgRoot && fs.existsSync(repoPkgRoot)) {
           console.warn(
             `prepare-standalone: broken symlink at ${path.relative(repoRoot, srcPath)} -> copying "${packageName}" from repo`
