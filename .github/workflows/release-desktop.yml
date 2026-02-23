@@ -37,7 +37,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: packages/ui/.next/cache
-          key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/ui/**') }}
+          key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/ui/package.json', 'packages/ui/next.config.mjs') }}
           restore-keys: |
             nextjs-${{ runner.os }}-
 
