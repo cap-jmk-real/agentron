@@ -16,8 +16,38 @@ const desktopDir = path.join(repoRoot, "apps", "desktop");
 const standaloneOut = path.join(desktopDir, "standalone");
 
 function copyOne(srcPath, destPath, copyRecursiveRef) {
-  const stat = fs.statSync(srcPath);
-  if (stat.isDirectory()) {
+  let stat;
+  try {
+    stat = fs.lstatSync(srcPath);
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      throw new Error(
+        `prepare-standalone: missing or broken path (cannot stat). ` +
+          `Standalone output may contain broken symlinks. Path: ${srcPath}`
+      );
+    }
+    throw err;
+  }
+  if (stat.isSymbolicLink()) {
+    let target;
+    try {
+      target = fs.realpathSync(srcPath);
+    } catch (err) {
+      if (err.code === "ENOENT") {
+        throw new Error(
+          `prepare-standalone: broken symlink (target missing). ` +
+            `Next.js standalone must include real files for all traced deps. Path: ${srcPath}`
+        );
+      }
+      throw err;
+    }
+    stat = fs.statSync(target);
+    if (stat.isDirectory()) {
+      copyRecursiveRef(target, destPath);
+      return;
+    }
+    srcPath = target;
+  } else if (stat.isDirectory()) {
     copyRecursiveRef(srcPath, destPath);
     return;
   }

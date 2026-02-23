@@ -714,7 +714,18 @@ describe("execute-tool helpers", () => {
     });
 
     it("allows create_agent with 10 toolIds (at cap)", async () => {
-      const tenIds = Array.from({ length: 10 }, (_, i) => `tool-id-${i}`);
+      const tenIds = [
+        "std-fetch-url",
+        "std-browser",
+        "std-run-code",
+        "std-http-request",
+        "std-webhook",
+        "std-weather",
+        "std-web-search",
+        "std-container-run",
+        "std-write-file",
+        "std-request-user-help",
+      ];
       const result = await executeTool(
         "create_agent",
         { name: "At-cap agent", toolIds: tenIds, description: "Test", llmConfigId: "any" },
@@ -723,6 +734,26 @@ describe("execute-tool helpers", () => {
       expect(result).not.toEqual(expect.objectContaining({ code: "TOOL_CAP_EXCEEDED" }));
       expect((result as { error?: string }).error).toBeUndefined();
       expect((result as { id?: string }).id).toBeDefined();
+    });
+
+    it("create_agent with non-existent tool returns TOOL_NOT_FOUND", async () => {
+      const result = await executeTool(
+        "create_agent",
+        {
+          name: "Agent With Missing Tool",
+          description: "Test",
+          llmConfigId: "any",
+          toolIds: ["get_url_title"],
+        },
+        undefined
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          error: expect.stringContaining('Tool "get_url_title" not found'),
+          code: "TOOL_NOT_FOUND",
+          toolIdOrName: "get_url_title",
+        })
+      );
     });
   });
 
@@ -815,6 +846,25 @@ describe("execute-tool helpers", () => {
       expect(definition?.toolIds).toEqual(
         expect.arrayContaining(["std-fetch-url", "std-get-vault-credential"])
       );
+    });
+
+    it("create_agent with tools array (LLM wrong key) normalizes to toolIds and persists std-fetch-url", async () => {
+      const createRes = await executeTool(
+        "create_agent",
+        {
+          name: "Fetch Page Title",
+          description: "Fetches a URL and returns the page title",
+          llmConfigId: "any",
+          systemPrompt: "Fetch the URL and reply with the page title.",
+          tools: [{ name: "fetch", config: { url: "https://example.com", parser: "title" } }],
+        },
+        undefined
+      );
+      expect((createRes as { error?: string }).error).toBeUndefined();
+      const agentId = (createRes as { id?: string }).id;
+      const getRes = await executeTool("get_agent", { id: agentId }, undefined);
+      const definition = (getRes as { definition?: { toolIds?: string[] } }).definition;
+      expect(definition?.toolIds).toContain("std-fetch-url");
     });
   });
 

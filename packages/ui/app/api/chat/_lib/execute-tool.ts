@@ -364,12 +364,60 @@ export async function executeTool(
         let toolIds = Array.isArray(a.toolIds)
           ? (a.toolIds as string[]).filter((x) => typeof x === "string")
           : undefined;
+        // Normalize LLM-sent "tools" (array of objects with name/config) into toolIds when toolIds is missing
+        if (!toolIds || toolIds.length === 0) {
+          const toolsArg = (a as { tools?: unknown }).tools;
+          if (Array.isArray(toolsArg) && toolsArg.length > 0) {
+            const nameToStdId: Record<string, string> = {
+              fetch: "std-fetch-url",
+              fetch_url: "std-fetch-url",
+              web_search: "std-web-search",
+            };
+            const mapped: string[] = [];
+            for (const t of toolsArg) {
+              if (t && typeof t === "object") {
+                const obj = t as { name?: string; id?: string };
+                if (typeof obj.id === "string") {
+                  mapped.push(obj.id);
+                  continue;
+                }
+                const name =
+                  typeof obj.name === "string" ? obj.name.toLowerCase().replace(/\s+/g, "_") : "";
+                if (name && nameToStdId[name]) mapped.push(nameToStdId[name]);
+                else if (name) mapped.push(name);
+              }
+            }
+            if (mapped.length > 0) toolIds = [...new Set(mapped)];
+          }
+        }
         if (toolIds && toolIds.length > MAX_TOOLS_PER_CREATED_AGENT) {
           return {
             error: `This agent would have ${toolIds.length} tools, which exceeds the maximum of ${MAX_TOOLS_PER_CREATED_AGENT} tools per agent. Create multiple agents (each with at most ${MAX_TOOLS_PER_CREATED_AGENT} tools) and connect them with a workflow (e.g. pipeline or chat loop).`,
             code: "TOOL_CAP_EXCEEDED",
             maxToolsPerAgent: MAX_TOOLS_PER_CREATED_AGENT,
           };
+        }
+        if (toolIds && toolIds.length > 0) {
+          await ensureStandardTools();
+          const resolved: string[] = [];
+          for (const raw of toolIds) {
+            const byId = await db.select({ id: tools.id }).from(tools).where(eq(tools.id, raw));
+            if (byId.length > 0) {
+              resolved.push(byId[0].id);
+              continue;
+            }
+            const byName = await db.select({ id: tools.id }).from(tools).where(eq(tools.name, raw));
+            if (byName.length > 0) {
+              resolved.push(byName[0].id);
+              continue;
+            }
+            return {
+              error: `Tool "${raw}" not found. Create the tool first (e.g. use the tools specialist with create_code_tool or create_tool), then create or update the agent.`,
+              code: "TOOL_NOT_FOUND",
+              toolIdOrName: raw,
+            };
+          }
+          toolIds = resolved;
         }
         const id = crypto.randomUUID();
         const agentName = a.name && String(a.name).trim() ? (a.name as string) : randomAgentName();
@@ -528,8 +576,29 @@ export async function executeTool(
             ? (rawDef as Record<string, unknown>)
             : {};
         if (a.systemPrompt !== undefined) def.systemPrompt = a.systemPrompt;
-        if (Array.isArray(a.toolIds))
-          def.toolIds = (a.toolIds as string[]).filter((x) => typeof x === "string");
+        if (Array.isArray(a.toolIds) && a.toolIds.length > 0) {
+          const rawIds = (a.toolIds as string[]).filter((x) => typeof x === "string");
+          await ensureStandardTools();
+          const resolved: string[] = [];
+          for (const raw of rawIds) {
+            const byId = await db.select({ id: tools.id }).from(tools).where(eq(tools.id, raw));
+            if (byId.length > 0) {
+              resolved.push(byId[0].id);
+              continue;
+            }
+            const byName = await db.select({ id: tools.id }).from(tools).where(eq(tools.name, raw));
+            if (byName.length > 0) {
+              resolved.push(byName[0].id);
+              continue;
+            }
+            return {
+              error: `Tool "${raw}" not found. Create the tool first (e.g. use the tools specialist with create_code_tool or create_tool), then update the agent.`,
+              code: "TOOL_NOT_FOUND",
+              toolIdOrName: raw,
+            };
+          }
+          def.toolIds = resolved;
+        }
         if (a.llmConfigId) def.defaultLlmConfigId = a.llmConfigId as string;
         if (
           a.learningConfig != null &&
@@ -601,9 +670,7 @@ export async function executeTool(
             graphEdges.length = 0;
             graphEdges.push(...(a.graphEdges as { id: string; source: string; target: string }[]));
           }
-          let updateToolIds = Array.isArray(a.toolIds)
-            ? (a.toolIds as string[]).filter((x) => typeof x === "string")
-            : (def.toolIds as string[] | undefined);
+          let updateToolIds = (def.toolIds as string[] | undefined) ?? [];
           const fromGraph = graphNodes
             .filter(
               (n) =>
@@ -641,7 +708,7 @@ export async function executeTool(
               ? (existingGraph as { edges: { id: string; source: string; target: string }[] }).edges
               : [];
             if (graphNodes.length > 0) {
-              const toolIds = (a.toolIds as string[]).filter((x) => typeof x === "string");
+              const toolIds = (def.toolIds as string[]) ?? [];
               ensureToolNodesInGraph(graphNodes, graphEdges, toolIds);
               def.graph = {
                 nodes: applyAgentGraphLayout(graphNodes, graphEdges),

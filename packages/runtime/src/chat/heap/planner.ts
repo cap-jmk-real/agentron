@@ -92,6 +92,7 @@ Example for "Create a workflow with one agent that fetches example.com": {"prior
 Rules:
 - priorityOrder: array of specialist ids from the list. Use "improve_run" when the user wants to suggest or preview improvements for the current run/session only (no DB writes). Use "improve_heap" when the user wants to add or change specialists or planner (heap registry). Use "improve_agents_workflows" when the user wants to persistently improve workflow agents or workflows from a run/feedback or design self-learning. improve_agents_workflows does not create agents or workflows; only updates existing ones. For "create new agent and workflow", do not put improve_agents_workflows first — put agent and workflow first (see next rule).
 - CRITICAL — Order when creating both agent and workflow: When the user wants to create a workflow with one or more agents, or "create agent and workflow", or "workflow with an agent that...", you MUST put "agent" first, then "workflow", in priorityOrder. Example: ["agent", "workflow", "general"]. Never use ["workflow", "agent", ...] for create-both requests — the workflow step needs the agent id from the previous step. So: agent before workflow whenever both are needed for creation.
+- CRITICAL — Order when adding a new tool for an agent: When the user wants to add a new tool, or fix an agent by adding a missing tool (e.g. conversation says the agent lacks a tool, or user says "add tool X", "fix the agent", "do 1" after being offered "Fix the agent"), you MUST put "tools" before "agent" in priorityOrder so the tool is created or registered first. Example: ["tools", "agent", "workflow", "general"]. Never put "agent" before "tools" when the task requires creating a tool that the agent will use — the agent specialist cannot use a tool that does not exist yet.
 - When the user wants to create both an agent and a workflow and add the agent to the workflow (or run it), put "agent" and "workflow" before "improve_agents_workflows" in priorityOrder. The improve_agents_workflows specialist cannot create agents or workflows. Example: ["agent", "workflow", "general"] or ["agent", "workflow", "improve_agents_workflows", "general"], not ["improve_agents_workflows", "agent", "workflow", "general"] and not ["workflow", "agent", "general"].
 - refinedTask: one short sentence.
 - extractedContext: concrete values (savedSearchUrl, savedSearchId, filePaths, ids, runId, agentId). Preserve every URL and identifier from the user message and recent conversation in extractedContext (e.g. copy savedSearchUrl, savedSearchId, file paths verbatim). Use recent conversation to fill extractedContext and to infer intent (e.g. "run the workflow we were just configuring").
@@ -100,11 +101,22 @@ Rules:
 - instructionsFor*: optional. instructionsForImproveRun = current run/session only. instructionsForImproveHeap = query heap, register_specialist or update_specialist. instructionsForImproveAgentsWorkflows = observe, decide (act_prompt/act_topology/act_training), act, evaluate; workflow-agent loop.
 - When priorityOrder is ["agent", "workflow", ...] for a create-both task (workflow with one or more agents), set instructionsForAgent to: "In this turn you MUST call create_agent (with name, description, systemPrompt, graphNodes, and toolIds as needed). The workflow specialist runs next and needs the created agent id. Do not only list_agents or list_tools; create the agent now." Set instructionsForWorkflow to: "Use the agent id from [Created agent id: ...] in Previous steps for parameters.agentId on each workflow node. If Previous steps do not contain an agent id yet, list_agents and use the matching agent id."
 - Simple question: When the user asks a simple factual or definitional question (e.g. "What is X?", "Explain Y", "What are canary thresholds?") and does NOT ask to create, edit, list, or run agents, workflows, or tools, treat it as a simple question. Then set priorityOrder to ["general"] only (no agent, workflow, or improve_*). Set refinedTask to a short task like "Answer the user's question" or the user's question. Set instructionsForGeneral to: "Call answer_question with the user's question. Then respond with a clear, concise answer. Do not create or modify agents or workflows. Do not call list_agents, create_workflow, or other resource tools." When it is NOT a simple question (user wants to create/edit/run resources), use the rules above and do not restrict to general only.
+- CRITICAL — instructionsForGeneral when agent or workflow are in the route: When priorityOrder includes "agent" or "workflow" (e.g. create workflow, create agent, run workflow), do NOT set instructionsForGeneral to the simple-question restriction (answer_question only, "Do not create or modify agents or workflows"). Leave instructionsForGeneral empty or set it only to format/summarize guidance (e.g. "Summarize what was created and run; call format_response with options."). The general specialist will then report outcomes from previous steps instead of being told not to touch agents/workflows.
 
 User message:
 ---
 ${userMessage}
 ---`;
+}
+
+/** Flattens priorityOrder to a list of specialist ids (parallel groups expanded). */
+function flattenPriorityOrder(steps: HeapStep[]): string[] {
+  const ids: string[] = [];
+  for (const step of steps) {
+    if (typeof step === "string") ids.push(step);
+    else if (step && Array.isArray(step.parallel)) ids.push(...step.parallel);
+  }
+  return ids;
 }
 
 /**
@@ -159,11 +171,21 @@ export function parsePlanOutput(text: string): PlannerOutput | null {
     const instructionsForImprovement = str(obj.instructionsForImprovement);
     const instructionsForImprovementSession = str(obj.instructionsForImprovementSession);
     const instructionsForImprovementHeap = str(obj.instructionsForImprovementHeap);
+    // When the route includes agent or workflow, do not pass the simple-question restriction to general
+    let sanitizedInstructionsForGeneral = instructionsForGeneral;
+    const routeIds = flattenPriorityOrder(priorityOrder);
+    if (
+      (routeIds.includes("agent") || routeIds.includes("workflow")) &&
+      typeof instructionsForGeneral === "string" &&
+      /do not create or modify agents or workflows/i.test(instructionsForGeneral)
+    ) {
+      sanitizedInstructionsForGeneral = undefined;
+    }
     return {
       priorityOrder,
       refinedTask: task,
       extractedContext,
-      instructionsForGeneral,
+      instructionsForGeneral: sanitizedInstructionsForGeneral,
       instructionsForAgent,
       instructionsForWorkflow,
       instructionsForImproveRun,

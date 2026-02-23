@@ -354,6 +354,12 @@ describe("heap planner", () => {
     );
   });
 
+  it("buildPlannerPrompt includes tools-before-agent rule when adding a new tool", () => {
+    const prompt = buildPlannerPrompt("Fix the agent by adding the get_url_title tool", reg);
+    expect(prompt).toMatch(/put\s+["']tools["']\s+before\s+["']agent["']/i);
+    expect(prompt).toMatch(/adding a new tool|missing tool/i);
+  });
+
   it("parsePlanOutput parses valid JSON with all fields", () => {
     const text = `{"priorityOrder": ["general", "agent"], "refinedTask": "Create one agent.", "extractedContext": {"savedSearchUrl": "https://example.com/search?id=123"}, "instructionsForGeneral": "Do not ask for credentials."}`;
     const out = parsePlanOutput(text);
@@ -391,6 +397,17 @@ describe("heap planner", () => {
     expect(out).not.toBeNull();
     expect(out!.instructionsForImproveRun).toBe("Suggest only.");
     expect(out!.instructionsForImproveHeap).toBe("Register specialist.");
+  });
+
+  it("parsePlanOutput clears instructionsForGeneral when route has agent/workflow and general had simple-question restriction", () => {
+    const restrictive =
+      "Call answer_question with the user's question. Then respond with a clear, concise answer. Do not create or modify agents or workflows. Do not call list_agents, create_workflow, or other resource tools.";
+    const text = `{"priorityOrder": ["agent", "workflow", "general"], "refinedTask": "Create a workflow with one agent.", "instructionsForGeneral": "${restrictive.replace(/"/g, '\\"')}", "instructionsForAgent": "Create the agent.", "instructionsForWorkflow": "Use agent id from previous steps."}`;
+    const out = parsePlanOutput(text);
+    expect(out).not.toBeNull();
+    expect(out!.priorityOrder).toEqual(["agent", "workflow", "general"]);
+    expect(out!.instructionsForGeneral).toBeUndefined();
+    expect(out!.instructionsForAgent).toBe("Create the agent.");
   });
 
   it("parsePlanOutput returns null for missing priorityOrder or refinedTask", () => {

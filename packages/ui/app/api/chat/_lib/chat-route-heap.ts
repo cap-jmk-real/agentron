@@ -441,24 +441,26 @@ Reply with one or more ids to run in parallel (comma or newline separated): ${op
       (typeof (plan.extractedContext as Record<string, unknown>).runNow !== "undefined" ||
         (plan.extractedContext as Record<string, unknown>).savedSearchId ||
         (plan.extractedContext as Record<string, unknown>).savedSearchUrl);
+    const isAgentSpecialist = specialistId === "agent" || specialistId === "agent_lifecycle";
     const agentCreateWithDefaultsHint =
-      specialistId === "agent" && planSaysCreateAgentWithContext
+      isAgentSpecialist && planSaysCreateAgentWithContext
         ? '\nWhen the plan says to create a new agent and extracted context has runNow or identifiers (e.g. savedSearchId, savedSearchUrl), use the default "Prompt and workflow improvement only" and output create_agent (and list_tools with category improvement, subset prompt_and_topology if needed) in your first response; do not call ask_user for the training option (A/B/C) first.'
         : "";
-    const agentCreationBlock =
-      specialistId === "agent"
-        ? `
+    const agentCreationBlock = isAgentSpecialist
+      ? `
+You do NOT have create_workflow or execute_workflow. Only create or update agents and report "[Created agent id: <uuid>]" (or "[Created agent id: ...]"); the workflow_design specialist creates and runs workflows. Do not call create_workflow. If a tool returns "Tool not available", do not create a second agent—summarize what was done and hand off.
+create_agent expects toolIds (array of tool id strings from list_tools, e.g. std-fetch-url for fetching URLs). Do NOT pass a "tools" array of objects; only toolIds. Call list_tools if needed to get tool ids.
 CRITICAL — create_agent must produce a runnable agent: Every create_agent call MUST include either (1) systemPrompt (top-level string) or (2) graphNodes with at least one node of type "llm" where parameters.systemPrompt is a concrete, non-empty string. If you only pass name, description, llmConfigId, and toolIds without systemPrompt and without graphNodes, the agent will have an empty graph and will do nothing when a workflow runs it. Minimum runnable example: graphNodes: [{"id": "n1", "type": "llm", "position": [100, 100], "parameters": {"systemPrompt": "<role and behavior in 1–3 sentences>"}}], plus graphEdges if you add tool nodes. Use the agent's description as the basis for the system prompt when the plan does not specify one. Use as much detail in systemPrompt or graphNodes as the agent needs.
 ${agentCreateWithDefaultsHint}
 ${AGENT_SPECIALIST_IMPROVEMENT_CLARIFICATION}
-When creating an agent that requires several user inputs (e.g. content types, run frequency, vault usage, export format): collect them one topic at a time. Call ask_user with the first topic's question and that topic's options only; after the user replies, ask the next topic with its options; repeat until all are answered. Only then call create_agent/create_workflow with the collected inputs and pass them into the agent. Do NOT present all topic titles as one list of options.
+When creating an agent that requires several user inputs (e.g. content types, run frequency, vault usage, export format): collect them one topic at a time. Call ask_user with the first topic's question and that topic's options only; after the user replies, ask the next topic with its options; repeat until all are answered. Only then call create_agent with the collected inputs. Do NOT call create_workflow—the workflow specialist does that. Do NOT present all topic titles as one list of options.
 
 Tool cap and multi-agent system design:
 - create_agent accepts at most 10 tools per agent (toolIds length ≤ 10). If you pass more, the tool returns TOOL_CAP_EXCEEDED; do not retry with the same list.
 - When the user's goal would require more than 10 tools: You must design and create a multi-agent system using agentic/meta-workflow patterns. You only have agent tools; the workflow specialist will create and wire the workflow. (1) Choose a pattern that fits the goal: Pipeline (A→B→C) for sequential steps; Evaluator-optimizer (A↔B with maxRounds) for generate-and-critique; Role-based assembly line (e.g. researcher → writer → reviewer); Orchestrator-workers (one coordinator, multiple workers). (2) Group tools by role (e.g. browser/vault/fetch for collector, improvement tools for improver). (3) Create one agent per role with create_agent (at most 10 toolIds each), report each with "[Created agent id: ...]" and in your summary indicate the pattern (e.g. "Pipeline: Collector → Improver") so the workflow specialist can wire edges and maxRounds.
 - When ≤10 tools suffice: Create one agent and report its id; the workflow specialist will create a single-node workflow.
 - On TOOL_CAP_EXCEEDED: If a create_agent result has code "TOOL_CAP_EXCEEDED", you MUST retry by designing a multi-agent system using an agentic pattern: create multiple agents (each ≤10 tools, one role per pattern), report each with "[Created agent id: ...]". The workflow specialist will then create and wire the workflow. Do not retry with the same single-agent call.`
-        : "";
+      : "";
     const improvementLoopBlock =
       specialistId === "improve_agents_workflows" ||
       specialistId.startsWith("improve_agents_workflows__")
@@ -468,16 +470,20 @@ ${IMPROVE_AGENTS_WORKFLOWS_CANNOT_CREATE} Only use your tools to observe existin
 Do not judge the whole list of tools. Options are structured in the heap. First call get_specialist_options('improve_agents_workflows') to get option groups (observe, act_prompt, act_topology, act_training, evaluate). Judge which group(s) are meaningful for the task; then call tools from those groups only.
 Loop: 1) Observe — get_run_for_improvement(runId), get_feedback_for_scope(agentId). 2) Decide — which group(s): act_prompt, act_topology, or act_training. 3) Act — call tools from the chosen group(s). 4) Evaluate — execute_workflow or ask_user("Goal achieved?" ["Done", "Retry"]). Stop when Done or after 2–3 rounds. Use the plan's instructionsForImproveAgentsWorkflows and extractedContext when provided.`
         : "";
-    const workflowAgentUuidBlock =
-      specialistId === "workflow" || specialistId.startsWith("workflow_")
-        ? `
+    const isWorkflowSpecialist =
+      specialistId === "workflow" ||
+      specialistId === "workflow_design" ||
+      specialistId.startsWith("workflow_");
+    const workflowAgentUuidBlock = isWorkflowSpecialist
+      ? `
+Never use placeholder ids (e.g. "created_workflow_id", "created_agent_id") in tool arguments. Use the actual id from the create_workflow or create_agent result in this turn (e.g. after create_workflow, use that result's "id" in update_workflow and execute_workflow).
 For update_workflow, every agent node must have parameters.agentId set to the agent's UUID (id), never the agent's name. If Previous steps include "[Created agent id: <uuid>]", use that exact uuid for parameters.agentId. Otherwise call list_agents and set parameters.agentId to the matching agent's id.
 If Previous steps say an agent was created (e.g. "Created a runnable agent", "created ... agent") but do not include "[Created agent id: ...]", call list_agents and use the matching agent's id (by name or most recent) for parameters.agentId; then create/update the workflow and run if the user asked to run. Do not ask the user for the agent UUID in that case.
 Workflow id: For update_workflow, add_workflow_edges, and execute_workflow always pass the workflow by id (UUID). Use the id from create_workflow result in this turn, or from "[Created workflow id: <uuid>]" in Previous steps, or from Studio resources (Workflows: name (id)) when the user asked to run a workflow and exactly one workflow is listed. Pass it as "id" or "workflowId" in the tool arguments — never identify the workflow by name. If the user said "run the workflow" or "run it" and you have one workflow in Studio resources or in Previous steps, use that workflow's id for execute_workflow — do not skip the call for lack of id.
 When calling execute_workflow, pass the "inputs" argument when the task or extractedContext provides run-level values (e.g. url, targetUrl) so the workflow agent receives them on first turn.
 When execute_workflow returns status "failed", always report result.error to the user. On "Agent not found" or missing/invalid agentId: call get_workflow to inspect the workflow, fix parameters.agentId (e.g. from list_agents or from "[Created agent id: ...]" in previous steps), call update_workflow, then offer to re-run.
 You may try fixing the problem yourself first (e.g. create the missing agent if the workflow expects one, then update_workflow with the new agent id and re-run execute_workflow). Only if the fix is ambiguous or fails, report the failure and options to the user.`
-        : "";
+      : "";
     const generalNoCreateBlock =
       specialistId === "general"
         ? `
@@ -492,17 +498,16 @@ When asking which workflow or agent to use (run, update, enable, etc.): first ca
 Prefer acting with sensible defaults when the user's intent is clear from the task or previous steps; use ask_user only when genuinely ambiguous (e.g. multiple options and no clear prior choice).`
       : `
 When the previous step is waiting for user input, do not call tools that require user input. Respond with a brief summary of what will happen once the user replies.`;
-    const studioContextForSpecialist =
-      specialistId === "agent"
-        ? opts.studioContext
-        : opts.studioContext
-          ? { ...opts.studioContext, tools: [] }
-          : undefined;
+    const studioContextForSpecialist = isAgentSpecialist
+      ? opts.studioContext
+      : opts.studioContext
+        ? { ...opts.studioContext, tools: [] }
+        : undefined;
     const result = await runAssistant([], specialistMessage, {
       callLLM,
       executeTool: execTool,
       systemPromptOverride: `You are the "${specialistId}" specialist. Use only these tools: ${toolNames.join(", ")}. Complete the task and respond with a brief summary.
-When the task requires creating, updating, or configuring agents, workflows, or tools, you MUST output <tool_call> blocks in your FIRST response. Use this format: <tool_call>{"name": "tool_name", "arguments": {...}}</tool_call>. Do not respond with only a summary or "I will..." — output the actual tool calls immediately so the system can execute them.${generalNoCreateBlock}${choiceBlock}${agentCreationBlock}${specialistId === "agent" ? AGENT_SPECIALIST_AGENTIC_BLOCKS : ""}${improvementLoopBlock}${workflowAgentUuidBlock}`,
+When the task requires creating, updating, or configuring agents, workflows, or tools, you MUST output <tool_call> blocks in your FIRST response. Use this format: <tool_call>{"name": "tool_name", "arguments": {...}}</tool_call>. Do not respond with only a summary or "I will..." — output the actual tool calls immediately so the system can execute them.${generalNoCreateBlock}${choiceBlock}${agentCreationBlock}${isAgentSpecialist ? AGENT_SPECIALIST_AGENTIC_BLOCKS : ""}${improvementLoopBlock}${workflowAgentUuidBlock}`,
       feedbackInjection: opts.feedbackInjection,
       ragContext: opts.ragContext,
       uiContext: opts.uiContext,
