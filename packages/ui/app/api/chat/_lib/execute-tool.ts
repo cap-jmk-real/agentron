@@ -493,7 +493,13 @@ export async function executeTool(
         };
       }
       case "get_agent": {
-        const agentId = a.id as string;
+        const agentId =
+          typeof a.id === "string"
+            ? (a.id as string).trim()
+            : typeof a.agentId === "string"
+              ? (a.agentId as string).trim()
+              : "";
+        if (!agentId) return { error: "id or agentId is required" };
         const agentRows = await db.select().from(agents).where(eq(agents.id, agentId));
         if (agentRows.length === 0) return { error: "Agent not found" };
         return fromAgentRow(agentRows[0]);

@@ -15,6 +15,7 @@ import {
   Check,
 } from "lucide-react";
 import RequestQueueSection from "./request-queue-section";
+import { getStepsTokenTotals } from "./_lib/get-steps-token-totals";
 
 type WorkflowQueueJob = {
   id: string;
@@ -400,6 +401,14 @@ function renderQueueLogStep(s: MessageQueueLogEntry, formatTs: (ts: number) => s
     s.type === "error" && payloadObj && typeof payloadObj.errorCode === "string"
       ? payloadObj.errorCode
       : null;
+  const stepUsage =
+    payloadObj?.usage && typeof payloadObj.usage === "object" && !Array.isArray(payloadObj.usage)
+      ? (payloadObj.usage as { promptTokens?: number; completionTokens?: number })
+      : null;
+  const stepSent = stepUsage ? Number(stepUsage.promptTokens) || 0 : 0;
+  const stepRecv = stepUsage ? Number(stepUsage.completionTokens) || 0 : 0;
+  const showStepTokens =
+    (s.phase === "llm_request" || s.phase === "llm_response") && (stepSent > 0 || stepRecv > 0);
   return (
     <li
       key={s.id}
@@ -422,6 +431,11 @@ function renderQueueLogStep(s: MessageQueueLogEntry, formatTs: (ts: number) => s
         {payloadObj && typeof payloadObj.specialistId === "string" && (
           <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
             {payloadObj.specialistId}
+          </span>
+        )}
+        {showStepTokens && (
+          <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+            {stepSent.toLocaleString()} sent / {stepRecv.toLocaleString()} received
           </span>
         )}
       </div>
@@ -1177,6 +1191,25 @@ export default function QueuesPage() {
                       <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
                         {steps.map((s) => renderQueueLogStep(s, formatTs))}
                       </ul>
+                      {(() => {
+                        const tot = getStepsTokenTotals(steps);
+                        if (tot.totalTokens === 0) return null;
+                        return (
+                          <div
+                            style={{
+                              marginTop: "0.5rem",
+                              paddingTop: "0.5rem",
+                              borderTop: "1px solid var(--border)",
+                              color: "var(--text-muted)",
+                              fontSize: "0.8rem",
+                            }}
+                          >
+                            Total: {tot.promptTokens.toLocaleString()} sent,{" "}
+                            {tot.completionTokens.toLocaleString()} received (
+                            {tot.totalTokens.toLocaleString()} total)
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                   {trace && (trace.toolCalls.length > 0 || trace.llmTrace.length > 0) && (
@@ -1348,6 +1381,26 @@ export default function QueuesPage() {
                 >
                   {historySteps.map((s) => renderQueueLogStep(s, formatTs))}
                 </ul>
+                {(() => {
+                  const tot = getStepsTokenTotals(historySteps);
+                  if (tot.totalTokens === 0) return null;
+                  return (
+                    <div
+                      style={{
+                        marginTop: "0.5rem",
+                        padding: "0.5rem",
+                        border: "1px solid var(--border)",
+                        borderRadius: 6,
+                        color: "var(--text-muted)",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      Total for this queue: {tot.promptTokens.toLocaleString()} sent,{" "}
+                      {tot.completionTokens.toLocaleString()} received (
+                      {tot.totalTokens.toLocaleString()} total)
+                    </div>
+                  );
+                })()}
                 {historyStepsLoading && (
                   <p
                     style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "0.5rem" }}

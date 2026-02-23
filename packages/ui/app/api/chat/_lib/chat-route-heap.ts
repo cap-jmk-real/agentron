@@ -481,7 +481,8 @@ You may try fixing the problem yourself first (e.g. create the missing agent if 
     const generalNoCreateBlock =
       specialistId === "general"
         ? `
-You do not have create_agent or create_workflow. Do not output <tool_call> for create_agent or create_workflow; only the agent and workflow specialists create those. Use only your allowed tools (e.g. ask_user, format_response, answer_question, list_agents, list_tools for read-only help).`
+You do not have create_agent or create_workflow. Do not output <tool_call> for create_agent or create_workflow; only the agent and workflow specialists create those. Use only your allowed tools (e.g. ask_user, format_response, answer_question, list_agents, list_tools for read-only help).
+When Previous steps show that workflow_design already ran execute_workflow in this turn, do NOT say the workflow cannot be run or that the workflow specialist must execute it. You do not have execute_workflow, but it already ran—report that outcome. If it completed successfully (e.g. status "completed", output with trail or page title): summarize the success (workflow created and executed; report result e.g. page title) and call format_response with that summary and options like Run again, Modify agent, Check run details, Done. If it failed (e.g. status "failed", result.error): report the failure to the user (include result.error or the failure reason from the output) and call format_response with that failure report and options like Retry, Modify workflow/agent, Check run details, Done.`
         : "";
     const choiceBlock = toolNames.includes("ask_user")
       ? `

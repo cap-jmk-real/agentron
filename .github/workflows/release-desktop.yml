@@ -70,10 +70,10 @@ jobs:
         run: pnpm run build:ui
 
       - name: Build desktop (main + preload)
-        run: pnpm run build --filter @agentron-studio/desktop
+        run: pnpm --filter @agentron-studio/desktop run build
 
       - name: Rebuild native modules for Electron
-        run: pnpm run rebuild:electron --filter @agentron-studio/desktop
+        run: pnpm --filter @agentron-studio/desktop run rebuild:electron
 
       - name: Add VS C++ workload (Windows)
         if: runner.os == 'Windows'
@@ -85,7 +85,7 @@ jobs:
           }
 
       - name: Create distributable
-        run: pnpm run dist --filter @agentron-studio/desktop
+        run: pnpm --filter @agentron-studio/desktop run dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

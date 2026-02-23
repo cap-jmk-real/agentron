@@ -2109,6 +2109,30 @@ describe("execute-tool helpers", () => {
       expect(result).toEqual(expect.objectContaining({ error: "Agent not found" }));
     });
 
+    it("get_agent without id or agentId returns error", async () => {
+      const result = await executeTool("get_agent", {}, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: "id or agentId is required" }));
+    });
+
+    it("get_agent with empty id returns error", async () => {
+      const result = await executeTool("get_agent", { id: "   " }, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: "id or agentId is required" }));
+    });
+
+    it("get_agent accepts agentId when id is omitted", async () => {
+      const createRes = await executeTool(
+        "create_agent",
+        { name: "Get By AgentId Agent", kind: "node", type: "internal", protocol: "native" },
+        undefined
+      );
+      const agentId = (createRes as { id?: string }).id;
+      expect(agentId).toBeDefined();
+      const getRes = await executeTool("get_agent", { agentId }, undefined);
+      expect(getRes).toEqual(
+        expect.objectContaining({ id: agentId, name: "Get By AgentId Agent" })
+      );
+    });
+
     it("delete_agent returns message after deleting created agent", async () => {
       const createRes = await executeTool(
         "create_agent",
