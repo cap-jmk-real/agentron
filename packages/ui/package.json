@@ -8,7 +8,7 @@
     "dev": "cross-env NEXT_IGNORE_INCORRECT_LOCKFILE=true next dev",
     "build": "cross-env NEXT_IGNORE_INCORRECT_LOCKFILE=true next build",
     "start": "next start",
-    "lint": "npx eslint .",
+    "lint": "pnpm exec eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
