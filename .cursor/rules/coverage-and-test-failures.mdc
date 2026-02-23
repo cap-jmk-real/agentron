@@ -9,7 +9,11 @@ alwaysApply: true
 
 - **Improve coverage by adding tests**, not by excluding code from coverage (e.g. no `/* c8 ignore */` or coverage config exclusions to hit targets).
 - If coverage fails or is low, add or extend tests for the uncovered code paths. Only in rare cases (e.g. unreachable defensive code) document why exclusion is justified.
-- **Do not lower the branch coverage threshold** (e.g. in `packages/ui/vitest.config.ts`). The branch threshold stays at 100%; close gaps by adding tests that cover the missing branches.
+- The **branch coverage threshold** is 70% (in `packages/ui/vitest.config.ts`). Aim for 100% branch coverage by adding tests for missing branches; do not lower the threshold below 70%.
+
+## Do not relax tests
+
+- **Do not relax unit or e2e tests unless strictly necessary.** Prefer fixing the implementation or test setup so the test passes and still asserts the intended behavior. Relaxing assertions (e.g. allowing previously failing cases to pass, weakening expectations) is only acceptable when the test no longer reflects valid requirements (obsolete behavior, flaky for non-product reasons, or duplicate). Do not relax to make the suite pass when the test still encodes valid behavior.
 
 ## When a test fails
 

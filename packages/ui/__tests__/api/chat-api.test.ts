@@ -22,11 +22,14 @@ const FIXTURE_LLM_ID = "fixture-llm-abort-test";
 const heapTestWorkflowIdRef = { current: "" };
 const HEAP_TEST_WORKFLOW_ID_GLOBAL = "__heap_test_workflow_id__";
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-/** Tracks that we already returned "workflow__part1" so the next workflow call returns execute_workflow. */
+/** Tracks that we already returned "workflow_design" so the next workflow call returns execute_workflow. */
 const heapTestWorkflowReturnedPart1Ref = { current: false };
 
 /** When set, heap test mock returns agent then workflow order and agent specialist outputs list_tools then create_agent (follow-up). */
 const heapTestCreateAgentFlowRef = { current: false };
+
+/** When set, subspecialist choice returns two ids so route has a parallel step; planner returns ["agent"] only. */
+const heapTestParallelSubspecialistRef = { current: false };
 
 /** When set, planner (call 2) returns empty content but valid plan in response.raw (OpenAI-like). */
 const heapTestPlannerRawFallbackRef = { current: false };
@@ -150,6 +153,17 @@ vi.mock("@agentron-studio/runtime", async (importOriginal) => {
                 usage: undefined,
               };
             }
+            if (heapTestParallelSubspecialistRef.current && isPlannerPrompt(req)) {
+              return {
+                ...safeRaw(
+                  JSON.stringify({ priorityOrder: ["agent"], refinedTask: "Test parallel route" })
+                ),
+                content: JSON.stringify({
+                  priorityOrder: ["agent"],
+                  refinedTask: "Test parallel route",
+                }),
+              };
+            }
             if (heapTestCreateAgentFlowRef.current && isPlannerPrompt(req)) {
               return {
                 ...safeRaw(""),
@@ -159,26 +173,41 @@ vi.mock("@agentron-studio/runtime", async (importOriginal) => {
                 }),
               };
             }
-            if (heapTestCreateAgentFlowRef.current && chatCallCount === 3) {
+            // Order-based mock: encodes expected route order (title=1, planner=2, subspecialist agent=3, agent_lifecycle turn1=4, turn2=5, subspecialist workflow=6, workflow_design=7).
+            if (heapTestCreateAgentFlowRef.current && chatCallCount === 4) {
               const c = `<tool_call>{"name":"list_tools","arguments":{}}</tool_call>`;
               return { ...safeRaw(c), content: c };
             }
-            if (heapTestCreateAgentFlowRef.current && chatCallCount === 4) {
+            if (heapTestCreateAgentFlowRef.current && chatCallCount === 5) {
               const c = `<tool_call>{"name":"create_agent","arguments":{"name":"Heap Test Create-Agent Flow","description":"Test agent","systemPrompt":"You are a test agent."}}</tool_call>`;
               return { ...safeRaw(c), content: c };
             }
-            if (
-              heapTestCreateAgentFlowRef.current &&
-              isSpecialistCall &&
-              firstMsgContent.includes("workflow") &&
-              firstMsgContent.includes("create_workflow")
-            ) {
+            if (heapTestCreateAgentFlowRef.current && chatCallCount === 7) {
               const c = `<tool_call>{"name":"create_workflow","arguments":{"name":"Heap Test WF","nodes":[],"edges":[],"executionMode":"one_time"}}</tool_call>`;
               return { ...safeRaw(c), content: c };
             }
-            if (heapTestCreateAgentFlowRef.current && chatCallCount === 5) {
-              const c = `<tool_call>{"name":"create_workflow","arguments":{"name":"Heap Test WF","nodes":[],"edges":[],"executionMode":"one_time"}}</tool_call>`;
-              return { ...safeRaw(c), content: c };
+            const isChooseSubspecialist =
+              (firstUserContent.includes("Recursive discovery step") ||
+                firstUserContent.includes("Which subspecialist")) &&
+              (firstUserContent.includes("Reply with one or more ids") ||
+                firstUserContent.includes("Reply with exactly one id"));
+            if (isChooseSubspecialist) {
+              if (
+                heapTestParallelSubspecialistRef.current &&
+                firstUserContent.includes('"agent"')
+              ) {
+                return {
+                  ...safeRaw("agent_lifecycle, agent_openclaw"),
+                  content: "agent_lifecycle, agent_openclaw",
+                };
+              }
+              if (firstUserContent.includes("agent_lifecycle")) {
+                return { ...safeRaw("agent_lifecycle"), content: "agent_lifecycle" };
+              }
+              if (firstUserContent.includes("workflow_design")) {
+                heapTestWorkflowReturnedPart1Ref.current = true;
+                return { ...safeRaw("workflow_design"), content: "workflow_design" };
+              }
             }
             const workflowIdForRun =
               heapTestWorkflowIdRef.current ||
@@ -196,13 +225,6 @@ vi.mock("@agentron-studio/runtime", async (importOriginal) => {
               };
             }
             if (workflowIdForRun && !isPlannerPrompt(req)) {
-              const isChooseSubspecialist =
-                firstUserContent.includes("Which subspecialist") &&
-                firstUserContent.includes("Reply with exactly one id");
-              if (isChooseSubspecialist) {
-                heapTestWorkflowReturnedPart1Ref.current = true;
-                return { ...safeRaw("workflow__part1"), content: "workflow__part1" };
-              }
               if (isSpecialistCall) {
                 if (allContent.includes("Workflow not found")) {
                   const failureContent =
@@ -697,27 +719,119 @@ describe("Chat API", () => {
         args?: Record<string, unknown>;
         result?: unknown;
       }[];
+      // With the mock (agent then workflow, each calling create_agent / create_workflow), the route must produce both tools with ids. When this passes we know routing works; e2e failures with real LLM can be attributed to LLM/planner behavior.
       const createAgentResult = toolResults.find((r) => r.name === "create_agent");
-      if (createAgentResult) {
-        const createdAgentId =
-          createAgentResult.result &&
-          typeof createAgentResult.result === "object" &&
-          "id" in createAgentResult.result
-            ? (createAgentResult.result as { id: string }).id
-            : undefined;
-        expect(typeof createdAgentId).toBe("string");
-        const agentRows = await db
-          .select({ id: agents.id, name: agents.name })
-          .from(agents)
-          .where(eq(agents.name, "Heap Test Create-Agent Flow"));
-        expect(agentRows.length).toBeGreaterThanOrEqual(1);
-      }
-      expect(toolResults.length).toBeGreaterThanOrEqual(0);
+      const createWorkflowResult = toolResults.find((r) => r.name === "create_workflow");
+      expect(createAgentResult).toBeDefined();
+      expect(createWorkflowResult).toBeDefined();
+      const createdAgentId =
+        createAgentResult!.result &&
+        typeof createAgentResult!.result === "object" &&
+        "id" in createAgentResult!.result
+          ? (createAgentResult!.result as { id: string }).id
+          : undefined;
+      const createdWorkflowId =
+        createWorkflowResult!.result &&
+        typeof createWorkflowResult!.result === "object" &&
+        "id" in createWorkflowResult!.result
+          ? (createWorkflowResult!.result as { id: string }).id
+          : undefined;
+      expect(typeof createdAgentId).toBe("string");
+      expect(typeof createdWorkflowId).toBe("string");
+      const agentRows = await db
+        .select({ id: agents.id, name: agents.name })
+        .from(agents)
+        .where(eq(agents.name, "Heap Test Create-Agent Flow"));
+      expect(agentRows.length).toBeGreaterThanOrEqual(1);
       // Structured handoff is implemented: agent outcome includes [Created agent id: <uuid>]; workflow specialist receives it in "Previous steps"
     } finally {
       heapTestCreateAgentFlowRef.current = false;
     }
   }, 25_000);
+
+  it("heap route can have parallel step when subspecialist returns multiple ids", async () => {
+    try {
+      await db.delete(llmConfigs).where(eq(llmConfigs.id, FIXTURE_LLM_ID)).run();
+    } catch {
+      // ignore
+    }
+    await db
+      .insert(llmConfigs)
+      .values(
+        toLlmConfigRow({ id: FIXTURE_LLM_ID, provider: "openai", model: "gpt-4" } as Parameters<
+          typeof toLlmConfigRow
+        >[0])
+      )
+      .run();
+    const createRes = await convPost(
+      new Request("http://localhost/api/chat/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Parallel route test" }),
+      })
+    );
+    const conv = await createRes.json();
+    const conversationId = conv.id as string;
+    heapTestParallelSubspecialistRef.current = true;
+    try {
+      const res = await chatPost(
+        new Request("http://localhost/api/chat?stream=1", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+          body: JSON.stringify({
+            message: "test parallel",
+            conversationId,
+            providerId: FIXTURE_LLM_ID,
+            useHeapMode: true,
+          }),
+        })
+      );
+      expect(res).toBeDefined();
+      expect(res!.status).toBe(202);
+      const data = await res!.json();
+      const turnId = data.turnId;
+      const eventsRes = await getChatEvents(
+        new Request(`http://localhost/api/chat/events?turnId=${encodeURIComponent(turnId)}`)
+      );
+      expect(eventsRes.ok).toBe(true);
+      const reader = eventsRes.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (value) buffer += decoder.decode(value);
+        if (done) break;
+      }
+      reader.releaseLock();
+      const lines = buffer.split("\n\n").filter((s) => s.trim());
+      const events: { type?: string; planSummary?: { route: unknown[] } }[] = [];
+      for (const line of lines) {
+        const m = line.match(/^data:\s*(.+)$/m);
+        if (m) {
+          try {
+            events.push(JSON.parse(m[1].trim()));
+          } catch {
+            //
+          }
+        }
+      }
+      const doneEvent = events.find((e) => e?.type === "done");
+      expect(doneEvent).toBeDefined();
+      expect(doneEvent?.planSummary?.route).toBeDefined();
+      const route = doneEvent!.planSummary!.route as (string | { parallel: string[] })[];
+      const parallelStep = route.find(
+        (s): s is { parallel: string[] } =>
+          typeof s === "object" &&
+          s !== null &&
+          Array.isArray((s as { parallel?: string[] }).parallel)
+      );
+      expect(parallelStep).toBeDefined();
+      expect(parallelStep!.parallel).toContain("agent_lifecycle");
+      expect(parallelStep!.parallel).toContain("agent_openclaw");
+    } finally {
+      heapTestParallelSubspecialistRef.current = false;
+    }
+  }, 20_000);
 
   it("heap mode done event has toolResults array when specialist runs no tools", async () => {
     try {
@@ -1011,7 +1125,7 @@ describe("Chat API", () => {
     } finally {
       heapTestPlannerEmptyRef.current = false;
     }
-  }, 25_000);
+  }, 45_000);
 
   it("planner_response in queue always has provider output (never no response from provider)", () => {
     const heapPath = join(__dirname, "../../app/api/chat/_lib/chat-route-heap.ts");
@@ -1139,5 +1253,5 @@ describe("Chat API", () => {
       if (typeof globalThis !== "undefined")
         delete (globalThis as unknown as Record<string, string>)[HEAP_TEST_WORKFLOW_ID_GLOBAL];
     }
-  }, 20_000);
+  }, 45_000);
 });

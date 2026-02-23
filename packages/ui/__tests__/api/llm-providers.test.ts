@@ -77,6 +77,30 @@ describe("LLM Providers API", () => {
     }
   });
 
+  it("GET /api/llm/providers returns extra as-is when not a plain object (e.g. array)", async () => {
+    vi.spyOn(dbModule.db, "select").mockReturnValueOnce({
+      from: () =>
+        Promise.resolve([
+          {
+            id: "mock-array-extra",
+            provider: "openai",
+            model: "gpt-4",
+            apiKeyRef: null,
+            endpoint: null,
+            extra: "[]",
+          },
+        ]),
+    } as never);
+    const res = await listGet();
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as Array<{ id: string; extra?: unknown }>;
+    expect(data.length).toBe(1);
+    expect(data[0].id).toBe("mock-array-extra");
+    expect(Array.isArray(data[0].extra)).toBe(true);
+    expect(data[0].extra).toEqual([]);
+    vi.restoreAllMocks();
+  });
+
   it("POST /api/llm/providers stores contextLength from string in extra", async () => {
     const res = await createPost(
       new Request("http://localhost/api/llm/providers", {
@@ -92,6 +116,40 @@ describe("LLM Providers API", () => {
     expect(res.status).toBe(201);
     const data = await res.json();
     expect(data.extra?.contextLength).toBe(4096);
+  });
+
+  it("POST /api/llm/providers stores contextLength from number in extra", async () => {
+    const res = await createPost(
+      new Request("http://localhost/api/llm/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "openai",
+          model: "gpt-4o",
+          contextLength: 8192,
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.extra?.contextLength).toBe(8192);
+  });
+
+  it("POST /api/llm/providers does not store contextLength when 0 or negative", async () => {
+    const res = await createPost(
+      new Request("http://localhost/api/llm/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "openai",
+          model: "gpt-4o",
+          contextLength: 0,
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.extra?.contextLength).toBeUndefined();
   });
 
   it("POST /api/llm/providers returns 500 when body is invalid JSON", async () => {
@@ -124,6 +182,24 @@ describe("LLM Providers API", () => {
     expect(data.extra?.rateLimit).toBe(60);
   });
 
+  it("POST /api/llm/providers treats extra non-object (e.g. string) as empty for buildExtraForStorage", async () => {
+    const res = await createPost(
+      new Request("http://localhost/api/llm/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "openai",
+          model: "gpt-4o",
+          extra: "not-an-object",
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.id).toBeDefined();
+    expect(data.extra).toBeUndefined();
+  });
+
   it("POST /api/llm/providers treats extra array as empty object for storage", async () => {
     const res = await createPost(
       new Request("http://localhost/api/llm/providers", {
@@ -133,6 +209,23 @@ describe("LLM Providers API", () => {
           provider: "openai",
           model: "gpt-4o",
           extra: ["not", "an", "object"],
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.extra).toBeUndefined();
+  });
+
+  it("POST /api/llm/providers treats extra null as empty object for buildExtraForStorage", async () => {
+    const res = await createPost(
+      new Request("http://localhost/api/llm/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "openai",
+          model: "gpt-4o",
+          extra: null,
         }),
       })
     );

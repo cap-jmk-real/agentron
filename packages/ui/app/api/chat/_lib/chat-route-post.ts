@@ -542,7 +542,10 @@ export async function runChatPost(request: Request): Promise<Response> {
   }
 
   const configRows = await db.select().from(llmConfigs);
-  if (configRows.length === 0) {
+  const configsWithSecret = configRows.map(fromLlmConfigRowWithSecret);
+  const allowImplicitLocal =
+    providerId?.startsWith("local:") && providerId.slice("local:".length).trim().length > 0;
+  if (configRows.length === 0 && !allowImplicitLocal) {
     // #region agent log
     fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
       method: "POST",
@@ -562,10 +565,28 @@ export async function runChatPost(request: Request): Promise<Response> {
       { status: 400 }
     );
   }
-  const configsWithSecret = configRows.map(fromLlmConfigRowWithSecret);
   let llmConfig: (typeof configsWithSecret)[0] | undefined;
   if (providerId) {
     llmConfig = configsWithSecret.find((c) => c.id === providerId);
+    if (!llmConfig && providerId.startsWith("local:")) {
+      const modelOverride = providerId.slice("local:".length).trim();
+      if (modelOverride) {
+        const firstLocal = configsWithSecret.find((c) => c.provider === "local");
+        if (firstLocal) {
+          llmConfig = { ...firstLocal, model: modelOverride };
+        } else {
+          // No Local (Ollama) config in Settings: use implicit localhost config so local models work
+          llmConfig = {
+            id: `local:${modelOverride}`,
+            provider: "local",
+            model: modelOverride,
+            endpoint: "http://localhost:11434",
+            apiKeyRef: undefined,
+            extra: undefined,
+          };
+        }
+      }
+    }
     if (!llmConfig) {
       // #region agent log
       fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {

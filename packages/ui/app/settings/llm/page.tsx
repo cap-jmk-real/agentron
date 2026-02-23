@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import CopyDebugInfoButton from "../../components/copy-debug-info-button";
+import LlmSetupTabs from "./_components/llm-setup-tabs";
 
 interface RateLimitConfig {
   requestsPerMinute?: number;
@@ -324,6 +325,7 @@ export default function LlmSettingsPage() {
 
   return (
     <div style={{ maxWidth: 680 }}>
+      <LlmSetupTabs />
       <div
         style={{
           display: "flex",

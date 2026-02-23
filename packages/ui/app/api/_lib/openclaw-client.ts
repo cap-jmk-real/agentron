@@ -50,7 +50,7 @@ const GATEWAY_PORT_BEHIND_PROXY = 18788;
 
 function wsHeaders(wsUrl: string): Record<string, string> {
   const headers: Record<string, string> = { Origin: originForUrl(wsUrl) };
-  if (useControlUiBypass()) {
+  if (getControlUiBypass()) {
     try {
       const u = new URL(wsUrl);
       headers.Host = `${u.hostname === "127.0.0.1" ? "127.0.0.1" : u.hostname}:${GATEWAY_PORT_BEHIND_PROXY}`;
@@ -73,17 +73,17 @@ type EventFrame = { type: "event"; event: string; payload?: unknown };
 type ChallengePayload = { nonce: string; ts?: number };
 
 /** When true, connect as Control UI and omit device so gateway.controlUi.dangerouslyDisableDeviceAuth allows token-only (e.g. container port-forward). */
-function useControlUiBypass(): boolean {
+function getControlUiBypass(): boolean {
   return process.env.OPENCLAW_USE_CONTROL_UI_BYPASS === "1";
 }
 
-/** Build connect params matching OpenClaw ConnectParamsSchema. Includes device identity when challenge is provided, unless useControlUiBypass. */
+/** Build connect params matching OpenClaw ConnectParamsSchema. Includes device identity when challenge is provided, unless getControlUiBypass. */
 function buildConnectParams(
   token: string | undefined,
   challenge?: ChallengePayload,
   options?: { controlUiBypass?: boolean }
 ): Record<string, unknown> {
-  const bypass = options?.controlUiBypass ?? useControlUiBypass();
+  const bypass = options?.controlUiBypass ?? getControlUiBypass();
   const connectParams: Record<string, unknown> = {
     minProtocol: PROTOCOL_VERSION,
     maxProtocol: PROTOCOL_VERSION,

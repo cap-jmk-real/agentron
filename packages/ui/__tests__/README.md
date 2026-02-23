@@ -6,7 +6,9 @@
 - **Run with coverage:** `npm run test:coverage` or `pnpm run test:coverage` (from repo root), or `npm run test:coverage` from `packages/ui`.
 - **Coverage report:** After `test:coverage`, open `packages/ui/coverage/index.html` for a line-by-line report.
 
-**E2E with local LLM:** From repo root, run `npm run test:e2e-llm`. The script auto-starts Ollama if it is not already running; default model is Qwen 2.5 3B. For full Ollama setup and suggested models (e.g. llama3.2, phi3), see the main [README](../../README.md) § “E2E tests with local LLMs (optional)”. Covered areas: web search, custom code, browser fetch, self-improvement, chat-driven design, multi-agent, containers, request user help. Set `E2E_SAVE_ARTIFACTS=1` to write run output and trail to `__tests__/e2e/artifacts/` for debugging.
+**E2E with local LLM:** From repo root, run `npm run test:e2e-llm`. The script auto-starts Ollama if it is not already running; default model is Qwen 3 8B (qwen3:8b). For full Ollama setup and suggested models (e.g. llama3.2, phi3), see the main [README](../../README.md) § “E2E tests with local LLMs (optional)”. Covered areas: web search, custom code, browser fetch, self-improvement, chat-driven design, multi-agent, containers, request user help. Set `E2E_SAVE_ARTIFACTS=1` to write run output and trail to `__tests__/e2e/artifacts/` for debugging.
+
+**Browser E2E (Playwright):** From `packages/ui`, run `npm run test:e2e-browser`. This starts the Next dev server and runs Playwright tests (e.g. `/knowledge?tab=connectors` deep link). Run `npx playwright install chromium` once if browsers are missing.
 
 Tests run in **parallel** (multiple Vitest workers). Each worker gets its own SQLite DB and data dir via `vitest.setup.ts` (using `VITEST_POOL_ID`), so tests that mutate or reset the DB don’t affect other workers.
 
@@ -49,6 +51,18 @@ These areas are **not** covered by unit tests by design; they are either integra
 **Mission-critical and tested:** Vault crypto and create/status (`_lib/vault`, `api/vault/create`, `api/vault/status`), credential storage (`_lib/credential-store`), RAG ingest/upload (with mocks where needed), functions execute (404/400 paths), and RAG connectors by id are in scope and have dedicated tests. Only non-critical or truly external paths remain excluded.
 
 **Coverage target:** 70% lines/statements/functions and 100% branches for in-scope code (see `vitest.config.ts`). Gaps are closed by adding tests, not by excluding code (see `.cursor/rules/coverage-and-test-failures.mdc`). **Before pushing:** run `npm run check` (or `npm run pre-push`) so typecheck, lint, tests, and coverage run.
+
+## Troubleshooting
+
+**Windows:** Always install from repo root **without** `--omit=optional` so rollup, esbuild, and other platform optional deps are installed.
+
+- **Vitest fails with "@esbuild/win32-x64 could not be found"** — esbuild needs its platform binary. From **repo root** run `npm install` (or `pnpm install`) and ensure you do **not** use `--omit=optional`. If you use npm and previously ran `install:ui` (which omits optional), run a full `npm install` from root.
+- **Windows: `npm test` fails with "Cannot find module @rollup/rollup-win32-x64-msvc"** — Known npm optional-dependency behavior. The repo overrides `rollup` to `@rollup/wasm-node` so a clean install should use the WASM build. From **repo root**: run `npm install` (do not use `--omit=optional`). If it still fails, do a clean install from repo root (close IDE/other processes using the repo first to avoid EPERM):
+  - PowerShell: `Remove-Item -Recurse -Force node_modules; Remove-Item package-lock.json; npm install`
+  - Then run `npm test` again.
+- **"Cannot find package 'pathe'" or other missing deps** — Usually means `node_modules` or the lockfile is inconsistent. From repo root run `npm install`. If you deleted `package-lock.json`, regenerate it with `npm install`; the rollup override will apply to the new lockfile.
+- **EEXIST symlink / "file already exists" during npm install** — Leftover `node_modules` at repo root can cause this. From repo root, remove `node_modules` (close IDE/processes using the repo first), then run `npm install`.
+- **"Could not locate the bindings file" for better-sqlite3** — The native module may not be built for your Node version. From repo root run `pnpm rebuild better-sqlite3` or `npm rebuild better-sqlite3`. If that fails, ensure build tools are available (e.g. Windows: `npm install -g windows-build-tools` or Visual Studio Build Tools) and run install again.
 
 ## Ollama model pull (no pull in CI)
 

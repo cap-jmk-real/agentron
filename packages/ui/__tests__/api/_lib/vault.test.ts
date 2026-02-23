@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   deriveVaultKey,
   encryptWithVaultKey,
@@ -10,9 +10,30 @@ import {
   VAULT_COOKIE_NAME,
 } from "../../../app/api/_lib/vault";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { getDataDir } from "../../../app/api/_lib/db";
 
 describe("vault", () => {
   const salt = crypto.randomBytes(16).toString("base64url");
+
+  it("getCookieSecret uses AGENTRON_VAULT_COOKIE_SECRET when set and length >= 32", () => {
+    const prev = process.env.AGENTRON_VAULT_COOKIE_SECRET;
+    const secret32 = "a".repeat(32);
+    process.env.AGENTRON_VAULT_COOKIE_SECRET = secret32;
+    try {
+      const key = deriveVaultKey("test", salt);
+      const header = buildVaultCookieHeader(key);
+      const match = header.match(/agentron_vault=([^;]+)/);
+      const value = decodeURIComponent(match?.[1] ?? "");
+      const extracted = decryptFromCookie(value);
+      expect(extracted).not.toBeNull();
+      expect(extracted!.length).toBe(32);
+    } finally {
+      if (prev !== undefined) process.env.AGENTRON_VAULT_COOKIE_SECRET = prev;
+      else delete process.env.AGENTRON_VAULT_COOKIE_SECRET;
+    }
+  });
 
   it("deriveVaultKey returns 32-byte buffer", () => {
     const key = deriveVaultKey("masterPassword", salt);
@@ -94,5 +115,72 @@ describe("vault", () => {
       headers: { cookie: "other=value; foo=bar" },
     });
     expect(getVaultKeyFromRequest(req)).toBeNull();
+  });
+
+  it("getCookieSecret uses file when env not set and file exists with valid 32-byte key", async () => {
+    const prev = process.env.AGENTRON_VAULT_COOKIE_SECRET;
+    delete process.env.AGENTRON_VAULT_COOKIE_SECRET;
+    const dataDir = getDataDir();
+    const keyPath = path.join(dataDir, "vault-cookie.secret");
+    const keyContent = crypto.randomBytes(32).toString("base64");
+    fs.writeFileSync(keyPath, keyContent, { mode: 0o600 });
+    try {
+      vi.resetModules();
+      const vault2 = await import("../../../app/api/_lib/vault");
+      const header = vault2.buildVaultCookieHeader(vault2.deriveVaultKey("t", salt));
+      expect(header).toBeTruthy();
+      expect(header).toContain(vault2.VAULT_COOKIE_NAME + "=");
+    } finally {
+      try {
+        fs.unlinkSync(keyPath);
+      } catch {
+        /* ignore */
+      }
+      if (prev !== undefined) process.env.AGENTRON_VAULT_COOKIE_SECRET = prev;
+    }
+  });
+
+  it("getCookieSecret uses fallback when file read throws (catch branch)", async () => {
+    const prev = process.env.AGENTRON_VAULT_COOKIE_SECRET;
+    delete process.env.AGENTRON_VAULT_COOKIE_SECRET;
+    const dataDir = getDataDir();
+    const keyPath = path.join(dataDir, "vault-cookie.secret");
+    fs.writeFileSync(keyPath, "dummy", { mode: 0o600 });
+    const readSpy = vi.spyOn(fs, "readFileSync").mockImplementationOnce(() => {
+      throw new Error("read failed");
+    });
+    try {
+      vi.resetModules();
+      const vault2 = await import("../../../app/api/_lib/vault");
+      const header = vault2.buildVaultCookieHeader(vault2.deriveVaultKey("t", salt));
+      expect(header).toBeTruthy();
+    } finally {
+      readSpy.mockRestore();
+      try {
+        fs.unlinkSync(keyPath);
+      } catch {
+        /* ignore */
+      }
+      if (prev !== undefined) process.env.AGENTRON_VAULT_COOKIE_SECRET = prev;
+    }
+  });
+
+  it("getCookieSecret ignores chmodSync error when creating new key file", async () => {
+    const prev = process.env.AGENTRON_VAULT_COOKIE_SECRET;
+    delete process.env.AGENTRON_VAULT_COOKIE_SECRET;
+    const chmodSpy = vi.spyOn(fs, "chmodSync").mockImplementationOnce(() => {
+      throw new Error("chmod failed");
+    });
+    const existsSpy = vi.spyOn(fs, "existsSync").mockReturnValueOnce(false);
+    try {
+      vi.resetModules();
+      const vault2 = await import("../../../app/api/_lib/vault");
+      const header = vault2.buildVaultCookieHeader(vault2.deriveVaultKey("t", salt));
+      expect(header).toBeTruthy();
+    } finally {
+      chmodSpy.mockRestore();
+      existsSpy.mockRestore();
+      if (prev !== undefined) process.env.AGENTRON_VAULT_COOKIE_SECRET = prev;
+    }
   });
 });

@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { STD_IDS } from "../../../app/api/_lib/run-workflow-tool-execution";
+import {
+  STD_IDS,
+  FIRST_TURN_DEFAULT,
+  buildFirstTurnPartnerMessageFromConfig,
+} from "../../../app/api/_lib/run-workflow-tool-execution";
 import { getAppSettings } from "../../../app/api/_lib/app-settings";
 import { searchWeb } from "@agentron-studio/runtime";
 
@@ -128,5 +132,46 @@ describe("run-workflow-tool-execution std-web-search", () => {
       message: "plain string error",
       results: [],
     });
+  });
+});
+
+describe("buildFirstTurnPartnerMessageFromConfig", () => {
+  it("returns FIRST_TURN_DEFAULT when config is undefined or empty", () => {
+    expect(buildFirstTurnPartnerMessageFromConfig(undefined)).toBe(FIRST_TURN_DEFAULT);
+    expect(buildFirstTurnPartnerMessageFromConfig({})).toBe(FIRST_TURN_DEFAULT);
+    expect(buildFirstTurnPartnerMessageFromConfig({ agentId: "id" })).toBe(FIRST_TURN_DEFAULT);
+  });
+
+  it("injects url when config.url is set", () => {
+    const out = buildFirstTurnPartnerMessageFromConfig({
+      agentId: "agent-uuid",
+      url: "https://example.com",
+    });
+    expect(out).not.toBe(FIRST_TURN_DEFAULT);
+    expect(out).toContain("https://example.com");
+    expect(out).toContain("do not ask the user for it");
+  });
+
+  it("injects savedSearchUrl and autoUseVault when set", () => {
+    const out = buildFirstTurnPartnerMessageFromConfig({
+      savedSearchUrl: "https://search.example.com",
+      autoUseVault: true,
+    });
+    expect(out).toContain("https://search.example.com");
+    expect(out).toContain("autoUseVault is enabled");
+  });
+
+  it("injects other non-reserved params as workflow parameters", () => {
+    const out = buildFirstTurnPartnerMessageFromConfig({
+      agentId: "id",
+      url: "https://example.com",
+      query: "test query",
+      limit: 10,
+    });
+    expect(out).toContain("https://example.com");
+    expect(out).toContain("Parameters provided by the workflow");
+    expect(out).toContain("query:");
+    expect(out).toContain("limit:");
+    expect(out).not.toMatch(/\bagentId\b/);
   });
 });

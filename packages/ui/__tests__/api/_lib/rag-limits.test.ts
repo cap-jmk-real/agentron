@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   getEffectiveRagRetrieveLimit,
   getEffectiveFeedbackLimits,
@@ -12,6 +12,21 @@ import { ragCollections, chatAssistantSettings, agents } from "@agentron-studio/
 import { eq } from "drizzle-orm";
 
 describe("rag-limits", () => {
+  it("uses fallbacks when env vars are invalid (parseInt NaN)", async () => {
+    vi.stubEnv("RAG_RETRIEVE_LIMIT_DEFAULT", "invalid");
+    vi.stubEnv("RAG_RETRIEVE_LIMIT_MAX", "nope");
+    vi.stubEnv("FEEDBACK_LAST_N_DEFAULT", "x");
+    vi.stubEnv("FEEDBACK_RETRIEVE_CAP_DEFAULT", "y");
+    vi.resetModules();
+    const mod = await import("../../../app/api/_lib/rag-limits");
+    expect(mod.RAG_RETRIEVE_LIMIT_DEFAULT).toBe(10);
+    expect(mod.RAG_RETRIEVE_LIMIT_MAX).toBe(50);
+    expect(mod.FEEDBACK_LAST_N_DEFAULT).toBe(10);
+    expect(mod.FEEDBACK_RETRIEVE_CAP_DEFAULT).toBe(10);
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
   describe("getEffectiveRagRetrieveLimit", () => {
     it("returns a number for chat scope", async () => {
       const limit = await getEffectiveRagRetrieveLimit({ type: "chat" });

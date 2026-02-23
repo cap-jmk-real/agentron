@@ -92,6 +92,115 @@ describe("Queues API", () => {
     }
   });
 
+  it("GET /api/queues returns activeChatTraces using args when toolCalls have args key (not arguments)", async () => {
+    const convId = "queues-test-args-key-" + Date.now();
+    const now = Date.now();
+    await db
+      .insert(conversationLocks)
+      .values({ conversationId: convId, startedAt: now, createdAt: now })
+      .run();
+    const msgId = "msg-args-" + Date.now();
+    await db
+      .insert(chatMessages)
+      .values({
+        id: msgId,
+        conversationId: convId,
+        role: "assistant",
+        content: "Done.",
+        toolCalls: JSON.stringify([{ name: "list_workflows", args: { limit: 10 }, result: [] }]),
+        llmTrace: null,
+        createdAt: now - 50,
+      })
+      .run();
+    try {
+      const res = await GET();
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      const trace = data.activeChatTraces.find(
+        (t: { conversationId: string }) => t.conversationId === convId
+      );
+      expect(trace).toBeDefined();
+      expect(trace.toolCalls).toHaveLength(1);
+      expect(trace.toolCalls[0].name).toBe("list_workflows");
+      expect(trace.toolCalls[0].args).toEqual({ limit: 10 });
+    } finally {
+      await db.delete(chatMessages).where(eq(chatMessages.id, msgId)).run();
+      await db.delete(conversationLocks).where(eq(conversationLocks.conversationId, convId)).run();
+    }
+  });
+
+  it("GET /api/queues returns activeChatTraces with empty name when toolCall name is not string", async () => {
+    const convId = "queues-test-non-string-name-" + Date.now();
+    const now = Date.now();
+    await db
+      .insert(conversationLocks)
+      .values({ conversationId: convId, startedAt: now, createdAt: now })
+      .run();
+    const msgId = "msg-non-string-name-" + Date.now();
+    await db
+      .insert(chatMessages)
+      .values({
+        id: msgId,
+        conversationId: convId,
+        role: "assistant",
+        content: "",
+        toolCalls: JSON.stringify([{ name: 123, args: {}, result: null }]),
+        llmTrace: null,
+        createdAt: now - 10,
+      })
+      .run();
+    try {
+      const res = await GET();
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      const trace = data.activeChatTraces.find(
+        (t: { conversationId: string }) => t.conversationId === convId
+      );
+      expect(trace).toBeDefined();
+      expect(trace.toolCalls).toHaveLength(1);
+      expect(trace.toolCalls[0].name).toBe("");
+    } finally {
+      await db.delete(chatMessages).where(eq(chatMessages.id, msgId)).run();
+      await db.delete(conversationLocks).where(eq(conversationLocks.conversationId, convId)).run();
+    }
+  });
+
+  it("GET /api/queues returns activeChatTraces with empty arrays when toolCalls or llmTrace is invalid JSON", async () => {
+    const convId = "queues-test-parse-fail-" + Date.now();
+    const now = Date.now();
+    await db
+      .insert(conversationLocks)
+      .values({ conversationId: convId, startedAt: now, createdAt: now })
+      .run();
+    const msgId = "msg-parse-fail-" + Date.now();
+    await db
+      .insert(chatMessages)
+      .values({
+        id: msgId,
+        conversationId: convId,
+        role: "assistant",
+        content: "x",
+        toolCalls: "not valid json",
+        llmTrace: "also not json",
+        createdAt: now - 50,
+      })
+      .run();
+    try {
+      const res = await GET();
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      const trace = data.activeChatTraces.find(
+        (t: { conversationId: string }) => t.conversationId === convId
+      );
+      expect(trace).toBeDefined();
+      expect(trace.toolCalls).toEqual([]);
+      expect(trace.llmTrace).toEqual([]);
+    } finally {
+      await db.delete(chatMessages).where(eq(chatMessages.id, msgId)).run();
+      await db.delete(conversationLocks).where(eq(conversationLocks.conversationId, convId)).run();
+    }
+  });
+
   it("GET /api/queues returns activeChatTraces with empty toolCalls/llmTrace when stored value is not array", async () => {
     const convId = "queues-test-trace-invalid-" + Date.now();
     const now = Date.now();
@@ -183,6 +292,62 @@ describe("Queues API", () => {
     } finally {
       await db.delete(messageQueueLog).where(eq(messageQueueLog.conversationId, convId)).run();
       await db.delete(conversationLocks).where(eq(conversationLocks.conversationId, convId)).run();
+    }
+  });
+
+  it("GET /api/queues returns messageQueueLog with empty steps for locked conversation that has no log rows", async () => {
+    const convWithSteps = "queues-mqlog-with-" + Date.now();
+    const convNoSteps = "queues-mqlog-empty-" + Date.now();
+    const now = Date.now();
+    await db
+      .insert(conversationLocks)
+      .values({ conversationId: convWithSteps, startedAt: now, createdAt: now })
+      .run();
+    await db
+      .insert(conversationLocks)
+      .values({ conversationId: convNoSteps, startedAt: now, createdAt: now })
+      .run();
+    const stepId = "mqlog-single-" + Date.now();
+    await db
+      .insert(messageQueueLog)
+      .values({
+        id: stepId,
+        conversationId: convWithSteps,
+        messageId: null,
+        type: "trace_step",
+        phase: "prepare",
+        label: "Preparing…",
+        payload: null,
+        createdAt: now,
+      })
+      .run();
+    try {
+      const res = await GET();
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      const withSteps = data.messageQueueLog.find(
+        (e: { conversationId: string }) => e.conversationId === convWithSteps
+      );
+      const noSteps = data.messageQueueLog.find(
+        (e: { conversationId: string }) => e.conversationId === convNoSteps
+      );
+      expect(withSteps).toBeDefined();
+      expect(withSteps.steps).toHaveLength(1);
+      expect(noSteps).toBeDefined();
+      expect(noSteps.steps).toEqual([]);
+    } finally {
+      await db
+        .delete(messageQueueLog)
+        .where(eq(messageQueueLog.conversationId, convWithSteps))
+        .run();
+      await db
+        .delete(conversationLocks)
+        .where(eq(conversationLocks.conversationId, convWithSteps))
+        .run();
+      await db
+        .delete(conversationLocks)
+        .where(eq(conversationLocks.conversationId, convNoSteps))
+        .run();
     }
   });
 });
@@ -396,6 +561,19 @@ describe("Queues message-log API", () => {
     }
   });
 
+  it("GET /api/queues/message-log with conversationId and invalid limit uses default steps limit", async () => {
+    const convId = "msglog-invalid-limit-" + Date.now();
+    const res = await getMessageLog(
+      new Request(
+        `http://localhost/api/queues/message-log?conversationId=${encodeURIComponent(convId)}&limit=foo`
+      )
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toHaveProperty("steps");
+    expect(Array.isArray(data.steps)).toBe(true);
+  });
+
   it("GET /api/queues/message-log with conversationId and limit paginates steps", async () => {
     const convId = "msglog-pag-" + Date.now();
     const now = Date.now();
@@ -488,5 +666,90 @@ describe("Queues message-log API", () => {
     const data = await res.json();
     expect(data.steps).toHaveLength(0);
     expect(data.nextCursor).toBe(null);
+  });
+
+  it("GET /api/queues/message-log with conversationId and invalid cursor uses no cursor", async () => {
+    const convId = "msglog-bad-cursor-" + Date.now();
+    const now = Date.now();
+    await db
+      .insert(messageQueueLog)
+      .values({
+        id: "step-1",
+        conversationId: convId,
+        messageId: null,
+        type: "trace_step",
+        phase: "x",
+        label: "X",
+        payload: null,
+        createdAt: now,
+      })
+      .run();
+    try {
+      const res = await getMessageLog(
+        new Request(
+          `http://localhost/api/queues/message-log?conversationId=${encodeURIComponent(convId)}&cursor=not-a-number,some-id`
+        )
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.steps).toHaveLength(1);
+      expect(data.nextCursor).toBe(null);
+    } finally {
+      await db.delete(messageQueueLog).where(eq(messageQueueLog.conversationId, convId)).run();
+    }
+  });
+
+  it("GET /api/queues/message-log without conversationId with limit and offset parses and clamps", async () => {
+    const res = await getMessageLog(
+      new Request("http://localhost/api/queues/message-log?limit=5&offset=0")
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toHaveProperty("conversations");
+    expect(data).toHaveProperty("nextOffset");
+  });
+
+  it("GET /api/queues/message-log without conversationId with invalid limit and offset uses defaults", async () => {
+    const res = await getMessageLog(
+      new Request("http://localhost/api/queues/message-log?limit=foo&offset=bar")
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toHaveProperty("conversations");
+    expect(data).toHaveProperty("nextOffset");
+    expect(Array.isArray(data.conversations)).toBe(true);
+  });
+
+  it("GET /api/queues/message-log without conversationId returns nextOffset when more than limit conversations exist", async () => {
+    const now = Date.now();
+    const convIds = ["msglog-more-a-" + now, "msglog-more-b-" + now, "msglog-more-c-" + now];
+    for (let i = 0; i < convIds.length; i++) {
+      await db
+        .insert(messageQueueLog)
+        .values({
+          id: `msglog-more-${i}-` + now,
+          conversationId: convIds[i],
+          messageId: null,
+          type: "trace_step",
+          phase: "x",
+          label: "X",
+          payload: null,
+          createdAt: now + i,
+        })
+        .run();
+    }
+    try {
+      const res = await getMessageLog(
+        new Request("http://localhost/api/queues/message-log?limit=2&offset=0")
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.conversations).toHaveLength(2);
+      expect(data.nextOffset).toBe(2);
+    } finally {
+      for (const cid of convIds) {
+        await db.delete(messageQueueLog).where(eq(messageQueueLog.conversationId, cid)).run();
+      }
+    }
   });
 });

@@ -41,6 +41,54 @@ describe("RAG embedding providers API", () => {
     expect(res.status).toBe(400);
   });
 
+  it("POST /api/rag/embedding-providers returns 400 when name or type is whitespace only", async () => {
+    const res = await postProv(
+      new Request("http://localhost/api/rag/embedding-providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "  ", type: "local" }),
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toMatch(/name|type|required/);
+  });
+
+  it("POST /api/rag/embedding-providers creates provider with extra as object", async () => {
+    const res = await postProv(
+      new Request("http://localhost/api/rag/embedding-providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Provider With Extra",
+          type: "openai",
+          extra: { region: "us-east-1" },
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.id).toBeDefined();
+    expect(data.name).toBe("Provider With Extra");
+  });
+
+  it("POST /api/rag/embedding-providers accepts extra as string", async () => {
+    const res = await postProv(
+      new Request("http://localhost/api/rag/embedding-providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Provider Extra String",
+          type: "openai",
+          extra: "{}",
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.id).toBeDefined();
+  });
+
   it("POST /api/rag/embedding-providers creates local provider", async () => {
     const res = await postProv(
       new Request("http://localhost/api/rag/embedding-providers", {
@@ -104,6 +152,27 @@ describe("RAG embedding providers API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.name).toBe("Ollama local");
+  });
+
+  it("PUT /api/rag/embedding-providers/:id accepts extra as string and as null", async () => {
+    const resStr = await putProv(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ extra: '{"region":"eu"}' }),
+      }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(resStr.status).toBe(200);
+    const resNull = await putProv(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ extra: null }),
+      }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(resNull.status).toBe(200);
   });
 
   it("DELETE /api/rag/embedding-providers/:id deletes provider", async () => {

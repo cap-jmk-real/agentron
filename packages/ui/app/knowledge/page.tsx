@@ -22,6 +22,7 @@ import {
   getConnectorTypesForPicker,
   type ConnectorTypeId,
 } from "./_lib/connector-types";
+import { shouldOpenConnectorsTab } from "./_lib/deep-link";
 
 type EncodingConfig = {
   id: string;
@@ -220,6 +221,7 @@ function StudioDocumentsList({
 }
 
 export default function KnowledgePage() {
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabId>("collections");
   const [encodingConfigs, setEncodingConfigs] = useState<EncodingConfig[]>([]);
   const [embeddingProviders, setEmbeddingProviders] = useState<EmbeddingProvider[]>([]);
@@ -318,6 +320,10 @@ export default function KnowledgePage() {
     setLoading(true);
     loadAll().finally(() => setLoading(false));
   }, [loadAll]);
+
+  useEffect(() => {
+    if (shouldOpenConnectorsTab(searchParams)) setActiveTab("connectors");
+  }, [searchParams]);
 
   const openSelectItems = (c: Connector) => {
     setConnectorForItems(c);
@@ -895,8 +901,8 @@ export default function KnowledgePage() {
                       marginTop: "0.25rem",
                     }}
                   >
-                    No embedding providers. Add one in Settings → Embedding, then create an encoding
-                    config here.
+                    No embedding providers. Add one in Settings → LLM setup → Embedding, then create
+                    an encoding config here.
                   </p>
                 )}
                 {encodingConfigs.length === 0 && !showEncodingForm && (

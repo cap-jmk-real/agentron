@@ -20,14 +20,14 @@ function getStepIds(step: HeapStep): string[] {
   return [step];
 }
 
-/** True if specialist id is agent (agent or agent__*). */
+/** True if specialist id is agent (agent, agent_lifecycle, agent_openclaw, or legacy agent__*). */
 function isAgentId(id: string): boolean {
-  return id === "agent" || id.startsWith("agent__");
+  return id === "agent" || id.startsWith("agent_") || id.startsWith("agent__");
 }
 
-/** True if specialist id is workflow (workflow or workflow__*). */
+/** True if specialist id is workflow (workflow, workflow_design, workflow_run, or workflow__*). */
 function isWorkflowId(id: string): boolean {
-  return id === "workflow" || id.startsWith("workflow__");
+  return id === "workflow" || id.startsWith("workflow_");
 }
 
 /** True if specialist id is improve_agents_workflows (workflow-agent improver; cannot create agents/workflows). */

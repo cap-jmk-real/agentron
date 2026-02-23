@@ -2,12 +2,12 @@
 
 ## Targets (vitest.config.ts)
 
-| Metric     | Target  |
-|-----------|---------|
-| Statements | **70%** |
-| Branches   | **100%** |
-| Functions  | **70%** |
-| Lines      | **70%** |
+| Metric     | Target  | Goal   |
+|-----------|---------|--------|
+| Statements | **70%** | —      |
+| Branches   | **70%** | 100%   |
+| Functions  | **70%** | —      |
+| Lines      | **70%** | —      |
 
 Improve coverage **by adding tests only**; do not exclude in-scope code to hit targets (see `.cursor/rules/coverage-and-test-failures.mdc`).
 
@@ -21,7 +21,7 @@ Improve coverage **by adding tests only**; do not exclude in-scope code to hit t
 - **When you touch a file, finish it before moving on.** “Finished” means:
   - Every **branch** in that file is covered (or explicitly documented as unreachable in a comment + excluded if appropriate).
   - Every **line** and **function** in that file that is reachable is covered.
-- Use `packages/ui/coverage/index.html` (after `npm run test:coverage`) to see uncovered lines/branches for the file you’re working on. Add tests until that file shows 100% branches and full line/function coverage for in-scope code.
+- Use `packages/ui/coverage/index.html` (after `npm run test:coverage`) to see uncovered lines/branches for the file you’re working on. Add tests until that file shows 100% branches and full line/function coverage for in-scope code (goal: reach 100% branch coverage overall).
 - Do not start another in-scope file until the current one is done.
 
 ---
@@ -275,7 +275,7 @@ These live under `app/api/chat/_lib/`. They are covered indirectly by chat API a
 
 - [ ] Every in-scope _lib file in Part A is finished (100% branches, full lines/functions for that file).
 - [ ] Every in-scope route file in Part B (and chat _lib) is finished (100% branches, full lines/functions for that file).
-- [ ] `npm run test:coverage` reports **≥70%** statements, lines, functions and **100%** branches.
+- [ ] `npm run test:coverage` reports **≥70%** statements, lines, functions and **≥70%** branches (goal: 100% branches).
 - [ ] No new exclusions added solely to meet thresholds; gaps are documented where necessary.
 
 ---

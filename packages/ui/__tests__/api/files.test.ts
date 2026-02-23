@@ -59,4 +59,17 @@ describe("Files API", () => {
     expect(data.name).toBe("noext");
     expect(data.mimeType).toBe("application/octet-stream");
   });
+
+  it("POST /api/files with file with empty type uses application/octet-stream", async () => {
+    const form = new FormData();
+    const file = new File(["binary"], "data.bin", { type: "" });
+    form.append("file", file);
+
+    const res = await listPost(
+      new Request("http://localhost/api/files", { method: "POST", body: form })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.mimeType).toBe("application/octet-stream");
+  });
 });

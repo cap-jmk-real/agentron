@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../../app/api/notifications/route";
 import { POST as clearPost } from "../../app/api/notifications/clear/route";
 import {
@@ -62,6 +62,21 @@ describe("Notifications API", () => {
     expect(data.items[0].type).toBe("run");
     expect(data.items[0].severity).toBe("error");
     expect(data.items[1].title).toBe("Run completed");
+  });
+
+  it("GET /api/notifications with empty types param returns all types", async () => {
+    const res = await GET(new Request("http://localhost/api/notifications?types="));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data.items)).toBe(true);
+  });
+
+  it("GET /api/notifications with limit=0 returns up to 0 items", async () => {
+    const res = await GET(new Request("http://localhost/api/notifications?limit=0"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data.items)).toBe(true);
+    expect(data.items.length).toBeLessThanOrEqual(0);
   });
 
   it("GET /api/notifications filters by types=run", async () => {
@@ -212,6 +227,26 @@ describe("Notifications API", () => {
     expect(waiting.severity).toBe("warning");
   });
 
+  it("createNotification with no message and no metadata stores empty message and null metadata", async () => {
+    const n = await createNotification({
+      type: "run",
+      sourceId: "r-meta",
+      title: "Title",
+      message: undefined,
+      metadata: undefined,
+    });
+    expect(n.message).toBe("");
+    expect(n.metadata).toBeUndefined();
+  });
+
+  it("createRunNotification uses Run updated title when status is unknown (defensive fallback)", async () => {
+    const n = await createRunNotification(
+      "run-unknown",
+      "unknown" as "completed" | "failed" | "waiting_for_user"
+    );
+    expect(n.title).toBe("Run updated");
+  });
+
   it("listNotifications returns notification with undefined metadata when row has invalid JSON metadata", async () => {
     const id = crypto.randomUUID();
     const now = Date.now();
@@ -234,6 +269,16 @@ describe("Notifications API", () => {
     const found = items.find((i: { id: string }) => i.id === id);
     expect(found).toBeDefined();
     expect(found!.metadata).toBeUndefined();
+  });
+
+  it("clearAll returns 0 when no active notifications match", async () => {
+    const cleared = await clearAll();
+    expect(cleared).toBe(0);
+  });
+
+  it("clearActiveBySourceId returns 0 when no notification matches type and sourceId", async () => {
+    const cleared = await clearActiveBySourceId("chat", "no-such-conv-" + Date.now());
+    expect(cleared).toBe(0);
   });
 
   it("clearAll with types filter clears only matching types", async () => {
@@ -286,6 +331,107 @@ describe("Notifications API", () => {
     expect(data.items[0].targetName).toBe("Notif Workflow");
   });
 
+  it("GET /api/notifications enriches run notifications with targetName from agent when execution has targetType agent", async () => {
+    const agentRes = await agentsPost(
+      new Request("http://localhost/api/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Notif Agent",
+          kind: "node",
+          type: "internal",
+          protocol: "native",
+          capabilities: [],
+          scopes: [],
+        }),
+      })
+    );
+    const agent = await agentRes.json();
+    const runId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: runId,
+          targetType: "agent",
+          targetId: agent.id,
+          status: "completed",
+        })
+      )
+      .run();
+    await createNotification({
+      type: "run",
+      sourceId: runId,
+      title: "Agent run completed",
+      severity: "success",
+    });
+    const res = await GET(new Request("http://localhost/api/notifications"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.items.length).toBe(1);
+    expect(data.items[0].type).toBe("run");
+    expect(data.items[0].targetName).toBe("Notif Agent");
+  });
+
+  it("GET /api/notifications uses targetName fallback (metadata.targetId then sourceId) when run has no workflow/agent", async () => {
+    const orphanRunId = "orphan-run-" + Date.now();
+    await createNotification({
+      type: "run",
+      sourceId: orphanRunId,
+      title: "Run completed",
+      severity: "success",
+      metadata: { targetId: "custom-target" },
+    });
+    const res = await GET(new Request("http://localhost/api/notifications"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.items.length).toBe(1);
+    expect(data.items[0].targetName).toBe("custom-target");
+  });
+
+  it("GET /api/notifications uses sourceId as targetName when run has no workflow/agent and no metadata.targetId", async () => {
+    const orphanRunId = "orphan-run-2-" + Date.now();
+    await createNotification({
+      type: "run",
+      sourceId: orphanRunId,
+      title: "Run completed",
+      severity: "success",
+    });
+    const res = await GET(new Request("http://localhost/api/notifications"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.items.length).toBe(1);
+    expect(data.items[0].targetName).toBe(orphanRunId);
+  });
+
+  it("GET /api/notifications returns system notifications in items without run/chat enrichment", async () => {
+    await createNotification({
+      type: "system",
+      sourceId: "sys-1",
+      title: "System notice",
+      message: "Update available",
+      severity: "info",
+    });
+    const res = await GET(new Request("http://localhost/api/notifications"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.items.length).toBe(1);
+    expect(data.items[0].type).toBe("system");
+    expect(data.items[0].title).toBe("System notice");
+    expect(data.items[0].sourceId).toBe("sys-1");
+  });
+
+  it("GET /api/notifications uses sourceId as conversationTitle when chat conversation has no row", async () => {
+    const convId = "orphan-chat-" + Date.now();
+    await createChatNotification(convId);
+    const res = await GET(new Request("http://localhost/api/notifications"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.items.length).toBe(1);
+    expect(data.items[0].type).toBe("chat");
+    expect(data.items[0].conversationTitle).toBe(convId);
+  });
+
   it("GET /api/notifications enriches chat notifications with conversationTitle when conversation exists", async () => {
     const convId = crypto.randomUUID();
     await db
@@ -302,6 +448,101 @@ describe("Notifications API", () => {
     const data = await res.json();
     expect(data.items.length).toBe(1);
     expect(data.items[0].conversationTitle).toBe("Test conversation");
+  });
+
+  it("GET /api/notifications enriches chat with empty conversationTitle when conversation has null title", async () => {
+    const convId = crypto.randomUUID();
+    await db.insert(conversations).values({ id: convId, title: null, createdAt: Date.now() }).run();
+    await createChatNotification(convId);
+    const res = await GET(new Request("http://localhost/api/notifications?types=chat"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.items.length).toBe(1);
+    expect(data.items[0].conversationTitle).toBe("");
+  });
+
+  it("GET /api/notifications uses targetName fallback when workflow name is null", async () => {
+    const wfRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "NullNameWF",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    const wf = await wfRes.json();
+    const runId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: runId,
+          targetType: "workflow",
+          targetId: wf.id,
+          status: "completed",
+        })
+      )
+      .run();
+    await createNotification({
+      type: "run",
+      sourceId: runId,
+      title: "Run done",
+      severity: "info",
+    });
+    let selectCallCount = 0;
+    const origSelect = db.select.bind(db);
+    const spy = vi.spyOn(db, "select").mockImplementation(((...args: unknown[]) => {
+      selectCallCount++;
+      if (selectCallCount === 3) {
+        return {
+          from: () => ({
+            where: () =>
+              Promise.resolve([{ id: wf.id, name: null } as { id: string; name: string | null }]),
+          }),
+        } as unknown as ReturnType<typeof db.select>;
+      }
+      return origSelect(...(args as Parameters<typeof db.select>));
+    }) as typeof db.select);
+    try {
+      const res = await GET(new Request("http://localhost/api/notifications"));
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      const runItem = data.items.find((i: { sourceId: string }) => i.sourceId === runId);
+      expect(runItem).toBeDefined();
+      expect(runItem.targetName).toBe(runId);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("POST /api/notifications/clear with body non-object returns 400", async () => {
+    const res = await clearPost(
+      new Request("http://localhost/api/notifications/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "5",
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("Body must be an object");
+  });
+
+  it("POST /api/notifications/clear with id non-string treats as empty and returns cleared 0", async () => {
+    const res = await clearPost(
+      new Request("http://localhost/api/notifications/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: 123 }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.cleared).toBe(0);
   });
 
   it("POST /api/notifications/clear with id clears one notification", async () => {

@@ -89,10 +89,6 @@ export default function ChatSection({ onOpenSettings }: Props) {
   const [chatMode, setChatMode] = useState<"traditional" | "heap">("traditional");
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [collapsedStepsByMsg, setCollapsedStepsByMsg] = useState<Record<string, boolean>>({});
-  const [runFinishedNotification, setRunFinishedNotification] = useState<{
-    runId: string;
-    status: string;
-  } | null>(null);
   const [shellCommandLoading, setShellCommandLoading] = useState(false);
   const [pendingInputIds, setPendingInputIds] = useState<Set<string>>(new Set());
   const [runWaiting, setRunWaiting] = useState(false);
@@ -361,14 +357,12 @@ export default function ChatSection({ onOpenSettings }: Props) {
           setRunWaiting(false);
           setRunWaitingData(null);
           setRunWaitingInCache(conversationId, null);
-          setRunFinishedNotification(null);
         }
       })
       .catch(() => {
         setRunWaiting(false);
         setRunWaitingData(null);
         setRunWaitingInCache(conversationId, null);
-        setRunFinishedNotification(null);
       });
   }, [conversationId]);
 
@@ -394,19 +388,9 @@ export default function ChatSection({ onOpenSettings }: Props) {
         .then((r) => r.json())
         .then((d) => {
           const items = Array.isArray(d.items) ? d.items : [];
-          if (items.length === 0) {
-            setRunFinishedNotification(null);
-            return;
-          }
+          if (items.length === 0) return;
           const first = items[0];
           const runId = first.sourceId;
-          const status =
-            first.title && first.title.includes("needs your input")
-              ? "waiting_for_user"
-              : first.title && first.title.includes("failed")
-                ? "failed"
-                : "completed";
-          setRunFinishedNotification((prev) => (prev?.runId === runId ? prev : { runId, status }));
           fetch(`/api/runs/${encodeURIComponent(runId)}`, { cache: "no-store" })
             .then((res) => (res.ok ? res.json() : null))
             .then((run: { conversationId?: string | null } | null) => {
@@ -889,23 +873,36 @@ export default function ChatSection({ onOpenSettings }: Props) {
   }, [conversationId, noteDraft]);
 
   useEffect(() => {
-    if (!runFinishedNotification) return;
-    const t = setTimeout(() => setRunFinishedNotification(null), 15_000);
-    return () => clearTimeout(t);
-  }, [runFinishedNotification]);
-
-  useEffect(() => {
-    fetch("/api/llm/providers")
-      .then((r) => r.json())
-      .then((data) => {
-        const list = Array.isArray(data) ? data : [];
-        setProviders(list);
+    Promise.all([
+      fetch("/api/llm/providers").then((r) => {
+        if (!r.ok) return [];
+        return r.json().then((data) => (Array.isArray(data) ? data : []));
+      }),
+      fetch("/api/ollama/models")
+        .then((r) => (r.ok ? r.json() : { models: [] }))
+        .catch(() => ({ models: [] })),
+    ])
+      .then(([raw, ollamaData]) => {
+        const list = (raw as LlmProvider[]).filter(
+          (p) => p && typeof p.id === "string" && p.id.trim() !== ""
+        ) as LlmProvider[];
+        const ollamaModels = Array.isArray((ollamaData as { models?: { name: string }[] }).models)
+          ? (ollamaData as { models: { name: string }[] }).models.map((m) => m.name)
+          : [];
+        const merged: LlmProvider[] = [...list];
+        if (ollamaModels.length > 0) {
+          for (const name of ollamaModels) {
+            if (!merged.some((p) => p.id === `local:${name}`))
+              merged.push({ id: `local:${name}`, provider: "local", model: name });
+          }
+        }
+        setProviders(merged);
         const saved =
           typeof localStorage !== "undefined"
             ? localStorage.getItem(CHAT_DEFAULT_PROVIDER_KEY)
             : null;
-        const valid = saved && list.some((p: LlmProvider) => p.id === saved);
-        setProviderId(valid ? saved : (list[0]?.id ?? ""));
+        const valid = saved && merged.some((p) => p.id === saved);
+        setProviderId(valid ? saved : (merged[0]?.id ?? ""));
       })
       .catch(() => setProviders([]));
   }, []);
@@ -970,7 +967,6 @@ export default function ChatSection({ onOpenSettings }: Props) {
       const text = textOverride !== undefined ? textOverride : input.trim();
       if (!text || loading) return;
       abortRef.current?.abort();
-      setRunFinishedNotification(null);
       const sendingFromAgentRequestCard = textOverride !== undefined && runWaitingData != null;
       if (!sendingFromAgentRequestCard) {
         setRunWaiting(false);
@@ -1058,7 +1054,6 @@ export default function ChatSection({ onOpenSettings }: Props) {
         },
         onRunFinished: (runId, status, details) => {
           if (status === "waiting_for_user") {
-            setRunFinishedNotification({ runId, status });
             if (details && (details.question || (details.options && details.options.length > 0))) {
               setRunWaiting(true);
               setRunWaitingData({
@@ -1074,8 +1069,6 @@ export default function ChatSection({ onOpenSettings }: Props) {
                 });
             }
             void fetchRunWaiting();
-          } else {
-            setRunFinishedNotification({ runId, status });
           }
           if (conversationId) {
             fetch(`/api/chat?conversationId=${encodeURIComponent(conversationId)}`, {
@@ -1259,7 +1252,6 @@ export default function ChatSection({ onOpenSettings }: Props) {
       setRunWaiting(false);
       setRunWaitingData(null);
       if (conversationId) setRunWaitingInCache(conversationId, null);
-      setRunFinishedNotification(null);
       setLoading(false);
       crossTabStateRef.current = { ...crossTabStateRef.current, loading: false };
     } catch {
@@ -1313,8 +1305,6 @@ export default function ChatSection({ onOpenSettings }: Props) {
         runWaitingOptionSending={runWaitingOptionSending}
         setRunWaitingOptionSending={setRunWaitingOptionSending}
         onCancelRun={handleCancelRun}
-        runFinishedNotification={runFinishedNotification}
-        setRunFinishedNotification={setRunFinishedNotification}
         handleProviderChange={handleProviderChange}
         chatMode={chatMode}
         handleChatModeChange={handleChatModeChange}

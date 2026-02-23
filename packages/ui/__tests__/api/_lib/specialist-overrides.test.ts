@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import path from "node:path";
 import fs from "node:fs";
 import { getDataDir } from "../../../app/api/_lib/db";
@@ -59,5 +59,19 @@ describe("specialist-overrides", () => {
     ];
     saveSpecialistOverrides(entries);
     expect(loadSpecialistOverrides()).toEqual(entries);
+  });
+
+  it("saveSpecialistOverrides creates parent dir when it does not exist", () => {
+    const dir = path.dirname(getOverridePath());
+    const entries: SpecialistEntry[] = [{ id: "x", toolNames: [] }];
+    const mkdirSpy = vi.spyOn(fs, "mkdirSync").mockImplementation(() => undefined);
+    const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => p !== dir);
+    try {
+      saveSpecialistOverrides(entries);
+      expect(mkdirSpy).toHaveBeenCalledWith(dir, { recursive: true });
+    } finally {
+      mkdirSpy.mockRestore();
+      existsSpy.mockRestore();
+    }
   });
 });

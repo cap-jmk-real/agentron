@@ -57,6 +57,11 @@ export const MISC_TOOLS: AssistantToolDef[] = [
           description:
             "Optional env vars for the container (e.g. OPENCLAW_E2E_TOKEN for e2e token injection).",
         },
+        network: {
+          type: "string",
+          description:
+            "Optional Podman/Docker network name to attach the container to (e.g. for connecting to an Ollama sidecar).",
+        },
       },
       required: ["image"],
     },

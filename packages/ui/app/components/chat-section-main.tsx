@@ -1,11 +1,12 @@
 "use client";
 
-import { List, Send, Square, Star, Bot, Network } from "lucide-react";
+import { List, ArrowUp, Square, Star, Sparkles, Bot, Network } from "lucide-react";
 import { getLoadingStatus } from "./chat-message-content";
 import LogoLoading from "./logo-loading";
 import BrandIcon from "./brand-icon";
 import { AgentRequestBlock } from "./agent-request-block";
 import { ChatSectionMessageRow } from "./chat-section-message-row";
+import { StyledSelect } from "./styled-select";
 import type { Message } from "./chat-types";
 
 export type LlmProvider = { id: string; provider: string; model: string; endpoint?: string };
@@ -42,10 +43,6 @@ export type ChatSectionMainProps = {
   runWaitingOptionSending: string | null;
   setRunWaitingOptionSending: React.Dispatch<React.SetStateAction<string | null>>;
   onCancelRun: () => Promise<void>;
-  runFinishedNotification: { runId: string; status: string } | null;
-  setRunFinishedNotification: React.Dispatch<
-    React.SetStateAction<{ runId: string; status: string } | null>
-  >;
   handleProviderChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   chatMode: "traditional" | "heap";
   handleChatModeChange: (mode: "traditional" | "heap") => void;
@@ -89,8 +86,6 @@ export function ChatSectionMain(props: ChatSectionMainProps) {
     runWaitingOptionSending,
     setRunWaitingOptionSending,
     onCancelRun,
-    runFinishedNotification,
-    setRunFinishedNotification,
     handleProviderChange,
     chatMode,
     handleChatModeChange,
@@ -211,7 +206,18 @@ export function ChatSectionMain(props: ChatSectionMainProps) {
         return (
           <div className="chat-section-status-bar" aria-live="polite" key="chat-status-bar">
             <LogoLoading size={18} className="chat-section-status-bar-logo" />
-            <span>{status}</span>
+            <span className="chat-section-status-bar-status">{status}</span>
+            {conversationId && (
+              <a
+                href={`/queues?conversation=${encodeURIComponent(conversationId)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="chat-section-status-bar-queue-link"
+                title="View queue and steps for this conversation"
+              >
+                Queue
+              </a>
+            )}
           </div>
         );
       })()}
@@ -225,75 +231,8 @@ export function ChatSectionMain(props: ChatSectionMainProps) {
           to send messages.
         </div>
       )}
-      {runFinishedNotification && !loading && (
-        <div className="chat-section-run-finished-toast">
-          <span>
-            {runFinishedNotification.status === "waiting_for_user"
-              ? "The agent is waiting for your input. Send a message below to respond."
-              : "Workflow run finished. The agent may need your input."}
-          </span>
-          <a
-            href={`/runs/${runFinishedNotification.runId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="chat-section-run-finished-link"
-          >
-            View run
-          </a>
-          <button
-            type="button"
-            className="chat-section-run-finished-dismiss"
-            onClick={() => setRunFinishedNotification(null)}
-            aria-label="Dismiss"
-          >
-            ×
-          </button>
-        </div>
-      )}
-      <div className="chat-section-input-options">
-        <select
-          className="chat-section-model-select"
-          value={providerId}
-          onChange={handleProviderChange}
-          title="Select model"
-          aria-label="Model"
-        >
-          <option value="">Select model…</option>
-          {[...providers]
-            .sort(
-              (a, b) =>
-                a.model.localeCompare(b.model, undefined, { sensitivity: "base" }) ||
-                a.provider.localeCompare(b.provider)
-            )
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.model} ({p.provider})
-              </option>
-            ))}
-        </select>
-        <div className="chat-section-mode-segments" role="group" aria-label="Mode">
-          <button
-            type="button"
-            className={`chat-section-mode-segment${chatMode === "traditional" ? " chat-section-mode-segment-active" : ""}`}
-            onClick={() => handleChatModeChange("traditional")}
-            title="Traditional: single assistant"
-          >
-            <Bot size={14} aria-hidden />
-            <span>Traditional</span>
-          </button>
-          <button
-            type="button"
-            className={`chat-section-mode-segment${chatMode === "heap" ? " chat-section-mode-segment-active" : ""}`}
-            onClick={() => handleChatModeChange("heap")}
-            title="Heap: multi-agent (router + specialists)"
-          >
-            <Network size={14} aria-hidden />
-            <span>Heap</span>
-          </button>
-        </div>
-      </div>
-      <div className="chat-section-input-wrap">
-        <div className="chat-section-input-inner">
+      <div className="chat-section-input-bar">
+        <div className="chat-section-input-field-wrap">
           <textarea
             ref={inputRef}
             className="chat-section-input chat-section-input-textarea"
@@ -312,29 +251,86 @@ export function ChatSectionMain(props: ChatSectionMainProps) {
             onInput={resizeInput}
             rows={1}
           />
-          {loading ? (
-            <button type="button" className="chat-section-send" onClick={stopRequest} title="Stop">
-              <Square size={18} fill="currentColor" />
-            </button>
-          ) : (
+          <div className="chat-section-input-controls">
+            <StyledSelect
+              value={providerId}
+              options={
+                providers.length === 0
+                  ? [{ value: "", label: "Add model" }]
+                  : [...providers]
+                      .sort(
+                        (a, b) =>
+                          a.model.localeCompare(b.model, undefined, { sensitivity: "base" }) ||
+                          a.provider.localeCompare(b.provider)
+                      )
+                      .map((p) => ({
+                        value: p.id,
+                        label: p.model,
+                        title: `${p.model} (${p.provider})`,
+                      }))
+              }
+              onChange={(value) =>
+                handleProviderChange({ target: { value } } as React.ChangeEvent<HTMLSelectElement>)
+              }
+              leftIcon={<Sparkles size={16} className="chat-section-dropdown-icon" />}
+              placeholder="Add model"
+              aria-label="Model"
+              className="chat-section-dropdown-pill"
+              triggerClassName="chat-section-dropdown-pill-trigger"
+              variant="pill"
+              iconOnly
+            />
+            <StyledSelect
+              value={chatMode}
+              options={[
+                { value: "traditional", label: "Traditional" },
+                { value: "heap", label: "Heap" },
+              ]}
+              onChange={(value) => handleChatModeChange(value as "traditional" | "heap")}
+              leftIcon={
+                chatMode === "heap" ? (
+                  <Network size={16} className="chat-section-dropdown-icon" />
+                ) : (
+                  <Bot size={16} className="chat-section-dropdown-icon" />
+                )
+              }
+              aria-label="Mode"
+              className="chat-section-dropdown-pill chat-section-dropdown-pill-mode"
+              triggerClassName="chat-section-dropdown-pill-trigger"
+              variant="pill"
+              iconOnly
+            />
             <button
               type="button"
-              className="chat-section-send"
-              onClick={() => void send()}
-              disabled={!input.trim() || !providerId}
-              title={!providerId ? "Select a model" : "Send"}
+              className="chat-section-feedback-btn"
+              onClick={() => setShowFeedbackModal(true)}
+              title="Feedback"
+              aria-label="Feedback"
             >
-              <Send size={18} />
+              <Star size={16} />
             </button>
-          )}
+            {loading ? (
+              <button
+                type="button"
+                className="chat-section-send"
+                onClick={stopRequest}
+                title="Stop"
+              >
+                <Square size={18} fill="currentColor" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="chat-section-send"
+                onClick={() => void send()}
+                disabled={!input.trim() || !providerId}
+                title={!providerId ? "Select a model" : "Send"}
+              >
+                <ArrowUp size={18} strokeWidth={2.5} />
+              </button>
+            )}
+          </div>
         </div>
-        <button
-          type="button"
-          className="chat-section-feedback-btn"
-          onClick={() => setShowFeedbackModal(true)}
-        >
-          <Star size={14} /> Feedback
-        </button>
       </div>
     </div>
   );

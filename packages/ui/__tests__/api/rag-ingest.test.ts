@@ -94,7 +94,7 @@ describe("RAG ingest API", () => {
     expect(data.error).toBeDefined();
   });
 
-  it("POST /api/rag/ingest returns 400 when documentId missing", async () => {
+  it("POST /api/rag/ingest returns 400 when documentId and collectionId both missing", async () => {
     const res = await ingestPost(
       new Request("http://localhost/api/rag/ingest", {
         method: "POST",
@@ -104,7 +104,7 @@ describe("RAG ingest API", () => {
     );
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error).toContain("documentId");
+    expect(data.error).toBe("documentId or collectionId required");
   });
 
   it("POST /api/rag/ingest returns 404 for unknown documentId", async () => {
@@ -151,6 +151,136 @@ describe("RAG ingest API", () => {
     expect(data.chunks).toBeGreaterThanOrEqual(0);
   });
 
+  it("POST /api/rag/ingest with collectionId when collection has no documents returns 200 with documents 0 and chunks 0", async () => {
+    const encRes = await encPost(
+      new Request("http://localhost/api/rag/encoding-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Enc empty",
+          provider: "openai",
+          modelOrEndpoint: "text-embedding-3-small",
+          dimensions: 1536,
+        }),
+      })
+    );
+    const enc = await encRes.json();
+    const storeRes = await storePost(
+      new Request("http://localhost/api/rag/document-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Store empty",
+          type: "minio",
+          bucket: "b",
+          endpoint: "http://localhost:9000",
+        }),
+      })
+    );
+    const store = await storeRes.json();
+    const collRes = await collPost(
+      new Request("http://localhost/api/rag/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Coll empty",
+          scope: "agent",
+          encodingConfigId: enc.id,
+          documentStoreId: store.id,
+        }),
+      })
+    );
+    const coll = await collRes.json();
+    const emptyCollectionId = coll.id;
+    const res = await ingestPost(
+      new Request("http://localhost/api/rag/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collectionId: emptyCollectionId }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.documents).toBe(0);
+    expect(data.chunks).toBe(0);
+  });
+
+  it("POST /api/rag/ingest with both documentId and collectionId uses collectionId path", async () => {
+    const encRes = await encPost(
+      new Request("http://localhost/api/rag/encoding-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Enc both",
+          provider: "openai",
+          modelOrEndpoint: "text-embedding-3-small",
+          dimensions: 1536,
+        }),
+      })
+    );
+    const enc = await encRes.json();
+    const storeRes = await storePost(
+      new Request("http://localhost/api/rag/document-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Store both",
+          type: "minio",
+          bucket: "b",
+          endpoint: "http://localhost:9000",
+        }),
+      })
+    );
+    const store = await storeRes.json();
+    const collRes = await collPost(
+      new Request("http://localhost/api/rag/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Coll both",
+          scope: "agent",
+          encodingConfigId: enc.id,
+          documentStoreId: store.id,
+        }),
+      })
+    );
+    const coll = await collRes.json();
+    const res = await ingestPost(
+      new Request("http://localhost/api/rag/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          documentId,
+          collectionId: coll.id,
+        }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data).toHaveProperty("documents");
+    expect(data).toHaveProperty("chunks");
+    expect(data.documents).toBe(0);
+    expect(data.chunks).toBe(0);
+  });
+
+  it("POST /api/rag/ingest with collectionId for non-existent collection returns 200 with documents 0", async () => {
+    const nonExistentCollectionId = "00000000-0000-0000-0000-000000000001";
+    const res = await ingestPost(
+      new Request("http://localhost/api/rag/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collectionId: nonExistentCollectionId }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.documents).toBe(0);
+    expect(data.chunks).toBe(0);
+  });
+
   it("POST /api/rag/ingest returns 502 when getObject fails", async () => {
     const s3 = await import("../../app/api/_lib/s3");
     vi.mocked(s3.getObject).mockRejectedValueOnce(new Error("Bucket unavailable"));
@@ -195,6 +325,50 @@ describe("RAG ingest API", () => {
     expect(res.status).toBe(404);
     const data = await res.json();
     expect(data.error).toContain("Collection not found");
+  });
+
+  it("POST /api/rag/ingest with collectionId returns 200 with errors array when some docs fail", async () => {
+    const failDocId = crypto.randomUUID();
+    await db
+      .insert(ragDocuments)
+      .values({
+        id: failDocId,
+        collectionId,
+        externalId: null,
+        storePath: "uploads/fail-doc.txt",
+        mimeType: "text/plain",
+        metadata: "{}",
+        createdAt: Date.now(),
+      })
+      .run();
+    const s3 = await import("../../app/api/_lib/s3");
+    vi.mocked(s3.getObject).mockImplementation((_, key: string) =>
+      key === "uploads/fail-doc.txt"
+        ? Promise.reject(new Error("simulated fetch fail"))
+        : Promise.resolve(Buffer.from("Sample document text for ingestion.", "utf-8"))
+    );
+    try {
+      const res = await ingestPost(
+        new Request("http://localhost/api/rag/ingest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ collectionId }),
+        })
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+      expect(data.documents).toBe(2);
+      expect(data).toHaveProperty("errors");
+      expect(Array.isArray(data.errors)).toBe(true);
+      expect(data.errors).toHaveLength(1);
+      expect(data.errors[0]).toContain(failDocId);
+      expect(data.errors[0]).toContain("simulated fetch fail");
+    } finally {
+      vi.mocked(s3.getObject).mockResolvedValue(
+        Buffer.from("Sample document text for ingestion.", "utf-8")
+      );
+    }
   });
 
   it("POST /api/rag/ingest returns 404 when document file missing from disk (local store)", async () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import { getDeploymentCollectionId, retrieveChunks } from "../../../app/api/_lib/rag";
 import { db } from "../../../app/api/_lib/db";
 import { ragCollections, ragVectors, ragVectorStores } from "@agentron-studio/core";
@@ -9,12 +9,19 @@ import { POST as collPost } from "../../../app/api/rag/collections/route";
 import { POST as vectorStorePost } from "../../../app/api/rag/vector-store/route";
 import { embed } from "../../../app/api/_lib/embeddings";
 import * as vectorStoreQuery from "../../../app/api/_lib/vector-store-query";
+import * as apiLogger from "../../../app/api/_lib/api-logger";
 
 vi.mock("../../../app/api/_lib/embeddings", () => ({
   embed: vi.fn().mockResolvedValue([[0.1, 0.1, 0.1]]),
 }));
 
+const defaultEmbedResult: number[][] = [[0.1, 0.1, 0.1]];
+
 describe("rag", () => {
+  beforeEach(() => {
+    vi.mocked(embed).mockReset();
+    vi.mocked(embed).mockResolvedValue(defaultEmbedResult);
+  });
   describe("getDeploymentCollectionId", () => {
     it("returns null when no deployment-scope collection exists", async () => {
       const existing = await db
@@ -204,6 +211,114 @@ describe("rag", () => {
       expect(chunks.length).toBeGreaterThanOrEqual(2);
     });
 
+    it("logs bundledCap when bundled vectors count reaches limit (5000)", async () => {
+      const BUNDLED_RAG_MAX_VECTORS = 5_000;
+      let selectCallCount = 0;
+      const origSelect = db.select.bind(db);
+      const selectSpy = vi.spyOn(db, "select").mockImplementation(((...args: unknown[]) => {
+        selectCallCount++;
+        if (selectCallCount === 2) {
+          return {
+            from: () => ({
+              where: () => ({
+                orderBy: () => ({
+                  limit: () =>
+                    Promise.resolve(
+                      Array(BUNDLED_RAG_MAX_VECTORS)
+                        .fill(null)
+                        .map((_, i) => ({
+                          id: `v-${i}`,
+                          collectionId,
+                          documentId: "d",
+                          chunkIndex: 0,
+                          text: "t",
+                          embedding: "[0.1,0.1,0.1]",
+                          createdAt: 0,
+                        }))
+                    ),
+                }),
+              }),
+            }),
+          } as unknown as ReturnType<typeof db.select>;
+        }
+        return origSelect(...(args as Parameters<typeof db.select>));
+      }) as typeof db.select);
+      const logSpy = vi.spyOn(apiLogger, "logApiError").mockImplementation(() => {});
+      try {
+        const chunks = await retrieveChunks(collectionId, "query", 5);
+        expect(chunks.length).toBe(5);
+        expect(logSpy).toHaveBeenCalledWith("rag", "bundledCap", expect.any(Error));
+      } finally {
+        selectSpy.mockRestore();
+        logSpy.mockRestore();
+      }
+    });
+
+    it("uses empty config when collection has Qdrant store with null config", async () => {
+      const vsId = crypto.randomUUID();
+      const now = Date.now();
+      await db
+        .insert(ragVectorStores)
+        .values({
+          id: vsId,
+          name: "Qdrant null config",
+          type: "qdrant",
+          config: null,
+          createdAt: now,
+        })
+        .run();
+      const encRes = await encPost(
+        new Request("http://localhost/api/rag/encoding-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Enc null cfg",
+            provider: "openai",
+            modelOrEndpoint: "text-embedding-3-small",
+            dimensions: 3,
+          }),
+        })
+      );
+      const encData = await encRes.json();
+      const storeRes = await storePost(
+        new Request("http://localhost/api/rag/document-store", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Store null cfg",
+            type: "minio",
+            bucket: "b",
+            endpoint: "http://localhost:9000",
+          }),
+        })
+      );
+      const storeData = await storeRes.json();
+      const collRes = await collPost(
+        new Request("http://localhost/api/rag/collections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Coll null cfg",
+            scope: "agent",
+            encodingConfigId: encData.id,
+            documentStoreId: storeData.id,
+            vectorStoreId: vsId,
+          }),
+        })
+      );
+      const collData = await collRes.json();
+      vi.spyOn(vectorStoreQuery, "queryQdrant").mockResolvedValueOnce([]);
+      const chunks = await retrieveChunks(collData.id, "query", 5);
+      expect(chunks).toEqual([]);
+      expect(vectorStoreQuery.queryQdrant).toHaveBeenCalledWith(
+        collData.id,
+        expect.any(Array),
+        5,
+        {}
+      );
+      vi.restoreAllMocks();
+    });
+
     it("returns empty array when collection has Qdrant store and queryQdrant throws", async () => {
       const vsRes = await vectorStorePost(
         new Request("http://localhost/api/rag/vector-store", {
@@ -321,6 +436,71 @@ describe("rag", () => {
       );
       const chunks = await retrieveChunks(collData.id, "query", 5);
       expect(chunks).toEqual([]);
+      vi.restoreAllMocks();
+    });
+
+    it("uses empty config when collection has pgvector store with null config", async () => {
+      const vsId = crypto.randomUUID();
+      const now = Date.now();
+      await db
+        .insert(ragVectorStores)
+        .values({
+          id: vsId,
+          name: "Pgvector null config",
+          type: "pgvector",
+          config: null,
+          createdAt: now,
+        })
+        .run();
+      const encRes = await encPost(
+        new Request("http://localhost/api/rag/encoding-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Enc pgv null",
+            provider: "openai",
+            modelOrEndpoint: "text-embedding-3-small",
+            dimensions: 3,
+          }),
+        })
+      );
+      const encData = await encRes.json();
+      const storeRes = await storePost(
+        new Request("http://localhost/api/rag/document-store", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Store pgv null",
+            type: "minio",
+            bucket: "b",
+            endpoint: "http://localhost:9000",
+          }),
+        })
+      );
+      const storeData = await storeRes.json();
+      const collRes = await collPost(
+        new Request("http://localhost/api/rag/collections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Coll pgv null",
+            scope: "agent",
+            encodingConfigId: encData.id,
+            documentStoreId: storeData.id,
+            vectorStoreId: vsId,
+          }),
+        })
+      );
+      const collData = await collRes.json();
+      vi.spyOn(vectorStoreQuery, "queryPgvector").mockResolvedValueOnce([]);
+      const chunks = await retrieveChunks(collData.id, "query", 5);
+      expect(chunks).toEqual([]);
+      expect(vectorStoreQuery.queryPgvector).toHaveBeenCalledWith(
+        collData.id,
+        expect.any(Array),
+        5,
+        {}
+      );
       vi.restoreAllMocks();
     });
 

@@ -6,6 +6,18 @@ export const runtime = "nodejs";
 
 const GITHUB_USER = "https://api.github.com/user";
 
+/** Used by tests to inject a mock fetch; production always uses globalThis.fetch. */
+declare global {
+  // eslint-disable-next-line no-var
+  var __githubTestFetch: typeof fetch | null | undefined;
+}
+function getFetch(): typeof globalThis.fetch {
+  return globalThis.__githubTestFetch ?? globalThis.fetch;
+}
+export function __setFetchForTest(fn: typeof globalThis.fetch | null): void {
+  globalThis.__githubTestFetch = fn;
+}
+
 /**
  * POST tests the GitHub token and optionally repo access.
  * Body: { token?: string, owner?: string, repo?: string }. If token omitted, uses saved token.
@@ -23,7 +35,7 @@ export async function POST(request: Request) {
     if (!token) {
       return json({ ok: false, error: "No token provided and no token saved" }, { status: 400 });
     }
-    const res = await fetch(GITHUB_USER, {
+    const res = await getFetch()(GITHUB_USER, {
       method: "GET",
       headers: {
         Accept: "application/vnd.github+json",
@@ -39,7 +51,7 @@ export async function POST(request: Request) {
     const owner = typeof body.owner === "string" ? body.owner.trim() : undefined;
     const repo = typeof body.repo === "string" ? body.repo.trim() : undefined;
     if (owner && repo) {
-      const repoRes = await fetch(
+      const repoRes = await getFetch()(
         `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
         {
           method: "GET",

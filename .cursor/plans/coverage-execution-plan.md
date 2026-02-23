@@ -358,7 +358,137 @@ Work in **big batches**: each batch = 3–6 files from the list below. After eac
 - [x] api/runs/[id]/route.ts — runs-logs.test.ts (PATCH returns 200 when ensureRunFailureSideEffects throws; mock run-failure-side-effects and status failed to hit catch branch)
 - [x] api/vault/credentials/import/route.ts — vault-credentials.test.ts (POST parses CSV with label,caption header; POST parses CSV with username,login header; label-only and username-only isHeader branches)
 
-**Suggested next:** Vault/credentials/import remaining branches 66,68-69,81 (parseCsv defensive row[0]/row[row.length-1] ?? "" may be unreachable). Add tests in big batches for other low-coverage files → run coverage → update plan.
+**Batch AL — Feedback, export, agents [id] this cycle:**
+
+- [x] api/feedback/route.ts — feedback.test.ts (POST returns 201 when embedFeedbackOnCreate rejects; vi.mock feedback-retrieval and mockRejectedValueOnce to hit .catch(() => {}) branch)
+- [x] api/export/route.ts — export.test.ts (GET ?type=workflows asserts Content-Disposition filename "agentron-workflows-")
+- [x] api/agents/[id]/route.ts — agents.test.ts (PUT leaves definition unchanged when graph.nodes is not array; PUT merges toolIds when graph has only non-tool nodes; syncToolIdsFromGraph branches)
+
+**Batch AM — Notifications and functions this cycle:**
+
+- [x] api/notifications/route.ts — notifications.test.ts (GET with empty types param returns all types; GET with limit=0 returns up to 0 items; typesParam/limit branches)
+- [x] api/functions/route.ts — functions.test.ts (POST uses defaults for language, description, source; POST accepts language python; payload.language ?? "javascript", description ?? undefined, source ?? "" branches)
+
+**Batch AN — Chat settings and LLM providers this cycle:**
+
+- [x] api/chat/settings/route.ts — chat-settings.test.ts (PATCH uses default when recentSummariesCount is NaN; PATCH uses default when temperature is NaN (string "not-a-number"); PATCH clamps historyCompressAfter/historyKeepRecent and plannerRecentMessages to 1-100; Number.isNaN and Math.min/Math.max branches)
+- [x] api/llm/providers/route.ts — llm-providers.test.ts (POST stores contextLength from number in extra; POST does not store contextLength when 0; buildExtraForStorage contextLength number and > 0 branches)
+
+**Batch AO — Settings pricing and import this cycle:**
+
+- [x] api/settings/pricing/route.ts — settings-pricing.test.ts (PUT returns 400 when modelPattern is empty string; !modelPattern branch)
+- [x] api/import/route.ts — import.test.ts (POST with options.skipExisting true and empty tools/agents/workflows arrays returns ok; body.options and Array.isArray branches)
+
+**Batch AP — RAG routes this cycle:**
+
+- [x] api/rag/embedding-providers/route.ts — rag-embedding-providers.test.ts (POST returns 400 when name or type is whitespace only; POST creates provider with extra as object; POST accepts extra as string)
+- [x] api/rag/documents/route.ts — rag-documents.test.ts (GET returns 400 when collectionId is empty string)
+
+**Batch AQ — Vault import and plan update this cycle:**
+
+- [x] api/vault/credentials/import/route.ts — vault-credentials.test.ts (POST returns 400 when Content-Type header is missing; request.headers.get("content-type") ?? "" branch)
+
+**Batch AR — execute-tool-shared pure functions this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool-shared.ts — execute-tool-shared.test.ts (applyAgentGraphLayout empty + layout; ensureLlmNodesHaveSystemPrompt fallback/default/skip/params; resolveLearningConfig defaults/agent/override/ignored; getNested null/path/fallback; resolveTemplateVars replace/latest/recurse)
+
+**Batch AS — Skills, run-turn-helpers, buildRunResponse this cycle:**
+
+- [x] api/skills/[id]/route.ts — skills.test.ts (PUT with only type updates type; PUT config object then config null hits config update path)
+- [x] app/api/chat/_lib/run-turn-helpers.ts — run-turn-helpers.test.ts (getSystemContext win32/darwin/linux/other via mocked platform; buildRunResponseForChat when output is not object)
+- [x] run-turn-helpers.test.ts — vi.mock("node:os") for getSystemContext platform branches
+
+**Batch AT — run-turn-helpers, telegram test this cycle:**
+
+- [x] app/api/chat/_lib/run-turn-helpers.ts — run-turn-helpers.test.ts (generateConversationTitle long-message fallback with ellipsis, title from response; summarizeHistoryChunk empty content fallback, returns summary when content present; buildContinueShellApprovalMessage exitCode undefined)
+- [x] api/settings/telegram/test/route.ts — settings-telegram.test.ts (POST uses saved token when body is invalid JSON so request.json().catch(() => ({})) runs)
+
+**Batch AU — execute-tool list/get/format/retry/create_agent this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool.ts — execute-tool.test.ts (list_workflows returns array; get_workflow returns Workflow not found for non-existent id; format_response summary-only and needsInput trim and non-string summary; retry_last_message with conversationId but no user messages; create_agent with toolIds exceeding MAX_TOOLS_PER_CREATED_AGENT returns TOOL_CAP_EXCEEDED)
+
+**Batch AV — execute-tool ask_user, ask_credentials, connectors, unknown this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool.ts — execute-tool.test.ts (ask_user question/reason/options/stepIndex/stepTotal and empty question; ask_credentials without credentialKey and with key normalization; list_llm_providers, list_connectors; ingest_deployment_documents no collection; list_connector_items connectorId required and not found; connector_read_item/connector_update_item required params and content non-string; unknown tool returns error)
+
+**Batch AW — execute-tool agents (list, get, delete, update, versions, rollback) this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool.ts — execute-tool.test.ts (list_agents returns array; get_agent Agent not found; delete_agent roundtrip create/delete/get; update_agent without id, empty id, non-existent agent; list_agent_versions agentId required and Agent not found; rollback_agent agentId required, Agent not found, Version not found)
+
+**Batch AX — execute-tool workflows (delete, rollback) and run-code success this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool.ts — execute-tool.test.ts (delete_workflow returns Workflow not found for non-existent id; delete_workflow roundtrip create → delete → get asserts deleted then Workflow not found; rollback_workflow "Version not found (provide versionId or version)" when workflow exists but neither versionId nor version provided, with create_workflow/rollback_workflow/delete_workflow cleanup)
+- [x] api/run-code/route.ts — run-code.test.ts (POST returns 200 with output when container exec succeeds; vi.mock container-manager with create/exec, success path and JSON output)
+
+**Batch AY — run-code branches and execute-tool reminders this cycle:**
+
+- [x] api/run-code/route.ts — run-code.test.ts (POST returns 500 when exec exitCode non-zero with error/stdout/stderr/exitCode; POST returns 500 with "Execution failed" when exitCode non-zero and stderr empty; POST returns 200 with output as { stdout, stderr } when stdout not valid JSON; POST returns 500 when exec throws; POST with language python uses python runner)
+- [x] app/api/chat/_lib/execute-tool-handlers-workflows-runs-reminders.ts — execute-tool.test.ts (create_reminder message required, at invalid, neither at nor inMinutes, runAt in past, assistant_task without conversationId; create_reminder success with inMinutes and with at; list_reminders pending/fired/cancelled; cancel_reminder id required, not found, not pending, success)
+
+**Batch AZ — execute-tool runs (list, get, cancel, respond, messages) this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool-handlers-workflows-runs-reminders.ts — execute-tool.test.ts (list_runs returns array; get_run Run not found, success with output, raw output when output not valid JSON; cancel_run runId required, Run not found, status not runnable, success when running; respond_to_run runId required, Run not found, not waiting_for_user, success; get_run_messages runId required, Run not found, success with runId/messages, limit; vi.mock workflow-queue)
+
+**Batch BA — execute-tool files, sandbox exec, remember, settings, store, shell this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool-handlers-workflows-runs-reminders.ts — execute-tool.test.ts (list_files returns array id/name/size; list_sandboxes returns array id/name/image/status; execute_code Sandbox not found, success after create_sandbox; remember value required, success with/without key, message truncation; get_assistant_setting Unsupported key, recentSummariesCount; set_assistant_setting Unsupported key, set recentSummariesCount; create_store scopeId and name required, message; put_store Stored/Updated; get_store Key not found, value; query_store with prefix; list_stores; delete_store; run_shell_command command required, needsApproval when not in allowlist, success when in allowlist; vi.mock shell-exec, getShellCommandAllowlist)
+
+**Batch BB — execute-tool run_container_command, fetch_url, explain, remote servers, improvement jobs, guardrails this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool-handlers-workflows-runs-reminders.ts — execute-tool.test.ts (run_container_command image and command required, success; fetch_url url required, success; answer_question message and question; explain_software general and topic-specific; list_remote_servers, test_remote_connection host/user required and success, save_remote_server default label and authType password; create_improvement_job, get_improvement_job not found and success, list_improvement_jobs, update_improvement_job not found and No updates and success; create_guardrail, list_guardrails with/without scope, get_guardrail not found and success, update_guardrail config required and success, delete_guardrail; vi.mock fetchUrl, remote-test)
+
+**Batch BC — execute-tool error paths this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool-handlers-workflows-runs-reminders.ts — execute-tool.test.ts (run_shell_command returns Shell command failed when runShellCommand throws; fetch_url returns Fetch failed when fetchUrl throws; run_container_command returns error when container create throws; container-manager mock refactored to shared mockContainerCreate/mockContainerDestroy/mockContainerExec for override)
+
+**Batch BD — chat-route-shared and run_container_command pull path this cycle:**
+
+- [x] app/api/chat/_lib/chat-route-shared.ts — chat/_lib/chat-route-shared.test.ts (truncateForTrace null/short/long/object; capForTrace null/short/long; sanitizeDonePayload minimal, content/status, safeResult null/boolean/number, long string truncation, array cap 50, large object _truncated preview, args non-object; buildRecentConversationContext empty, format, maxMessages slice, appendCurrentMessage)
+- [x] app/api/chat/_lib/execute-tool-handlers-workflows-runs-reminders.ts — execute-tool.test.ts (run_container_command when create throws "no such image" pulls then creates and runs; mockContainerPull added to container-manager mock)
+
+**Batch BE — execute-tool branches (run_container, run_shell, fetch_url, set_assistant_setting, get_run, list_reminders) this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool-handlers-workflows-runs-reminders.ts — execute-tool.test.ts (run_container_command command as array joins with space; run_container_command when pull throws after no such image returns error; run_shell_command message with stdout and stderr when stderr present; fetch_url url whitespace only returns url required; set_assistant_setting clamps value 0 to 1 and value 15 to 10; get_run returns run with output undefined when execution has no output; list_reminders with invalid status defaults to pending)
+
+**Batch BF — execute-tool branches (remote server port, improvement job parse, guardrails scopeId, store object/query) this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool-handlers-workflows-runs-reminders.ts — execute-tool.test.ts (save_remote_server uses custom port when provided; get_improvement_job returns instanceRefs [] when instanceRefs invalid JSON; get_improvement_job returns architectureSpec undefined when architectureSpec invalid JSON; list_guardrails filters by scopeId when provided; put_store stringifies object value and get_store returns it; query_store without prefix returns all entries; improvementJobs import for db.update in tests)
+
+**Batch BG — execute-tool connector/ingest branches and run-turn-helpers this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool.ts — execute-tool.test.ts (ingest_deployment_documents when deployment collection exists returns message/counts; ingest_deployment_documents includes errors when ingestOneDocument throws; list_connector_items returns Connector has no config.path for filesystem connector with empty config; connector_read_item returns content when readConnectorItem succeeds; connector_update_item returns success when updateConnectorItem returns ok; getDeploymentCollectionId, ingestOneDocument, ragConnectors, ragDocuments in tests)
+- [x] app/api/chat/_lib/run-turn-helpers.ts — run-turn-helpers.test.ts (summarizeConversation early return when no messages; summarizeConversation updates conversation summary when manager returns content; summarizeConversation catch branch on LLM throw)
+
+**Batch BH — execute-tool connector/auth and explain_software branches this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool.ts — execute-tool.test.ts (list_connector_items returns Browse not implemented for unknown connector type; list_connector_items returns items for filesystem connector with path and limit; list_connector_items returns error when browse throws; connector_read_item appends auth hint when readConnectorItem returns Unauthorized; connector_update_item appends auth hint when updateConnectorItem returns 401; explain_software defaults to general when topic missing; explain_software uses general doc for unknown topic; path/fs/os for temp dir test)
+
+**Batch BI — execute-tool improvement/training and ingest branches this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool.ts — execute-tool.test.ts (ingest_deployment_documents uses String(err) when ingestOneDocument throws non-Error)
+- [x] app/api/chat/_lib/execute-tool-handlers-workflows-runs-reminders.ts — execute-tool.test.ts (propose_architecture jobId required and Job not found; propose_architecture success with spec; register_trained_model requires outputModelRef; get_training_status Run not found; decide_optimization_target returns target/scope/reason; record_technique_insight returns id and message)
+
+**Batch BJ — execute-tool handlers error paths and branches this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool-handlers-workflows-runs-reminders.ts — execute-tool.test.ts (evaluate_model jobId required and Job not found; get_technique_knowledge returns playbook and recentInsights; execute_code Sandbox has no container when sandbox row has containerId null; web_search query required and Web search failed when searchWeb throws; register_trained_model includes jobId in result when provided; sandboxes import for DB insert)
+
+**Batch BK — create_sandbox install hint and trigger_training catch this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool-handlers-workflows-runs-reminders.ts — execute-tool.test.ts (create_sandbox returns install hint when container create throws unavailable error; trigger_training when local fetch throws still creates run and returns may be unavailable message; container-manager mock uses importOriginal so withContainerInstallHint is real)
+
+**Batch BL — generate_training_data and get_training_status branches this cycle:**
+
+- [x] app/api/chat/_lib/execute-tool-handlers-workflows-runs-reminders.ts — execute-tool.test.ts (generate_training_data with strategy other than from_feedback/from_runs returns datasetRef and Teacher/self_play message; get_training_status returns DB state when local trainer fetch throws; get_training_status updates and returns status when local trainer returns ok)
+
+**Batch BM — guardrails, improvement/feedback, reminders, openclaw, unknown tool, run messages, bind_sandbox_port, respond_to_run this cycle:**
+
+- [x] execute-tool.test.ts: get_guardrail when config stored as string in DB (JSON.parse branch); get_run_for_improvement with includeFullLogs true; get_feedback_for_scope with label good/bad and limit; list_reminders with no status or invalid status defaults to pending; send_to_openclaw accepts message/text keys and returns Sandbox not found for invalid sandboxId; unknown tool returns error; get_run_messages uses default limit when limit 0; bind_sandbox_port accepts containerPort as string and custom host; respond_to_run preserves existing trail when run output has trail. (guardrails import from db for direct insert.)
+
+**Batch BN — update_workflow, create_workflow, run_shell_command, test_remote_connection, list_connector_items, add_workflow_edges this cycle:**
+
+- [x] execute-tool.test.ts: update_workflow accepts nested workflow shape (workflow: { name, nodes, edges }); update_workflow accepts schedule null and turnInstruction null to clear; create_workflow accepts executionMode and schedule; run_shell_command returns error when command is whitespace only; test_remote_connection accepts port, authType, keyPath; list_connector_items with limit and pageToken (same it as filesystem path); add_workflow_edges adds edges to existing workflow and returns message; update_workflow with schedule/turnInstruction then clear.
+
+**Suggested next:** Add tests in big batches for statements/lines (→70%) and branches (→100%): more execute-tool handlers, chat-route-*, app components.
 
 ---
 

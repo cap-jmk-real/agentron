@@ -76,6 +76,40 @@ describe("Chat conversations [id] API", () => {
     expect(data.note).toBeNull();
   });
 
+  it("PATCH /api/chat/conversations/:id accepts title null and empty string", async () => {
+    const res = await PATCH(
+      new Request("http://localhost/api/chat/conversations/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: null }),
+      }),
+      { params: Promise.resolve({ id: conversationId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.title).toBeNull();
+    const res2 = await PATCH(
+      new Request("http://localhost/api/chat/conversations/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Cleared" }),
+      }),
+      { params: Promise.resolve({ id: conversationId }) }
+    );
+    await res2.json();
+    const res3 = await PATCH(
+      new Request("http://localhost/api/chat/conversations/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "" }),
+      }),
+      { params: Promise.resolve({ id: conversationId }) }
+    );
+    expect(res3.status).toBe(200);
+    const data3 = await res3.json();
+    expect(data3.title).toBeNull();
+  });
+
   it("PATCH /api/chat/conversations/:id returns 404 for unknown id", async () => {
     const res = await PATCH(
       new Request("http://localhost/api/chat/conversations/x", {

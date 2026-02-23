@@ -12,7 +12,7 @@ import {
 } from "../../app/api/agents/[id]/skills/route";
 import { POST as agentRefinePost } from "../../app/api/agents/[id]/refine/route";
 import { POST as createSkill } from "../../app/api/skills/route";
-import { db, agents, agentVersions } from "../../app/api/_lib/db";
+import { db, agents, agentVersions, workflows } from "../../app/api/_lib/db";
 import { eq } from "drizzle-orm";
 
 describe("Agents API", () => {
@@ -109,6 +109,29 @@ describe("Agents API", () => {
     expect(res.status).toBe(404);
   });
 
+  it("PUT /api/agents/:id returns agent body when id does not exist (update affects zero rows)", async () => {
+    const nonExistentId = "agent-nonexistent-" + Date.now();
+    const res = await putOne(
+      new Request("http://localhost/api/agents/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Orphan Update",
+          kind: "node",
+          type: "internal",
+          protocol: "native",
+          capabilities: [],
+          scopes: [],
+        }),
+      }),
+      { params: Promise.resolve({ id: nonExistentId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBe(nonExistentId);
+    expect(data.name).toBe("Orphan Update");
+  });
+
   it("PUT /api/agents/:id updates agent", async () => {
     if (!createdId) return;
     const res = await putOne(
@@ -153,6 +176,29 @@ describe("Agents API", () => {
     expect(data.name).toBe("No Def Agent");
   });
 
+  it("PUT /api/agents/:id with definition null does not spread definition", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/agents/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Null Def Agent",
+          kind: "node",
+          type: "internal",
+          protocol: "native",
+          capabilities: [],
+          scopes: [],
+          definition: null,
+        }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.name).toBe("Null Def Agent");
+  });
+
   it("PUT /api/agents/:id syncs toolIds from graph nodes", async () => {
     if (!createdId) return;
     const res = await putOne(
@@ -190,6 +236,128 @@ describe("Agents API", () => {
     expect(toolIds).toContain("from-graph-2");
   });
 
+  it("PUT /api/agents/:id leaves definition unchanged when graph has no nodes array", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/agents/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "No Nodes Agent",
+          kind: "node",
+          type: "internal",
+          protocol: "native",
+          capabilities: [],
+          scopes: [],
+          definition: { graph: { nodes: "not-array" } },
+        }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.definition).toEqual({ graph: { nodes: "not-array" } });
+  });
+
+  it("PUT /api/agents/:id filters out tool nodes with empty or whitespace toolId", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/agents/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Filtered Tool Ids Agent",
+          kind: "node",
+          type: "internal",
+          protocol: "native",
+          capabilities: [],
+          scopes: [],
+          definition: {
+            toolIds: ["keep-this"],
+            graph: {
+              nodes: [
+                { type: "tool", parameters: { toolId: "  " } },
+                { type: "tool", parameters: { toolId: "from-graph" } },
+              ],
+            },
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const toolIds = data.definition?.toolIds as string[] | undefined;
+    expect(Array.isArray(toolIds)).toBe(true);
+    expect(toolIds).toContain("keep-this");
+    expect(toolIds).toContain("from-graph");
+    expect(toolIds?.filter((id: string) => id.trim() === "").length).toBe(0);
+  });
+
+  it("PUT /api/agents/:id merges toolIds when graph has only non-tool nodes", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/agents/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Empty Tool Nodes Agent",
+          kind: "node",
+          type: "internal",
+          protocol: "native",
+          capabilities: [],
+          scopes: [],
+          definition: {
+            toolIds: ["declared-only"],
+            graph: { nodes: [{ type: "start" }, { type: "end" }] },
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const toolIds = data.definition?.toolIds as string[] | undefined;
+    expect(Array.isArray(toolIds)).toBe(true);
+    expect(toolIds).toContain("declared-only");
+    expect(toolIds?.length).toBe(1);
+  });
+
+  it("GET /api/agents/:id/workflow-usage returns 400 when agent id is empty", async () => {
+    const res = await workflowUsageGet(
+      new Request("http://localhost/api/agents/x/workflow-usage"),
+      { params: Promise.resolve({ id: "" }) }
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toMatch(/agent|id|missing/i);
+  });
+
+  it("GET /api/agents/:id/workflow-usage returns workflows that reference agent via agent_id", async () => {
+    if (!createdId) return;
+    const createWf = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Uses agent_id Workflow",
+          nodes: [{ id: "n1", type: "agent", config: { agent_id: createdId } }],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    expect(createWf.status).toBe(201);
+    const wf = await createWf.json();
+    const res = await workflowUsageGet(
+      new Request("http://localhost/api/agents/x/workflow-usage"),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.workflows.some((w: { id: string }) => w.id === wf.id)).toBe(true);
+  });
+
   it("GET /api/agents/:id/workflow-usage returns workflows array", async () => {
     if (!createdId) return;
     const res = await workflowUsageGet(
@@ -199,6 +367,34 @@ describe("Agents API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data.workflows)).toBe(true);
+  });
+
+  it("GET /api/agents/:id/workflow-usage skips workflows with invalid nodes JSON", async () => {
+    if (!createdId) return;
+    const badWfId = "workflow-bad-json-" + Date.now();
+    const now = Date.now();
+    await db
+      .insert(workflows)
+      .values({
+        id: badWfId,
+        name: "Bad Nodes",
+        nodes: "{ not valid json",
+        edges: "[]",
+        executionMode: "manual",
+        createdAt: now,
+      })
+      .run();
+    try {
+      const res = await workflowUsageGet(
+        new Request("http://localhost/api/agents/x/workflow-usage"),
+        { params: Promise.resolve({ id: createdId }) }
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.workflows.some((w: { id: string }) => w.id === badWfId)).toBe(false);
+    } finally {
+      await db.delete(workflows).where(eq(workflows.id, badWfId)).run();
+    }
   });
 
   it("GET /api/agents/:id/workflow-usage returns workflows that reference this agent", async () => {
@@ -399,6 +595,29 @@ describe("Agents API", () => {
       expect(res.status).toBe(404);
       const data = await res.json();
       expect(data.error).toContain("Skill not found");
+    });
+
+    it("POST /api/agents/:id/skills accepts config null and does not store config", async () => {
+      if (!createdId) return;
+      const skillRes = await createSkill(
+        new Request("http://localhost/api/skills", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "Skill No Config", type: "prompt" }),
+        })
+      );
+      const skill = await skillRes.json();
+      const res = await agentSkillsPost(
+        new Request("http://localhost/api/agents/x/skills", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ skillId: skill.id, config: null }),
+        }),
+        { params: Promise.resolve({ id: createdId }) }
+      );
+      expect(res.status).toBe(201);
+      const data = await res.json();
+      expect(data.agentConfig).toBeNull();
     });
 
     it("POST /api/agents/:id/skills returns 409 when skill already attached", async () => {
@@ -638,6 +857,56 @@ describe("Agents API", () => {
       expect(getRes.status).toBe(200);
       const agent = await getRes.json();
       expect(agent.name).toBe("Rolled back agent name");
+    });
+
+    it("POST /api/agents/:id/rollback restores agent from version by version number", async () => {
+      if (!createdId) return;
+      const agentRows = await db.select().from(agents).where(eq(agents.id, createdId));
+      expect(agentRows.length).toBe(1);
+      const row = agentRows[0]!;
+      const versionIdByNum = crypto.randomUUID();
+      const snapshotByNum = JSON.stringify({
+        id: row.id,
+        name: "Restored by version number",
+        description: row.description,
+        kind: row.kind,
+        type: row.type,
+        protocol: row.protocol,
+        endpoint: row.endpoint,
+        agentKey: row.agentKey,
+        capabilities: row.capabilities,
+        scopes: row.scopes,
+        llmConfig: row.llmConfig,
+        definition: row.definition,
+        createdAt: row.createdAt,
+      });
+      await db
+        .insert(agentVersions)
+        .values({
+          id: versionIdByNum,
+          agentId: createdId,
+          version: 2,
+          snapshot: snapshotByNum,
+          createdAt: Date.now(),
+          conversationId: null,
+        })
+        .run();
+      const res = await agentRollbackPost(
+        new Request("http://localhost/api/agents/x/rollback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ version: 2 }),
+        }),
+        { params: Promise.resolve({ id: createdId }) }
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.version).toBe(2);
+      const getRes = await getOne(new Request("http://localhost/api/agents/x"), {
+        params: Promise.resolve({ id: createdId }),
+      });
+      const agent = await getRes.json();
+      expect(agent.name).toBe("Restored by version number");
     });
 
     it("POST /api/agents/:id/rollback returns 400 when snapshot does not match agent", async () => {

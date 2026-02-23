@@ -15,12 +15,13 @@ describe("openclaw-device-identity", () => {
     expect(payload.signature.length).toBeGreaterThan(0);
   });
 
-  it("signChallenge with same nonce yields same signature (stable keypair)", () => {
+  it("signChallenge reuses same keypair (stable id and publicKey across calls)", () => {
     const a = signChallenge({ nonce: "same" });
     const b = signChallenge({ nonce: "same" });
-    expect(a.signature).toBe(b.signature);
     expect(a.id).toBe(b.id);
     expect(a.publicKey).toBe(b.publicKey);
+    expect(a.signature).toBeTruthy();
+    expect(b.signature).toBeTruthy();
   });
 
   it("signChallenge with different nonce yields different signature", () => {

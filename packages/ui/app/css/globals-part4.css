@@ -735,9 +735,10 @@
 }
 
 /* ========== Chat panel (FAB popover: bottom-right) ========== */
+/* Panel sits above the FAB with a clear gap (FAB is 2.25rem + 56px tall ≈ 5.75rem from bottom) */
 .chat-panel {
   position: fixed;
-  bottom: 5.5rem;
+  bottom: 6.75rem; /* above FAB (2.25rem + 56px) + 0.75rem gap so FAB is not covered */
   right: calc(1.5rem + 18px); /* align with FAB scrollbar gap */
   width: min(460px, calc(100vw - 2.5rem - 12px));
   height: min(90vh, 780px);

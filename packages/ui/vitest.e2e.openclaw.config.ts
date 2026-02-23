@@ -6,6 +6,7 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    env: { OPENCLAW_E2E: "1" },
     setupFiles: [
       path.resolve(__dirname, "vitest.setup.ts"),
       path.resolve(__dirname, "__tests__/e2e/e2e-setup.ts"),

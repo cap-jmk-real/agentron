@@ -724,17 +724,36 @@ export default function ChatModal({
 
   useEffect(() => {
     if (open) {
-      fetch("/api/llm/providers")
-        .then((r) => r.json())
-        .then((data) => {
-          const list = Array.isArray(data) ? data : [];
-          setProviders(list);
+      Promise.all([
+        fetch("/api/llm/providers").then((r) => {
+          if (!r.ok) return [];
+          return r.json().then((data) => (Array.isArray(data) ? data : []));
+        }),
+        fetch("/api/ollama/models")
+          .then((r) => (r.ok ? r.json() : { models: [] }))
+          .catch(() => ({ models: [] })),
+      ])
+        .then(([raw, ollamaData]) => {
+          const list = (raw as LlmProvider[]).filter(
+            (p) => p && typeof p.id === "string" && p.id.trim() !== ""
+          ) as LlmProvider[];
+          const ollamaModels = Array.isArray((ollamaData as { models?: { name: string }[] }).models)
+            ? (ollamaData as { models: { name: string }[] }).models.map((m) => m.name)
+            : [];
+          const merged: LlmProvider[] = [...list];
+          if (ollamaModels.length > 0) {
+            for (const name of ollamaModels) {
+              if (!merged.some((p) => p.id === `local:${name}`))
+                merged.push({ id: `local:${name}`, provider: "local", model: name });
+            }
+          }
+          setProviders(merged);
           const saved =
             typeof localStorage !== "undefined"
               ? localStorage.getItem(CHAT_DEFAULT_PROVIDER_KEY)
               : null;
-          const valid = saved && list.some((p: LlmProvider) => p.id === saved);
-          setProviderId(valid ? saved : (list[0]?.id ?? ""));
+          const valid = saved && merged.some((p) => p.id === saved);
+          setProviderId(valid ? saved : (merged[0]?.id ?? ""));
         })
         .catch(() => setProviders([]));
     }

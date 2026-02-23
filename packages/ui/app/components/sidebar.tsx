@@ -329,16 +329,13 @@ const sections: NavSection[] = [
       { label: "Queues", href: "/queues", icon: icons.queue },
       { label: "Heap", href: "/heap", icon: icons.heap },
       { label: "Sandboxes", href: "/sandboxes", icon: icons.container },
-      { label: "Request queue", href: "/requests", icon: icons.queue },
     ],
   },
   {
     title: "Settings",
     items: [
       { label: "Vault", href: "/settings/vault", icon: icons.vault },
-      { label: "LLM Providers", href: "/settings/llm", icon: icons.llm },
-      { label: "Embedding", href: "/settings/embedding", icon: icons.embedding },
-      { label: "Local Models", href: "/settings/local", icon: icons.localModels },
+      { label: "LLM setup", href: "/settings/llm", icon: icons.llm },
       { label: "Telegram", href: "/settings/telegram", icon: icons.telegram },
       { label: "GitHub", href: "/settings/github", icon: icons.github },
       { label: "Container Engine", href: "/settings/container", icon: icons.container },
@@ -496,10 +493,10 @@ export default function Sidebar() {
                               {runsNeedingInput}
                             </span>
                           )}
-                          {item.href === "/requests" && pendingCount > 0 && (
+                          {item.href === "/queues" && pendingCount > 0 && (
                             <span
                               className="nav-badge"
-                              title={`${pendingCount} request(s) waiting`}
+                              title={`${pendingCount} request(s) waiting in rate-limit queue`}
                             >
                               {pendingCount}
                             </span>

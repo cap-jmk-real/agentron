@@ -38,6 +38,17 @@ describe("run-workflow-constants", () => {
       expect(isToolResultFailure({ statusCode: 600 })).toBe(false);
     });
 
+    it("uses status when statusCode is absent", () => {
+      expect(isToolResultFailure({ status: 500 })).toBe(true);
+      expect(isToolResultFailure({ status: 404 })).toBe(true);
+    });
+
+    it("returns false when statusCode is present but not a number (status not used)", () => {
+      expect(isToolResultFailure({ statusCode: "500" as unknown as number, status: 502 })).toBe(
+        false
+      );
+    });
+
     it("returns false when no failure indicators", () => {
       expect(isToolResultFailure({})).toBe(false);
       expect(isToolResultFailure({ output: "ok" })).toBe(false);

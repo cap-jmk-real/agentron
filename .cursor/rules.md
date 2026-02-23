@@ -1,5 +1,8 @@
 **Canonical rules:** All Cursor rules for this repo live in **`.cursor/rules/*.mdc`** (this folder). Clone the repo and open it as the workspace root — Cursor will load these rules for you and any other dev/machine. This file is a long-form reference; the .mdc rules are what Cursor uses for scoping.
 
+- **Do not relax tests** (unit or e2e) unless the test no longer reflects valid behavior; fix implementation or setup first (see `coverage-and-test-failures.mdc`).
+- **Check repo or docs** when implementing or debugging external APIs/schemas; avoid assuming (see `check-repo-and-docs.mdc`).
+
 ---
 
 ## UI Style Guide

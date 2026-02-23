@@ -244,6 +244,18 @@ export async function executeStudioTool(
       { conversationId: undefined, vaultKey: vaultKey ?? null }
     );
   }
+  if (
+    toolId === "send_to_openclaw" ||
+    toolId === "openclaw_history" ||
+    toolId === "openclaw_abort"
+  ) {
+    const { executeTool } = await import("../chat/_lib/execute-tool");
+    return executeTool(
+      toolId,
+      (typeof input === "object" && input !== null ? input : {}) as Record<string, unknown>,
+      { conversationId: undefined, vaultKey: vaultKey ?? null }
+    );
+  }
   if (toolId === "std-list-vault-credentials") {
     if (!vaultKey)
       return {
@@ -377,6 +389,53 @@ export function getLogSourceTag(toolId: string): string {
 export const WORKFLOW_MEMORY_MAX_RECENT_TURNS = 12;
 export const GET_WORKFLOW_CONTEXT_TOOL_ID = "get_workflow_context";
 export const FIRST_TURN_DEFAULT = "(First turn — start the conversation.)";
+
+const FIRST_TURN_RESERVED_KEYS = new Set([
+  "agentId",
+  "agentName",
+  "savedSearchUrl",
+  "autoUseVault",
+]);
+
+/**
+ * Builds the partner message for the first turn when the workflow node provides parameters (e.g. url).
+ * Returns FIRST_TURN_DEFAULT unchanged if config is empty or has no injectable params.
+ */
+export function buildFirstTurnPartnerMessageFromConfig(
+  config: Record<string, unknown> | undefined
+): string {
+  if (!config || typeof config !== "object") return FIRST_TURN_DEFAULT;
+  const parts: string[] = [FIRST_TURN_DEFAULT];
+  if (config.savedSearchUrl != null && String(config.savedSearchUrl).trim()) {
+    parts.push(
+      `Use the following saved search URL (provided by the workflow; do not call request_user_help to ask for the URL): ${String(config.savedSearchUrl).trim()}`
+    );
+  }
+  if (config.autoUseVault === true || config.autoUseVault === "true") {
+    parts.push("Use vault credentials when needed (autoUseVault is enabled).");
+  }
+  if (config.url != null && String(config.url).trim()) {
+    parts.push(
+      `Use the following URL (provided by the workflow; do not ask the user for it): ${String(config.url).trim()}`
+    );
+  }
+  const otherParams = Object.entries(config).filter(
+    ([k, v]) =>
+      !FIRST_TURN_RESERVED_KEYS.has(k) &&
+      v != null &&
+      (typeof v !== "string" || v.trim() !== "") &&
+      k !== "url"
+  );
+  if (otherParams.length > 0) {
+    const lines = otherParams.map(
+      ([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`
+    );
+    parts.push(
+      `Parameters provided by the workflow (use these; do not ask the user):\n${lines.join("\n")}`
+    );
+  }
+  return parts.length > 1 ? parts.join("\n\n") : FIRST_TURN_DEFAULT;
+}
 
 export function buildWorkflowMemoryBlock(opts: {
   turnInstruction?: string | null;

@@ -93,6 +93,19 @@ describe("RAG upload API", () => {
     expect(data.originalName).toBe("upload-test.txt");
   });
 
+  it("POST /api/rag/upload with file with empty type uses application/octet-stream for mimeType", async () => {
+    const form = new FormData();
+    form.append("file", new File(["binary"], "data.bin", { type: "" }));
+    form.append("collectionId", collectionId);
+    const res = await uploadPost(
+      new Request("http://localhost/api/rag/upload", { method: "POST", body: form })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.id).toBeDefined();
+    expect(data.originalName).toBe("data.bin");
+  });
+
   it("POST /api/rag/upload returns 413 when file exceeds max size", async () => {
     vi.spyOn(appSettings, "getMaxFileUploadBytes").mockReturnValue(5);
     vi.spyOn(appSettings, "formatMaxFileUploadMb").mockReturnValue("5 MB");

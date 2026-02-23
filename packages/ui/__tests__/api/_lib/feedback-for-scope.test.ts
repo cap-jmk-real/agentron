@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { getFeedbackForScope } from "../../../app/api/_lib/feedback-for-scope";
+import * as dbModule from "../../../app/api/_lib/db";
 import { db, feedback, toFeedbackRow } from "../../../app/api/_lib/db";
 import { eq } from "drizzle-orm";
 
@@ -31,11 +32,11 @@ describe("feedback-for-scope", () => {
           id: crypto.randomUUID(),
           targetType: "agent",
           targetId,
-          executionId: null,
+          executionId: undefined,
           input: {},
           output: {},
           label: "good",
-          notes: null,
+          notes: undefined,
           createdAt: Date.now(),
         })
       )
@@ -57,7 +58,7 @@ describe("feedback-for-scope", () => {
           targetType: "agent",
           targetId,
           executionId: undefined,
-          input: null,
+          input: "",
           output: "short",
           label: "good",
           notes: undefined,
@@ -105,5 +106,48 @@ describe("feedback-for-scope", () => {
     expect(items.length).toBeLessThanOrEqual(20);
     const itemsNeg = await getFeedbackForScope("any", { limit: -1 });
     expect(itemsNeg.length).toBeLessThanOrEqual(20);
+  });
+
+  it("getFeedbackForScope summarize uses String fallback when JSON.stringify throws (e.g. circular)", async () => {
+    const targetId = "target-circular-" + Date.now();
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const baseRow = {
+      id: crypto.randomUUID(),
+      targetType: "agent" as const,
+      targetId,
+      executionId: null as string | null,
+      input: null as unknown,
+      output: null as unknown,
+      label: "good" as const,
+      notes: null as string | null,
+      createdAt: Date.now(),
+    };
+    const spyFrom = vi
+      .spyOn(dbModule, "fromFeedbackRow")
+      .mockReturnValueOnce({ ...baseRow, input: circular } as ReturnType<
+        typeof dbModule.fromFeedbackRow
+      >);
+    const selectChain = {
+      from: () => ({
+        where: () => ({
+          orderBy: () => ({
+            limit: () => Promise.resolve([{}]),
+          }),
+        }),
+      }),
+    };
+    const selectSpy = vi
+      .spyOn(db, "select")
+      .mockReturnValueOnce(selectChain as unknown as ReturnType<typeof db.select>);
+    try {
+      const items = await getFeedbackForScope(targetId);
+      expect(items.length).toBe(1);
+      expect(items[0].inputSummary).toBeDefined();
+      expect(items[0].inputSummary).toContain("object");
+    } finally {
+      selectSpy.mockRestore();
+      spyFrom.mockRestore();
+    }
   });
 });

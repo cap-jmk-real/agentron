@@ -10,7 +10,13 @@ import {
   parseRunStateSharedContext,
   type ExecutionRunStateRow,
 } from "../../../app/api/_lib/execution-events";
-import { db, executions, executionEvents, toExecutionRow } from "../../../app/api/_lib/db";
+import {
+  db,
+  executions,
+  executionEvents,
+  executionRunState,
+  toExecutionRow,
+} from "../../../app/api/_lib/db";
 import { eq } from "drizzle-orm";
 
 describe("execution-events", () => {
@@ -196,6 +202,109 @@ describe("execution-events", () => {
 
   it("updateExecutionRunState no-op when no row", async () => {
     await updateExecutionRunState(crypto.randomUUID(), { status: "failed" });
+  });
+
+  it("updateExecutionRunState keeps sharedContext and trailSnapshot when string", async () => {
+    const runIdStr = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: runIdStr,
+          targetType: "workflow",
+          targetId: crypto.randomUUID(),
+          status: "running",
+        })
+      )
+      .run();
+    await db
+      .insert(executionRunState)
+      .values({
+        executionId: runIdStr,
+        workflowId: "wf",
+        targetBranchId: null,
+        currentNodeId: null,
+        round: 0,
+        sharedContext: "{}",
+        status: "running",
+        trailSnapshot: null,
+        updatedAt: Date.now(),
+      })
+      .run();
+    await updateExecutionRunState(runIdStr, {
+      sharedContext: "raw-string-context",
+      trailSnapshot: "[]",
+    });
+    const state = await getExecutionRunState(runIdStr);
+    expect(state!.sharedContext).toBe("raw-string-context");
+    expect(state!.trailSnapshot).toBe("[]");
+  });
+
+  it("updateExecutionRunState stringifies sharedContext and trailSnapshot when object", async () => {
+    const runIdPatch = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: runIdPatch,
+          targetType: "workflow",
+          targetId: crypto.randomUUID(),
+          status: "running",
+        })
+      )
+      .run();
+    await db
+      .insert(executionRunState)
+      .values({
+        executionId: runIdPatch,
+        workflowId: "wf",
+        currentNodeId: null,
+        round: 0,
+        sharedContext: "{}",
+        status: "running",
+        trailSnapshot: null,
+        updatedAt: Date.now(),
+      })
+      .run();
+    await updateExecutionRunState(runIdPatch, {
+      sharedContext: { key: "obj" },
+      trailSnapshot: [{ step: 1 }],
+    });
+    const state = await getExecutionRunState(runIdPatch);
+    expect(state!.sharedContext).toBe(JSON.stringify({ key: "obj" }));
+    expect(state!.trailSnapshot).toBe(JSON.stringify([{ step: 1 }]));
+  });
+
+  it("updateExecutionRunState sets trailSnapshot to null when patch.trailSnapshot is null", async () => {
+    const runIdNull = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: runIdNull,
+          targetType: "workflow",
+          targetId: crypto.randomUUID(),
+          status: "running",
+        })
+      )
+      .run();
+    await db
+      .insert(executionRunState)
+      .values({
+        executionId: runIdNull,
+        workflowId: "wf",
+        targetBranchId: null,
+        currentNodeId: null,
+        round: 0,
+        sharedContext: "{}",
+        status: "running",
+        trailSnapshot: "[]",
+        updatedAt: Date.now(),
+      })
+      .run();
+    await updateExecutionRunState(runIdNull, { trailSnapshot: null });
+    const state = await getExecutionRunState(runIdNull);
+    expect(state!.trailSnapshot).toBeNull();
   });
 
   it("updateExecutionRunState patches only provided fields", async () => {

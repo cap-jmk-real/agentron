@@ -253,6 +253,42 @@ describe("Settings Telegram API", () => {
     }
   });
 
+  it("POST /api/settings/telegram/test uses saved token when body is invalid JSON", async () => {
+    await PATCH(
+      new Request("http://localhost/api/settings/telegram", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ botToken: "token-for-invalid-json-test" }),
+      })
+    );
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      if (u.includes("getMe")) {
+        return new Response(JSON.stringify({ ok: true, result: { username: "JsonTestBot" } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return originalFetch(url as Request);
+    });
+    try {
+      const res = await testPost(
+        new Request("http://localhost/api/settings/telegram/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "not valid json {",
+        })
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+      expect(data.username).toBe("@JsonTestBot");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("POST /api/settings/telegram/test with saved token and empty body uses saved token", async () => {
     await PATCH(
       new Request("http://localhost/api/settings/telegram", {

@@ -17,6 +17,8 @@ import {
   buildSpecialistSummaryWithCreatedIds,
   getCreatedIdsFromToolResults,
   mergeCreatedIdsIntoPlan,
+  getLastAssistantDeleteConfirmContext,
+  userMessageMatchesFirstOption,
 } from "../../../app/api/_lib/chat-helpers";
 
 describe("chat-helpers", () => {
@@ -176,6 +178,16 @@ describe("chat-helpers", () => {
       expect(out).toHaveLength(1);
       expect((out[0].result as { question: string }).question).toBe("What?");
     });
+
+    it("leaves ask_user unchanged when options is not an array (options treated as [])", async () => {
+      const callLLM = async () => "[]";
+      const toolResults = [
+        { name: "ask_user", args: {}, result: { question: "Pick?", options: "not-array" } },
+      ];
+      const out = await normalizeAskUserOptionsInToolResults(toolResults, callLLM);
+      expect(out).toHaveLength(1);
+      expect((out[0].result as { options: unknown }).options).toBe("not-array");
+    });
   });
 
   describe("extractOptionsFromContentWithLLM", () => {
@@ -300,6 +312,15 @@ What would you like me to do next?
     it("returns false for empty array", () => {
       expect(areOptionsSafeForPassThrough([])).toBe(false);
     });
+
+    it("returns false when not an array", () => {
+      expect(areOptionsSafeForPassThrough(null as unknown as string[])).toBe(false);
+      expect(areOptionsSafeForPassThrough(undefined as unknown as string[])).toBe(false);
+    });
+
+    it("returns false when option is only whitespace", () => {
+      expect(areOptionsSafeForPassThrough(["Yes", "  "])).toBe(false);
+    });
   });
 
   describe("hasWaitingForInputInToolResults", () => {
@@ -412,6 +433,45 @@ What would you like me to do next?
       ];
       expect(getAssistantDisplayContent("", toolResults)).toBe("Workflow created.");
     });
+
+    it("returns long content when answer_question was used and content is longer than summary", () => {
+      const longContent =
+        "Canary thresholds are numeric or logical guards used during staged rollouts. They include metrics, baselines, acceptable deltas, sample sizes, and rollback rules to detect regressions before full rollout.";
+      const toolResults = [
+        { name: "answer_question", args: { question: "What are canary thresholds?" }, result: {} },
+        {
+          name: "format_response",
+          args: {},
+          result: { formatted: true, summary: "Done.", needsInput: "" },
+        },
+      ];
+      expect(getAssistantDisplayContent(longContent, toolResults)).toBe(longContent);
+    });
+
+    it("returns content plus needsInput when formatted, answer_question, long content, and needsInput set", () => {
+      const longContent = "A".repeat(160);
+      const toolResults = [
+        { name: "answer_question", args: {}, result: {} },
+        {
+          name: "format_response",
+          args: {},
+          result: { formatted: true, summary: "Short.", needsInput: "Please confirm below." },
+        },
+      ];
+      const out = getAssistantDisplayContent(longContent, toolResults);
+      expect(out).toBe(`${longContent}\n\nPlease confirm below.`);
+    });
+
+    it("returns summary plus needsInput when formatted and summary and needsInput set", () => {
+      const toolResults = [
+        {
+          name: "format_response",
+          args: {},
+          result: { formatted: true, summary: "Summary here.", needsInput: "Reply:" },
+        },
+      ];
+      expect(getAssistantDisplayContent("", toolResults)).toBe("Summary here.\n\nReply:");
+    });
   });
 
   describe("deriveInteractivePromptFromContentDeterministic", () => {
@@ -487,6 +547,75 @@ Next steps:
       const res = await deriveInteractivePromptFromContentWithLLM("Long message.", callLLM);
       expect(res).toBeNull();
     });
+
+    it("returns null when callLLM returns JSON with options not an array", async () => {
+      const callLLM = async () => '{"question":"Q","options":123}';
+      const res = await deriveInteractivePromptFromContentWithLLM(
+        "Long message with no deterministic match.",
+        callLLM
+      );
+      expect(res).toBeNull();
+    });
+
+    it("returns null when question is empty", async () => {
+      const callLLM = async () => '{"question":"","options":["A","B"]}';
+      const res = await deriveInteractivePromptFromContentWithLLM(
+        "Long message with no deterministic match.",
+        callLLM
+      );
+      expect(res).toBeNull();
+    });
+
+    it("returns null when options length is 5", async () => {
+      const callLLM = async () => '{"question":"Q","options":["A","B","C","D","E"]}';
+      const res = await deriveInteractivePromptFromContentWithLLM(
+        "Long message with no deterministic match.",
+        callLLM
+      );
+      expect(res).toBeNull();
+    });
+
+    it("filters out empty and whitespace-only options from callLLM response", async () => {
+      const callLLM = async () => '{"question":"Pick one","options":["A","","B","   ","C"]}';
+      const longContent =
+        "Long message with no deterministic match — at least fifty characters of text so the LLM path is used.";
+      const res = await deriveInteractivePromptFromContentWithLLM(longContent, callLLM);
+      expect(res).toEqual({ question: "Pick one", options: ["A", "B", "C"] });
+    });
+
+    it("returns null when options array is empty", async () => {
+      const callLLM = async () => '{"question":"Q","options":[]}';
+      const longContent =
+        "Long message with no deterministic match — at least fifty characters so the LLM path runs.";
+      const res = await deriveInteractivePromptFromContentWithLLM(longContent, callLLM);
+      expect(res).toBeNull();
+    });
+
+    it("filters non-string options and returns result when 2-4 string options remain", async () => {
+      const callLLM = async () => '{"question":"Pick one","options":["A",42,null,"B",{"x":1},"C"]}';
+      const longContent =
+        "Long message with no deterministic match — at least fifty characters so the LLM path runs.";
+      const res = await deriveInteractivePromptFromContentWithLLM(longContent, callLLM);
+      expect(res).toEqual({ question: "Pick one", options: ["A", "B", "C"] });
+    });
+
+    it("returns null when callLLM throws", async () => {
+      const callLLM = async () => {
+        throw new Error("LLM error");
+      };
+      const longContent =
+        "Long message with no deterministic match — at least fifty characters so the LLM path runs.";
+      const res = await deriveInteractivePromptFromContentWithLLM(longContent, callLLM);
+      expect(res).toBeNull();
+    });
+
+    it("returns null when callLLM returns malformed JSON that throws on parse", async () => {
+      const callLLM = async () => '{"question":"Q","options":['; // invalid JSON
+      const longContent =
+        "Long message with no deterministic match — at least fifty characters so the LLM path runs.";
+      const res = await deriveInteractivePromptFromContentWithLLM(longContent, callLLM);
+      expect(res).toBeNull();
+    });
   });
 
   describe("getTurnStatusFromToolResults", () => {
@@ -558,6 +687,95 @@ Next steps:
       expect(normalizeOptionCountInContent("Pick one of the 2 options", 1)).toBe(
         "Pick one of the 1 option"
       );
+    });
+  });
+
+  describe("getLastAssistantDeleteConfirmContext", () => {
+    it("returns null when lastRow is missing or not assistant", () => {
+      expect(getLastAssistantDeleteConfirmContext(undefined)).toBeNull();
+      expect(getLastAssistantDeleteConfirmContext({ role: "user", toolCalls: null })).toBeNull();
+    });
+
+    it("returns null when toolCalls is invalid JSON", () => {
+      expect(
+        getLastAssistantDeleteConfirmContext({ role: "assistant", toolCalls: "not-json" })
+      ).toBeNull();
+    });
+
+    it("returns context when ask_user has string options array and list_agents/list_workflows present", () => {
+      const toolCalls = JSON.stringify([
+        { name: "list_agents", result: [{ id: "a1" }] },
+        { name: "list_workflows", result: [{ id: "w1" }] },
+        { name: "ask_user", result: { question: "Delete?", options: ["Yes", "No"] } },
+      ]);
+      const out = getLastAssistantDeleteConfirmContext({ role: "assistant", toolCalls });
+      expect(out).not.toBeNull();
+      expect(out!.agentIds).toEqual(["a1"]);
+      expect(out!.workflowIds).toEqual(["w1"]);
+      expect(out!.firstOption).toBe("Yes");
+    });
+
+    it("returns null when ask_user options is not an array", () => {
+      const toolCalls = JSON.stringify([
+        { name: "list_agents", result: [{ id: "a1" }] },
+        { name: "ask_user", result: { question: "?", options: "not-array" } },
+      ]);
+      const out = getLastAssistantDeleteConfirmContext({ role: "assistant", toolCalls });
+      expect(out).toBeNull();
+    });
+
+    it("treats list_agents result as empty when not an array", () => {
+      const toolCalls = JSON.stringify([
+        { name: "list_agents", result: "not-array" },
+        { name: "list_workflows", result: [{ id: "w1" }] },
+        { name: "ask_user", result: { question: "Delete?", options: ["Yes", "No"] } },
+      ]);
+      const out = getLastAssistantDeleteConfirmContext({ role: "assistant", toolCalls });
+      expect(out).not.toBeNull();
+      expect(out!.agentIds).toEqual([]);
+      expect(out!.workflowIds).toEqual(["w1"]);
+    });
+
+    it("treats list_workflows result as empty when not an array", () => {
+      const toolCalls = JSON.stringify([
+        { name: "list_agents", result: [{ id: "a1" }] },
+        { name: "list_workflows", result: null },
+        { name: "ask_user", result: { question: "?", options: ["Yes", "No"] } },
+      ]);
+      const out = getLastAssistantDeleteConfirmContext({ role: "assistant", toolCalls });
+      expect(out).not.toBeNull();
+      expect(out!.workflowIds).toEqual([]);
+      expect(out!.agentIds).toEqual(["a1"]);
+    });
+
+    it("treats ask_user result options as empty when present but not an array", () => {
+      const toolCalls = JSON.stringify([
+        { name: "list_agents", result: [{ id: "a1" }] },
+        { name: "list_workflows", result: [] },
+        { name: "ask_user", result: { question: "Delete?", options: "not-array" } },
+      ]);
+      const out = getLastAssistantDeleteConfirmContext({ role: "assistant", toolCalls });
+      expect(out).toBeNull();
+    });
+
+    it("returns null when ask_user has options but both agentIds and workflowIds are empty", () => {
+      const toolCalls = JSON.stringify([
+        { name: "ask_user", result: { question: "Delete?", options: ["Yes", "No"] } },
+      ]);
+      const out = getLastAssistantDeleteConfirmContext({ role: "assistant", toolCalls });
+      expect(out).toBeNull();
+    });
+  });
+
+  describe("userMessageMatchesFirstOption", () => {
+    it("returns true when message equals firstOption or equals case-insensitively", () => {
+      expect(userMessageMatchesFirstOption("Yes", "Yes")).toBe(true);
+      expect(userMessageMatchesFirstOption("yes", "Yes")).toBe(true);
+      expect(userMessageMatchesFirstOption("No", "no")).toBe(true);
+    });
+
+    it("returns false when message does not match", () => {
+      expect(userMessageMatchesFirstOption("Cancel", "Yes")).toBe(false);
     });
   });
 

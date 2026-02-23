@@ -170,4 +170,36 @@ describe("WorkflowEngine execute", () => {
     expect(result.context["pb"]).toBe(3);
     expect(result.output).toBe(3);
   });
+
+  it("run uses agentId from workflow node parameters (flexibility: run follows workflow definition)", async () => {
+    const workflow: any = {
+      nodes: [
+        {
+          id: "node1",
+          type: "agent",
+          parameters: { agentId: "fetch-title-agent-uuid", input: { url: "https://example.com" } },
+        },
+      ],
+      edges: [],
+    };
+
+    const receivedConfigs: Record<string, unknown>[] = [];
+    const handlers: any = {
+      agent: async (nodeId: string, config: any) => {
+        receivedConfigs.push({ nodeId, ...config });
+        return config?.agentId === "fetch-title-agent-uuid" ? "Example Domain" : "wrong";
+      },
+    };
+
+    const engine = new WorkflowEngine();
+    const result = await engine.execute(workflow, handlers);
+
+    expect(receivedConfigs).toHaveLength(1);
+    expect(receivedConfigs[0]).toMatchObject({
+      nodeId: "node1",
+      agentId: "fetch-title-agent-uuid",
+      input: { url: "https://example.com" },
+    });
+    expect(result.output).toBe("Example Domain");
+  });
 });

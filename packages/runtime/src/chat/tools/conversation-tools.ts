@@ -75,6 +75,12 @@ export const CONVERSATION_TOOLS: AssistantToolDef[] = [
           description:
             "What the user must provide to proceed. Use markdown; keep concise. Shown in a highlighted block at the end.",
         },
+        options: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Optional clickable options for the user (e.g. ['Fix workflow and run now', 'Modify agent', 'Not now']). When present, these are shown instead of any earlier ask_user options from the same turn.",
+        },
       },
       required: ["summary"],
     },

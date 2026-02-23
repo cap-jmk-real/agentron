@@ -157,6 +157,150 @@ html[data-theme="dark"] .textarea:focus {
   box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.25);
 }
 
+/* Textarea: thin overlay-style scrollbar (same as chat input) */
+.textarea {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.textarea:hover,
+.textarea:focus {
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 45%, transparent) transparent;
+}
+
+.textarea::-webkit-scrollbar {
+  width: 6px;
+}
+
+.textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.textarea::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.textarea:hover::-webkit-scrollbar-thumb,
+.textarea:focus::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 45%, transparent);
+}
+
+.textarea::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+@supports not (background: color-mix(in srgb, red, transparent)) {
+  .textarea:hover,
+  .textarea:focus {
+    scrollbar-color: rgba(128, 128, 128, 0.45) transparent;
+  }
+  .textarea:hover::-webkit-scrollbar-thumb,
+  .textarea:focus::-webkit-scrollbar-thumb {
+    background: rgba(128, 128, 128, 0.45);
+  }
+}
+
+/* Styled select component: custom dropdown list (used in chat and anywhere we want a styled menu) */
+.styled-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+}
+
+.styled-select-trigger:hover {
+  border-color: color-mix(in srgb, var(--text-muted) 50%, transparent);
+  background: var(--surface-muted);
+}
+
+.styled-select-trigger-icon {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.styled-select-trigger-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.styled-select-chevron {
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: transform 0.15s ease;
+}
+
+.styled-select-chevron--open {
+  transform: rotate(180deg);
+}
+
+/* Dropdown list (portal): consistent styling across the app */
+.styled-select-list {
+  padding: 0.35rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.08);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.styled-select-list--pill {
+  background: var(--surface-muted);
+  border-radius: 8px;
+  border-color: var(--border);
+}
+
+.styled-select-option {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.styled-select-option:hover,
+.styled-select-option--highlighted {
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  color: var(--text);
+}
+
+.styled-select-option--selected {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--text);
+}
+
+.styled-select-option--selected:hover,
+.styled-select-option--selected.styled-select-option--highlighted {
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+.styled-select-option--empty {
+  color: var(--text-muted);
+  cursor: default;
+}
+
 /* Optional: form group with stacked inputs and spacing */
 .form-group {
   display: flex;

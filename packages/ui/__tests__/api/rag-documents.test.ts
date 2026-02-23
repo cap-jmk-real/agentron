@@ -12,6 +12,13 @@ describe("RAG documents API", () => {
     expect(data.error).toContain("collectionId");
   });
 
+  it("GET /api/rag/documents returns 400 when collectionId is empty string", async () => {
+    const res = await GET(new Request("http://localhost/api/rag/documents?collectionId="));
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("collectionId");
+  });
+
   it("GET /api/rag/documents?collectionId=some-id returns array", async () => {
     const res = await GET(
       new Request("http://localhost/api/rag/documents?collectionId=some-collection-id")
@@ -74,6 +81,35 @@ describe("RAG documents API", () => {
       expect(doc).toBeDefined();
       expect(doc.metadata).toBeUndefined();
       expect(doc.mimeType).toBe("text/plain");
+    } finally {
+      await db.delete(ragDocuments).where(eq(ragDocuments.id, docId)).run();
+    }
+  });
+
+  it("GET /api/rag/documents returns document with mimeType undefined when row has null mimeType", async () => {
+    const collId = "docs-null-mime-" + Date.now();
+    const docId = crypto.randomUUID();
+    await db
+      .insert(ragDocuments)
+      .values({
+        id: docId,
+        collectionId: collId,
+        storePath: "path/no-mime.txt",
+        mimeType: null,
+        metadata: null,
+        createdAt: Date.now(),
+      })
+      .run();
+    try {
+      const res = await GET(
+        new Request(`http://localhost/api/rag/documents?collectionId=${collId}`)
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      const doc = data.find((d: { id: string }) => d.id === docId);
+      expect(doc).toBeDefined();
+      expect(doc.mimeType).toBeUndefined();
+      expect(doc.metadata).toBeUndefined();
     } finally {
       await db.delete(ragDocuments).where(eq(ragDocuments.id, docId)).run();
     }

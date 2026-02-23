@@ -75,7 +75,13 @@ export class PodmanManager {
 
     if (config?.memory) args.push(`--memory=${config.memory}`);
     if (config?.cpus) args.push(`--cpus=${config.cpus}`);
-    if (!config?.network) args.push("--network=none");
+    if (config?.network === true) {
+      // use default bridge (do not add --network=none)
+    } else if (typeof config?.network === "string") {
+      args.push("--network", config.network);
+    } else {
+      args.push("--network=none");
+    }
     if (config?.env) {
       for (const [k, v] of Object.entries(config.env)) {
         args.push("-e", `${k}=${v}`);

@@ -84,6 +84,23 @@ describe("Settings pricing API", () => {
     expect(res.status).toBe(400);
   });
 
+  it("PUT /api/settings/pricing returns 400 when modelPattern is empty string", async () => {
+    const res = await putOne(
+      new Request("http://localhost/api/settings/pricing", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modelPattern: "",
+          inputCostPerM: 1,
+          outputCostPerM: 2,
+        }),
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("modelPattern");
+  });
+
   it("PUT /api/settings/pricing creates custom pricing", async () => {
     const res = await putOne(
       new Request("http://localhost/api/settings/pricing", {

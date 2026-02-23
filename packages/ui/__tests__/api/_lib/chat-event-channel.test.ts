@@ -64,6 +64,18 @@ describe("chat-event-channel", () => {
     expect(isFinished(turnId)).toBe(true);
   });
 
+  it("finish cleanup runs after delay and removes subscriber map entry", () => {
+    vi.useFakeTimers();
+    const turnId = "turn-cleanup-" + Date.now();
+    const onEvent = vi.fn();
+    subscribe(turnId, onEvent);
+    finish(turnId);
+    vi.advanceTimersByTime(60_000);
+    publish(turnId, { type: "late" });
+    expect(onEvent).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it("pending job is stored and taken once", () => {
     const turnId = "turn-pending-" + Date.now();
     const job = vi.fn().mockResolvedValue(undefined);

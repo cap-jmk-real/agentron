@@ -29,21 +29,21 @@ async function runLLMWithDecisionLayer(
       return res.content ?? "";
     }
 
+    // One tool per round: execute only the first tool call, then run the agent again so it can issue the next.
+    const tc = res.toolCalls[0];
     messages = [
       ...messages,
-      { role: "assistant" as const, content: res.content ?? "", toolCalls: res.toolCalls },
+      { role: "assistant" as const, content: res.content ?? "", toolCalls: [tc] },
     ];
-    for (const tc of res.toolCalls) {
-      let args: unknown;
-      try {
-        args = JSON.parse(tc.arguments ?? "{}");
-      } catch {
-        args = {};
-      }
-      const result = await context.callTool(tc.name, args);
-      const content = typeof result === "string" ? result : JSON.stringify(result ?? null);
-      messages.push({ role: "tool" as const, content, toolCallId: tc.id });
+    let args: unknown;
+    try {
+      args = JSON.parse(tc.arguments ?? "{}");
+    } catch {
+      args = {};
     }
+    const result = await context.callTool(tc.name, args);
+    const content = typeof result === "string" ? result : JSON.stringify(result ?? null);
+    messages.push({ role: "tool" as const, content, toolCallId: tc.id });
   }
   return (messages[messages.length - 1]?.content as string) ?? "";
 }

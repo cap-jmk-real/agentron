@@ -8,7 +8,7 @@ alwaysApply: false
 
 - **Critical business logic:** ~90–100% unit test coverage. Non-critical: reasonable coverage. Infrastructure/trivial: optional if tested elsewhere. Gaps must be acknowledged and justified.
 - **Coverage gaps:** Add tests to cover missing code; do not exclude code from coverage to meet targets (see `coverage-and-test-failures` rule).
-- **All branches:** Aim for 100% branch coverage. Add tests for every branch (conditionals, switch cases, error paths). Use `npm run test:coverage` and the HTML report to find and close gaps. Do not lower the branch threshold.
+- **All branches:** Branch coverage threshold is 70%; aim for 100%. Add tests for every branch (conditionals, switch cases, error paths). Use `npm run test:coverage` and the HTML report to find and close gaps.
 - **Unittestable / hard-to-test code:** Test at the nearest testable boundary (integration or e2e). Document why a file or branch is not unit-tested and how it is covered (e.g. e2e, manual). See `docs/testing-and-coverage.md`.
 - **Focus on branches, edge cases, failure modes.** Avoid testing implementation details; avoid brittle tests.
 - **Use code fallbacks consciously.** Fallback paths (default values, alternate logic on failure) add branches and edge cases and make tests more complex. When adding a fallback, do it intentionally—aware of the extra branches to test and maintain—not by habit or “just in case.”

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { runSerializedByConversation } from "../../../app/api/_lib/chat-queue";
 import { db, conversationLocks } from "../../../app/api/_lib/db";
@@ -116,5 +116,82 @@ describe("chat-queue", () => {
       .from(conversationLocks)
       .where(eq(conversationLocks.conversationId, convId));
     expect(rows.length).toBe(0);
+  });
+
+  it("releaseLock catch does not throw when db.delete fails", async () => {
+    const convId = "conv-release-catch-" + Date.now();
+    const deleteSpy = vi.spyOn(db, "delete").mockReturnValueOnce({
+      where: () => ({ run: () => Promise.reject(new Error("delete failed")) }),
+    } as unknown as ReturnType<typeof db.delete>);
+    try {
+      const result = await runSerializedByConversation(convId, async () => "ok");
+      expect(result).toBe("ok");
+    } finally {
+      deleteSpy.mockRestore();
+    }
+  });
+
+  it("releaseLock catch when db.delete fails with alreadyLocked (only delete is in release)", async () => {
+    const convId = "conv-release-already-" + Date.now();
+    const now = Date.now();
+    await db
+      .insert(conversationLocks)
+      .values({ conversationId: convId, startedAt: now, createdAt: now })
+      .run();
+    const deleteSpy = vi.spyOn(db, "delete").mockReturnValueOnce({
+      where: () => ({ run: () => Promise.reject(new Error("delete failed")) }),
+    } as unknown as ReturnType<typeof db.delete>);
+    try {
+      const result = await runSerializedByConversation(convId, async () => "ok", {
+        alreadyLocked: true,
+      });
+      expect(result).toBe("ok");
+    } finally {
+      deleteSpy.mockRestore();
+      await db.delete(conversationLocks).where(eq(conversationLocks.conversationId, convId)).run();
+    }
+  });
+
+  it("rethrows when acquireLock insert fails with non-UNIQUE error", async () => {
+    const convId = "conv-insert-other-" + Date.now();
+    const insertSpy = vi.spyOn(db, "insert").mockReturnValueOnce({
+      values: () => ({
+        run: () => Promise.reject(new Error("some other db error")),
+      }),
+    } as unknown as ReturnType<typeof db.insert>);
+    try {
+      await expect(runSerializedByConversation(convId, async () => "ok")).rejects.toThrow(
+        "some other db error"
+      );
+    } finally {
+      insertSpy.mockRestore();
+    }
+  });
+
+  it("throws Timeout waiting for conversation lock when lock is held until deadline", async () => {
+    const convId = "conv-timeout-" + Date.now();
+    const now = Date.now();
+    await db
+      .insert(conversationLocks)
+      .values({ conversationId: convId, startedAt: now, createdAt: now })
+      .run();
+    const lockWaitMs = 60_000;
+    await vi.useFakeTimers();
+    let caught: Error | undefined;
+    try {
+      const promise = runSerializedByConversation(convId, async () => "never");
+      const advance = vi.advanceTimersByTimeAsync(lockWaitMs + 100);
+      await Promise.all([
+        promise.catch((e: Error) => {
+          caught = e;
+        }),
+        advance,
+      ]);
+      expect(caught).toBeDefined();
+      expect(caught!.message).toBe("Timeout waiting for conversation lock");
+    } finally {
+      vi.useRealTimers();
+      await db.delete(conversationLocks).where(eq(conversationLocks.conversationId, convId)).run();
+    }
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
@@ -7,8 +7,151 @@ import { GET as listGet, POST as listPost } from "../../app/api/rag/connectors/r
 import { POST as collPost } from "../../app/api/rag/collections/route";
 import { POST as encPost } from "../../app/api/rag/encoding-config/route";
 import { POST as storePost } from "../../app/api/rag/document-store/route";
+import { ingestOneDocument } from "../../app/api/rag/ingest/route";
+
+vi.mock("../../app/api/rag/ingest/route", () => ({
+  ingestOneDocument: vi.fn().mockResolvedValue({ chunks: 1 }),
+}));
 
 describe("RAG connectors [id] sync API", () => {
+  it("POST sync for filesystem with non-existent path sets lastError and GET connectors returns it", async () => {
+    const encRes = await encPost(
+      new Request("http://localhost/api/rag/encoding-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Enc lastErr",
+          provider: "openai",
+          modelOrEndpoint: "text-embedding-3-small",
+          dimensions: 1536,
+        }),
+      })
+    );
+    const enc = await encRes.json();
+    const storeRes = await storePost(
+      new Request("http://localhost/api/rag/document-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Store lastErr",
+          type: "minio",
+          bucket: "b",
+          endpoint: "http://localhost:9000",
+        }),
+      })
+    );
+    const store = await storeRes.json();
+    const collRes = await collPost(
+      new Request("http://localhost/api/rag/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Coll lastErr",
+          scope: "agent",
+          encodingConfigId: enc.id,
+          documentStoreId: store.id,
+        }),
+      })
+    );
+    const coll = await collRes.json();
+    const nonExistentPath = path.join(os.tmpdir(), "rag-sync-nonexistent-" + Date.now());
+    const connRes = await listPost(
+      new Request("http://localhost/api/rag/connectors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "filesystem",
+          collectionId: coll.id,
+          config: { path: nonExistentPath },
+        }),
+      })
+    );
+    expect(connRes.status).toBe(201);
+    const { id } = await connRes.json();
+    const syncRes = await POST(
+      new Request(`http://localhost/api/rag/connectors/${id}/sync`, { method: "POST" }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(syncRes.status).toBe(400);
+    const listRes = await listGet();
+    expect(listRes.status).toBe(200);
+    const list = await listRes.json();
+    const connector = list.find((c: { id: string }) => c.id === id);
+    expect(connector).toBeDefined();
+    expect(connector.status).toBe("error");
+    expect(connector.lastError).toBeDefined();
+    expect(typeof connector.lastError).toBe("string");
+  });
+  it("POST sync for unimplemented connector type returns 400 and sets lastError", async () => {
+    const encRes = await encPost(
+      new Request("http://localhost/api/rag/encoding-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Enc unimplemented",
+          provider: "openai",
+          modelOrEndpoint: "text-embedding-3-small",
+          dimensions: 1536,
+        }),
+      })
+    );
+    const enc = await encRes.json();
+    const storeRes = await storePost(
+      new Request("http://localhost/api/rag/document-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Store unimplemented",
+          type: "minio",
+          bucket: "b",
+          endpoint: "http://localhost:9000",
+        }),
+      })
+    );
+    const store = await storeRes.json();
+    const collRes = await collPost(
+      new Request("http://localhost/api/rag/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Coll unimplemented",
+          scope: "agent",
+          encodingConfigId: enc.id,
+          documentStoreId: store.id,
+        }),
+      })
+    );
+    const coll = await collRes.json();
+    const connRes = await listPost(
+      new Request("http://localhost/api/rag/connectors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "unsupported_connector_type",
+          collectionId: coll.id,
+          config: {},
+        }),
+      })
+    );
+    expect(connRes.status).toBe(201);
+    const { id } = await connRes.json();
+    const syncRes = await POST(
+      new Request(`http://localhost/api/rag/connectors/${id}/sync`, { method: "POST" }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(syncRes.status).toBe(400);
+    const data = await syncRes.json();
+    expect(data.error).toContain("Sync not implemented for connector type");
+    expect(data.error).toContain("unsupported_connector_type");
+    const listRes = await listGet();
+    expect(listRes.status).toBe(200);
+    const list = await listRes.json();
+    const connector = list.find((c: { id: string }) => c.id === id);
+    expect(connector).toBeDefined();
+    expect(connector.status).toBe("error");
+    expect(connector.lastError).toContain("Sync not implemented");
+  });
+
   it("POST /api/rag/connectors/:id/sync returns 404 for non-existent connector", async () => {
     const res = await POST(
       new Request("http://localhost/api/rag/connectors/non-existent-id/sync", { method: "POST" }),
@@ -42,6 +185,56 @@ describe("RAG connectors [id] sync API", () => {
     expect(syncRes.status).toBe(404);
     const data = await syncRes.json();
     expect(data.error).toBe("Collection not found");
+  });
+
+  it("POST /api/rag/connectors/:id/sync returns 404 when document store not found", async () => {
+    const encRes = await encPost(
+      new Request("http://localhost/api/rag/encoding-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Enc noStore",
+          provider: "openai",
+          modelOrEndpoint: "text-embedding-3-small",
+          dimensions: 1536,
+        }),
+      })
+    );
+    const enc = await encRes.json();
+    const nonExistentStoreId = "00000000-0000-0000-0000-000000000002";
+    const collRes = await collPost(
+      new Request("http://localhost/api/rag/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Coll orphan store",
+          scope: "agent",
+          encodingConfigId: enc.id,
+          documentStoreId: nonExistentStoreId,
+        }),
+      })
+    );
+    const coll = await collRes.json();
+    const connRes = await listPost(
+      new Request("http://localhost/api/rag/connectors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "filesystem",
+          collectionId: coll.id,
+          config: { path: os.tmpdir() },
+        }),
+      })
+    );
+    expect(connRes.status).toBe(201);
+    const { id } = await connRes.json();
+    const syncRes = await POST(
+      new Request(`http://localhost/api/rag/connectors/${id}/sync`, { method: "POST" }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(syncRes.status).toBe(404);
+    const data = await syncRes.json();
+    expect(data.error).toBe("Document store not found");
   });
 
   it("POST /api/rag/connectors/:id/sync returns 400 for google_drive when serviceAccountKeyRef missing", async () => {
@@ -306,6 +499,218 @@ describe("RAG connectors [id] sync API", () => {
     expect(data.error).toContain("config.path");
   });
 
+  it("POST /api/rag/connectors/:id/sync returns 400 for filesystem when config.path is not absolute", async () => {
+    const encRes = await encPost(
+      new Request("http://localhost/api/rag/encoding-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Enc rel",
+          provider: "openai",
+          modelOrEndpoint: "text-embedding-3-small",
+          dimensions: 1536,
+        }),
+      })
+    );
+    const enc = await encRes.json();
+    const storeRes = await storePost(
+      new Request("http://localhost/api/rag/document-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Store rel",
+          type: "local",
+          bucket: "default",
+        }),
+      })
+    );
+    const store = await storeRes.json();
+    const collRes = await collPost(
+      new Request("http://localhost/api/rag/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Coll rel",
+          scope: "agent",
+          encodingConfigId: enc.id,
+          documentStoreId: store.id,
+        }),
+      })
+    );
+    const coll = await collRes.json();
+    const connRes = await listPost(
+      new Request("http://localhost/api/rag/connectors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "filesystem",
+          collectionId: coll.id,
+          config: { path: "relative/path" },
+        }),
+      })
+    );
+    expect(connRes.status).toBe(201);
+    const { id } = await connRes.json();
+    const syncRes = await POST(
+      new Request(`http://localhost/api/rag/connectors/${id}/sync`, { method: "POST" }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(syncRes.status).toBe(400);
+    const data = await syncRes.json();
+    expect(data.error).toContain("absolute");
+    const listRes = await listGet();
+    const list = await listRes.json();
+    const conn = list.find((c: { id: string }) => c.id === id);
+    expect(conn?.lastError).toBeDefined();
+    expect(conn?.lastError).toContain("absolute");
+  });
+
+  it("POST sync with ingestAfterSync false does not call ingestOneDocument", async () => {
+    vi.mocked(ingestOneDocument).mockClear();
+    const tmpDir = path.resolve(path.join(os.tmpdir(), `rag-sync-no-ingest-${Date.now()}`));
+    fs.mkdirSync(tmpDir, { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "x.txt"), "x");
+    try {
+      const encRes = await encPost(
+        new Request("http://localhost/api/rag/encoding-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "EncNoIngest",
+            provider: "openai",
+            modelOrEndpoint: "text-embedding-3-small",
+            dimensions: 1536,
+          }),
+        })
+      );
+      const enc = await encRes.json();
+      const storeRes = await storePost(
+        new Request("http://localhost/api/rag/document-store", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "StoreNoIngest",
+            type: "local",
+            bucket: "default",
+          }),
+        })
+      );
+      const store = await storeRes.json();
+      const collRes = await collPost(
+        new Request("http://localhost/api/rag/collections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "CollNoIngest",
+            scope: "agent",
+            encodingConfigId: enc.id,
+            documentStoreId: store.id,
+          }),
+        })
+      );
+      const coll = await collRes.json();
+      const connRes = await listPost(
+        new Request("http://localhost/api/rag/connectors", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "filesystem",
+            collectionId: coll.id,
+            config: { path: tmpDir, ingestAfterSync: false },
+          }),
+        })
+      );
+      expect(connRes.status).toBe(201);
+      const { id } = await connRes.json();
+      const syncRes = await POST(
+        new Request(`http://localhost/api/rag/connectors/${id}/sync`, { method: "POST" }),
+        { params: Promise.resolve({ id }) }
+      );
+      expect(syncRes.status).toBe(200);
+      expect(ingestOneDocument).not.toHaveBeenCalled();
+    } finally {
+      try {
+        fs.rmSync(tmpDir, { recursive: true });
+      } catch {
+        // ignore
+      }
+    }
+  });
+
+  it("POST sync with ingestAfterSync true invokes ingest for collection documents after success", async () => {
+    vi.mocked(ingestOneDocument).mockClear();
+    const tmpDir = path.resolve(path.join(os.tmpdir(), `rag-sync-ingest-${Date.now()}`));
+    fs.mkdirSync(tmpDir, { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "a.txt"), "a");
+    try {
+      const encRes = await encPost(
+        new Request("http://localhost/api/rag/encoding-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "EncIngest",
+            provider: "openai",
+            modelOrEndpoint: "text-embedding-3-small",
+            dimensions: 1536,
+          }),
+        })
+      );
+      const enc = await encRes.json();
+      const storeRes = await storePost(
+        new Request("http://localhost/api/rag/document-store", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "StoreIngest",
+            type: "local",
+            bucket: "default",
+          }),
+        })
+      );
+      const store = await storeRes.json();
+      const collRes = await collPost(
+        new Request("http://localhost/api/rag/collections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "CollIngest",
+            scope: "agent",
+            encodingConfigId: enc.id,
+            documentStoreId: store.id,
+          }),
+        })
+      );
+      const coll = await collRes.json();
+      const connRes = await listPost(
+        new Request("http://localhost/api/rag/connectors", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "filesystem",
+            collectionId: coll.id,
+            config: { path: tmpDir, ingestAfterSync: true },
+          }),
+        })
+      );
+      expect(connRes.status).toBe(201);
+      const { id } = await connRes.json();
+      const syncRes = await POST(
+        new Request(`http://localhost/api/rag/connectors/${id}/sync`, { method: "POST" }),
+        { params: Promise.resolve({ id }) }
+      );
+      expect(syncRes.status).toBe(200);
+      const data = await syncRes.json();
+      expect(data.synced).toBeGreaterThanOrEqual(1);
+      expect(ingestOneDocument).toHaveBeenCalled();
+    } finally {
+      try {
+        fs.rmSync(tmpDir, { recursive: true });
+      } catch {
+        // ignore
+      }
+    }
+  });
+
   it("POST /api/rag/connectors/:id/sync returns 200 for filesystem with valid path", async () => {
     const tmpDir = path.resolve(path.join(os.tmpdir(), `rag-sync-test-${Date.now()}`));
     fs.mkdirSync(tmpDir, { recursive: true });
@@ -372,6 +777,13 @@ describe("RAG connectors [id] sync API", () => {
       expect(data.ok).toBe(true);
       expect(data.synced).toBe(2);
       expect(data.total).toBe(2);
+      const listRes = await listGet();
+      expect(listRes.status).toBe(200);
+      const list = await listRes.json();
+      const connector = list.find((c: { id: string }) => c.id === id);
+      expect(connector).toBeDefined();
+      expect(connector.status).toBe("synced");
+      expect(connector.lastSyncAt).toBeDefined();
     } finally {
       try {
         fs.rmSync(tmpDir, { recursive: true });

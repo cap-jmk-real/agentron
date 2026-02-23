@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, afterAll, vi } from "vitest";
 import crypto from "node:crypto";
 import { deriveVaultKey } from "../../../app/api/_lib/vault";
 import {
@@ -10,6 +10,7 @@ import {
   deleteStoredCredential,
   clearAllStoredCredentials,
 } from "../../../app/api/_lib/credential-store";
+import { db } from "../../../app/api/_lib/db";
 
 describe("credential-store", () => {
   const salt = crypto.randomBytes(16).toString("base64url");
@@ -46,6 +47,11 @@ describe("credential-store", () => {
     await setStoredCredential("test_cred", "secret123", true, vaultKey);
     const value = await getStoredCredential("test_cred", vaultKey);
     expect(value).toBe("secret123");
+  });
+
+  it("setStoredCredential with whitespace-only key uses fallback key credential", async () => {
+    await setStoredCredential("   ", "secret", true, vaultKey);
+    expect(await getStoredCredential("credential", vaultKey)).toBe("secret");
   });
 
   it("setStoredCredential does nothing when save is false", async () => {
@@ -114,5 +120,43 @@ describe("credential-store", () => {
 
   it("clearAllStoredCredentials returns 0 when vaultKey is null", async () => {
     expect(await clearAllStoredCredentials(null)).toBe(0);
+  });
+
+  it("updateStoredCredential returns false when run result has no changes property", async () => {
+    vi.spyOn(db, "update").mockReturnValueOnce({
+      set: () => ({
+        where: () => ({ run: () => Promise.resolve({}) }),
+      }),
+    } as never);
+    try {
+      const ok = await updateStoredCredential("any_key", "value", vaultKey);
+      expect(ok).toBe(false);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("deleteStoredCredential returns false when run result has no changes property", async () => {
+    vi.spyOn(db, "delete").mockReturnValueOnce({
+      where: () => ({ run: () => Promise.resolve({}) }),
+    } as never);
+    try {
+      const ok = await deleteStoredCredential("any_key", vaultKey);
+      expect(ok).toBe(false);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("clearAllStoredCredentials returns 0 when run result has no changes property", async () => {
+    vi.spyOn(db, "delete").mockReturnValueOnce({
+      run: () => Promise.resolve({}),
+    } as never);
+    try {
+      const n = await clearAllStoredCredentials(vaultKey);
+      expect(n).toBe(0);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });

@@ -171,5 +171,41 @@ describe("vector-store-query", () => {
 
       if (orig !== undefined) process.env[ref] = orig;
     });
+
+    it("returns chunks when connectionStringRef is set and pg Client succeeds", async () => {
+      const ref = "PG_VEC_TEST_REF";
+      const orig = process.env[ref];
+      process.env[ref] = "postgres://localhost/test";
+
+      const mockQuery = vi.fn().mockResolvedValue({
+        rows: [
+          { text: "chunk a", score: 0.95 },
+          { text: "chunk b", score: 0.85 },
+        ],
+      });
+      vi.doMock("pg", () => ({
+        Client: class MockClient {
+          connect = vi.fn().mockResolvedValue(undefined);
+          query = mockQuery;
+          end = vi.fn().mockResolvedValue(undefined);
+        },
+      }));
+
+      const result = await queryPgvector("coll-1", [0.1, 0.2], 5, {
+        connectionStringRef: ref,
+        tableName: "custom_vectors",
+      });
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({ text: "chunk a", score: 0.95 });
+      expect(result[1]).toEqual({ text: "chunk b", score: 0.85 });
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining("custom_vectors"),
+        expect.any(Array)
+      );
+
+      if (orig !== undefined) process.env[ref] = orig;
+      else delete process.env[ref];
+    });
   });
 });

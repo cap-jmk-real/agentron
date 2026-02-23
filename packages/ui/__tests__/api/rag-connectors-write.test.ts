@@ -88,4 +88,34 @@ describe("connector-write", () => {
       }
     }
   });
+
+  it("updateConnectorItem returns error when item path is outside connector root", async () => {
+    const tmpDir = path.resolve(path.join(os.tmpdir(), `rag-write-update-outside-${Date.now()}`));
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const connectorId = crypto.randomUUID();
+    try {
+      await db
+        .insert(ragConnectors)
+        .values({
+          id: connectorId,
+          type: "filesystem",
+          collectionId: crypto.randomUUID(),
+          config: JSON.stringify({ path: tmpDir }),
+          status: "synced",
+          lastSyncAt: Date.now(),
+          createdAt: Date.now(),
+        })
+        .run();
+      const outsidePath = path.join(os.tmpdir(), "other", "file.txt");
+      const result = await updateConnectorItem(connectorId, outsidePath, "content");
+      expect(result).toEqual({ error: "Item path is outside connector root" });
+    } finally {
+      await db.delete(ragConnectors).where(eq(ragConnectors.id, connectorId)).run();
+      try {
+        fs.rmSync(tmpDir, { recursive: true });
+      } catch {
+        // ignore
+      }
+    }
+  });
 });

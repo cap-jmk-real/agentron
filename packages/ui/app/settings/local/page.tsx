@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 
 type OllamaModel = {
   name: string;
@@ -42,7 +43,7 @@ const GPU_MODES = [
   { id: "cpu", label: "CPU Only" },
 ];
 
-export default function LocalModelsPage() {
+export function LocalModelsContent() {
   const [ollamaStatus, setOllamaStatus] = useState<{ running: boolean; version?: string } | null>(
     null
   );
@@ -70,6 +71,10 @@ export default function LocalModelsPage() {
   const [installing, setInstalling] = useState(false);
   const [installLog, setInstallLog] = useState("");
   const [installDone, setInstallDone] = useState(false);
+
+  // Configure Ollama for containers (OLLAMA_HOST=0.0.0.0)
+  const [configuringContainers, setConfiguringContainers] = useState(false);
+  const [configureContainersMessage, setConfigureContainersMessage] = useState<string | null>(null);
 
   // HF search
   const [hfQuery, setHfQuery] = useState("");
@@ -375,6 +380,56 @@ export default function LocalModelsPage() {
           </div>
         )}
       </div>
+
+      {ollamaStatus?.running && (
+        <div className="card" style={{ padding: "0.85rem 1rem", marginBottom: "1rem" }}>
+          <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.5rem" }}>
+            If you use OpenClaw or run agents in containers, Ollama must listen on all interfaces so
+            containers can reach it. This sets OLLAMA_HOST=0.0.0.0 and restarts Ollama.
+          </p>
+          <button
+            type="button"
+            className="button button-ghost"
+            disabled={configuringContainers}
+            onClick={async () => {
+              setConfiguringContainers(true);
+              setConfigureContainersMessage(null);
+              try {
+                const res = await fetch("/api/ollama/configure-for-containers", {
+                  method: "POST",
+                });
+                const data = await res.json();
+                if (data.ok) {
+                  setConfigureContainersMessage(
+                    "Ollama restarted. It is now reachable from containers."
+                  );
+                  await refresh();
+                } else {
+                  setConfigureContainersMessage(data.error ?? "Failed");
+                }
+              } catch {
+                setConfigureContainersMessage("Request failed");
+              }
+              setConfiguringContainers(false);
+            }}
+          >
+            {configuringContainers ? "Configuring…" : "Make Ollama reachable from containers"}
+          </button>
+          {configureContainersMessage && (
+            <p
+              style={{
+                marginTop: "0.5rem",
+                fontSize: "0.8rem",
+                color: configureContainersMessage.startsWith("Ollama")
+                  ? "#16a34a"
+                  : "var(--text-muted)",
+              }}
+            >
+              {configureContainersMessage}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Installed models */}
       <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.5rem" }}>Installed Models</h2>
@@ -704,5 +759,16 @@ export default function LocalModelsPage() {
         </>
       )}
     </div>
+  );
+}
+
+/** Legacy route: redirect to LLM setup → Local models. */
+export default function LocalModelsPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/settings/llm/local");
+  }, [router]);
+  return (
+    <div style={{ padding: "2rem", color: "var(--text-muted)" }}>Redirecting to LLM setup…</div>
   );
 }

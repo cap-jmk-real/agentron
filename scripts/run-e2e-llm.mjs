@@ -13,6 +13,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
+const E2E_LLM_MODEL = process.env.E2E_LLM_MODEL ?? "qwen3:8b";
 const POLL_INTERVAL_MS = 1800;
 const POLL_TIMEOUT_MS = 30_000;
 
@@ -22,6 +23,20 @@ async function ollamaHealthy() {
       signal: AbortSignal.timeout(5000),
     });
     return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function hasModel(modelTag) {
+  try {
+    const res = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    const names = (data.models ?? []).map((m) => m.name ?? m.model ?? "").filter(Boolean);
+    return names.some((n) => n === modelTag || n.startsWith(modelTag + ":"));
   } catch {
     return false;
   }
@@ -64,6 +79,17 @@ async function ensureOllama() {
 }
 
 await ensureOllama();
+
+if (!(await hasModel(E2E_LLM_MODEL.split(":")[0] || E2E_LLM_MODEL))) {
+  console.log("[e2e] Pulling E2E model", E2E_LLM_MODEL, "...");
+  execSync(`ollama pull ${E2E_LLM_MODEL}`, {
+    stdio: "inherit",
+    cwd: root,
+    env: process.env,
+  });
+} else {
+  console.log("[e2e] Model", E2E_LLM_MODEL, "already present.");
+}
 
 execSync("npm run test:e2e-llm --workspace packages/ui", {
   stdio: "inherit",

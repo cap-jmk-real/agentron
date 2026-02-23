@@ -43,7 +43,7 @@ describe("options from ask_user only (LLM-formatted, no regex parsing)", () => {
       expect(opts).toEqual([]);
     });
 
-    it("returns empty when only format_response is present", () => {
+    it("returns empty when only format_response is present without options", () => {
       const toolResults = [
         {
           name: "format_response",
@@ -53,6 +53,60 @@ describe("options from ask_user only (LLM-formatted, no regex parsing)", () => {
       ];
       const opts = getSuggestedOptionsFromToolResults(toolResults, "Choose: a) Run b) Edit");
       expect(opts).toEqual([]);
+    });
+
+    it("returns options from format_response when it has options", () => {
+      const toolResults = [
+        {
+          name: "format_response",
+          args: {},
+          result: {
+            formatted: true,
+            summary: "Done.",
+            needsInput: true,
+            options: ["Fix workflow and run now", "Modify agent before running", "Not now"],
+          },
+        },
+      ];
+      const opts = getSuggestedOptionsFromToolResults(toolResults, "");
+      expect(opts.map((o) => o.label)).toEqual([
+        "Fix workflow and run now",
+        "Modify agent before running",
+        "Not now",
+      ]);
+    });
+
+    it("when both ask_user and format_response have options, returns last (format_response) options", () => {
+      const toolResults = [
+        {
+          name: "ask_user",
+          args: {},
+          result: {
+            question: "Create workflow and run?",
+            options: [
+              "Yes — create the workflow and run it now",
+              "Yes — create but do not run",
+              "No",
+            ],
+          },
+        },
+        {
+          name: "format_response",
+          args: {},
+          result: {
+            formatted: true,
+            summary: "Run completed but agent asked for URL.",
+            needsInput: true,
+            options: ["Fix workflow and run now", "Modify agent before running", "Not now"],
+          },
+        },
+      ];
+      const opts = getSuggestedOptionsFromToolResults(toolResults, "");
+      expect(opts.map((o) => o.label)).toEqual([
+        "Fix workflow and run now",
+        "Modify agent before running",
+        "Not now",
+      ]);
     });
 
     it("returns empty for undefined or non-array toolResults", () => {
@@ -107,6 +161,21 @@ describe("options from ask_user only (LLM-formatted, no regex parsing)", () => {
         traceSteps: [{ phase: "llm_response", specialistId: "knowledge" }],
       };
       expect(getLoadingStatus(msg)).toBe("Response received (Knowledge)");
+    });
+
+    it("displays raw specialistId when not in SPECIALIST_DISPLAY_NAMES (e.g. workflow)", () => {
+      const msg = {
+        traceSteps: [{ phase: "heap_tool", specialistId: "workflow", toolName: "create_workflow" }],
+      };
+      expect(getLoadingStatus(msg)).toContain("workflow");
+      expect(getLoadingStatus(msg)).toContain("create_workflow");
+    });
+
+    it("displays Specialist Knowledge… for heap_specialist phase with knowledge", () => {
+      const msg = {
+        traceSteps: [{ phase: "heap_specialist", specialistId: "knowledge" }],
+      };
+      expect(getLoadingStatus(msg)).toBe("Specialist Knowledge…");
     });
   });
 });

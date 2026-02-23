@@ -176,7 +176,8 @@ function buildDefaultRegistry(): SpecialistRegistry {
   const specs: LogicalSpecialistSpec[] = [
     {
       id: "general",
-      description: "Conversation, ask user, format response, remember, list agents/tools",
+      description:
+        "Conversation, answer general/definitional questions (answer_question, explain_software, web_search), ask user, format response, remember, list agents/tools",
       toolNames: [
         "ask_user",
         "format_response",
@@ -185,12 +186,16 @@ function buildDefaultRegistry(): SpecialistRegistry {
         "list_tools",
         "get_agent",
         "list_workflows",
+        "answer_question",
+        "explain_software",
+        "web_search",
       ],
     },
     {
       id: "workflow",
       description:
         "Workflows: list, get, create, update, execute, get run, cancel, respond, list versions, rollback; ask_user when asking which workflow to run/update; format_response when presenting next-step options so the user gets clickable choices.",
+      partIds: ["workflow_design", "workflow_run"],
       toolNames: [
         "list_workflows",
         "get_workflow",
@@ -557,7 +562,7 @@ export function getChildSpecialistIds(id: string, registry: SpecialistRegistry):
 /**
  * Effective tool names for a specialist. For a leaf (has toolNames), returns that list.
  * For a delegator (has delegateTargets, empty toolNames), returns the union of tools from all delegate leaves.
- * Use this when running a specialist so delegators (e.g. workflow with workflow__part1, workflow__part2) allow all tools from their parts.
+ * Use this when running a specialist so delegators (e.g. workflow with workflow_design, workflow_run) allow all tools from their parts.
  */
 export function getToolsForSpecialist(
   registry: SpecialistRegistry,

@@ -12,7 +12,7 @@
   "specialists": [
     {
       "id": "general",
-      "description": "Conversation, ask user, format response, remember, list agents/tools",
+      "description": "Conversation, answer general/definitional questions (answer_question, explain_software, web_search), ask user, format response, remember, list agents/tools",
       "toolNames": [
         "ask_user",
         "format_response",
@@ -20,26 +20,23 @@
         "list_agents",
         "list_tools",
         "get_agent",
-        "list_workflows"
+        "list_workflows",
+        "answer_question",
+        "explain_software",
+        "web_search"
       ]
     },
     {
       "id": "workflow",
       "description": "Workflows: list, get, create, update, execute, get run, cancel, respond, list versions, rollback; ask_user when asking which workflow to run/update; format_response when presenting next-step options so the user gets clickable choices.",
       "toolNames": [],
-      "delegateTargets": [
-        "workflow__part1",
-        "workflow__part2"
-      ]
+      "delegateTargets": ["workflow_design", "workflow_run"]
     },
     {
       "id": "agent",
       "description": "Agents: list, create, get, update, delete, versions, rollback, list tools, LLM providers; and OpenClaw instance (send commands, history, abort) when an agent runs or steers OpenClaw.",
       "toolNames": [],
-      "delegateTargets": [
-        "agent_lifecycle",
-        "agent_openclaw"
-      ],
+      "delegateTargets": ["agent_lifecycle", "agent_openclaw"],
       "optionGroups": {
         "agent_lifecycle": {
           "label": "Agent CRUD, versions, rollback, LLM providers",
@@ -58,11 +55,7 @@
         },
         "openclaw": {
           "label": "OpenClaw instance (send, history, abort)",
-          "toolIds": [
-            "send_to_openclaw",
-            "openclaw_history",
-            "openclaw_abort"
-          ]
+          "toolIds": ["send_to_openclaw", "openclaw_history", "openclaw_abort"]
         }
       }
     },
@@ -130,10 +123,7 @@
       "optionGroups": {
         "observe": {
           "label": "Observe run and feedback",
-          "toolIds": [
-            "get_run_for_improvement",
-            "get_feedback_for_scope"
-          ]
+          "toolIds": ["get_run_for_improvement", "get_feedback_for_scope"]
         },
         "act_prompt": {
           "label": "Adjust prompts (update_agent, apply_agent_prompt_improvement)",
@@ -176,15 +166,12 @@
         },
         "evaluate": {
           "label": "Re-run or ask user (Done/Retry)",
-          "toolIds": [
-            "execute_workflow",
-            "ask_user"
-          ]
+          "toolIds": ["execute_workflow", "ask_user"]
         }
       }
     },
     {
-      "id": "workflow__part1",
+      "id": "workflow_design",
       "description": "Workflows: list, get, create, update, execute, get run, cancel, respond, list versions, rollback; ask_user when asking which workflow to run/update; format_response when presenting next-step options so the user gets clickable choices. (part 1)",
       "toolNames": [
         "list_workflows",
@@ -200,13 +187,9 @@
       ]
     },
     {
-      "id": "workflow__part2",
+      "id": "workflow_run",
       "description": "Workflows: list, get, create, update, execute, get run, cancel, respond, list versions, rollback; ask_user when asking which workflow to run/update; format_response when presenting next-step options so the user gets clickable choices. (part 2)",
-      "toolNames": [
-        "respond_to_run",
-        "ask_user",
-        "format_response"
-      ]
+      "toolNames": ["respond_to_run", "ask_user", "format_response"]
     },
     {
       "id": "improve_agents_workflows__part1",
@@ -259,10 +242,7 @@
     {
       "id": "improve_agents_workflows__part4",
       "description": "Improve workflow agents and workflows (studio DB). Use when user wants to improve from a run/feedback, fix a failed run, or design self-learning. Observe (get_run_for_improvement, get_feedback_for_scope), then act (update_agent, update_workflow, training pipeline). Does not create agents or workflows; only updates existing ones. (part 4)",
-      "toolNames": [
-        "update_tool",
-        "ask_user"
-      ]
+      "toolNames": ["update_tool", "ask_user"]
     },
     {
       "id": "agent_lifecycle",
@@ -283,11 +263,7 @@
     {
       "id": "agent_openclaw",
       "description": "Agents: list, create, get, update, delete, versions, rollback, list tools, LLM providers; and OpenClaw instance (send commands, history, abort) when an agent runs or steers OpenClaw. (part 2)",
-      "toolNames": [
-        "send_to_openclaw",
-        "openclaw_history",
-        "openclaw_abort"
-      ]
+      "toolNames": ["send_to_openclaw", "openclaw_history", "openclaw_abort"]
     },
     {
       "id": "planner",

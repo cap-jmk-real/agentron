@@ -66,4 +66,17 @@ describe("github-reported-runs", () => {
     fs.writeFileSync(getStorePath(), "{}", "utf-8");
     expect(wasRunAlreadyReported("run-1")).toBe(false);
   });
+
+  it("markRunAsReported creates parent dir when it does not exist", () => {
+    const dir = path.dirname(getStorePath());
+    const mkdirSpy = vi.spyOn(fs, "mkdirSync").mockImplementation(() => undefined);
+    const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => p !== dir);
+    try {
+      markRunAsReported("run-dir-test");
+      expect(mkdirSpy).toHaveBeenCalledWith(dir, { recursive: true });
+    } finally {
+      mkdirSpy.mockRestore();
+      existsSpy.mockRestore();
+    }
+  });
 });

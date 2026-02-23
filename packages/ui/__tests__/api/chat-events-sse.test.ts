@@ -3,6 +3,7 @@ import { GET, POST as chatPost } from "../../app/api/chat/route";
 import { GET as getChatEvents } from "../../app/api/chat/events/route";
 import { POST as convPost } from "../../app/api/chat/conversations/route";
 import { db, llmConfigs, toLlmConfigRow } from "../../app/api/_lib/db";
+import { setPendingJob } from "../../app/api/_lib/chat-event-channel";
 import { eq } from "drizzle-orm";
 
 const FIXTURE_LLM_ID = "fixture-llm-abort-test";
@@ -189,4 +190,43 @@ describe("Chat events SSE", () => {
     );
     expect(hasNewAssistant).toBe(true);
   }, 12_000);
+
+  it("GET /api/chat/events receives error terminal event when pending job rejects", async () => {
+    const turnId = "test-fail-" + Date.now();
+    setPendingJob(turnId, () => Promise.reject(new Error("Simulated turn failure")));
+
+    const res = await getChatEvents(
+      new Request(`http://localhost/api/chat/events?turnId=${encodeURIComponent(turnId)}`)
+    );
+    expect(res.ok).toBe(true);
+    expect(res.body).toBeDefined();
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    const reader = res.body!.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (value) buffer += decoder.decode(value);
+      if (done) break;
+    }
+    reader.releaseLock();
+
+    const events: { type?: string; error?: string }[] = [];
+    for (const chunk of buffer.split("\n\n").filter((s) => s.trim())) {
+      const m = chunk.match(/^data:\s*(.+)$/m);
+      if (m) {
+        try {
+          events.push(JSON.parse(m[1].trim()));
+        } catch {
+          //
+        }
+      }
+    }
+
+    const terminal = events.find((e) => e?.type === "done" || e?.type === "error");
+    expect(terminal, "Stream must end with a terminal event (done or error)").toBeDefined();
+    expect(terminal!.type).toBe("error");
+    expect(terminal!.error).toBe("Turn failed");
+    expect(events.some((e) => e?.type === "done")).toBe(false);
+  });
 });

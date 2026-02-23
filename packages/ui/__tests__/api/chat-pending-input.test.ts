@@ -173,6 +173,71 @@ describe("Chat pending-input API", () => {
     }
   });
 
+  it("GET /api/chat/pending-input excludes conversation when format_response has formatted true but needsInput empty", async () => {
+    const convId = "pending-format-no-needs-" + Date.now();
+    const msgId = "msg-format-no-needs-" + Date.now();
+    const now = Date.now();
+    await db
+      .insert(conversations)
+      .values({ id: convId, title: "Format No Input", createdAt: now })
+      .run();
+    await db
+      .insert(chatMessages)
+      .values({
+        id: msgId,
+        conversationId: convId,
+        role: "assistant",
+        content: "",
+        toolCalls: JSON.stringify([
+          { name: "format_response", result: { formatted: true, needsInput: "" } },
+        ]),
+        createdAt: now,
+      })
+      .run();
+    try {
+      const res = await GET();
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      const found = data.conversations.find(
+        (c: { conversationId: string }) => c.conversationId === convId
+      );
+      expect(found).toBeUndefined();
+    } finally {
+      await db.delete(chatMessages).where(eq(chatMessages.id, msgId)).run();
+      await db.delete(conversations).where(eq(conversations.id, convId)).run();
+    }
+  });
+
+  it("GET /api/chat/pending-input excludes conversation when assistant has only non-waiting tool (e.g. list_workflows)", async () => {
+    const convId = "pending-list-wf-" + Date.now();
+    const msgId = "msg-list-wf-" + Date.now();
+    const now = Date.now();
+    await db.insert(conversations).values({ id: convId, title: "List Only", createdAt: now }).run();
+    await db
+      .insert(chatMessages)
+      .values({
+        id: msgId,
+        conversationId: convId,
+        role: "assistant",
+        content: "",
+        toolCalls: JSON.stringify([{ name: "list_workflows", result: [] }]),
+        createdAt: now,
+      })
+      .run();
+    try {
+      const res = await GET();
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      const found = data.conversations.find(
+        (c: { conversationId: string }) => c.conversationId === convId
+      );
+      expect(found).toBeUndefined();
+    } finally {
+      await db.delete(chatMessages).where(eq(chatMessages.id, msgId)).run();
+      await db.delete(conversations).where(eq(conversations.id, convId)).run();
+    }
+  });
+
   it("GET /api/chat/pending-input excludes conversation when format_response has formatted false", async () => {
     const convId = "pending-format-false-" + Date.now();
     const msgId = "msg-format-false-" + Date.now();
@@ -235,6 +300,139 @@ describe("Chat pending-input API", () => {
       );
       expect(found).toBeDefined();
       expect(found.title).toBeNull();
+    } finally {
+      await db.delete(chatMessages).where(eq(chatMessages.id, msgId)).run();
+      await db.delete(conversations).where(eq(conversations.id, convId)).run();
+    }
+  });
+
+  it("GET /api/chat/pending-input excludes when ask_user has result null or non-object", async () => {
+    const convId = "pending-ask-no-result-" + Date.now();
+    const msgId = "msg-ask-no-result-" + Date.now();
+    const now = Date.now();
+    await db.insert(conversations).values({ id: convId, title: "No Result", createdAt: now }).run();
+    await db
+      .insert(chatMessages)
+      .values({
+        id: msgId,
+        conversationId: convId,
+        role: "assistant",
+        content: "",
+        toolCalls: JSON.stringify([{ name: "ask_user", result: null }]),
+        createdAt: now,
+      })
+      .run();
+    try {
+      const res = await GET();
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      const found = data.conversations.find(
+        (c: { conversationId: string }) => c.conversationId === convId
+      );
+      expect(found).toBeUndefined();
+    } finally {
+      await db.delete(chatMessages).where(eq(chatMessages.id, msgId)).run();
+      await db.delete(conversations).where(eq(conversations.id, convId)).run();
+    }
+  });
+
+  it("GET /api/chat/pending-input excludes when format_response has result non-object", async () => {
+    const convId = "pending-format-no-obj-" + Date.now();
+    const msgId = "msg-format-no-obj-" + Date.now();
+    const now = Date.now();
+    await db
+      .insert(conversations)
+      .values({ id: convId, title: "Format no obj", createdAt: now })
+      .run();
+    await db
+      .insert(chatMessages)
+      .values({
+        id: msgId,
+        conversationId: convId,
+        role: "assistant",
+        content: "",
+        toolCalls: JSON.stringify([{ name: "format_response", result: "string" }]),
+        createdAt: now,
+      })
+      .run();
+    try {
+      const res = await GET();
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      const found = data.conversations.find(
+        (c: { conversationId: string }) => c.conversationId === convId
+      );
+      expect(found).toBeUndefined();
+    } finally {
+      await db.delete(chatMessages).where(eq(chatMessages.id, msgId)).run();
+      await db.delete(conversations).where(eq(conversations.id, convId)).run();
+    }
+  });
+
+  it("GET /api/chat/pending-input excludes when format_response formatted true but needsInput empty", async () => {
+    const convId = "pending-format-empty-need-" + Date.now();
+    const msgId = "msg-format-empty-" + Date.now();
+    const now = Date.now();
+    await db
+      .insert(conversations)
+      .values({ id: convId, title: "Format empty need", createdAt: now })
+      .run();
+    await db
+      .insert(chatMessages)
+      .values({
+        id: msgId,
+        conversationId: convId,
+        role: "assistant",
+        content: "",
+        toolCalls: JSON.stringify([
+          { name: "format_response", result: { formatted: true, needsInput: "" } },
+        ]),
+        createdAt: now,
+      })
+      .run();
+    try {
+      const res = await GET();
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      const found = data.conversations.find(
+        (c: { conversationId: string }) => c.conversationId === convId
+      );
+      expect(found).toBeUndefined();
+    } finally {
+      await db.delete(chatMessages).where(eq(chatMessages.id, msgId)).run();
+      await db.delete(conversations).where(eq(conversations.id, convId)).run();
+    }
+  });
+
+  it("GET /api/chat/pending-input excludes when ask_user has result object but no waitingForUser and empty options", async () => {
+    const convId = "pending-ask-no-wait-" + Date.now();
+    const msgId = "msg-ask-no-wait-" + Date.now();
+    const now = Date.now();
+    await db
+      .insert(conversations)
+      .values({ id: convId, title: "Ask no wait", createdAt: now })
+      .run();
+    await db
+      .insert(chatMessages)
+      .values({
+        id: msgId,
+        conversationId: convId,
+        role: "assistant",
+        content: "",
+        toolCalls: JSON.stringify([
+          { name: "ask_user", result: { waitingForUser: false, options: [] } },
+        ]),
+        createdAt: now,
+      })
+      .run();
+    try {
+      const res = await GET();
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      const found = data.conversations.find(
+        (c: { conversationId: string }) => c.conversationId === convId
+      );
+      expect(found).toBeUndefined();
     } finally {
       await db.delete(chatMessages).where(eq(chatMessages.id, msgId)).run();
       await db.delete(conversations).where(eq(conversations.id, convId)).run();

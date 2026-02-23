@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { extractText } from "../../../app/api/_lib/rag-extract";
+
+vi.mock("pdf-parse", () => ({ default: vi.fn() }));
 
 describe("rag-extract", () => {
   describe("extractText", () => {
@@ -34,10 +36,29 @@ describe("rag-extract", () => {
     });
 
     it("for application/pdf falls back to utf-8 when pdf-parse fails or not installed", async () => {
+      const pdfParse = await import("pdf-parse");
+      vi.mocked(pdfParse.default).mockRejectedValueOnce(new Error("parse error"));
       const buf = Buffer.from("not a real pdf", "utf-8");
       const text = await extractText(buf, "application/pdf");
-      expect(typeof text).toBe("string");
-      expect(text.length).toBeGreaterThanOrEqual(0);
+      expect(text).toBe("not a real pdf");
+    });
+
+    it("for application/pdf returns empty string when pdf-parse returns non-string text", async () => {
+      const pdfParse = await import("pdf-parse");
+      vi.mocked(pdfParse.default).mockResolvedValueOnce({ text: 123 } as unknown as {
+        text: string;
+      });
+      const buf = Buffer.from("%PDF-1.4 minimal", "utf-8");
+      const text = await extractText(buf, "application/pdf");
+      expect(text).toBe("");
+    });
+
+    it("for application/pdf returns trimmed text when pdf-parse returns text", async () => {
+      const pdfParse = await import("pdf-parse");
+      vi.mocked(pdfParse.default).mockResolvedValueOnce({ text: "  PDF content here  " });
+      const buf = Buffer.from("%PDF-1.4", "utf-8");
+      const text = await extractText(buf, "application/pdf");
+      expect(text).toBe("PDF content here");
     });
 
     it("treats empty mimeType as unknown and returns utf-8", async () => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Plus, Trash2, Pencil } from "lucide-react";
 import ConfirmModal from "../../components/confirm-modal";
 
@@ -22,7 +23,7 @@ const EMBEDDING_TYPES = [
   { id: "custom_http", label: "Custom HTTP" },
 ] as const;
 
-export default function EmbeddingSettingsPage() {
+export function EmbeddingContent() {
   const [providers, setProviders] = useState<EmbeddingProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -324,5 +325,16 @@ export default function EmbeddingSettingsPage() {
         />
       )}
     </div>
+  );
+}
+
+/** Legacy route: redirect to LLM setup → Embedding. */
+export default function EmbeddingSettingsPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/settings/llm/embedding");
+  }, [router]);
+  return (
+    <div style={{ padding: "2rem", color: "var(--text-muted)" }}>Redirecting to LLM setup…</div>
   );
 }

@@ -1,0 +1,10 @@
+---
+description: Prefer checking the repo or official docs instead of assuming; avoid guesswork for APIs and schemas
+alwaysApply: true
+---
+
+# Check repo and docs; avoid assuming
+
+- **When integrating with external APIs, protocols, or schemas:** Prefer checking this repo (types, existing usage, docs under `docs/`) or the upstream/official documentation over guessing. Use the codebase search and the official docs (or upstream repo) to confirm request/response shapes, required fields, and error semantics.
+- **When a test or integration fails due to format/schema:** Inspect the actual payload or logs (e2e container logs, handler responses, API responses) and align with the documented contract. Do not add speculative fallbacks or relax tests without confirming the correct behavior from repo or docs.
+- **External dependencies (e.g. OpenClaw, Ollama):** Refer to their official docs or source (e.g. `docs.openclaw.ai`, GitHub repo schema) when implementing or debugging integration code. Document the source (e.g. "per OpenClaw gateway protocol" or "per docs.openclaw.ai/concepts/session-tool") in comments where the contract is non-obvious.

@@ -211,6 +211,26 @@ describe("Workflows API", () => {
     expect(data.targetType).toBe("workflow");
   });
 
+  it("POST /api/workflows/:id/execute uses default maxSelfFixRetries when body parse throws in try block", async () => {
+    if (!createdId) return;
+    const bodyThatThrowsOnRead = Object.defineProperty({}, "maxSelfFixRetries", {
+      get() {
+        throw new Error("read error");
+      },
+      enumerable: true,
+    });
+    const req = {
+      json: () => Promise.resolve(bodyThatThrowsOnRead),
+      url: "http://localhost/api/workflows/x/execute",
+      method: "POST",
+      headers: new Headers(),
+    } as unknown as Request;
+    const res = await executePost(req, { params: Promise.resolve({ id: createdId }) });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBeDefined();
+  });
+
   it("POST /api/workflows/:id/execute uses default maxSelfFixRetries when body has non-number", async () => {
     if (!createdId) return;
     const res = await executePost(
@@ -381,7 +401,7 @@ describe("Workflows API", () => {
           from: () => ({
             where: () => Promise.resolve([{ output: '{"question":"existing"}' }]),
           }),
-        }) as ReturnType<typeof db.select>
+        }) as unknown as ReturnType<typeof db.select>
     );
     const res = await executePost(
       new Request("http://localhost/api/workflows/x/execute", { method: "POST" }),
@@ -407,7 +427,7 @@ describe("Workflows API", () => {
           from: () => ({
             where: () => Promise.resolve([{ output: { question: "from-object", step: 1 } }]),
           }),
-        }) as ReturnType<typeof db.select>
+        }) as unknown as ReturnType<typeof db.select>
     );
     const res = await executePost(
       new Request("http://localhost/api/workflows/x/execute", { method: "POST" }),

@@ -13,7 +13,7 @@ import { GET as agentRequestGet } from "../../app/api/runs/[id]/agent-request/ro
 import { GET as pendingHelpGet } from "../../app/api/runs/pending-help/route";
 import { POST as convPost } from "../../app/api/chat/conversations/route";
 import { eq } from "drizzle-orm";
-import { db, executions, workflows, toExecutionRow } from "../../app/api/_lib/db";
+import { db, executions, workflows, runLogs, toExecutionRow } from "../../app/api/_lib/db";
 import { setExecutionRunState } from "../../app/api/_lib/execution-events";
 import * as notificationsStore from "../../app/api/_lib/notifications-store";
 import * as runFailureSideEffects from "../../app/api/_lib/run-failure-side-effects";
@@ -135,6 +135,31 @@ describe("Runs API", () => {
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
     expect(data.length).toBeLessThanOrEqual(1);
+  });
+
+  it("GET /api/runs/:id returns logs array when run has log entries", async () => {
+    await db
+      .insert(runLogs)
+      .values({
+        id: crypto.randomUUID(),
+        executionId: runId,
+        level: "info",
+        message: "test log message",
+        payload: null,
+        createdAt: Date.now(),
+      })
+      .run();
+    const res = await runGet(new Request("http://localhost/api/runs/x"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data.logs)).toBe(true);
+    expect(data.logs.length).toBeGreaterThanOrEqual(1);
+    const log = data.logs.find((l: { message: string }) => l.message === "test log message");
+    expect(log).toBeDefined();
+    expect(log.level).toBe("info");
+    expect(log.payload).toBeNull();
   });
 
   it("GET /api/runs with targetType=other skips workflow and agent name lookups", async () => {
@@ -354,6 +379,72 @@ describe("Runs API", () => {
     expect(run).toBeDefined();
     expect(run.targetType).toBe("agent");
     expect(run.targetName).toBeUndefined();
+  });
+
+  it("GET /api/runs uses empty string for targetName when workflow or agent name is null (defensive ??)", async () => {
+    const wfRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Null Name Workflow",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    const wf = await wfRes.json();
+    const wfRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: wfRunId,
+          targetType: "workflow",
+          targetId: wf.id,
+          status: "completed",
+        })
+      )
+      .run();
+    const listRes = await runsGet(new Request("http://localhost/api/runs?limit=5"));
+    const list = await listRes.json();
+    const agentRun = list.find((r: { targetType: string }) => r.targetType === "agent");
+    const agentId = agentRun?.targetId ?? "";
+    let selectCallCount = 0;
+    const origSelect = db.select.bind(db);
+    vi.spyOn(db, "select").mockImplementation(((...args: unknown[]) => {
+      selectCallCount++;
+      if (selectCallCount === 1) return origSelect(...(args as Parameters<typeof db.select>));
+      if (selectCallCount === 2)
+        return {
+          from: () => ({
+            where: () => Promise.resolve([{ id: wf.id, name: null }]),
+          }),
+        } as unknown as ReturnType<typeof db.select>;
+      return {
+        from: () => ({
+          where: () => Promise.resolve([{ id: agentId, name: null }]),
+        }),
+      } as unknown as ReturnType<typeof db.select>;
+    }) as typeof db.select);
+    try {
+      const res = await runsGet(new Request("http://localhost/api/runs?limit=10"));
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      const wfRun = data.find((r: { id: string }) => r.id === wfRunId);
+      if (wfRun) {
+        expect(wfRun.targetName).toBe("");
+      }
+      const agRun = data.find(
+        (r: { targetType: string; targetId: string }) => r.targetId === agentId
+      );
+      if (agRun) {
+        expect(agRun.targetName).toBe("");
+      }
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it("GET /api/runs/:id returns run with targetName for workflow run", async () => {
@@ -1235,6 +1326,29 @@ describe("Runs API", () => {
     expect(req.question).toBe("Needs your input");
   });
 
+  it("GET /api/runs/pending-help uses targetId as targetName when targetType is not workflow or agent", async () => {
+    const otherRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: otherRunId,
+          targetType: "other",
+          targetId: "custom-target-id",
+          status: "waiting_for_user",
+          conversationId: null,
+        })
+      )
+      .run();
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === otherRunId);
+    expect(req).toBeDefined();
+    expect(req.targetName).toBe("custom-target-id");
+    expect(req.targetType).toBe("other");
+  });
+
   it("GET /api/runs/:id/agent-request returns empty when output JSON parse fails", async () => {
     await db
       .update(executions)
@@ -1269,6 +1383,43 @@ describe("Runs API", () => {
     const data = await res.json();
     expect(data.question).toBeUndefined();
     expect(data.options).toEqual([]);
+  });
+
+  it("GET /api/runs/:id/agent-request uses output when DB returns output as object", async () => {
+    let selectCallCount = 0;
+    const spy = vi.spyOn(db, "select").mockImplementation(((...args: unknown[]) => {
+      selectCallCount++;
+      if (selectCallCount === 1) {
+        return {
+          from: () => ({
+            where: () => ({
+              limit: () =>
+                Promise.resolve([
+                  {
+                    status: "waiting_for_user",
+                    output: { question: "From object", options: ["A", "B"] },
+                  },
+                ]),
+            }),
+          }),
+        } as unknown as ReturnType<typeof db.select>;
+      }
+      return {
+        from: () => ({ where: () => ({ limit: () => Promise.resolve([]) }) }),
+      } as unknown as ReturnType<typeof db.select>;
+    }) as typeof db.select);
+    try {
+      const res = await agentRequestGet(
+        new Request("http://localhost/api/runs/mock-id/agent-request"),
+        { params: Promise.resolve({ id: "mock-id" }) }
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.question).toBe("From object");
+      expect(data.options).toEqual(["A", "B"]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("GET /api/runs/:id/agent-request uses out.options when inner has no suggestions or options", async () => {

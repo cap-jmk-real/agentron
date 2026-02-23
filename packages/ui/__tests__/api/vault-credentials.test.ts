@@ -223,9 +223,105 @@ describe("Vault credentials API", () => {
     expect(data.error).toMatch(/JSON|multipart|entries/);
   });
 
+  it("POST /api/vault/credentials/import returns 400 when Content-Type header is missing", async () => {
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: "",
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toMatch(/JSON|multipart|entries/);
+  });
+
   it("POST /api/vault/credentials/import returns 400 when multipart form has no file", async () => {
     const form = new FormData();
     form.append("other", "not-a-file");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toMatch(/file|csv/);
+  });
+
+  it("POST /api/vault/credentials/import accepts form field csv (alternative to file)", async () => {
+    const csv = "key,value\nfrom-csv-field,secret123";
+    const form = new FormData();
+    form.append("csv", new Blob([csv], { type: "text/csv" }), "data.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import parses CSV with label header (isHeader branch)", async () => {
+    const csv = "label,value\nmylabel,myval";
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "import.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import parses CSV with service,password header", async () => {
+    const csv = "service,password\nsvc1,pass1";
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "import.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import parses CSV with username header", async () => {
+    const csv = "username,value\nuser1,val1";
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "import.csv");
+    const res = await importPost(
+      new Request("http://localhost/api/vault/credentials/import", {
+        method: "POST",
+        headers: { Cookie: cookieHeader },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+    expect(data.total).toBe(1);
+  });
+
+  it("POST /api/vault/credentials/import returns 400 when form field file is not a File", async () => {
+    const form = new FormData();
+    form.append("file", "string-not-a-file");
     const res = await importPost(
       new Request("http://localhost/api/vault/credentials/import", {
         method: "POST",

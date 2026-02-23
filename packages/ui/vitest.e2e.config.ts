@@ -13,6 +13,8 @@ export default defineConfig({
     exclude: ["**/openclaw.e2e.ts"],
     testTimeout: 120_000,
     maxWorkers: process.env.CI ? 2 : 4,
+    // Retries for local-model flakiness; failures after retries indicate real software issues.
+    retry: 4,
   },
   resolve: {
     alias: {

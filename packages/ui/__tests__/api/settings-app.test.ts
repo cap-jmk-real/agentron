@@ -522,6 +522,27 @@ describe("Settings app API", () => {
     }
   });
 
+  it("PATCH /api/settings/app returns 500 when updateAppSettings throws Error", async () => {
+    const mod = await import("../../app/api/_lib/app-settings");
+    const spy = vi.spyOn(mod, "updateAppSettings").mockImplementationOnce(() => {
+      throw new Error("write failed");
+    });
+    try {
+      const res = await PATCH(
+        new Request("http://localhost/api/settings/app", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ maxFileUploadBytes: 5 * 1024 * 1024 }),
+        })
+      );
+      expect(res.status).toBe(500);
+      const data = await res.json();
+      expect(data.error).toBe("write failed");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("PATCH /api/settings/app returns 500 with generic message when thrown value is not Error", async () => {
     const mod = await import("../../app/api/_lib/app-settings");
     const spy = vi.spyOn(mod, "updateAppSettings").mockImplementationOnce(() => {

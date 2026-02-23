@@ -18,6 +18,27 @@ describe("Import API", () => {
     expect(data.error).toBeDefined();
   });
 
+  it("POST /api/import with options.skipExisting true and empty arrays returns ok", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tools: [],
+          agents: [],
+          workflows: [],
+          options: { skipExisting: true },
+        }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.counts.tools.created).toBe(0);
+    expect(data.counts.agents.created).toBe(0);
+    expect(data.counts.workflows.created).toBe(0);
+  });
+
   it("POST /api/import with empty body returns ok and zero counts", async () => {
     const res = await POST(
       new Request("http://localhost/api/import", {
@@ -390,6 +411,36 @@ describe("Import API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.counts.workflows.created).toBe(1);
+  });
+
+  it("POST /api/import normalizes workflow with non-array nodes or edges to empty arrays", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workflows: [
+            {
+              id: "imported-wf-no-nodes-edges",
+              name: "WF with null nodes/edges",
+              nodes: null,
+              edges: null,
+            },
+          ],
+        }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.counts.workflows.created).toBe(1);
+    const listRes = await workflowsGet();
+    const list = await listRes.json();
+    const w = list.find((x: { id: string }) => x.id === "imported-wf-no-nodes-edges");
+    expect(w).toBeDefined();
+    expect(Array.isArray(w?.nodes)).toBe(true);
+    expect(w?.nodes).toEqual([]);
+    expect(Array.isArray(w?.edges)).toBe(true);
+    expect(w?.edges).toEqual([]);
   });
 
   it("POST /api/import normalizes non-array capabilities and scopes to empty array", async () => {

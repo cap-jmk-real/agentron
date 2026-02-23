@@ -38,6 +38,38 @@ describe("Functions API", () => {
     expect(String(data.toolId).startsWith("fn-")).toBe(true);
   });
 
+  it("POST /api/functions uses defaults for language, description, source", async () => {
+    const res = await listPost(
+      new Request("http://localhost/api/functions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Minimal Function" }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.language).toBe("javascript");
+    expect(data.description).toBeUndefined();
+    expect(data.source).toBe("");
+  });
+
+  it("POST /api/functions accepts language python", async () => {
+    const res = await listPost(
+      new Request("http://localhost/api/functions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Python Fn",
+          language: "python",
+          source: "print(1)",
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.language).toBe("python");
+  });
+
   it("GET /api/functions/:id returns function", async () => {
     if (!createdId) return;
     const res = await getOne(new Request("http://localhost/api/functions/x"), {

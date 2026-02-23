@@ -3,7 +3,8 @@ export type SandboxStatus = "creating" | "running" | "stopped" | "destroyed";
 export interface SandboxConfig {
   memory?: string;
   cpus?: number;
-  network?: boolean;
+  /** When true, use default bridge; when a string, use named network (e.g. for Ollama sidecar). */
+  network?: boolean | string;
   env?: Record<string, string>;
   ports?: Record<string, number>;
   /** If true, run the image default CMD instead of "sleep infinity". Use for images that run a service (e.g. OpenClaw gateway). */

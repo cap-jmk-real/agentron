@@ -58,6 +58,8 @@ function createWindow(url: string): void {
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
+      // Keep renderer at full speed so animations stay fluid (avoids Electron's background throttling).
+      backgroundThrottling: false,
     },
   });
 
@@ -187,6 +189,12 @@ async function startInProcessServer(): Promise<string> {
   }
   logLine("Server wait timeout");
   return errorPageDataUrl(path.join(userData, "agentron-desktop.log"));
+}
+
+// Optional: improve animation/compositing on some Windows setups (call before app is ready).
+if (process.platform === "win32") {
+  app.commandLine.appendSwitch("enable-gpu-rasterization");
+  app.commandLine.appendSwitch("enable-zero-copy");
 }
 
 app

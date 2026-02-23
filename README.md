@@ -61,15 +61,17 @@ The script starts Ollama if needed, **pulls the default E2E model if missing**, 
 
 **Prerequisites:** [Ollama](https://ollama.com) installed. Optional: Podman for run-code and container scenarios. (In the app we plan to offer one-click model pull from the UI so users do not need to run `ollama pull` manually.)
 
-**Default model:** Qwen 2.5 3B (`qwen2.5:3b`). Override with `E2E_LLM_MODEL` (e.g. `E2E_LLM_MODEL=llama3.2 npm run test:e2e-llm`); the script will pull that model if missing.
+**Default model:** Qwen 3 8B (`qwen3:8b`) for better instruction-following in chat/heap tests. Override with `E2E_LLM_MODEL` (e.g. `E2E_LLM_MODEL=qwen2.5:3b npm run test:e2e-llm`); the script will pull that model if missing.
 
 **Example configs (suggested models):**
 
-| Model                 | Env                                    | Notes                             |
-| --------------------- | -------------------------------------- | --------------------------------- |
-| Qwen 2.5 3B (default) | *(none)* or `E2E_LLM_MODEL=qwen2.5:3b` | Good balance of quality and speed |
-| Llama 3.2              | `E2E_LLM_MODEL=llama3.2`               | Script auto-pulls if missing      |
-| Phi-3                  | `E2E_LLM_MODEL=phi3`                   | Script auto-pulls if missing      |
+| Model                 | Env                                    | Notes                                |
+| --------------------- | -------------------------------------- | ------------------------------------ |
+| Qwen 3 8B (default)   | *(none)* or `E2E_LLM_MODEL=qwen3:8b`   | More parameters, better for heap e2e |
+| Qwen 3 14B            | `E2E_LLM_MODEL=qwen3:14b`              | Larger, higher quality               |
+| Qwen 2.5 3B           | `E2E_LLM_MODEL=qwen2.5:3b`             | Faster, smaller                      |
+| Llama 3.2             | `E2E_LLM_MODEL=llama3.2`               | Script auto-pulls if missing         |
+| Phi-3                 | `E2E_LLM_MODEL=phi3`                   | Script auto-pulls if missing          |
 
 **Optional env:** `OLLAMA_BASE_URL` (default `http://localhost:11434`), `E2E_SAVE_ARTIFACTS=1`, `E2E_LOG_DIR`.
 

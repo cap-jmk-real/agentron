@@ -1,9 +1,30 @@
 import { describe, it, expect } from "vitest";
+import { eq } from "drizzle-orm";
 import { GET as listGet, POST as listPost } from "../../app/api/tools/route";
 import { GET as getOne, PUT as putOne, DELETE as deleteOne } from "../../app/api/tools/[id]/route";
+import { db, tools as toolsTable, ensureStandardTools } from "../../app/api/_lib/db";
 
 describe("Tools API", () => {
   let createdId: string;
+
+  it("ensureStandardTools updates existing tool when config is invalid JSON (catch branch)", async () => {
+    const id = "std-browser-automation";
+    await listGet();
+    await db
+      .update(toolsTable)
+      .set({ config: "not valid json" })
+      .where(eq(toolsTable.id, id))
+      .run();
+    await ensureStandardTools();
+    const rows = await db
+      .select({ config: toolsTable.config })
+      .from(toolsTable)
+      .where(eq(toolsTable.id, id));
+    expect(rows.length).toBe(1);
+    const config = JSON.parse(rows[0]!.config as string) as Record<string, unknown>;
+    expect(config.description).toBeDefined();
+    expect(typeof config.description).toBe("string");
+  });
 
   it("GET /api/tools returns array", async () => {
     const res = await listGet();

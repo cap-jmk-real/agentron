@@ -77,7 +77,12 @@ export function extractContentFromRawResponse(raw: unknown): string {
 export function sanitizeDonePayload(payload: {
   type: "done";
   content?: string;
-  toolResults?: { name: string; args: Record<string, unknown>; result: unknown }[];
+  toolResults?: {
+    name: string;
+    args: Record<string, unknown>;
+    result: unknown;
+    specialistId?: string;
+  }[];
   status?: string;
   interactivePrompt?: {
     question: string;
@@ -115,6 +120,7 @@ export function sanitizeDonePayload(payload: {
     name: r.name,
     args: typeof r.args === "object" && r.args !== null ? r.args : {},
     result: safeResult(r.result),
+    ...(r.specialistId != null && { specialistId: r.specialistId }),
   }));
   return {
     type: "done",

@@ -17,6 +17,7 @@ import {
   PUT as collPut,
   DELETE as collDelete,
 } from "../../app/api/rag/collections/[id]/route";
+import { POST as vectorStorePost } from "../../app/api/rag/vector-store/route";
 
 describe("RAG encoding config API", () => {
   let id: string;
@@ -60,6 +61,18 @@ describe("RAG encoding config API", () => {
     expect(data.name).toBe("OpenAI small");
     expect(data.dimensions).toBe(1536);
     id = data.id;
+  });
+
+  it("GET /api/rag/encoding-config returns embeddingProviderId and endpoint undefined when null", async () => {
+    const res = await encListGet();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const openAi = Array.isArray(data)
+      ? data.find((c: { name: string }) => c.name === "OpenAI small")
+      : null;
+    expect(openAi).toBeDefined();
+    expect(openAi?.embeddingProviderId).toBeUndefined();
+    expect(openAi?.endpoint).toBeUndefined();
   });
 
   it("GET /api/rag/encoding-config/:id returns config", async () => {
@@ -264,6 +277,19 @@ describe("RAG document store API", () => {
     expect(data.credentialsRef).toBeUndefined();
   });
 
+  it("GET /api/rag/document-store returns region/endpoint/credentialsRef undefined when null", async () => {
+    const listRes = await storeListGet();
+    expect(listRes.status).toBe(200);
+    const list = await listRes.json();
+    const minimal = Array.isArray(list)
+      ? list.find((s: { name: string }) => s.name === "Minimal store")
+      : null;
+    expect(minimal).toBeDefined();
+    expect(minimal?.region).toBeUndefined();
+    expect(minimal?.endpoint).toBeUndefined();
+    expect(minimal?.credentialsRef).toBeUndefined();
+  });
+
   it("PUT /api/rag/document-store/:id returns 404 for unknown id", async () => {
     const res = await storePut(
       new Request("http://localhost/x", {
@@ -464,6 +490,19 @@ describe("RAG collections API", () => {
     expect(Array.isArray(data)).toBe(true);
   });
 
+  it("POST /api/rag/collections returns 400 for invalid JSON", async () => {
+    const res = await collPost(
+      new Request("http://localhost/api/rag/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not json",
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBeDefined();
+  });
+
   it("POST /api/rag/collections creates deployment-wide collection", async () => {
     const res = await collPost(
       new Request("http://localhost/api/rag/collections", {
@@ -483,6 +522,18 @@ describe("RAG collections API", () => {
     expect(data.scope).toBe("deployment");
     expect(data.agentId).toBeUndefined();
     collId = data.id;
+  });
+
+  it("GET /api/rag/collections returns agentId and vectorStoreId undefined when null", async () => {
+    const res = await collListGet();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const deployment = Array.isArray(data)
+      ? data.find((c: { scope: string }) => c.scope === "deployment")
+      : null;
+    expect(deployment).toBeDefined();
+    expect(deployment?.agentId).toBeUndefined();
+    expect(deployment?.vectorStoreId).toBeUndefined();
   });
 
   it("GET /api/rag/collections/:id returns 404 for unknown id", async () => {
@@ -566,6 +617,52 @@ describe("RAG collections API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.name).toBe("Deployment knowledge (updated)");
+  });
+
+  it("PUT /api/rag/collections/:id with agentId and vectorStoreId null exposes undefined in response", async () => {
+    const res = await collPut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: null, vectorStoreId: null }),
+      }),
+      { params: Promise.resolve({ id: collId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.agentId).toBeUndefined();
+    expect(data.vectorStoreId).toBeUndefined();
+  });
+
+  it("PUT /api/rag/collections/:id updates encodingConfigId documentStoreId and vectorStoreId", async () => {
+    const vsRes = await vectorStorePost(
+      new Request("http://localhost/api/rag/vector-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "VS for collection update",
+          type: "bundled",
+        }),
+      })
+    );
+    const vs = await vsRes.json();
+    const res = await collPut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          encodingConfigId: encId,
+          documentStoreId: storeId,
+          vectorStoreId: vs.id,
+        }),
+      }),
+      { params: Promise.resolve({ id: collId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.encodingConfigId).toBe(encId);
+    expect(data.documentStoreId).toBe(storeId);
+    expect(data.vectorStoreId).toBe(vs.id);
   });
 
   it("DELETE /api/rag/collections/:id returns 404 for unknown id", async () => {

@@ -70,7 +70,11 @@ export function searchFromNode(
   return path;
 }
 
-/** True if the specialist is a delegator (no toolNames, has delegateTargets). */
+/**
+ * True if the specialist is a delegator (no tools, has children).
+ * End of a branch = specialist that has toolNames (a leaf). Traversal is deterministic:
+ * at each delegator we ask the LLM which child to go to; we stop when we reach a specialist with tools.
+ */
 export function isDelegator(registry: SpecialistRegistry, specialistId: string): boolean {
   const entry = registry.specialists[specialistId];
   return !!(
@@ -85,11 +89,13 @@ export type ChooseFnAsync = (
   optionIds: string[],
   task: string,
   parentId: string
-) => Promise<string | null>;
+) => Promise<string | string[] | null>;
 
 /**
- * Expands priorityOrder so each delegator is replaced by a leaf via repeated choose (e.g. LLM).
- * For each step id that is a delegator, calls choose(options, task, parentId) and replaces id with the chosen child until a leaf or depth limit.
+ * Expands priorityOrder so each delegator is replaced by a leaf (specialist with tools).
+ * Recursive discovery: at each node that is a delegator (has children, no tools), we ask the LLM
+ * which child to go to; we follow that choice until we reach a specialist that has tools (end of branch).
+ * The LLM may return one or more ids to run in parallel at this step.
  */
 export async function expandToLeaves(
   priorityOrder: HeapStep[],
@@ -100,33 +106,40 @@ export async function expandToLeaves(
 ): Promise<HeapStep[]> {
   const result: HeapStep[] = [];
 
+  const expandOne = async (startId: string): Promise<string | string[]> => {
+    let id = startId;
+    let depth = 0;
+    while (isDelegator(registry, id) && depth < depthLimit) {
+      const options = getOptionsAtNode(registry, id);
+      if (options.length === 0) break;
+      const chosen = await choose(options, refinedTask, id);
+      if (chosen === null) break;
+      if (Array.isArray(chosen)) {
+        const valid = chosen.filter((c) => options.includes(c));
+        if (valid.length === 0) break;
+        return valid.length === 1 ? valid[0] : valid;
+      }
+      if (!options.includes(chosen)) break;
+      id = chosen;
+      depth += 1;
+    }
+    return id;
+  };
+
   for (const step of priorityOrder) {
     if (typeof step === "string") {
-      let id = step;
-      let depth = 0;
-      while (isDelegator(registry, id) && depth < depthLimit) {
-        const options = getOptionsAtNode(registry, id);
-        if (options.length === 0) break;
-        const chosen = await choose(options, refinedTask, id);
-        if (chosen === null || !options.includes(chosen)) break;
-        id = chosen;
-        depth += 1;
+      const expanded = await expandOne(step);
+      if (Array.isArray(expanded)) {
+        result.push({ parallel: expanded });
+      } else {
+        result.push(expanded);
       }
-      result.push(id);
     } else if (step && typeof step === "object" && Array.isArray(step.parallel)) {
       const expanded: string[] = [];
       for (const id of step.parallel) {
-        let current = id;
-        let depth = 0;
-        while (isDelegator(registry, current) && depth < depthLimit) {
-          const options = getOptionsAtNode(registry, current);
-          if (options.length === 0) break;
-          const chosen = await choose(options, refinedTask, current);
-          if (chosen === null || !options.includes(chosen)) break;
-          current = chosen;
-          depth += 1;
-        }
-        expanded.push(current);
+        const leaf = await expandOne(id);
+        if (Array.isArray(leaf)) expanded.push(...leaf);
+        else expanded.push(leaf);
       }
       if (expanded.length > 0) result.push({ parallel: expanded });
     }

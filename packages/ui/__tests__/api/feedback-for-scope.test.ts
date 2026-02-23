@@ -28,6 +28,15 @@ describe("Feedback for-scope API", () => {
     expect(Array.isArray(data)).toBe(true);
   });
 
+  it("GET /api/feedback/for-scope with invalid limit param uses undefined limit", async () => {
+    const res = await GET(
+      new Request("http://localhost/api/feedback/for-scope?targetId=wf-1&limit=not-a-number")
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+  });
+
   it("GET /api/feedback/for-scope returns inputSummary and outputSummary with long text truncated", async () => {
     const targetId = "scope-summary-" + Date.now();
     await feedbackPost(

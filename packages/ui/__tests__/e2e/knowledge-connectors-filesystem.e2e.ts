@@ -15,6 +15,7 @@ import { POST as storePost } from "../../app/api/rag/document-store/route";
 import { POST as collPost } from "../../app/api/rag/collections/route";
 import { POST as listConnectorsPost } from "../../app/api/rag/connectors/route";
 import { POST as syncPost } from "../../app/api/rag/connectors/[id]/sync/route";
+import { POST as ingestPost } from "../../app/api/rag/ingest/route";
 import { E2E_LLM_CONFIG_ID } from "./e2e-setup";
 import { e2eLog } from "./e2e-logger";
 
@@ -174,6 +175,25 @@ describe("e2e knowledge-connectors-filesystem", () => {
     e2eLog.step("sync", { synced: data.synced, total: data.total });
   });
 
+  it("bulk ingest deployment collection after sync returns 200 with documents and chunks", async () => {
+    const res = await ingestPost(
+      new Request("http://localhost/api/rag/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collectionId }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data).toHaveProperty("documents");
+    expect(data).toHaveProperty("chunks");
+    expect(typeof data.documents).toBe("number");
+    expect(typeof data.chunks).toBe("number");
+    expect(data.documents).toBeGreaterThanOrEqual(0);
+    e2eLog.step("bulk_ingest", { documents: data.documents, chunks: data.chunks });
+  });
+
   it("checks Ollama embed model available for chat (skip heap chat tests if not)", async () => {
     try {
       const res = await fetch(`${OLLAMA_BASE_URL}/api/embed`, {
@@ -229,11 +249,15 @@ describe("e2e knowledge-connectors-filesystem", () => {
         ?.toolResults ?? [];
     const listConnectorsResult = toolResults.find((r) => r.name === "list_connectors");
     expect(listConnectorsResult).toBeDefined();
-    const connectors = listConnectorsResult?.result as { id?: string; type?: string }[] | undefined;
+    const connectors = listConnectorsResult?.result as
+      | { id?: string; type?: string; collectionId?: string }[]
+      | undefined;
     expect(Array.isArray(connectors)).toBe(true);
     const ourConnector = connectors?.find((c) => c.id === connectorId);
     expect(ourConnector).toBeDefined();
     expect(ourConnector?.type).toBe("filesystem");
+    expect(ourConnector).toHaveProperty("collectionId");
+    expect(ourConnector?.collectionId).toBe(collectionId);
     e2eLog.toolCall("list_connectors", JSON.stringify(connectors).slice(0, 200));
   }, 120_000);
 

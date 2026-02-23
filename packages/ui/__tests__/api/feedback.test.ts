@@ -1,6 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { GET as listGet, POST as listPost } from "../../app/api/feedback/route";
 import { DELETE as deleteOne } from "../../app/api/feedback/[id]/route";
+import { embedFeedbackOnCreate } from "../../app/api/_lib/feedback-retrieval";
+
+vi.mock("../../app/api/_lib/feedback-retrieval", () => ({
+  embedFeedbackOnCreate: vi.fn().mockResolvedValue(undefined),
+}));
 
 describe("Feedback API", () => {
   let createdId: string;
@@ -60,6 +65,26 @@ describe("Feedback API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
+  });
+
+  it("POST /api/feedback returns 201 when embedFeedbackOnCreate rejects (catch branch)", async () => {
+    vi.mocked(embedFeedbackOnCreate).mockRejectedValueOnce(new Error("embed failed"));
+    const res = await listPost(
+      new Request("http://localhost/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetType: "agent",
+          targetId: "agent-embed-fail",
+          input: "",
+          output: "",
+          label: "good",
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.id).toBeDefined();
   });
 
   it("POST /api/feedback accepts optional id in body", async () => {

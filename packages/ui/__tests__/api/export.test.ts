@@ -54,5 +54,8 @@ describe("Export API", () => {
     const data = await res.json();
     expect(data).toHaveProperty("workflows");
     expect(Array.isArray(data.workflows)).toBe(true);
+    expect(res.headers.get("Content-Disposition")).toMatch(
+      /attachment; filename="agentron-workflows-/
+    );
   });
 });

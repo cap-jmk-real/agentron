@@ -4,6 +4,8 @@
 
 Improve Agentron chat UX for Knowledge connectors: ensure authentication is requested or clearly guided when missing, register connector tools in the heap, give the assistant visibility of configured connectors, and add UX polish (deep links, error guidance, empty state, trace labels).
 
+**Cycle complete.** All required items are implemented and covered by unit/API/e2e tests (see **Done (this cycle)** below). Optional remaining: E2E Google Drive / Notion with interactive browser auth. To run tests: `npm test` from repo root; browser e2e: `npm run test:e2e-browser` from `packages/ui` (run `npx playwright install chromium` once). On Windows, if `npm test` fails with rollup or missing deps, see `packages/ui/__tests__/README.md` § Troubleshooting.
+
 ---
 
 ## Current state
@@ -215,6 +217,68 @@ flowchart LR
 - **lastError**: When sync fails, assert connector record has lastError and list-connectors (or GET connectors) returns it; Knowledge UI test can assert error state card shows the message.
 - **Bulk ingest**: POST ingest with collectionId returns success and document count; or unit-test the route with multiple docs.
 - **Ingest-after-sync**: After sync returns, if ingestAfterSync is true, assert ingest was invoked for new doc ids (mock or integration test).
+
+### Testing status (coverage cycle)
+
+**Done (unit/API):**
+
+- **Heap**: `packages/ui/__tests__/api/_lib/heap.test.ts` — knowledge specialist exists and has `list_connectors`, `list_connector_items`, `connector_read_item`, `connector_update_item`, `ingest_deployment_documents`, `ask_user`, `format_response`.
+- **Studio context**: `packages/ui/__tests__/api/chat-route-post.test.ts` — `studioContextConnectorsFromRows` maps connector rows to `{ id, type }`.
+- **Auth error**: `packages/ui/__tests__/api/_lib/execute-tool.test.ts` — `connector_read_item` and `connector_update_item` append "Configure this connector in Knowledge…" for auth-like errors.
+- **Deep link**: Knowledge page reads `searchParams.get("tab")` and sets `activeTab` to `"connectors"` when `?tab=connectors`; UI opens Connectors tab on load.
+- **Trace label**: `packages/ui/__tests__/components/chat-message-content-options.test.ts` — loading status shows "Knowledge" for specialistId `knowledge`.
+- **lastError**: `packages/ui/__tests__/api/rag-connectors-sync.test.ts` — filesystem sync with non-existent path sets lastError, GET connectors returns it; google_drive 400 test asserts same. Connectors GET returns `config.lastError`.
+- **Bulk ingest**: `packages/ui/__tests__/api/rag-ingest.test.ts` — POST with `collectionId`; `knowledge-ux.e2e.ts` — POST ingest with collectionId.
+- **Ingest-after-sync**: `packages/ui/__tests__/api/rag-connectors-sync.test.ts` — mock `ingestOneDocument`, sync with `ingestAfterSync: true`, assert ingest invoked after success.
+
+**Done (this cycle):**
+
+- **Connector auth prompt**: `packages/ui/__tests__/api/chat-route-post.test.ts` — SYSTEM_PROMPT includes "Knowledge → Connectors", "list_connector_items", "empty list", "add one in Knowledge → Connectors first".
+- **list_connector_items auth hint**: `packages/ui/__tests__/api/_lib/execute-tool.test.ts` — when browse throws auth-related error (e.g. google_drive connector without serviceAccountKeyRef), result error contains "Configure this connector in Knowledge".
+- **E2E list_connectors shape**: `packages/ui/__tests__/e2e/knowledge-connectors-filesystem.e2e.ts` — heap chat list_connectors result asserts connector has `collectionId` and matches deployment collection.
+- **appendConnectorAuthHint non-auth branch**: `packages/ui/__tests__/api/_lib/execute-tool.test.ts` — when list_connector_items browse throws a non-auth error (e.g. filesystem path not found), returned error does NOT contain "Configure this connector in Knowledge".
+- **Bulk ingest empty collection**: `packages/ui/__tests__/api/rag-ingest.test.ts` — POST /api/rag/ingest with collectionId when collection has no documents returns 200 with documents: 0 and chunks: 0.
+- **Sync not implemented**: `packages/ui/__tests__/api/rag-connectors-sync.test.ts` — POST sync for connector type not implemented returns 400, sets lastError, GET connectors returns it.
+- **list_connectors from DB**: `packages/ui/__tests__/api/_lib/execute-tool.test.ts` — list_connectors returns inserted connector with id, type, collectionId.
+- **Ingest 400 contract**: `packages/ui/__tests__/api/rag-ingest.test.ts` — POST with neither documentId nor collectionId returns 400 with "documentId or collectionId required".
+- **Trace label fallback and heap_specialist**: `packages/ui/__tests__/components/chat-message-content-options.test.ts` — getLoadingStatus uses raw specialistId when not in SPECIALIST_DISPLAY_NAMES (e.g. "workflow"); heap_specialist phase with "knowledge" shows "Specialist Knowledge…".
+- **GET connectors response shape**: `packages/ui/__tests__/api/rag-connectors.test.ts` — GET returns each connector with id, type, collectionId, config, status, createdAt.
+- **Ingest body precedence**: `packages/ui/__tests__/api/rag-ingest.test.ts` — POST with both documentId and collectionId uses collectionId path (returns 200 with documents/chunks for that collection).
+- **Ingest non-existent collectionId**: `packages/ui/__tests__/api/rag-ingest.test.ts` — POST with collectionId that has no documents (e.g. non-existent collection id) returns 200 with documents: 0, chunks: 0.
+- **Heap knowledge tool cap**: `packages/ui/__tests__/api/_lib/heap.test.ts` — knowledge specialist tool count ≤ SPECIALIST_TOOL_CAP.
+- **list_connector_items obsidian_vault**: `packages/ui/__tests__/api/_lib/execute-tool.test.ts` — list_connector_items returns items for obsidian_vault connector with config.path (same browse path as filesystem).
+- **Sync success updates connector**: `packages/ui/__tests__/api/rag-connectors-sync.test.ts` — after successful filesystem sync, GET connectors returns connector with status "synced" and lastSyncAt set.
+- **list_connector_items logseq_graph**: `packages/ui/__tests__/api/_lib/execute-tool.test.ts` — list_connector_items returns items for logseq_graph connector with config.path.
+- **GET connectors/:id response shape**: `packages/ui/__tests__/api/rag-connectors.test.ts` — GET /api/rag/connectors/:id returns connector with id, type, collectionId, config, status, createdAt.
+- **PUT connectors/:id empty body**: `packages/ui/__tests__/api/rag-connectors.test.ts` — PUT with empty body returns 200 and connector unchanged.
+- **Deep link ?tab=connectors (unit)**: `packages/ui/app/knowledge/_lib/deep-link.ts` — `shouldOpenConnectorsTab(searchParams)` returns true when `tab=connectors`; Knowledge page uses it in useEffect. `packages/ui/__tests__/app/knowledge/deep-link.test.ts` — unit tests for true/false cases.
+- **GET connectors/:id/items (browse)**: `packages/ui/__tests__/api/rag-connectors-items.test.ts` — limit and pageToken (returns at most limit items, nextPageToken, second page); 400 for connector type with no browse implementation ("not implemented").
+- **E2E filesystem flow bulk ingest**: `packages/ui/__tests__/e2e/knowledge-connectors-filesystem.e2e.ts` — after sync, POST /api/rag/ingest with collectionId returns 200 with ok, documents, chunks (asserts "Ingest all" API in full flow).
+- **GET connectors/:id/items when browse throws**: `packages/ui/__tests__/api/rag-connectors-items.test.ts` — filesystem connector with path that is not a directory returns 400 with error (catch path).
+- **Sync ingestAfterSync false**: `packages/ui/__tests__/api/rag-connectors-sync.test.ts` — POST sync with ingestAfterSync false does not call ingestOneDocument.
+- **Deep link tab casing**: `packages/ui/__tests__/app/knowledge/deep-link.test.ts` — shouldOpenConnectorsTab returns false for tab=Connectors (case-sensitive).
+- **Ingest collectionId partial failure**: `packages/ui/__tests__/api/rag-ingest.test.ts` — POST with collectionId when one doc fails (e.g. getObject rejects) returns 200 with ok, documents, chunks, and errors array.
+- **Sync 404 document store not found**: `packages/ui/__tests__/api/rag-connectors-sync.test.ts` — POST sync when connector's collection has non-existent documentStoreId returns 404 "Document store not found".
+- **connector-write update outside root**: `packages/ui/__tests__/api/rag-connectors-write.test.ts` — updateConnectorItem returns error when item path is outside connector root.
+- **list_connectors multiple**: `packages/ui/__tests__/api/_lib/execute-tool.test.ts` — list_connectors returns multiple connectors when DB has several (id, type, collectionId for each).
+- **SYSTEM_PROMPT connector auth wording**: `packages/ui/__tests__/api/chat-route-post.test.ts` — SYSTEM_PROMPT includes "authentication" and "credentials" (connector auth block).
+- **Sync path must be absolute**: `packages/ui/__tests__/api/rag-connectors-sync.test.ts` — POST sync for filesystem with config.path non-absolute returns 400, error contains "absolute", lastError set on connector.
+- **connector_update_item no auth hint for outside root**: `packages/ui/__tests__/api/_lib/execute-tool.test.ts` — when updateConnectorItem returns "Item path is outside connector root", result error does not contain "Configure this connector in Knowledge".
+- **connector_read_item no auth hint for outside root**: `packages/ui/__tests__/api/_lib/execute-tool.test.ts` — when readConnectorItem returns "Item path is outside connector root", result error does not contain "Configure this connector in Knowledge".
+- **ingest_deployment_documents zero docs**: `packages/ui/__tests__/api/_lib/execute-tool.test.ts` — when deployment collection has no documents, returns message with "0 documents", documents: 0, chunks: 0.
+- **Connector config.ingestAfterSync round-trip**: `packages/ui/__tests__/api/rag-connectors.test.ts` — POST connector with config.ingestAfterSync true, GET :id returns config with path and ingestAfterSync true.
+- **list_connectors response shape (no extra keys)**: `packages/ui/__tests__/api/_lib/execute-tool.test.ts` — each connector in list_connectors result has only id, type, collectionId (no status, config, etc.).
+- **Empty connectors (list_connectors returns [])**: `packages/ui/__tests__/api/_lib/execute-tool-empty-connectors.test.ts` — when DB has no connectors, list_connectors returns []; prompt guidance is in chat-route-post.test.ts.
+- **E2E Google Drive / Notion (API flow)**: `packages/ui/__tests__/e2e/knowledge-connectors-google-drive.e2e.ts`, `knowledge-connectors-notion.e2e.ts` — when E2E_GOOGLE_DRIVE_AUTH=1 / E2E_NOTION_AUTH=1: create collection, add connector, POST sync; pass on 200 (creds configured) or 400 (auth/error). When unset, tests skip.
+- **Browser e2e for ?tab=connectors**: `packages/ui/__tests__/e2e-browser/knowledge-deep-link.spec.ts` — Playwright test: open `/knowledge?tab=connectors`, assert Knowledge heading and Connectors tab active (button-primary) and "Sync external sources" visible. Run: `npm run test:e2e-browser` (from packages/ui; run `npx playwright install chromium` once if needed).
+
+**Remaining (optional or future):**
+
+- **E2E Google Drive / Notion interactive auth**: API flow covered when env set; optional: browser step “open app → user adds connector → complete OAuth” then test continues (manual verification).
+
+**Settings GitHub test route:** POST /api/settings/github/test uses `__setFetchForTest` (and `globalThis.__githubTestFetch`) so tests can inject a mock; two tests assert response only (saved token, owner+repo) without asserting fetch call counts, which can be environment-dependent.
+
+**Testing on Windows:** If `npm test` fails with rollup/win32-x64-msvc or @esbuild/win32-x64 missing, see `packages/ui/__tests__/README.md` § Troubleshooting (install from repo root without `--omit=optional`; clean install if needed so rollup→wasm override applies). Root `optionalDependencies` include `@esbuild/win32-x64` and `@rollup/rollup-win32-x64-msvc` so Vitest and build tools run on Windows.
 
 ### E2E tests
 

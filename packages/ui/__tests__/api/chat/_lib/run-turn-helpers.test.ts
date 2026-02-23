@@ -7,8 +7,15 @@ import {
   applyRephraseFixes,
   buildContinueShellApprovalMessage,
   generateConversationTitle,
+  summarizeConversation,
   summarizeHistoryChunk,
 } from "../../../../app/api/chat/_lib/run-turn-helpers";
+import { db, conversations, chatMessages } from "../../../../app/api/_lib/db";
+import { eq } from "drizzle-orm";
+
+vi.mock("node:os", () => ({
+  platform: vi.fn(() => "linux"),
+}));
 
 describe("run-turn-helpers", () => {
   describe("rephraseAndClassify", () => {
@@ -127,6 +134,34 @@ describe("run-turn-helpers", () => {
       expect(ctx.length).toBeGreaterThan(0);
       expect(ctx).toMatch(/System:/);
     });
+
+    it("returns Windows hint when platform is win32", async () => {
+      const os = await import("node:os");
+      vi.mocked(os.platform).mockReturnValueOnce("win32");
+      const ctx = getSystemContext();
+      expect(ctx).toMatch(/Windows|PowerShell|backslash/i);
+    });
+
+    it("returns macOS hint when platform is darwin", async () => {
+      const os = await import("node:os");
+      vi.mocked(os.platform).mockReturnValueOnce("darwin");
+      const ctx = getSystemContext();
+      expect(ctx).toMatch(/macOS|Unix|which|ls/i);
+    });
+
+    it("returns Linux hint when platform is linux", async () => {
+      const os = await import("node:os");
+      vi.mocked(os.platform).mockReturnValueOnce("linux");
+      const ctx = getSystemContext();
+      expect(ctx).toMatch(/Linux|Unix|which|ls/i);
+    });
+
+    it("returns generic hint for other platforms", async () => {
+      const os = await import("node:os");
+      vi.mocked(os.platform).mockReturnValueOnce("freebsd");
+      const ctx = getSystemContext();
+      expect(ctx).toMatch(/freebsd|System:/);
+    });
   });
 
   describe("buildRunResponseForChat", () => {
@@ -214,6 +249,20 @@ describe("run-turn-helpers", () => {
       expect(text).not.toContain("```");
     });
 
+    it("omits run error and agent output when output is not object (e.g. string)", () => {
+      const text = buildRunResponseForChat(
+        {
+          id: "r1",
+          status: "completed",
+          output: "raw string output" as unknown as Record<string, unknown>,
+        },
+        []
+      );
+      expect(text).not.toContain("**Run failed:**");
+      expect(text).not.toContain("raw string output");
+      expect(text).toContain("[View full run](/runs/r1)");
+    });
+
     it("treats output as null when output is array", () => {
       const text = buildRunResponseForChat({ id: "r1", status: "completed", output: ["item"] }, []);
       expect(text).toContain("[View full run](/runs/r1)");
@@ -249,6 +298,17 @@ describe("run-turn-helpers", () => {
       expect(msg).toContain("stderr: err");
     });
 
+    it("uses empty string for exitCode when undefined", () => {
+      const msg = buildContinueShellApprovalMessage({
+        command: "echo ok",
+        stdout: "",
+        stderr: "",
+      });
+      expect(msg).toContain("exitCode=");
+      expect(msg).not.toContain("stdout:");
+      expect(msg).not.toContain("stderr:");
+    });
+
     it("omits stdout/stderr when empty", () => {
       const msg = buildContinueShellApprovalMessage({
         command: "cmd",
@@ -267,6 +327,16 @@ describe("run-turn-helpers", () => {
       });
       expect(msg).toContain("…");
       expect(msg.length).toBeLessThan(700);
+    });
+
+    it("truncates long stderr with ellipsis", () => {
+      const long = "e".repeat(600);
+      const msg = buildContinueShellApprovalMessage({
+        command: "c",
+        stderr: long,
+      });
+      expect(msg).toContain("…");
+      expect(msg).toContain("stderr:");
     });
   });
 
@@ -290,6 +360,176 @@ describe("run-turn-helpers", () => {
       });
       expect(result).toBe("Hello world");
     });
+
+    it("returns fallback with ellipsis when message exceeds TITLE_FALLBACK_MAX_LEN", async () => {
+      const manager = { chat: vi.fn().mockRejectedValue(new Error("LLM fail")) };
+      const longMessage = "This is a very long first message that exceeds forty characters here";
+      const result = await generateConversationTitle(longMessage, manager as never, {
+        provider: "o",
+        model: "m",
+      });
+      expect(result).toContain("…");
+      expect(result).toBe(longMessage.slice(0, 40).trim() + "…");
+    });
+
+    it("returns title from response when chat returns content", async () => {
+      const manager = {
+        chat: vi.fn().mockResolvedValue({ content: "  User asked about workflows  ", usage: {} }),
+      };
+      const result = await generateConversationTitle("Create a workflow", manager as never, {
+        provider: "o",
+        model: "m",
+      });
+      expect(result).toBe("User asked about workflows");
+    });
+
+    it("returns fallback when chat returns empty or whitespace content", async () => {
+      const manager = {
+        chat: vi.fn().mockResolvedValue({ content: "", usage: {} }),
+      };
+      const result = await generateConversationTitle("Hello world", manager as never, {
+        provider: "o",
+        model: "m",
+      });
+      expect(result).toBe("Hello world");
+    });
+  });
+
+  describe("summarizeConversation", () => {
+    it("returns without error when conversation has no messages (early return)", async () => {
+      const convId = "sumconv-empty-" + Date.now();
+      await db
+        .insert(conversations)
+        .values({ id: convId, title: null, createdAt: Date.now() })
+        .run();
+      const manager = { chat: vi.fn() };
+      await summarizeConversation(convId, manager as never, { provider: "p", model: "m" });
+      expect(manager.chat).not.toHaveBeenCalled();
+      await db.delete(conversations).where(eq(conversations.id, convId)).run();
+    });
+
+    it("updates conversation summary when messages exist and manager returns content", async () => {
+      const convId = "sumconv-ok-" + Date.now();
+      await db
+        .insert(conversations)
+        .values({ id: convId, title: null, createdAt: Date.now() })
+        .run();
+      await db
+        .insert(chatMessages)
+        .values([
+          {
+            id: "m1",
+            conversationId: convId,
+            role: "user",
+            content: "How do I create a workflow?",
+            createdAt: Date.now(),
+          },
+          {
+            id: "m2",
+            conversationId: convId,
+            role: "assistant",
+            content: "You can create one from the workflows page.",
+            createdAt: Date.now(),
+          },
+        ])
+        .run();
+      const manager = {
+        chat: vi.fn().mockResolvedValue({
+          content: "User asked about creating workflows. Assistant explained the workflows page.",
+          usage: {},
+        }),
+      };
+      await summarizeConversation(convId, manager as never, { provider: "p", model: "m" });
+      const rows = await db.select().from(conversations).where(eq(conversations.id, convId));
+      expect(rows[0].summary).toBe(
+        "User asked about creating workflows. Assistant explained the workflows page."
+      );
+      await db.delete(chatMessages).where(eq(chatMessages.conversationId, convId)).run();
+      await db.delete(conversations).where(eq(conversations.id, convId)).run();
+    });
+
+    it("ignores errors (catch branch)", async () => {
+      const convId = "sumconv-err-" + Date.now();
+      await db
+        .insert(conversations)
+        .values({ id: convId, title: null, createdAt: Date.now() })
+        .run();
+      await db
+        .insert(chatMessages)
+        .values({
+          id: "m1",
+          conversationId: convId,
+          role: "user",
+          content: "Hi",
+          createdAt: Date.now(),
+        })
+        .run();
+      const manager = { chat: vi.fn().mockRejectedValue(new Error("LLM down")) };
+      await expect(
+        summarizeConversation(convId, manager as never, { provider: "p", model: "m" })
+      ).resolves.toBeUndefined();
+      await db.delete(chatMessages).where(eq(chatMessages.conversationId, convId)).run();
+      await db.delete(conversations).where(eq(conversations.id, convId)).run();
+    });
+
+    it("does not update summary when manager returns empty or whitespace content", async () => {
+      const convId = "sumconv-nosum-" + Date.now();
+      await db
+        .insert(conversations)
+        .values({ id: convId, title: null, summary: null, createdAt: Date.now() })
+        .run();
+      await db
+        .insert(chatMessages)
+        .values({
+          id: "m1",
+          conversationId: convId,
+          role: "user",
+          content: "Hi",
+          createdAt: Date.now(),
+        })
+        .run();
+      const manager = {
+        chat: vi.fn().mockResolvedValue({ content: "   ", usage: {} }),
+      };
+      await summarizeConversation(convId, manager as never, { provider: "p", model: "m" });
+      const rows = await db.select().from(conversations).where(eq(conversations.id, convId));
+      expect(rows[0].summary).toBeNull();
+      await db.delete(chatMessages).where(eq(chatMessages.conversationId, convId)).run();
+      await db.delete(conversations).where(eq(conversations.id, convId)).run();
+    });
+
+    it("truncates message content with ellipsis when length > 300", async () => {
+      const convId = "sumconv-long-" + Date.now();
+      const longContent = "a".repeat(400);
+      await db
+        .insert(conversations)
+        .values({ id: convId, title: null, createdAt: Date.now() })
+        .run();
+      await db
+        .insert(chatMessages)
+        .values({
+          id: "m1",
+          conversationId: convId,
+          role: "user",
+          content: longContent,
+          createdAt: Date.now(),
+        })
+        .run();
+      const manager = {
+        chat: vi.fn().mockResolvedValue({
+          content: "User sent a long message.",
+          usage: {},
+        }),
+      };
+      await summarizeConversation(convId, manager as never, { provider: "p", model: "m" });
+      const userMsg = vi
+        .mocked(manager.chat)
+        .mock.calls[0][1].messages?.find((m: { role: string }) => m.role === "user");
+      expect(userMsg?.content).toContain("a".repeat(300));
+      expect(userMsg?.content).toContain("…");
+      await db.delete(chatMessages).where(eq(chatMessages.conversationId, convId)).run();
+      await db.delete(conversations).where(eq(conversations.id, convId)).run();
+    });
   });
 
   describe("summarizeHistoryChunk", () => {
@@ -301,6 +541,74 @@ describe("run-turn-helpers", () => {
       });
       expect(result).toBe("");
       expect(manager.chat).not.toHaveBeenCalled();
+    });
+
+    it("returns fallback when chat returns empty content", async () => {
+      const manager = {
+        chat: vi.fn().mockResolvedValue({ content: "   ", usage: {} }),
+      };
+      const result = await summarizeHistoryChunk(
+        [
+          { role: "user", content: "Hi" },
+          { role: "assistant", content: "Hello" },
+        ],
+        manager as never,
+        { provider: "o", model: "m" }
+      );
+      expect(result).toBe("Earlier messages in this conversation.");
+    });
+
+    it("returns summary when chat returns content", async () => {
+      const manager = {
+        chat: vi.fn().mockResolvedValue({
+          content: "User said hi. Assistant greeted back.",
+          usage: {},
+        }),
+      };
+      const result = await summarizeHistoryChunk(
+        [{ role: "user", content: "Hi" }],
+        manager as never,
+        { provider: "o", model: "m" }
+      );
+      expect(result).toBe("User said hi. Assistant greeted back.");
+    });
+
+    it("truncates long message content with ellipsis in prompt (content.length > 400)", async () => {
+      const longContent = "a".repeat(500);
+      const manager = {
+        chat: vi.fn().mockResolvedValue({
+          content: "Summary of long message.",
+          usage: {},
+        }),
+      };
+      const result = await summarizeHistoryChunk(
+        [{ role: "user", content: longContent }],
+        manager as never,
+        { provider: "o", model: "m" }
+      );
+      expect(result).toBe("Summary of long message.");
+      const call = vi.mocked(manager.chat).mock.calls[0][1];
+      const userMsg = call.messages?.find((m: { role: string }) => m.role === "user");
+      expect(userMsg?.content).toContain("a".repeat(400));
+      expect(userMsg?.content).toContain("…");
+    });
+
+    it("does not add ellipsis when message content length <= 400", async () => {
+      const shortContent = "a".repeat(300);
+      const manager = {
+        chat: vi.fn().mockResolvedValue({
+          content: "Summary.",
+          usage: {},
+        }),
+      };
+      await summarizeHistoryChunk([{ role: "user", content: shortContent }], manager as never, {
+        provider: "o",
+        model: "m",
+      });
+      const call = vi.mocked(manager.chat).mock.calls[0][1];
+      const userMsg = call.messages?.find((m: { role: string }) => m.role === "user");
+      expect(userMsg?.content).toBe("user: " + shortContent);
+      expect(userMsg?.content).not.toContain("…");
     });
   });
 
@@ -326,6 +634,86 @@ describe("run-turn-helpers", () => {
         model: "gpt-4",
       });
       expect(result.rephrasedPrompt).toBe("Then I LinkedIn");
+    });
+
+    it("uses trimmed and applyRephraseFixes when LLM returns empty content (else branch)", async () => {
+      const manager = {
+        chat: vi.fn().mockResolvedValue({ content: "", usage: {} }),
+      };
+      const result = await rephraseAndClassify("hello world", manager as never, {
+        provider: "openai",
+        model: "gpt-4",
+      });
+      expect(result.rephrasedPrompt).toBe(applyRephraseFixes("hello world"));
+      expect(result.wantsRetry).toBe(false);
+    });
+
+    it("uses raw content when no rephrased tag and applies applyRephraseFixes when result equals trimmed", async () => {
+      const manager = {
+        chat: vi.fn().mockResolvedValue({
+          content: "hello world<wants_retry>no</wants_retry>",
+          usage: {},
+        }),
+      };
+      const result = await rephraseAndClassify("hello world", manager as never, {
+        provider: "openai",
+        model: "gpt-4",
+      });
+      expect(result.rephrasedPrompt).toBeDefined();
+      expect(result.wantsRetry).toBe(false);
+      const managerSame = {
+        chat: vi.fn().mockResolvedValue({
+          content: "hello world",
+          usage: {},
+        }),
+      };
+      const resultSame = await rephraseAndClassify("hello world", managerSame as never, {
+        provider: "openai",
+        model: "gpt-4",
+      });
+      expect(resultSame.rephrasedPrompt).toBe(applyRephraseFixes("hello world"));
+    });
+
+    it("uses raw content without rephrased tag when LLM returns text with no tags", async () => {
+      const manager = {
+        chat: vi.fn().mockResolvedValue({
+          content: "Rephrased: what is the issue?",
+          usage: {},
+        }),
+      };
+      const result = await rephraseAndClassify("what is the issue", manager as never, {
+        provider: "openai",
+        model: "gpt-4",
+      });
+      expect(result.rephrasedPrompt).toBeDefined();
+      expect(result.wantsRetry).toBe(false);
+    });
+
+    it("calls onLlmCall when provided and LLM returns", async () => {
+      const manager = {
+        chat: vi.fn().mockResolvedValue({
+          content: " <rephrased>paraphrase</rephrased><wants_retry>no</wants_retry> ",
+          usage: { promptTokens: 10, completionTokens: 5 },
+        }),
+      };
+      const onLlmCall = vi.fn();
+      await rephraseAndClassify(
+        "user msg",
+        manager as never,
+        {
+          provider: "openai",
+          model: "gpt-4",
+        },
+        { onLlmCall }
+      );
+      expect(onLlmCall).toHaveBeenCalledOnce();
+      expect(onLlmCall.mock.calls[0][0]).toMatchObject({
+        phase: "rephrase",
+        messageCount: 2,
+        lastUserContent: "user msg",
+        responseContent: expect.any(String),
+        usage: { promptTokens: 10, completionTokens: 5 },
+      });
     });
   });
 });

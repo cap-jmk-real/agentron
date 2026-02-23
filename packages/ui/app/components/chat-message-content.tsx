@@ -272,18 +272,22 @@ export function getSuggestedOptions(
   return fromResult && fromResult.length > 0 ? fromResult : [];
 }
 
-/** Get clickable options from tool results. Options are only supplied by ask_user (options array); frontend displays them as-is. User can always type a custom reply. */
+/**
+ * Get clickable options from tool results.
+ * Options are taken from the last tool result in this message that has an "options" array
+ * (typically format_response or ask_user), so the final specialist's choices are what the user sees.
+ * Traceability: the displayed options correspond to that last tool call in the message queue.
+ */
 export function getSuggestedOptionsFromToolResults(
   toolResults: { name: string; result?: unknown }[] | undefined,
   _fallbackDisplayText: string
 ): { value: string; label: string }[] {
   if (!Array.isArray(toolResults)) return [];
-  const fromAskUser = optionsFromToolResult(toolResults.find((r) => r.name === "ask_user")?.result);
-  if (fromAskUser && fromAskUser.length > 0) return fromAskUser;
-  const fromCredentials = optionsFromToolResult(
-    toolResults.find((r) => r.name === "ask_credentials")?.result
-  );
-  return fromCredentials && fromCredentials.length > 0 ? fromCredentials : [];
+  const withOptions = toolResults
+    .map((r) => ({ name: r.name, opts: optionsFromToolResult(r.result) }))
+    .filter((x) => x.opts && x.opts.length > 0);
+  const last = withOptions[withOptions.length - 1];
+  return last?.opts ?? [];
 }
 
 /** True when the message has tool results that indicate a successful turn (e.g. create_agent, get_agent). Don't show "An error occurred" for these. */

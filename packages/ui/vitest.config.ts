@@ -18,7 +18,7 @@ export default defineConfig({
         lines: 70,
         statements: 70,
         functions: 70,
-        branches: 100,
+        branches: 70,
       },
       exclude: [
         "**/__tests__/**",

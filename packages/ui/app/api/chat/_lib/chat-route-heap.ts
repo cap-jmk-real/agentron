@@ -26,6 +26,7 @@ import {
   reorderAgentBeforeWorkflow,
   reorderAgentAndWorkflowBeforeImproveAgentsWorkflows,
   PLANNER_RETRY_INSTRUCTION,
+  ASSISTANT_TOOLS,
 } from "@agentron-studio/runtime";
 import { executeTool, resolveTemplateVars } from "./execute-tool";
 import { buildSpecialistSummaryWithCreatedIds } from "../../_lib/chat-helpers";
@@ -38,6 +39,16 @@ import {
   AGENT_SPECIALIST_IMPROVEMENT_CLARIFICATION,
   AGENT_SPECIALIST_AGENTIC_BLOCKS,
 } from "./chat-route-shared";
+
+/** Return value when a specialist calls a tool not in its allowed list. Exported for unit tests. */
+export function formatToolNotAvailableError(
+  specialistId: string,
+  toolNames: string[]
+): { error: string } {
+  return {
+    error: `Tool not available for this specialist (specialistId: ${specialistId}). Allowed tools: ${toolNames.join(", ")}`,
+  };
+}
 
 /** Run one turn in heap (multi-agent) mode: router LLM → run heap with specialists; returns assistant-shaped result and the plan used (for pending plan storage). */
 export async function runHeapModeTurn(opts: {
@@ -87,7 +98,12 @@ export async function runHeapModeTurn(opts: {
   maxTokens?: number;
 }): Promise<{
   content: string;
-  toolResults: { name: string; args: Record<string, unknown>; result: unknown }[];
+  toolResults: {
+    name: string;
+    args: Record<string, unknown>;
+    result: unknown;
+    specialistId?: string;
+  }[];
   plan: PlannerOutput | null;
   refinedTask: string;
   priorityOrder: (string | { parallel: string[] })[];
@@ -284,11 +300,41 @@ export async function runHeapModeTurn(opts: {
     optionIds: string[],
     task: string,
     parentId: string
-  ): Promise<string | null> => {
+  ): Promise<string | string[] | null> => {
     if (optionIds.length === 0) return null;
     if (optionIds.length === 1) return optionIds[0];
     try {
-      const prompt = `Task: ${task.slice(0, 400)}\nParent specialist: ${parentId}\nWhich subspecialist should handle this? Reply with exactly one id from: ${optionIds.join(", ")}`;
+      const toolDescMap = new Map(
+        ASSISTANT_TOOLS.map((t) => [
+          t.name,
+          (t.description ?? "").trim().slice(0, 140) +
+            ((t.description ?? "").length > 140 ? "…" : ""),
+        ])
+      );
+      const optionsWithToolsAndPrompts = optionIds
+        .map((id) => {
+          const tools = getToolsForSpecialist(registry, id);
+          const toolEntries = tools
+            .slice(0, 12)
+            .map((name) => `${name}: ${toolDescMap.get(name) ?? "(no description)"}`);
+          const toolBlock = toolEntries.join("\n    ") + (tools.length > 12 ? "\n    ..." : "");
+          return `- ${id}:\n    ${toolBlock}`;
+        })
+        .join("\n\n");
+      const prompt = `Recursive discovery step: The plan already chose the specialist "${parentId}" for this task. You must now choose one or more of its subspecialists — these are the only options for this step; pick those whose tools (and their descriptions) match the task.
+
+Task: ${task.slice(0, 400)}
+
+Subspecialists of "${parentId}" (id and each tool with its description):
+${optionsWithToolsAndPrompts}
+
+Match the task to the tool descriptions above:
+- Creating or designing a new workflow → need a tool that creates workflows → choose workflow_design.
+- Creating or updating agents → need a tool that creates agents → choose agent_lifecycle.
+- Only running a workflow or responding to a run → choose workflow_run.
+- Only controlling an OpenClaw device (send/history/abort) → choose agent_openclaw.
+
+Reply with one or more ids to run in parallel (comma or newline separated): ${optionIds.join(", ")}`;
       const res = await manager.chat(
         llmConfig as LLMConfig,
         {
@@ -300,8 +346,9 @@ export async function runHeapModeTurn(opts: {
       );
       pushUsage(res);
       const text = (res.content ?? "").trim();
-      const chosen = optionIds.find((id) => text.includes(id)) ?? optionIds[0];
-      return chosen;
+      const chosen = optionIds.filter((id) => text.includes(id));
+      if (chosen.length === 0) return optionIds[0];
+      return chosen.length === 1 ? chosen[0] : chosen;
     } catch {
       return optionIds[0];
     }
@@ -344,7 +391,12 @@ export async function runHeapModeTurn(opts: {
 
   enqueueTrace?.({ phase: "heap", label: "Running specialists…" });
 
-  const allHeapToolResults: { name: string; args: Record<string, unknown>; result: unknown }[] = [];
+  const allHeapToolResults: {
+    name: string;
+    args: Record<string, unknown>;
+    result: unknown;
+    specialistId?: string;
+  }[] = [];
   type RunSpecialist = (
     specialistId: string,
     task: string,
@@ -361,7 +413,7 @@ export async function runHeapModeTurn(opts: {
     const priorResults: { name: string; result: unknown }[] = [];
     const execTool = async (name: string, args: Record<string, unknown>) => {
       if (!toolNames.includes(name)) {
-        return { error: "Tool not available for this specialist." };
+        return formatToolNotAvailableError(specialistId, toolNames);
       }
       const resolved = resolveTemplateVars(args, priorResults);
       enqueueTrace?.({
@@ -417,13 +469,19 @@ Do not judge the whole list of tools. Options are structured in the heap. First 
 Loop: 1) Observe — get_run_for_improvement(runId), get_feedback_for_scope(agentId). 2) Decide — which group(s): act_prompt, act_topology, or act_training. 3) Act — call tools from the chosen group(s). 4) Evaluate — execute_workflow or ask_user("Goal achieved?" ["Done", "Retry"]). Stop when Done or after 2–3 rounds. Use the plan's instructionsForImproveAgentsWorkflows and extractedContext when provided.`
         : "";
     const workflowAgentUuidBlock =
-      specialistId === "workflow" || specialistId.startsWith("workflow__")
+      specialistId === "workflow" || specialistId.startsWith("workflow_")
         ? `
 For update_workflow, every agent node must have parameters.agentId set to the agent's UUID (id), never the agent's name. If Previous steps include "[Created agent id: <uuid>]", use that exact uuid for parameters.agentId. Otherwise call list_agents and set parameters.agentId to the matching agent's id.
 If Previous steps say an agent was created (e.g. "Created a runnable agent", "created ... agent") but do not include "[Created agent id: ...]", call list_agents and use the matching agent's id (by name or most recent) for parameters.agentId; then create/update the workflow and run if the user asked to run. Do not ask the user for the agent UUID in that case.
 Workflow id: For update_workflow, add_workflow_edges, and execute_workflow always pass the workflow by id (UUID). Use the id from create_workflow result in this turn, or from "[Created workflow id: <uuid>]" in Previous steps, or from Studio resources (Workflows: name (id)) when the user asked to run a workflow and exactly one workflow is listed. Pass it as "id" or "workflowId" in the tool arguments — never identify the workflow by name. If the user said "run the workflow" or "run it" and you have one workflow in Studio resources or in Previous steps, use that workflow's id for execute_workflow — do not skip the call for lack of id.
+When calling execute_workflow, pass the "inputs" argument when the task or extractedContext provides run-level values (e.g. url, targetUrl) so the workflow agent receives them on first turn.
 When execute_workflow returns status "failed", always report result.error to the user. On "Agent not found" or missing/invalid agentId: call get_workflow to inspect the workflow, fix parameters.agentId (e.g. from list_agents or from "[Created agent id: ...]" in previous steps), call update_workflow, then offer to re-run.
 You may try fixing the problem yourself first (e.g. create the missing agent if the workflow expects one, then update_workflow with the new agent id and re-run execute_workflow). Only if the fix is ambiguous or fails, report the failure and options to the user.`
+        : "";
+    const generalNoCreateBlock =
+      specialistId === "general"
+        ? `
+You do not have create_agent or create_workflow. Do not output <tool_call> for create_agent or create_workflow; only the agent and workflow specialists create those. Use only your allowed tools (e.g. ask_user, format_response, answer_question, list_agents, list_tools for read-only help).`
         : "";
     const choiceBlock = toolNames.includes("ask_user")
       ? `
@@ -443,7 +501,7 @@ When the previous step is waiting for user input, do not call tools that require
       callLLM,
       executeTool: execTool,
       systemPromptOverride: `You are the "${specialistId}" specialist. Use only these tools: ${toolNames.join(", ")}. Complete the task and respond with a brief summary.
-When the task requires creating, updating, or configuring agents, workflows, or tools, you MUST output <tool_call> blocks in your FIRST response. Use this format: <tool_call>{"name": "tool_name", "arguments": {...}}</tool_call>. Do not respond with only a summary or "I will..." — output the actual tool calls immediately so the system can execute them.${choiceBlock}${agentCreationBlock}${specialistId === "agent" ? AGENT_SPECIALIST_AGENTIC_BLOCKS : ""}${improvementLoopBlock}${workflowAgentUuidBlock}`,
+When the task requires creating, updating, or configuring agents, workflows, or tools, you MUST output <tool_call> blocks in your FIRST response. Use this format: <tool_call>{"name": "tool_name", "arguments": {...}}</tool_call>. Do not respond with only a summary or "I will..." — output the actual tool calls immediately so the system can execute them.${generalNoCreateBlock}${choiceBlock}${agentCreationBlock}${specialistId === "agent" ? AGENT_SPECIALIST_AGENTIC_BLOCKS : ""}${improvementLoopBlock}${workflowAgentUuidBlock}`,
       feedbackInjection: opts.feedbackInjection,
       ragContext: opts.ragContext,
       uiContext: opts.uiContext,
@@ -453,7 +511,12 @@ When the task requires creating, updating, or configuring agents, workflows, or 
     });
     if (result.toolResults.length > 0) {
       for (const tr of result.toolResults) {
-        allHeapToolResults.push({ name: tr.name, args: tr.args, result: tr.result });
+        allHeapToolResults.push({
+          name: tr.name,
+          args: tr.args,
+          result: tr.result,
+          specialistId,
+        });
       }
     }
     const summary = buildSpecialistSummaryWithCreatedIds(result.content ?? "", result.toolResults);
@@ -505,7 +568,7 @@ When the task requires creating, updating, or configuring agents, workflows, or 
     toolResults: allHeapToolResults,
     plan: plan ?? null,
     refinedTask,
-    priorityOrder,
+    priorityOrder: orderToRun,
     reasoning: undefined,
     todos: undefined,
     completedStepIndices: undefined,

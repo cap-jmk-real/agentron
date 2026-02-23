@@ -163,6 +163,21 @@ describe("Skills API", () => {
     expect(data.id).toBe(createdId);
   });
 
+  it("PUT /api/skills/:id with config null clears stored config", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: null }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.config).toBeUndefined();
+  });
+
   it("PUT /api/skills/:id returns 404 for unknown id", async () => {
     const res = await putOne(
       new Request("http://localhost/api/skills/x", {
@@ -324,6 +339,69 @@ describe("Skills API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.name).toBe("Updated Skill");
+  });
+
+  it("PUT /api/skills/:id with only type updates type and leaves others unchanged", async () => {
+    const createRes = await listPost(
+      new Request("http://localhost/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Skill For Type Update",
+          type: "prompt",
+          content: "Keep this",
+          config: { key: "v" },
+        }),
+      })
+    );
+    const created = await createRes.json();
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "custom" }),
+      }),
+      { params: Promise.resolve({ id: created.id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.type).toBe("custom");
+    expect(data.name).toBe("Skill For Type Update");
+    expect(data.content).toBe("Keep this");
+    expect(data.config).toEqual({ key: "v" });
+  });
+
+  it("PUT /api/skills/:id with config object then config null hits config update path", async () => {
+    const createRes = await listPost(
+      new Request("http://localhost/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Skill Config Path", type: "prompt" }),
+      })
+    );
+    const created = await createRes.json();
+    const putRes = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: { a: 1 } }),
+      }),
+      { params: Promise.resolve({ id: created.id }) }
+    );
+    expect(putRes.status).toBe(200);
+    const data1 = await putRes.json();
+    expect(data1.config).toEqual({ a: 1 });
+    const putNullRes = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: null }),
+      }),
+      { params: Promise.resolve({ id: created.id }) }
+    );
+    expect(putNullRes.status).toBe(200);
+    const data2 = await putNullRes.json();
+    expect(data2.config).toBeUndefined();
   });
 
   it("DELETE /api/skills/:id returns 404 for unknown id", async () => {

@@ -146,9 +146,10 @@ export async function PATCH(request: Request) {
     updatedAt: now,
   };
   if (customSystemPrompt !== undefined) updates.customSystemPrompt = customSystemPrompt;
-  if (contextAgentIds !== undefined) updates.contextAgentIds = contextAgentIds;
-  if (contextWorkflowIds !== undefined) updates.contextWorkflowIds = contextWorkflowIds;
-  if (contextToolIds !== undefined) updates.contextToolIds = contextToolIds;
+  if (contextAgentIds !== undefined) updates.contextAgentIds = JSON.stringify(contextAgentIds);
+  if (contextWorkflowIds !== undefined)
+    updates.contextWorkflowIds = JSON.stringify(contextWorkflowIds);
+  if (contextToolIds !== undefined) updates.contextToolIds = JSON.stringify(contextToolIds);
   if (recentSummariesCount !== undefined) updates.recentSummariesCount = recentSummariesCount;
   if (temperature !== undefined) updates.temperature = temperature;
   if (historyCompressAfter !== undefined) updates.historyCompressAfter = historyCompressAfter;

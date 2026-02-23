@@ -68,7 +68,7 @@ When the user message looks like a direct reply (e.g. option number + URL, singl
 
   return `You are a planner. The user message and available specialists are below.
 ${recentBlock}${runWaitingBlock}
-Available specialists (use their ids in priorityOrder):
+Available specialists (use their ids in priorityOrder). Each is a first-level choice; "agent" and "workflow" have subspecialists (e.g. create vs run) chosen in a later step based on the task.
 ${specialistList}
 
 Structured options (query heap by these groups; improver/planner use these instead of judging a full tool list):
@@ -87,14 +87,19 @@ Output exactly one JSON object, no other text, in this form:
   "instructionsForImproveAgentsWorkflows": "..."
 }
 
+Example for "Create a workflow with one agent that fetches example.com": {"priorityOrder": ["agent", "workflow", "general"], "refinedTask": "Create a workflow with one agent that fetches example.com and returns the page title.", ...}
+
 Rules:
 - priorityOrder: array of specialist ids from the list. Use "improve_run" when the user wants to suggest or preview improvements for the current run/session only (no DB writes). Use "improve_heap" when the user wants to add or change specialists or planner (heap registry). Use "improve_agents_workflows" when the user wants to persistently improve workflow agents or workflows from a run/feedback or design self-learning. improve_agents_workflows does not create agents or workflows; only updates existing ones. For "create new agent and workflow", do not put improve_agents_workflows first — put agent and workflow first (see next rule).
-- When the user wants to create both an agent and a workflow and add the agent to the workflow (or run it), put "agent" and "workflow" before "improve_agents_workflows" in priorityOrder. The improve_agents_workflows specialist cannot create agents or workflows. Example: ["agent", "workflow", "general"] or ["agent", "workflow", "improve_agents_workflows", "general"], not ["improve_agents_workflows", "agent", "workflow", "general"]. Keep "agent" before "workflow" so the workflow specialist receives [Created agent id: ...] in Previous steps.
+- CRITICAL — Order when creating both agent and workflow: When the user wants to create a workflow with one or more agents, or "create agent and workflow", or "workflow with an agent that...", you MUST put "agent" first, then "workflow", in priorityOrder. Example: ["agent", "workflow", "general"]. Never use ["workflow", "agent", ...] for create-both requests — the workflow step needs the agent id from the previous step. So: agent before workflow whenever both are needed for creation.
+- When the user wants to create both an agent and a workflow and add the agent to the workflow (or run it), put "agent" and "workflow" before "improve_agents_workflows" in priorityOrder. The improve_agents_workflows specialist cannot create agents or workflows. Example: ["agent", "workflow", "general"] or ["agent", "workflow", "improve_agents_workflows", "general"], not ["improve_agents_workflows", "agent", "workflow", "general"] and not ["workflow", "agent", "general"].
 - refinedTask: one short sentence.
 - extractedContext: concrete values (savedSearchUrl, savedSearchId, filePaths, ids, runId, agentId). Preserve every URL and identifier from the user message and recent conversation in extractedContext (e.g. copy savedSearchUrl, savedSearchId, file paths verbatim). Use recent conversation to fill extractedContext and to infer intent (e.g. "run the workflow we were just configuring").
 - When the user's intent is clear from recent conversation (e.g. "Run On Demand" or "run it" right after configuring or discussing a single workflow/agent), set extractedContext.workflowId or instructionsForWorkflow so the workflow specialist can list workflows and, if only one, run it with on_demand; if multiple and none clearly selected, then ask user to choose.
 - Ask for workflowId/agentId/runId only when genuinely ambiguous (e.g. multiple workflows and no prior selection in this conversation).
 - instructionsFor*: optional. instructionsForImproveRun = current run/session only. instructionsForImproveHeap = query heap, register_specialist or update_specialist. instructionsForImproveAgentsWorkflows = observe, decide (act_prompt/act_topology/act_training), act, evaluate; workflow-agent loop.
+- When priorityOrder is ["agent", "workflow", ...] for a create-both task (workflow with one or more agents), set instructionsForAgent to: "In this turn you MUST call create_agent (with name, description, systemPrompt, graphNodes, and toolIds as needed). The workflow specialist runs next and needs the created agent id. Do not only list_agents or list_tools; create the agent now." Set instructionsForWorkflow to: "Use the agent id from [Created agent id: ...] in Previous steps for parameters.agentId on each workflow node. If Previous steps do not contain an agent id yet, list_agents and use the matching agent id."
+- Simple question: When the user asks a simple factual or definitional question (e.g. "What is X?", "Explain Y", "What are canary thresholds?") and does NOT ask to create, edit, list, or run agents, workflows, or tools, treat it as a simple question. Then set priorityOrder to ["general"] only (no agent, workflow, or improve_*). Set refinedTask to a short task like "Answer the user's question" or the user's question. Set instructionsForGeneral to: "Call answer_question with the user's question. Then respond with a clear, concise answer. Do not create or modify agents or workflows. Do not call list_agents, create_workflow, or other resource tools." When it is NOT a simple question (user wants to create/edit/run resources), use the rules above and do not restrict to general only.
 
 User message:
 ---
@@ -201,7 +206,8 @@ function getInstructionForSpecialist(
         return plan.instructionsForImproveAgentsWorkflows ?? plan.instructionsForImprovement;
       if (specialistId.startsWith("improvement__"))
         return plan.instructionsForImproveAgentsWorkflows ?? plan.instructionsForImprovement;
-      if (specialistId.startsWith("workflow__")) return plan.instructionsForWorkflow;
+      if (specialistId.startsWith("workflow_") || specialistId.startsWith("workflow__"))
+        return plan.instructionsForWorkflow;
       return undefined;
   }
 }

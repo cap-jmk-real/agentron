@@ -1,6 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { platform } from "node:os";
+import { spawn } from "node:child_process";
 import { splitShellCommands, runShellCommand } from "../../../app/api/_lib/shell-exec";
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("node:child_process")>();
+  return { ...mod, spawn: vi.fn(mod.spawn) };
+});
 
 describe("shell-exec", () => {
   describe("splitShellCommands", () => {
@@ -72,7 +78,7 @@ describe("shell-exec", () => {
       expect(typeof out.exitCode).toBe("number");
       expect(out.stdout.trim()).toContain("hello");
       expect(out.exitCode).toBe(0);
-    });
+    }, 20000);
 
     it("returns exitCode 0 for successful command", async () => {
       const out = await runShellCommand("echo 0");
@@ -80,11 +86,50 @@ describe("shell-exec", () => {
       expect(out.stdout.trim()).toContain("0");
     });
 
+    it("uses sh -c on non-Windows (Unix path)", async () => {
+      if (platform() === "win32") return;
+      const out = await runShellCommand("echo unix");
+      expect(out.exitCode).toBe(0);
+      expect(out.stdout.trim()).toContain("unix");
+    });
+
     it("returns non-zero exitCode when command fails or fails to spawn", async () => {
       const out = await runShellCommand("nonexistent-executable-name-12345");
       expect(out.exitCode).not.toBe(0);
       expect(typeof out.stdout).toBe("string");
       expect(typeof out.stderr).toBe("string");
+    });
+
+    it("splitShellCommands uses Windows separators when platform is win32", () => {
+      const os = require("node:os");
+      const platformSpy = vi.spyOn(os, "platform").mockReturnValue("win32");
+      try {
+        const result = splitShellCommands("cmd1 & cmd2");
+        expect(result.length).toBeGreaterThanOrEqual(2);
+      } finally {
+        platformSpy.mockRestore();
+      }
+    });
+
+    it("runShellCommand resolves with exitCode -1 when spawn emits error", async () => {
+      vi.mocked(spawn).mockImplementation(
+        () =>
+          ({
+            stdout: { on: vi.fn() },
+            stderr: { on: vi.fn() },
+            on(ev: string, cb: () => void) {
+              if (ev === "error") setImmediate(cb);
+            },
+          }) as unknown as ReturnType<typeof spawn>
+      );
+      try {
+        const out = await runShellCommand("echo x");
+        expect(out.exitCode).toBe(-1);
+        expect(out.stdout).toBe("");
+        expect(out.stderr).toBe("");
+      } finally {
+        vi.mocked(spawn).mockRestore();
+      }
     });
   });
 });

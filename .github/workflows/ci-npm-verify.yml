@@ -1,0 +1,48 @@
+# Runs weekly to verify the repo still works with npm (main CI uses pnpm).
+name: CI (npm verify)
+
+on:
+  schedule:
+    # Weekly, Sunday 00:00 UTC
+    - cron: "0 0 * * 0"
+  workflow_dispatch:
+
+jobs:
+  test-npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install optional deps (Vitest/coverage)
+        run: npm install --include=optional
+
+      - name: Security audit (fail on critical)
+        run: npm audit --audit-level=critical
+        continue-on-error: true
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint UI
+        run: npm run lint:ui
+
+      - name: Test (UI) with coverage
+        run: npm run test:coverage
+
+      - name: Check file lengths (max 1000 lines)
+        run: npm run check:file-lengths
+
+      - name: Build docs
+        run: npm run build:docs

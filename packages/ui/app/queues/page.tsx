@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   Loader2,
   RefreshCw,
@@ -14,6 +14,7 @@ import {
   Copy,
   Check,
 } from "lucide-react";
+import RequestQueueSection from "./request-queue-section";
 
 type WorkflowQueueJob = {
   id: string;
@@ -645,9 +646,24 @@ function renderQueueLogStep(s: MessageQueueLogEntry, formatTs: (ts: number) => s
   );
 }
 
+const QUEUES_TAB_WORKFLOW = "workflow";
+const QUEUES_TAB_REQUESTS = "requests";
+type QueuesTab = typeof QUEUES_TAB_WORKFLOW | typeof QUEUES_TAB_REQUESTS;
+
 export default function QueuesPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const tab: QueuesTab =
+    searchParams.get("tab") === QUEUES_TAB_REQUESTS ? QUEUES_TAB_REQUESTS : QUEUES_TAB_WORKFLOW;
+  const tabForButtons: QueuesTab = tab;
   const convFromUrl = searchParams.get("conversation")?.trim() || null;
+
+  const setTab = (newTab: QueuesTab) => {
+    const next = new URLSearchParams(searchParams.toString());
+    if (newTab === QUEUES_TAB_WORKFLOW) next.delete("tab");
+    else next.set("tab", newTab);
+    router.replace(`/queues?${next.toString()}`, { scroll: false });
+  };
   const [data, setData] = useState<QueuesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -809,10 +825,41 @@ export default function QueuesPage() {
     loadHistoryConversations,
   ]);
 
-  if (loading && !data) {
+  if (loading && !data && tab === QUEUES_TAB_WORKFLOW) {
     return (
       <div className="page-content">
         <div className="loading-placeholder">Loading queues…</div>
+      </div>
+    );
+  }
+
+  if (tab === QUEUES_TAB_REQUESTS) {
+    return (
+      <div className="page-content">
+        <div
+          style={{
+            display: "flex",
+            gap: "0.5rem",
+            marginBottom: "1rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            type="button"
+            className={`tab ${tabForButtons === QUEUES_TAB_WORKFLOW ? "tab-active" : ""}`}
+            onClick={() => setTab(QUEUES_TAB_WORKFLOW)}
+          >
+            Workflow & chat
+          </button>
+          <button
+            type="button"
+            className={`tab ${tabForButtons === QUEUES_TAB_REQUESTS ? "tab-active" : ""}`}
+            onClick={() => setTab(QUEUES_TAB_REQUESTS)}
+          >
+            Request queue
+          </button>
+        </div>
+        <RequestQueueSection />
       </div>
     );
   }
@@ -826,6 +873,29 @@ export default function QueuesPage() {
 
   return (
     <div className="page-content">
+      <div
+        style={{
+          display: "flex",
+          gap: "0.5rem",
+          marginBottom: "1rem",
+          flexWrap: "wrap",
+        }}
+      >
+        <button
+          type="button"
+          className={`tab ${tabForButtons === QUEUES_TAB_WORKFLOW ? "tab-active" : ""}`}
+          onClick={() => setTab(QUEUES_TAB_WORKFLOW)}
+        >
+          Workflow & chat
+        </button>
+        <button
+          type="button"
+          className={`tab ${tabForButtons === QUEUES_TAB_REQUESTS ? "tab-active" : ""}`}
+          onClick={() => setTab(QUEUES_TAB_REQUESTS)}
+        >
+          Request queue
+        </button>
+      </div>
       <div className="page-header">
         <h1 className="page-title">Queues</h1>
         <p className="page-description">

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import path from "node:path";
 import fs from "node:fs";
 import { getDataDir } from "../../../app/api/_lib/db";
@@ -115,5 +115,64 @@ describe("github-settings", () => {
     updateGitHubSettings({ defaultRepoOwner: null as unknown as string });
     const s = getGitHubSettings();
     expect(s.defaultRepoOwner).toBeUndefined();
+  });
+
+  it("updateGitHubSettings with non-string defaultRepoName clears to undefined", () => {
+    updateGitHubSettings({ defaultRepoName: "repo" });
+    updateGitHubSettings({ defaultRepoName: 123 as unknown as string });
+    const s = getGitHubSettings();
+    expect(s.defaultRepoName).toBeUndefined();
+  });
+
+  it("updateGitHubSettings with non-string accessToken clears to undefined", () => {
+    updateGitHubSettings({ accessToken: "ghp_old" });
+    updateGitHubSettings({ accessToken: null as unknown as string });
+    expect(getGitHubAccessToken()).toBeUndefined();
+  });
+
+  it("updateGitHubSettings with accessTokenEnvVar that trims to empty clears to undefined", () => {
+    updateGitHubSettings({ accessTokenEnvVar: "  " });
+    const s = getGitHubSettings();
+    expect(s.hasToken).toBe(false);
+  });
+
+  it("updateGitHubSettings with accessTokenEnvVar non-string sets to undefined", () => {
+    updateGitHubSettings({ accessTokenEnvVar: 123 as unknown as string });
+    const s = getGitHubSettings();
+    expect(s.hasToken).toBe(false);
+  });
+
+  it("updateGitHubSettings with issueLabels not array keeps current issueLabels", () => {
+    updateGitHubSettings({ issueLabels: ["a", "b"] });
+    updateGitHubSettings({ issueLabels: "not-array" as unknown as string[] });
+    const s = getGitHubSettings();
+    expect(s.issueLabels).toEqual(["a", "b"]);
+  });
+
+  it("save creates parent dir when it does not exist", () => {
+    const dir = path.dirname(getSettingsPath());
+    const mkdirSpy = vi.spyOn(fs, "mkdirSync").mockImplementation(() => undefined);
+    const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => p !== dir);
+    try {
+      updateGitHubSettings({ enabled: true });
+      expect(mkdirSpy).toHaveBeenCalledWith(dir, { recursive: true });
+    } finally {
+      mkdirSpy.mockRestore();
+      existsSpy.mockRestore();
+    }
+  });
+
+  it("save ignores chmodSync failure", () => {
+    const orig = fs.chmodSync;
+    fs.chmodSync = () => {
+      throw new Error("chmod not supported");
+    };
+    try {
+      updateGitHubSettings({ enabled: true });
+      const s = getGitHubSettings();
+      expect(s.enabled).toBe(true);
+    } finally {
+      fs.chmodSync = orig;
+    }
   });
 });

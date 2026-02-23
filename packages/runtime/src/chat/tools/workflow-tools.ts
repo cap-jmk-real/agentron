@@ -263,6 +263,11 @@ export const WORKFLOW_TOOLS: AssistantToolDef[] = [
           description:
             "Optional. When workflow has branches, run only this branch's graph. Use branch id from get_workflow.branches[].id.",
         },
+        inputs: {
+          type: "object",
+          description:
+            "Optional. Run-level inputs (e.g. { url: 'https://...' }) passed to workflow nodes so the agent receives them on first turn. Use when the workflow expects inputs (e.g. url from extractedContext or user request).",
+        },
       },
       required: ["id"],
     },

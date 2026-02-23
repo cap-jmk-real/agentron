@@ -20,6 +20,29 @@ describe("RAG connectors API", () => {
     expect(Array.isArray(data)).toBe(true);
   });
 
+  it("GET /api/rag/connectors returns each connector with id, type, collectionId, config, status, lastSyncAt, createdAt", async () => {
+    const res = await listGet();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    for (const c of data as {
+      id: string;
+      type: string;
+      collectionId: string;
+      config: unknown;
+      status: string;
+      lastSyncAt?: number;
+      createdAt: number;
+    }[]) {
+      expect(c).toHaveProperty("id");
+      expect(c).toHaveProperty("type");
+      expect(c).toHaveProperty("collectionId");
+      expect(c).toHaveProperty("config");
+      expect(c).toHaveProperty("status");
+      expect(c).toHaveProperty("createdAt");
+    }
+  });
+
   it("POST /api/rag/connectors returns 400 for invalid JSON", async () => {
     const res = await listPost(
       new Request("http://localhost/api/rag/connectors", {
@@ -211,6 +234,67 @@ describe("RAG connectors API", () => {
     expect(withNonString.lastError).toBeUndefined();
   });
 
+  it("POST /api/rag/connectors persists config.ingestAfterSync and GET :id returns it", async () => {
+    const encRes = await encPost(
+      new Request("http://localhost/api/rag/encoding-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Enc ingestOpt",
+          provider: "openai",
+          modelOrEndpoint: "text-embedding-3-small",
+          dimensions: 1536,
+        }),
+      })
+    );
+    const enc = await encRes.json();
+    const storeRes = await storePost(
+      new Request("http://localhost/api/rag/document-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Store ingestOpt",
+          type: "minio",
+          bucket: "b",
+          endpoint: "http://localhost:9000",
+        }),
+      })
+    );
+    const store = await storeRes.json();
+    const collRes = await collPost(
+      new Request("http://localhost/api/rag/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Coll ingestOpt",
+          scope: "agent",
+          encodingConfigId: enc.id,
+          documentStoreId: store.id,
+        }),
+      })
+    );
+    const coll = await collRes.json();
+    const postRes = await listPost(
+      new Request("http://localhost/api/rag/connectors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "filesystem",
+          collectionId: coll.id,
+          config: { path: "/tmp", ingestAfterSync: true },
+        }),
+      })
+    );
+    expect(postRes.status).toBe(201);
+    const created = await postRes.json();
+    const getRes = await connGet(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id: created.id }),
+    });
+    expect(getRes.status).toBe(200);
+    const data = await getRes.json();
+    expect(data.config).toEqual(expect.objectContaining({ path: "/tmp", ingestAfterSync: true }));
+  });
+
   it("POST /api/rag/connectors creates connector", async () => {
     const encRes = await encPost(
       new Request("http://localhost/api/rag/encoding-config", {
@@ -280,7 +364,7 @@ describe("RAG connectors API", () => {
     expect(data.error).toContain("Not found");
   });
 
-  it("GET /api/rag/connectors/:id returns connector", async () => {
+  it("GET /api/rag/connectors/:id returns connector with id, type, collectionId, config, status, lastSyncAt, createdAt", async () => {
     const res = await connGet(new Request("http://localhost/x"), {
       params: Promise.resolve({ id: connectorId }),
     });
@@ -289,6 +373,10 @@ describe("RAG connectors API", () => {
     expect(data.id).toBe(connectorId);
     expect(data.type).toBe("filesystem");
     expect(data.collectionId).toBe(collectionId);
+    expect(data).toHaveProperty("config");
+    expect(data).toHaveProperty("status");
+    expect(data).toHaveProperty("createdAt");
+    // lastSyncAt may be omitted when never synced (route returns undefined → omitted in JSON)
   });
 
   it("PUT /api/rag/connectors/:id returns 400 for invalid JSON", async () => {
@@ -331,6 +419,26 @@ describe("RAG connectors API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.status).toBe("syncing");
+  });
+
+  it("PUT /api/rag/connectors/:id with empty body returns 200 and connector unchanged", async () => {
+    const before = await connGet(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id: connectorId }),
+    });
+    const beforeData = await before.json();
+    const res = await connPut(
+      new Request("http://localhost/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: connectorId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBe(beforeData.id);
+    expect(data.type).toBe(beforeData.type);
+    expect(data.collectionId).toBe(beforeData.collectionId);
   });
 
   it("DELETE /api/rag/connectors/:id returns 404 for unknown id", async () => {

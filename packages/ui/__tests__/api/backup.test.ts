@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
+import fs from "node:fs";
 import * as db from "../../app/api/_lib/db";
 import { GET as exportGet } from "../../app/api/backup/export/route";
 import { POST as restorePost } from "../../app/api/backup/restore/route";
@@ -26,6 +27,19 @@ describe("Backup API", () => {
           }),
         })
       );
+    }
+  });
+
+  it("GET /api/backup/export ignores unlink error in finally", async () => {
+    const unlinkSpy = vi.spyOn(fs, "unlinkSync").mockImplementationOnce(() => {
+      throw new Error("unlink failed");
+    });
+    try {
+      const res = await exportGet();
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toContain("sqlite");
+    } finally {
+      unlinkSpy.mockRestore();
     }
   });
 
@@ -76,6 +90,32 @@ describe("Backup API", () => {
     expect(data.message).toBeDefined();
   });
 
+  it("POST /api/backup/restore returns 500 when runRestore throws", async () => {
+    vi.spyOn(db, "runRestore").mockRejectedValueOnce(new Error("restore failed"));
+    const form = new FormData();
+    form.append("file", new Blob(["not a real db"]), "backup.sqlite");
+    const res = await restorePost(
+      new Request("http://localhost/api/backup/restore", { method: "POST", body: form })
+    );
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.error).toBe("restore failed");
+    vi.restoreAllMocks();
+  });
+
+  it("POST /api/backup/restore returns 500 with generic message when thrown value is not Error", async () => {
+    vi.spyOn(db, "runRestore").mockRejectedValueOnce("string throw");
+    const form = new FormData();
+    form.append("file", new Blob(["not a real db"]), "backup.sqlite");
+    const res = await restorePost(
+      new Request("http://localhost/api/backup/restore", { method: "POST", body: form })
+    );
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.error).toBe("Restore failed");
+    vi.restoreAllMocks();
+  });
+
   it("POST /api/backup/restore without file returns 400", async () => {
     const res = await restorePost(
       new Request("http://localhost/api/backup/restore", { method: "POST", body: new FormData() })
@@ -94,6 +134,27 @@ describe("Backup API", () => {
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toContain("file");
+  });
+
+  it("POST /api/backup/restore ignores unlink error in finally", async () => {
+    const exportRes = await exportGet();
+    expect(exportRes.ok).toBe(true);
+    const blob = await exportRes.blob();
+    const form = new FormData();
+    form.append("file", blob, "backup.sqlite");
+    const unlinkSpy = vi.spyOn(fs, "unlinkSync").mockImplementationOnce(() => {
+      throw new Error("unlink failed");
+    });
+    try {
+      const restoreRes = await restorePost(
+        new Request("http://localhost/api/backup/restore", { method: "POST", body: form })
+      );
+      const data = await restoreRes.json();
+      expect(restoreRes.ok).toBe(true);
+      expect(data.ok).toBe(true);
+    } finally {
+      unlinkSpy.mockRestore();
+    }
   });
 
   it("POST /api/backup/reset returns ok and message", async () => {

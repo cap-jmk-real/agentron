@@ -61,6 +61,7 @@ import {
 } from "./run-workflow-constants";
 import {
   buildWorkflowMemoryBlock,
+  buildFirstTurnPartnerMessageFromConfig,
   buildAvailableTools,
   executeStudioTool,
   getLogSourceTag,
@@ -75,6 +76,8 @@ export type RunWorkflowOptions = {
   workflowId: string;
   runId: string;
   branchId?: string;
+  /** Run-level inputs (e.g. from execute_workflow inputs) merged into each node's config so the agent receives them on first turn. */
+  runInputs?: Record<string, unknown>;
   resumeUserResponse?: string;
   vaultKey?: Buffer | null;
   onStepComplete?: (trail: ExecutionTraceStep[], lastOutput: unknown) => void | Promise<void>;
@@ -87,12 +90,28 @@ export type RunWorkflowOptions = {
   maxSelfFixRetries?: number;
 };
 
+/** Merges run-level inputs into node parameters so the agent handler receives them (e.g. url for first turn). Exported for unit tests. */
+export function mergeNodeConfigWithRunInputs(
+  nodeParams: { parameters?: Record<string, unknown>; config?: Record<string, unknown> },
+  runInputs?: Record<string, unknown>
+): Record<string, unknown> {
+  const base = nodeParams.parameters ?? nodeParams.config ?? {};
+  if (!runInputs || Object.keys(runInputs).length === 0) return { ...base };
+  return { ...base, ...runInputs };
+}
+
 export async function runWorkflow(options: RunWorkflowOptions): Promise<{
   output: unknown;
   context: Record<string, unknown>;
   trail: ExecutionTraceStep[];
 }> {
-  const { workflowId, runId, branchId, maxSelfFixRetries: maxSelfFixRetriesOption = 0 } = options;
+  const {
+    workflowId,
+    runId,
+    branchId,
+    runInputs,
+    maxSelfFixRetries: maxSelfFixRetriesOption = 0,
+  } = options;
   const trail: ExecutionTraceStep[] = [];
   let stepOrder = 0;
 
@@ -327,21 +346,8 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
             ? `The user has replied: "${resumeText}". They approved using vault credentials. Call std-list-vault-credentials to see which keys are stored, then std-get-vault-credential with the key that matches each field (username/email vs password). Use each returned .value in std-browser-automation fill. Do not ask the user to paste credentials. Do not call request_user_help again for the same question.`
             : `The user has replied to your previous request (the one you sent via request_user_help). Their reply: "${resumeText}". Proceed based on this reply; do not call request_user_help again for the same question.`
           : FIRST_TURN_DEFAULT;
-    if (
-      partnerMessage === FIRST_TURN_DEFAULT &&
-      config &&
-      (config.savedSearchUrl != null || config.autoUseVault != null)
-    ) {
-      const parts: string[] = [FIRST_TURN_DEFAULT];
-      if (config.savedSearchUrl != null && String(config.savedSearchUrl).trim()) {
-        parts.push(
-          `Use the following saved search URL (provided by the workflow; do not call request_user_help to ask for the URL): ${String(config.savedSearchUrl).trim()}`
-        );
-      }
-      if (config.autoUseVault === true || config.autoUseVault === "true") {
-        parts.push("Use vault credentials when needed (autoUseVault is enabled).");
-      }
-      partnerMessage = parts.join("\n\n");
+    if (partnerMessage === FIRST_TURN_DEFAULT) {
+      partnerMessage = buildFirstTurnPartnerMessageFromConfig(config);
     }
     // #region agent log
     fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
@@ -1154,7 +1160,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
             parameters?: Record<string, unknown>;
             config?: Record<string, unknown>;
           };
-          const config = nodeParams.parameters ?? nodeParams.config ?? {};
+          const config = mergeNodeConfigWithRunInputs(nodeParams, runInputs);
           const handler = handlers[node.type];
           if (!handler) {
             await markEventProcessed(event.id);

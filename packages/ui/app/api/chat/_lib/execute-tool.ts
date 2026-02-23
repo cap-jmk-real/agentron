@@ -87,6 +87,7 @@ import { readConnectorItem, updateConnectorItem } from "../../rag/connectors/_li
 import { ingestOneDocument } from "../../rag/ingest/route";
 import { testRemoteConnection } from "../../_lib/remote-test";
 import { randomAgentName, randomWorkflowName } from "../../_lib/naming";
+import { refreshScheduledWorkflows } from "../../_lib/scheduled-workflows";
 import { openclawSend, openclawHistory, openclawAbort } from "../../_lib/openclaw-client";
 import { eq, asc, desc, and, isNotNull } from "drizzle-orm";
 import {
@@ -317,7 +318,17 @@ export async function executeTool(
           typeof a.needsInput === "string" && (a.needsInput as string).trim()
             ? (a.needsInput as string).trim()
             : undefined;
-        return { formatted: true, summary: summary || "", needsInput };
+        const options = Array.isArray(a.options)
+          ? (a.options as unknown[]).filter(
+              (x): x is string => typeof x === "string" && x.trim() !== ""
+            )
+          : undefined;
+        return {
+          formatted: true,
+          summary: summary || "",
+          needsInput,
+          ...(options && options.length > 0 && { options }),
+        };
       }
       case "retry_last_message": {
         if (!conversationId) return { lastUserMessage: null, message: "No conversation context." };
@@ -1023,17 +1034,120 @@ export async function executeTool(
         };
       }
       case "create_workflow": {
+        // Accept both flat (nodes, edges) and nested (workflow: { nodes, edges }) so the LLM can send a full DAG in one call.
+        const w = (a as { workflow?: Record<string, unknown> }).workflow;
+        if (w != null && typeof w === "object" && !Array.isArray(w)) {
+          if (a.nodes === undefined && Array.isArray(w.nodes))
+            (a as Record<string, unknown>).nodes = w.nodes;
+          if (a.edges === undefined && Array.isArray(w.edges))
+            (a as Record<string, unknown>).edges = w.edges;
+        }
         const id = crypto.randomUUID();
         const wfName = a.name && String(a.name).trim() ? (a.name as string) : randomWorkflowName();
+        let nodes: unknown[] = [];
+        let edges: unknown[] = [];
+        if (Array.isArray(a.nodes)) {
+          const normalizedNodes: {
+            id: string;
+            type: string;
+            position: [number, number];
+            parameters: Record<string, unknown>;
+          }[] = [];
+          for (let i = 0; i < a.nodes.length; i++) {
+            const n = a.nodes[i];
+            if (n == null || typeof n !== "object") continue;
+            const type = String((n as { type?: unknown }).type ?? "agent");
+            if (type !== "agent") continue;
+            const nodeId = String((n as { id?: unknown }).id ?? "") || `n-${i}`;
+            const pos = (n as { position?: unknown }).position;
+            const position: [number, number] =
+              Array.isArray(pos) &&
+              pos.length >= 2 &&
+              typeof pos[0] === "number" &&
+              typeof pos[1] === "number"
+                ? [pos[0], pos[1]]
+                : [0, 0];
+            const params = (n as { parameters?: unknown }).parameters;
+            let parameters: Record<string, unknown> = {};
+            if (params != null && typeof params === "object" && !Array.isArray(params)) {
+              try {
+                parameters = { ...(params as Record<string, unknown>) };
+              } catch {
+                parameters = {};
+              }
+            }
+            const nodeRecord = n as Record<string, unknown>;
+            if (!parameters.agentId && parameters.agentName != null) {
+              const byName = await db
+                .select()
+                .from(agents)
+                .where(eq(agents.name, String(parameters.agentName)));
+              if (byName.length > 0) parameters.agentId = byName[0].id;
+            }
+            if (
+              parameters.agentId == null &&
+              nodeRecord.agentId != null &&
+              String(nodeRecord.agentId).trim() !== ""
+            ) {
+              parameters.agentId = String(nodeRecord.agentId).trim();
+            }
+            if (
+              parameters.agentName == null &&
+              nodeRecord.agentName != null &&
+              String(nodeRecord.agentName).trim() !== ""
+            ) {
+              parameters.agentName = String(nodeRecord.agentName).trim();
+            }
+            normalizedNodes.push({ id: nodeId, type, position, parameters });
+          }
+          const agentNodesWithoutId = normalizedNodes.filter(
+            (nd) =>
+              !(typeof nd.parameters?.agentId === "string" && nd.parameters.agentId.trim() !== "")
+          );
+          if (agentNodesWithoutId.length > 0) {
+            return {
+              error:
+                "Workflow has agent node(s) without an agent selected. Set parameters.agentId (or parameters.agentName) for each agent node so the workflow can run.",
+            };
+          }
+          nodes = normalizedNodes;
+        }
+        if (Array.isArray(a.edges)) {
+          const normalizedEdges: Array<
+            { id: string; source: string; target: string } & Record<string, unknown>
+          > = [];
+          for (let i = 0; i < a.edges.length; i++) {
+            const e = a.edges[i];
+            if (e == null || typeof e !== "object") continue;
+            const edgeObj = e as Record<string, unknown>;
+            const src = String(edgeObj.source ?? edgeObj.from ?? edgeObj.sourceId ?? "");
+            const tgt = String(edgeObj.target ?? edgeObj.to ?? edgeObj.targetId ?? "");
+            if (!src || !tgt) continue;
+            const edgeId = String(edgeObj.id ?? `e-${i}-${src}-${tgt}`);
+            normalizedEdges.push({ ...edgeObj, id: edgeId, source: src, target: tgt });
+          }
+          edges = normalizedEdges;
+        }
         const wf = {
           id,
           name: wfName,
           executionMode: (a.executionMode || "one_time") as "one_time",
-          nodes: [],
-          edges: [],
+          nodes,
+          edges,
         };
-        await db.insert(workflows).values(toWorkflowRow(wf)).run();
-        return { id, name: wf.name, message: `Workflow "${wf.name}" created` };
+        await db
+          .insert(workflows)
+          .values(toWorkflowRow(wf as Parameters<typeof toWorkflowRow>[0]))
+          .run();
+        refreshScheduledWorkflows();
+        const nodeCount = Array.isArray(wf.nodes) ? wf.nodes.length : 0;
+        const edgeCount = Array.isArray(wf.edges) ? wf.edges.length : 0;
+        return {
+          id,
+          name: wf.name,
+          message: `Workflow "${wf.name}" created`,
+          ...(nodeCount > 0 || edgeCount > 0 ? { nodes: nodeCount, edges: edgeCount } : {}),
+        };
       }
       case "update_workflow": {
         // Accept both flat (nodes, edges, maxRounds) and nested (workflow: { nodes, edges, maxRounds }) so workflows are not left empty when the LLM sends the nested shape.

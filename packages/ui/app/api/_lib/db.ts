@@ -481,6 +481,23 @@ export const STANDARD_TOOLS: { id: string; name: string; description?: string }[
     description:
       "List specialist model instances for an agent (jobs scoped to that agent, currentModelRef and instanceRefs).",
   },
+  {
+    id: "send_to_openclaw",
+    name: "Send to OpenClaw",
+    description:
+      "Send a message to an OpenClaw instance. Use sandboxId when OpenClaw runs in a container (create_sandbox with OpenClaw image); otherwise uses gateway URL/token from vault or env.",
+  },
+  {
+    id: "openclaw_history",
+    name: "OpenClaw history",
+    description:
+      "Get chat history from an OpenClaw instance. Use sandboxId when OpenClaw runs in a container.",
+  },
+  {
+    id: "openclaw_abort",
+    name: "OpenClaw abort",
+    description: "Abort the current OpenClaw run. Use sandboxId when OpenClaw runs in a container.",
+  },
 ];
 
 /** Tool categories for list_tools(category) segmentation. Agent-creator specialists can request a subset. */
@@ -510,6 +527,9 @@ export const TOOL_CATEGORIES: Record<string, string> = {
   list_workflows: "improvement",
   list_workflow_versions: "improvement",
   rollback_workflow: "improvement",
+  send_to_openclaw: "openclaw",
+  openclaw_history: "openclaw",
+  openclaw_abort: "openclaw",
   create_improvement_job: "improvement",
   get_improvement_job: "improvement",
   list_improvement_jobs: "improvement",
@@ -740,6 +760,41 @@ export async function ensureStandardTools(): Promise<void> {
     },
     required: ["runId"],
   };
+  const sendToOpenclawInputSchema = {
+    type: "object",
+    properties: {
+      content: { type: "string", description: "Message to send to OpenClaw" },
+      sandboxId: {
+        type: "string",
+        description:
+          "Sandbox id when OpenClaw runs in a container (create_sandbox with OpenClaw image)",
+      },
+    },
+    required: ["content"],
+  };
+  const openclawHistoryInputSchema = {
+    type: "object",
+    properties: {
+      sandboxId: {
+        type: "string",
+        description:
+          "Sandbox id when OpenClaw runs in a container (create_sandbox with OpenClaw image)",
+      },
+      limit: { type: "number", description: "Max number of messages to return (default 20)" },
+    },
+    required: [],
+  };
+  const openclawAbortInputSchema = {
+    type: "object",
+    properties: {
+      sandboxId: {
+        type: "string",
+        description:
+          "Sandbox id when OpenClaw runs in a container (create_sandbox with OpenClaw image)",
+      },
+    },
+    required: [],
+  };
 
   const genericImprovementInputSchema = {
     type: "object" as const,
@@ -759,6 +814,9 @@ export async function ensureStandardTools(): Promise<void> {
     const isListVaultCredentials = t.id === "std-list-vault-credentials";
     const isGetRunForImprovement = t.id === "get_run_for_improvement";
     const isGetFeedbackForScope = t.id === "get_feedback_for_scope";
+    const isSendToOpenclaw = t.id === "send_to_openclaw";
+    const isOpenclawHistory = t.id === "openclaw_history";
+    const isOpenclawAbort = t.id === "openclaw_abort";
     const isOtherImprovementTool =
       TOOL_CATEGORIES[t.id] === "improvement" && !isGetRunForImprovement && !isGetFeedbackForScope;
     const configJson = t.description ? JSON.stringify({ description: t.description }) : "{}";
@@ -792,9 +850,15 @@ export async function ensureStandardTools(): Promise<void> {
                               ? JSON.stringify(getRunForImprovementInputSchema)
                               : isGetFeedbackForScope
                                 ? JSON.stringify(getFeedbackForScopeInputSchema)
-                                : isOtherImprovementTool
-                                  ? JSON.stringify(genericImprovementInputSchema)
-                                  : null,
+                                : isSendToOpenclaw
+                                  ? JSON.stringify(sendToOpenclawInputSchema)
+                                  : isOpenclawHistory
+                                    ? JSON.stringify(openclawHistoryInputSchema)
+                                    : isOpenclawAbort
+                                      ? JSON.stringify(openclawAbortInputSchema)
+                                      : isOtherImprovementTool
+                                        ? JSON.stringify(genericImprovementInputSchema)
+                                        : null,
           outputSchema: null,
         })
         .run();

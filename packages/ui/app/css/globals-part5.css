@@ -370,6 +370,10 @@
   flex-shrink: 0;
 }
 
+.chat-section-status-bar .chat-section-status-bar-status {
+  flex-shrink: 0;
+}
+
 .chat-section-pending-help {
   margin-bottom: 1.25rem;
   padding: 1rem 1.25rem;
@@ -450,51 +454,6 @@
 .chat-section-pending-help-card-reply .chat-section-input {
   flex: 1;
   min-width: 0;
-}
-
-.chat-section-run-finished-toast {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  padding: 0.6rem 1rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.875rem;
-  margin-bottom: 0.5rem;
-}
-
-.chat-section-run-finished-toast span {
-  flex: 1;
-  min-width: 0;
-  color: var(--text);
-}
-
-.chat-section-run-finished-link {
-  color: var(--primary);
-  text-decoration: none;
-  font-weight: 500;
-}
-
-.chat-section-run-finished-link:hover {
-  text-decoration: underline;
-}
-
-.chat-section-run-finished-dismiss {
-  padding: 0.2rem 0.4rem;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  font-size: 1.25rem;
-  line-height: 1;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.chat-section-run-finished-dismiss:hover {
-  color: var(--text);
-  background: var(--border);
 }
 
 .chat-section-run-waiting-card {

@@ -2,6 +2,7 @@
  * SSE endpoint for decoupled chat: subscribe to events by turnId.
  * Client receives the same event types as the streaming POST (trace_step, plan, step_start, todo_done, done, error, content_delta).
  * When the first client subscribes, any pending job for this turnId is started in the background.
+ * When the job completes (resolve or reject), the stream always ends with a terminal event: "done" on success or "error" on failure.
  */
 
 import { subscribe, takePendingJob, finish } from "../../_lib/chat-event-channel";

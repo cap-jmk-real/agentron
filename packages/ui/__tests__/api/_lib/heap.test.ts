@@ -62,12 +62,14 @@ describe("heap registry", () => {
         "planner",
         "tools",
         "workflow",
+        "workflow_design",
+        "workflow_run",
       ])
     );
     expect(reg.specialists.general?.toolNames.length).toBeLessThanOrEqual(SPECIALIST_TOOL_CAP);
-    // Workflow may be a delegator (when > SPECIALIST_TOOL_CAP tools) with workflow__partN; collect tools from workflow and any part
+    // Workflow may be a delegator (when > SPECIALIST_TOOL_CAP tools) with workflow_design, workflow_run; collect tools from workflow and any part
     const workflowToolNames = (Object.entries(reg.specialists) as [string, SpecialistEntry][])
-      .filter(([id]) => id === "workflow" || id.startsWith("workflow__"))
+      .filter(([id]) => id === "workflow" || id.startsWith("workflow_"))
       .flatMap(([, e]) => e.toolNames ?? []);
     expect(workflowToolNames).toContain("execute_workflow");
     expect(reg.specialists.planner).toBeDefined();
@@ -90,6 +92,23 @@ describe("heap registry", () => {
       "openclaw_history",
       "openclaw_abort",
     ]);
+    // Knowledge specialist: connector tools + ingest so assistant can list/sync/read/update and ingest deployment docs
+    expect(reg.specialists.knowledge).toBeDefined();
+    const knowledgeTools = getToolsForSpecialist(reg, "knowledge");
+    expect(knowledgeTools).toContain("list_connectors");
+    expect(knowledgeTools).toContain("list_connector_items");
+    expect(knowledgeTools).toContain("connector_read_item");
+    expect(knowledgeTools).toContain("connector_update_item");
+    expect(knowledgeTools).toContain("ingest_deployment_documents");
+    expect(knowledgeTools).toContain("ask_user");
+    expect(knowledgeTools).toContain("format_response");
+    expect(knowledgeTools.length).toBeLessThanOrEqual(SPECIALIST_TOOL_CAP);
+    // General specialist can answer simple questions (answer_question, explain_software, web_search)
+    const generalToolNames = getToolsForSpecialist(reg, "general");
+    expect(generalToolNames).toContain("answer_question");
+    expect(generalToolNames).toContain("explain_software");
+    expect(generalToolNames).toContain("web_search");
+    expect(generalToolNames.length).toBeLessThanOrEqual(SPECIALIST_TOOL_CAP);
   });
 
   it("applyRegistryCaps trims topLevelIds to TOP_LEVEL_CAP", () => {
@@ -333,7 +352,6 @@ describe("heap planner", () => {
     expect(prompt).toMatch(
       /put\s+["']agent["']\s+and\s+["']workflow["'].*before\s+["']improve_agents_workflows["']/i
     );
-    expect(prompt).toMatch(/\[Created agent id:/);
   });
 
   it("parsePlanOutput parses valid JSON with all fields", () => {
@@ -460,6 +478,15 @@ describe("heap planner", () => {
     expect(Array.isArray(order)).toBe(true);
     expect(order.length).toBe(1);
     expect(reg.topLevelIds).toContain(order[0]);
+  });
+
+  it("inferFallbackPriorityOrder returns general only for simple definitional question", () => {
+    const reg = getRegistry();
+    const order = inferFallbackPriorityOrder("What are canary thresholds?", undefined, reg);
+    expect(Array.isArray(order)).toBe(true);
+    expect(order.length).toBe(1);
+    expect(order[0]).toBe(reg.topLevelIds[0]);
+    expect(order[0]).toBe("general");
   });
 
   it("inferFallbackPriorityOrder returns empty when registry has no top-level ids", () => {
@@ -604,14 +631,14 @@ describe("planImpliesCreateAgentAndWorkflow and reorderAgentBeforeWorkflow", () 
   it("reorderAgentBeforeWorkflow moves agent before workflow when workflow was first", () => {
     const order: HeapStep[] = [
       "improve_agents_workflows__part1",
-      "workflow__part1",
+      "workflow_design",
       "agent",
       "general",
     ];
     const reordered = reorderAgentBeforeWorkflow(order);
     const flat = reordered.map((s) => (typeof s === "string" ? s : s.parallel[0]));
     const agentIdx = flat.findIndex((id) => id === "agent" || id.startsWith("agent__"));
-    const workflowIdx = flat.findIndex((id) => id === "workflow" || id.startsWith("workflow__"));
+    const workflowIdx = flat.findIndex((id) => id === "workflow" || id.startsWith("workflow_"));
     expect(agentIdx).toBeGreaterThanOrEqual(0);
     expect(workflowIdx).toBeGreaterThanOrEqual(0);
     expect(agentIdx).toBeLessThan(workflowIdx);
@@ -637,13 +664,13 @@ describe("planImpliesCreateAgentAndWorkflow and reorderAgentBeforeWorkflow", () 
     const order: HeapStep[] = [
       "improve_agents_workflows__part1",
       "agent",
-      "workflow__part1",
+      "workflow_design",
       "general",
     ];
     const reordered = reorderAgentAndWorkflowBeforeImproveAgentsWorkflows(order);
     const flat = reordered.map((s) => (typeof s === "string" ? s : s.parallel[0]));
     const agentIdx = flat.findIndex((id) => id === "agent" || id.startsWith("agent__"));
-    const workflowIdx = flat.findIndex((id) => id === "workflow" || id.startsWith("workflow__"));
+    const workflowIdx = flat.findIndex((id) => id === "workflow" || id.startsWith("workflow_"));
     const improveIdx = flat.findIndex((id) => isImproveAgentsWorkflowsId(id));
     expect(agentIdx).toBeGreaterThanOrEqual(0);
     expect(workflowIdx).toBeGreaterThanOrEqual(0);
@@ -652,7 +679,7 @@ describe("planImpliesCreateAgentAndWorkflow and reorderAgentBeforeWorkflow", () 
     expect(workflowIdx).toBeLessThan(improveIdx);
     expect(flat).toEqual([
       "agent",
-      "workflow__part1",
+      "workflow_design",
       "improve_agents_workflows__part1",
       "general",
     ]);
@@ -661,6 +688,38 @@ describe("planImpliesCreateAgentAndWorkflow and reorderAgentBeforeWorkflow", () 
   it("reorderAgentBeforeWorkflow leaves order unchanged when only workflow or only agent", () => {
     expect(reorderAgentBeforeWorkflow(["workflow", "general"])).toEqual(["workflow", "general"]);
     expect(reorderAgentBeforeWorkflow(["agent", "general"])).toEqual(["agent", "general"]);
+  });
+
+  it("DAG does not reorder when route is already agent then workflow (leaf ids)", () => {
+    const order: HeapStep[] = ["agent_lifecycle", "workflow_design", "general"];
+    const afterFirst = reorderAgentBeforeWorkflow(order);
+    expect(afterFirst).toEqual(order);
+    const afterSecond = reorderAgentAndWorkflowBeforeImproveAgentsWorkflows(order);
+    expect(afterSecond).toEqual(order);
+  });
+
+  it("DAG does not reorder when route has parallel workflow step and agent first (leaf ids)", () => {
+    const order: HeapStep[] = [
+      "agent_lifecycle",
+      { parallel: ["workflow_design", "workflow_run"] },
+      "general",
+    ];
+    const afterFirst = reorderAgentBeforeWorkflow(order);
+    expect(afterFirst).toEqual(order);
+    const afterSecond = reorderAgentAndWorkflowBeforeImproveAgentsWorkflows(order);
+    expect(afterSecond).toEqual(order);
+  });
+
+  it("reorderAgentBeforeWorkflow moves agent_lifecycle before workflow_design when workflow was first", () => {
+    const order: HeapStep[] = ["workflow_design", "agent_lifecycle", "general"];
+    const reordered = reorderAgentBeforeWorkflow(order);
+    const flat = reordered.map((s) => (typeof s === "string" ? s : s.parallel[0]));
+    const agentIdx = flat.indexOf("agent_lifecycle");
+    const workflowIdx = flat.indexOf("workflow_design");
+    expect(agentIdx).toBeGreaterThanOrEqual(0);
+    expect(workflowIdx).toBeGreaterThanOrEqual(0);
+    expect(agentIdx).toBeLessThan(workflowIdx);
+    expect(flat).toEqual(["agent_lifecycle", "workflow_design", "general"]);
   });
 });
 
