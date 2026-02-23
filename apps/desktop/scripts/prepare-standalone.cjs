@@ -2,10 +2,13 @@
  * Copies the Next.js standalone build from packages/ui into apps/desktop/standalone
  * so electron-builder can include it. Run after: npm run build:ui (from repo root).
  * Next.js standalone does not include .next/static or public; we copy them in.
+ *
+ * When the standalone output contains broken symlinks (e.g. pnpm layout on Linux/macOS),
+ * we resolve the package from the repo root node_modules and copy it so the build does
+ * not fail and the packaged app has all required deps.
  */
 const fs = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 const uiDir = path.join(repoRoot, "packages", "ui");
@@ -14,6 +17,41 @@ const staticSource = path.join(uiDir, ".next", "static");
 const publicSource = path.join(uiDir, "public");
 const desktopDir = path.join(repoRoot, "apps", "desktop");
 const standaloneOut = path.join(desktopDir, "standalone");
+
+const pnpmNodeModules = path.join(standaloneSource, "node_modules", ".pnpm", "node_modules");
+
+/**
+ * Derive a require()-style package name from a path under standalone/node_modules.
+ * e.g. .../node_modules/.pnpm/node_modules/semver -> "semver"
+ *      .../node_modules/.pnpm/node_modules/@babel/core -> "@babel/core"
+ */
+function packageNameFromStandalonePath(srcPath) {
+  if (!srcPath.startsWith(pnpmNodeModules + path.sep) && srcPath !== pnpmNodeModules) {
+    return path.basename(srcPath);
+  }
+  const rel = path.relative(pnpmNodeModules, srcPath);
+  const first = rel.split(path.sep)[0];
+  if (first && first.startsWith("@")) {
+    const second = rel.split(path.sep)[1];
+    return second ? first + "/" + second : first;
+  }
+  return first || path.basename(srcPath);
+}
+
+/**
+ * Resolve package from repo (root or packages/ui) and return its root dir.
+ */
+function resolvePackageFromRepo(packageName) {
+  for (const searchRoot of [repoRoot, uiDir]) {
+    try {
+      const pkgJsonPath = require.resolve(packageName + "/package.json", { paths: [searchRoot] });
+      return path.dirname(pkgJsonPath);
+    } catch {
+      // continue
+    }
+  }
+  return null;
+}
 
 function copyOne(srcPath, destPath, copyRecursiveRef) {
   let stat;
@@ -34,9 +72,18 @@ function copyOne(srcPath, destPath, copyRecursiveRef) {
       target = fs.realpathSync(srcPath);
     } catch (err) {
       if (err.code === "ENOENT") {
+        const packageName = packageNameFromStandalonePath(srcPath);
+        const repoPkgRoot = resolvePackageFromRepo(packageName);
+        if (repoPkgRoot && fs.existsSync(repoPkgRoot)) {
+          console.warn(
+            `prepare-standalone: broken symlink at ${path.relative(repoRoot, srcPath)} -> copying "${packageName}" from repo`
+          );
+          copyRecursiveRef(repoPkgRoot, destPath);
+          return;
+        }
         throw new Error(
-          `prepare-standalone: broken symlink (target missing). ` +
-            `Next.js standalone must include real files for all traced deps. Path: ${srcPath}`
+          `prepare-standalone: broken symlink (target missing in standalone) and could not resolve "${packageName}" from repo. ` +
+            `Path: ${srcPath}`
         );
       }
       throw err;
