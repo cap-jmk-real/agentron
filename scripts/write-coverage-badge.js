@@ -33,7 +33,7 @@ const pct =
       ? total.statements.pct
       : total.branches?.pct != null
         ? total.branches.pct
-        : total.functions?.pct ?? 0;
+        : (total.functions?.pct ?? 0);
 
 const value = Number.isFinite(pct) ? `${Math.round(pct)}%` : "n/a";
 // Match threshold: green >= 70%, yellow 50–69%, red < 50%

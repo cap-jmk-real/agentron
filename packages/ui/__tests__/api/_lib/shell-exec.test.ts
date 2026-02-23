@@ -100,16 +100,19 @@ describe("shell-exec", () => {
       expect(typeof out.stderr).toBe("string");
     });
 
-    it("splitShellCommands uses Windows separators when platform is win32", () => {
-      const os = require("node:os");
-      const platformSpy = vi.spyOn(os, "platform").mockReturnValue("win32");
-      try {
-        const result = splitShellCommands("cmd1 & cmd2");
-        expect(result.length).toBeGreaterThanOrEqual(2);
-      } finally {
-        platformSpy.mockRestore();
+    it.skipIf(process.platform !== "win32")(
+      "splitShellCommands uses Windows separators when platform is win32",
+      () => {
+        const os = require("node:os");
+        const platformSpy = vi.spyOn(os, "platform").mockReturnValue("win32");
+        try {
+          const result = splitShellCommands("cmd1 & cmd2");
+          expect(result.length).toBeGreaterThanOrEqual(2);
+        } finally {
+          platformSpy.mockRestore();
+        }
       }
-    });
+    );
 
     it("runShellCommand resolves with exitCode -1 when spawn emits error", async () => {
       vi.mocked(spawn).mockImplementation(

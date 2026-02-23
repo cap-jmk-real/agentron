@@ -36,18 +36,8 @@ jobs:
       - name: Install dependencies
         run: pnpm config set optional true && pnpm install --frozen-lockfile
 
-      - name: Rebuild better-sqlite3
+      - name: Rebuild better-sqlite3 (for docs heap-snapshot export)
         run: pnpm rebuild better-sqlite3
-
-      - name: Run tests with coverage
-        run: pnpm run test:coverage
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-docs
-          path: packages/ui/coverage/
-        if: always()
 
       - name: Build docs
         run: pnpm run build:docs

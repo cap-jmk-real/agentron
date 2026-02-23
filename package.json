@@ -9,6 +9,11 @@
       "better-sqlite3"
     ],
     "overrides": {
+      "dmg-builder": "^26.8.1",
+      "app-builder-lib": "^26.8.1",
+      "electron-builder-squirrel-windows": "^26.8.1",
+      "electron-builder>electron-builder-squirrel-windows": "^26.8.1",
+      "app-builder-lib>electron-builder-squirrel-windows": "^26.8.1",
       "rollup": "npm:@rollup/wasm-node@4.57.1",
       "fast-xml-parser": "^5.3.6",
       "tar": "^7.5.8",
@@ -25,6 +30,11 @@
     }
   },
   "overrides": {
+    "dmg-builder": "^26.8.1",
+    "app-builder-lib": "^26.8.1",
+    "electron-builder-squirrel-windows": "^26.8.1",
+    "electron-builder>electron-builder-squirrel-windows": "^26.8.1",
+    "app-builder-lib>electron-builder-squirrel-windows": "^26.8.1",
     "rollup": "npm:@rollup/wasm-node@4.57.1",
     "fast-xml-parser": "^5.3.6",
     "tar": "^7.5.8",
@@ -75,7 +85,7 @@
     "release:prepare": "npm run release:bump -- patch && npm test && npm run build:ui && npm run build:docs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run format:check && node scripts/run-workspace.mjs all typecheck && node scripts/run-workspace.mjs packages/ui lint && node scripts/run-workspace.mjs packages/ui test:coverage",
+    "check": "npm run format:check && node scripts/run-workspace.mjs all typecheck && node scripts/run-workspace.mjs packages/ui lint && node scripts/run-workspace.mjs packages/ui test:coverage && node scripts/check-file-lengths.mjs",
     "pre-push": "npm run check && npm run build:ui && npm run build:docs && node scripts/run-workspace.mjs apps/desktop dist",
     "build:desktop": "npm run build:ui && node scripts/run-workspace.mjs apps/desktop build",
     "start:desktop": "node scripts/run-workspace.mjs apps/desktop build && npx electron apps/desktop",

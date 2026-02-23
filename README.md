@@ -8,7 +8,6 @@
 [![Local-first](https://img.shields.io/badge/local--first-SQLite%20%2B%20Electron-8B5CF6?style=flat-square)](INSTALL.md)
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-0ea5e9?style=flat-square&logo=readthedocs&logoColor=white)](https://cap-jmk-real.github.io/agentron/)
 
-*From left: **CI** (tests on main), **coverage** (UI unit tests), **lines of code**; then stack and docs.*
 
 **Agentron** is an **enterprise-ready, local-first** platform for **AI agent orchestration** and **workflow automation**. Design and run multi-agent systems entirely on your own infrastructure—no cloud lock-in, full data privacy, and optional desktop deployment.
 
