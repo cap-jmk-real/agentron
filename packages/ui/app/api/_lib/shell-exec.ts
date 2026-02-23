@@ -80,9 +80,11 @@ export function runShellCommand(
     proc.stderr?.on("data", (d) => {
       stderr += String(d);
     });
-    (proc as NodeJS.EventEmitter).on("close", (code: number | null) =>
+    (proc as unknown as NodeJS.EventEmitter).on("close", (code: number | null) =>
       resolve({ stdout, stderr, exitCode: code ?? -1 })
     );
-    (proc as NodeJS.EventEmitter).on("error", () => resolve({ stdout, stderr, exitCode: -1 }));
+    (proc as unknown as NodeJS.EventEmitter).on("error", () =>
+      resolve({ stdout, stderr, exitCode: -1 })
+    );
   });
 }

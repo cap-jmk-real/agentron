@@ -89,7 +89,7 @@
     "release:prepare": "npm run release:bump -- patch && npm test && npm run build:ui && npm run build:docs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "ci:local": "pnpm run format:check && node scripts/run-workspace.mjs all typecheck && node scripts/run-workspace.mjs packages/ui lint && node scripts/run-workspace.mjs packages/ui test:coverage && node scripts/check-file-lengths.mjs --optional && pnpm run build:docs && pnpm run dist:desktop",
+    "ci:local": "pnpm run format && pnpm run format:check && node scripts/run-workspace.mjs all typecheck && node scripts/run-workspace.mjs packages/ui lint && node scripts/run-workspace.mjs packages/ui test:coverage && node scripts/check-file-lengths.mjs --optional && pnpm run build:docs && pnpm run dist:desktop",
     "build:desktop": "npm run build:ui && node scripts/run-workspace.mjs apps/desktop build",
     "start:desktop": "node scripts/run-workspace.mjs apps/desktop build && npx electron apps/desktop",
     "dist:desktop": "npm run build:desktop && node scripts/run-workspace.mjs apps/desktop dist"

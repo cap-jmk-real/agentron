@@ -50,8 +50,8 @@ export class PodmanManager {
         proc.stderr?.on("data", (d: Buffer) => {
           stderr += d.toString();
         });
-        (proc as NodeJS.EventEmitter).on("error", reject);
-        (proc as NodeJS.EventEmitter).on(
+        (proc as unknown as NodeJS.EventEmitter).on("error", reject);
+        (proc as unknown as NodeJS.EventEmitter).on(
           "close",
           (code: number | null, signal: NodeJS.Signals | null) => {
             if (code === 0) resolve({ stdout, stderr });
@@ -164,8 +164,8 @@ export class PodmanManager {
         stderrChunks.push(chunk);
         if (onChunk) onChunk({ stderr: chunk.toString("utf8") });
       });
-      (proc as NodeJS.EventEmitter).on("error", (err: Error) => reject(err));
-      (proc as NodeJS.EventEmitter).on(
+      (proc as unknown as NodeJS.EventEmitter).on("error", (err: Error) => reject(err));
+      (proc as unknown as NodeJS.EventEmitter).on(
         "close",
         (code: number | null, signal: NodeJS.Signals | null) => {
           const stdout = Buffer.concat(stdoutChunks).toString("utf8");

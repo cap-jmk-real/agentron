@@ -93,7 +93,7 @@ export async function testRemoteConnection(params: {
     proc.stderr?.on("data", (d) => {
       stderr += d;
     });
-    (proc as NodeJS.EventEmitter).on("close", (code: number | null) => {
+    (proc as unknown as NodeJS.EventEmitter).on("close", (code: number | null) => {
       if (code === 0) finish({ ok: true, message: "SSH connection succeeded." });
       else
         finish({
@@ -102,7 +102,7 @@ export async function testRemoteConnection(params: {
           guidance: REMOTE_CONNECTION_GUIDANCE,
         });
     });
-    (proc as NodeJS.EventEmitter).on("error", (err: Error) =>
+    (proc as unknown as NodeJS.EventEmitter).on("error", (err: Error) =>
       finish({
         ok: false,
         message: "Failed to run ssh: " + err.message,

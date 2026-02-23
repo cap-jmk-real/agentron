@@ -45,9 +45,9 @@ export async function POST(request: Request) {
             // ignore
           }
           try {
-            (child.stdout as NodeJS.EventEmitter | undefined)?.removeAllListeners();
-            (child.stderr as NodeJS.EventEmitter | undefined)?.removeAllListeners();
-            (child as NodeJS.EventEmitter).removeAllListeners();
+            (child.stdout as unknown as NodeJS.EventEmitter | undefined)?.removeAllListeners();
+            (child.stderr as unknown as NodeJS.EventEmitter | undefined)?.removeAllListeners();
+            (child as unknown as NodeJS.EventEmitter).removeAllListeners();
           } catch {
             // ignore
           }
@@ -75,11 +75,11 @@ export async function POST(request: Request) {
 
         child.stdout?.on("data", write);
         child.stderr?.on("data", write);
-        (child as NodeJS.EventEmitter).on("close", (code: number | null) => {
+        (child as unknown as NodeJS.EventEmitter).on("close", (code: number | null) => {
           signal.removeEventListener("abort", onAbort);
-          (child.stdout as NodeJS.EventEmitter | undefined)?.removeAllListeners();
-          (child.stderr as NodeJS.EventEmitter | undefined)?.removeAllListeners();
-          (child as NodeJS.EventEmitter).removeAllListeners();
+          (child.stdout as unknown as NodeJS.EventEmitter | undefined)?.removeAllListeners();
+          (child.stderr as unknown as NodeJS.EventEmitter | undefined)?.removeAllListeners();
+          (child as unknown as NodeJS.EventEmitter).removeAllListeners();
           if (code === 0) {
             try {
               controller.enqueue(enc.encode("\n\nInstall complete. Starting Ollama...\n"));
@@ -99,11 +99,11 @@ export async function POST(request: Request) {
             // ignore
           }
         });
-        (child as NodeJS.EventEmitter).on("error", (err: Error) => {
+        (child as unknown as NodeJS.EventEmitter).on("error", (err: Error) => {
           signal.removeEventListener("abort", onAbort);
-          (child.stdout as NodeJS.EventEmitter | undefined)?.removeAllListeners();
-          (child.stderr as NodeJS.EventEmitter | undefined)?.removeAllListeners();
-          (child as NodeJS.EventEmitter).removeAllListeners();
+          (child.stdout as unknown as NodeJS.EventEmitter | undefined)?.removeAllListeners();
+          (child.stderr as unknown as NodeJS.EventEmitter | undefined)?.removeAllListeners();
+          (child as unknown as NodeJS.EventEmitter).removeAllListeners();
           try {
             controller.enqueue(enc.encode(`Error: ${err.message}\n`));
           } catch {

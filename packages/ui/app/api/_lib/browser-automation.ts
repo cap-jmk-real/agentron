@@ -114,7 +114,7 @@ async function tryLaunchChrome(): Promise<boolean> {
     ],
     { detached: true, stdio: "ignore" }
   );
-  (child as NodeJS.EventEmitter).on("error", () => {});
+  (child as unknown as NodeJS.EventEmitter).on("error", () => {});
   child.unref();
   return waitForPort("127.0.0.1", DEFAULT_CDP_PORT, LAUNCH_WAIT_MS);
 }

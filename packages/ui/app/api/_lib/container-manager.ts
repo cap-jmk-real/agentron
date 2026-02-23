@@ -65,8 +65,8 @@ export async function verifyContainerEngine(): Promise<{ ok: boolean; error?: st
         proc.stderr?.on("data", (d: Buffer) => {
           stderr += d.toString();
         });
-        (proc as NodeJS.EventEmitter).on("error", reject);
-        (proc as NodeJS.EventEmitter).on("close", (code: number | null) =>
+        (proc as unknown as NodeJS.EventEmitter).on("error", reject);
+        (proc as unknown as NodeJS.EventEmitter).on("close", (code: number | null) =>
           code === 0 ? resolve() : reject(new Error(stderr || `exit ${code}`))
         );
       });

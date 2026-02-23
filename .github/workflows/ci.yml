@@ -24,6 +24,11 @@ jobs:
       - name: Install dependencies
         run: pnpm config set optional true && pnpm install --frozen-lockfile
 
+      - name: Print Node and TypeScript versions
+        run: |
+          echo "Node version: $(node -v)"
+          echo "TypeScript version: $(pnpm -F @agentron-studio/ui exec tsc --version)"
+
       - name: Rebuild better-sqlite3
         run: pnpm rebuild better-sqlite3
 
