@@ -3,7 +3,7 @@
  * Connect to Chrome at 127.0.0.1:9222. If nothing is listening, we try once to launch
  * a dedicated Chrome (separate user-data-dir) so the user's normal Chrome can stay open.
  */
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { createConnection } from "node:net";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -114,7 +114,7 @@ async function tryLaunchChrome(): Promise<boolean> {
     ],
     { detached: true, stdio: "ignore" }
   );
-  child.on("error", () => {});
+  (child as ChildProcess).on("error", () => {});
   child.unref();
   return waitForPort("127.0.0.1", DEFAULT_CDP_PORT, LAUNCH_WAIT_MS);
 }

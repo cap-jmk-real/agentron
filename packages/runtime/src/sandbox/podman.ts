@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { platform } from "node:os";
 import { promisify } from "node:util";
 import type { SandboxConfig } from "@agentron-studio/core";
@@ -35,7 +35,7 @@ export class PodmanManager {
       const argList = args.map(escapePsArg).join(" ");
       const cmd = `${pathRefresh}; & ${binArg} ${argList}`;
       return new Promise((resolve, reject) => {
-        const proc = spawn(
+        const proc: ChildProcess = spawn(
           "powershell.exe",
           ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd],
           {
@@ -51,7 +51,7 @@ export class PodmanManager {
           stderr += d.toString();
         });
         proc.on("error", reject);
-        proc.on("close", (code, signal) => {
+        proc.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
           if (code === 0) resolve({ stdout, stderr });
           else {
             const err = new Error(stderr || stdout || `exit ${code ?? signal}`) as Error & {
@@ -135,7 +135,7 @@ export class PodmanManager {
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     const isWin = platform() === "win32";
     const args = ["exec", containerId, "sh", "-c", command];
-    let proc: ReturnType<typeof spawn>;
+    let proc: ChildProcess;
     if (isWin) {
       const pathRefresh =
         "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')";
@@ -161,8 +161,8 @@ export class PodmanManager {
         stderrChunks.push(chunk);
         if (onChunk) onChunk({ stderr: chunk.toString("utf8") });
       });
-      proc.on("error", (err) => reject(err));
-      proc.on("close", (code, signal) => {
+      proc.on("error", (err: Error) => reject(err));
+      proc.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
         const stdout = Buffer.concat(stdoutChunks).toString("utf8");
         const stderr = Buffer.concat(stderrChunks).toString("utf8");
         const exitCode =
