@@ -17,7 +17,7 @@ const spaceMono = Space_Mono({
   variable: "--font-mono",
 });
 
-const basePath = process.env.BASE_PATH || "";
+const basePath = (process.env.BASE_PATH || "").replace(/\/+$/, "");
 
 export const metadata: Metadata = {
   title: { default: "Agentron", template: "%s – Agentron" },

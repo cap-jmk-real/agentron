@@ -1,6 +1,6 @@
 # Agentron Documentation
 
-Hostable documentation built with [Docusaurus](https://docusaurus.io/): the same framework used by React, Jest, and other major projects.
+Hostable documentation built with [Nextra](https://nextra.site/): the same framework used by many Next.js documentation sites.
 
 ## Purpose
 

@@ -197,7 +197,7 @@ main code.nextra-code {
   background: var(--code-bg) !important;
   color: var(--code-text) !important;
   border: none !important;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Block: force background and text so we beat Shiki/theme (including when vars are set inline) */
@@ -269,9 +269,9 @@ main .nextra-code button[title="Copy code"] svg {
   display: block !important;
   color: var(--code-copy-text) !important;
   fill: none !important;
-  stroke: currentColor !important;
+  stroke: currentcolor !important;
   stroke-width: 2 !important;
-  shape-rendering: geometricPrecision !important;
+  shape-rendering: geometricprecision !important;
 }
 
 /* Keyboard keys: pill style for shortcuts and key names */
@@ -311,7 +311,7 @@ main a[href]:hover,
 main a[href][class*="text-primary"]:hover,
 main [class*="callout"] a[href]:hover {
   color: var(--nextra-link-hover) !important;
-  border-bottom-color: currentColor;
+  border-bottom-color: currentcolor;
 }
 main a[href]:focus-visible,
 main [class*="callout"] a[href]:focus-visible {

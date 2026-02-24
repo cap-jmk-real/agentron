@@ -35,7 +35,7 @@ Agent architectures sit on a **spectrum from design-time (human-controlled) to r
 **Where Agentron fits:** Agentron uses **all four levels** of the taxonomy. **Level 1 (ReAct + tools):** chat and RAG, notebook and inline block chat (retrieve, cite, optional web search); single agent, model picks tool order. **Level 2 (static topology):** workflows, human-designed graph, configurable rounds. **Level 3 (dynamic routing):** heap, the planner chooses which specialists to invoke and in what order per request (model-chosen routing). **Level 4 (recursive / self-building):** heap, the system can **create** new tools and agents on the fly; structure and novel agents are model-determined at runtime. The runtime builds a DAG from the plan and runs it. Specialist definitions can be human-defined or model-created.
 
 <Callout type="info">
-  **Reference:** The design-time vs runtime taxonomy is widely cited; see e.g. [A Taxonomy of Agent Architectures: ReAct to Recursive Language Models](https://mitchgordon.me/tools/2026/01/14/taxonomy-of-agent-architectures.html) (Gordon, 2026) and the MIT [Recursive Language Models](https://arxiv.org/abs/2512.24601) paper (Zhang et al.).
+  **Reference:** The design-time vs runtime taxonomy is widely discussed—e.g. [A Taxonomy of Agent Architectures: ReAct to Recursive Language Models](https://mitchgordon.me/tools/2026/01/14/taxonomy-of-agent-architectures.html) (Gordon, 2026) and the [AI Agent Design Patterns catalog](https://activo.group/blog/ai-agent-design-patterns-the-practical-catalog/). For recursive/model-built architectures see the MIT [Recursive Language Models](https://arxiv.org/abs/2512.24601) paper (Zhang, Kraska, Khattab).
 </Callout>
 
 ---
@@ -105,7 +105,7 @@ Agentic systems can be decomposed into:
 
 ## Research & further reading
 
-- **Taxonomy (design-time vs runtime):** [A Taxonomy of Agent Architectures: ReAct to Recursive Language Models](https://mitchgordon.me/tools/2026/01/14/taxonomy-of-agent-architectures.html). Mitchell A. Gordon, 2026. ReAct to multi-agent static to dynamic routing to RLM.
+- **Taxonomy (design-time vs runtime):** [A Taxonomy of Agent Architectures: ReAct to Recursive Language Models](https://mitchgordon.me/tools/2026/01/14/taxonomy-of-agent-architectures.html) (Gordon, 2026). [AI Agent Design Patterns: the practical catalog](https://activo.group/blog/ai-agent-design-patterns-the-practical-catalog/) (Activo). [A Practical Guide for Designing, Developing, and Deploying Production-Grade Agentic AI Workflows](https://arxiv.org/abs/2512.08769) (arXiv, 2025).
 - **Recursive Language Models:** [Recursive Language Models](https://arxiv.org/abs/2512.24601). Zhang, Kraska, Khattab (MIT). Models that build their own architecture at runtime.
 - **ReAct and robustness:** e.g. Autono (ReAct-based robust agents with adaptive decision-making, memory; [arXiv:2504.04650](https://arxiv.org/html/2504.04650)).
 - **System-theoretic patterns:** [Agentic Design Patterns: A System-Theoretic Framework](https://neurips.cc/virtual/2025/137224) (NeurIPS 2025). Reasoning and world model, Perception and grounding, Action execution, Learning and adaptation, Inter-agent communication.

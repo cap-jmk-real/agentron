@@ -21,11 +21,15 @@ const APPLE_TOUCH_SIZE = 192;
 const SUPERSAMPLE = 4;
 
 function ensureDirs() {
-  outDirs.forEach((dir) => fs.mkdirSync(dir, { recursive: true }));
+  for (const dir of outDirs) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 }
 
 function writeToAll(filename, buffer) {
-  outDirs.forEach((dir) => fs.writeFileSync(path.join(dir, filename), buffer));
+  for (const dir of outDirs) {
+    fs.writeFileSync(path.join(dir, filename), buffer);
+  }
 }
 
 async function main() {
