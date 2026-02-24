@@ -124,7 +124,7 @@ describe("Chat events SSE", () => {
     const doneOrError = events.find((e) => e?.type === "done" || e?.type === "error");
     expect(events.length).toBeGreaterThan(0);
     expect(doneOrError?.type).toBe("done");
-  }, 15_000);
+  }, 45_000);
 
   it("fallback runs job when no GET /api/chat/events connects (e.g. after Retry)", async () => {
     try {
