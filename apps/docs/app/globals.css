@@ -351,7 +351,6 @@ main [class*="content"] div:has(> table) {
   padding-left: 0 !important;
   padding-right: 0 !important;
   -webkit-overflow-scrolling: touch;
-  list-style: none;
   overflow-x: auto;
   box-sizing: border-box;
 }
@@ -1179,4 +1178,90 @@ nav.nextra-toc {
   --xy-edge-stroke-default: #94a3b8;
   --xy-edge-stroke-width-default: 2;
   --xy-edge-stroke-selected-default: #64748b;
+}
+.dark .heap-viewer-flow .react-flow {
+  --xy-edge-stroke-default: #cbd5e1;
+  --xy-edge-stroke-selected-default: #94a3b8;
+}
+
+/* Heap viewer: node and pills use same light-mode look in both themes (no light pill bg in dark) */
+.heap-viewer-flow {
+  --heap-node-bg: #f5f5f5;
+  --heap-pill-top-bg: #e0e7ff;
+  --heap-pill-overlay-bg: #fef3c7;
+  --heap-tool-chip-bg: #eee;
+}
+.heap-viewer-flow .heap-viewer-node {
+  background: var(--heap-node-bg) !important;
+}
+.heap-viewer-flow .heap-pill-top {
+  background: var(--heap-pill-top-bg) !important;
+}
+.heap-viewer-flow .heap-pill-overlay {
+  background: var(--heap-pill-overlay-bg) !important;
+}
+.heap-viewer-flow .heap-tool-chip {
+  background: var(--heap-tool-chip-bg) !important;
+  color: #374151 !important;
+}
+/* Dark mode: node darker than light mode but lighter than page bg; pills/chips tuned for contrast */
+.dark .heap-viewer-flow {
+  --heap-node-bg: #374151;
+  --heap-node-text: #e5e7eb;
+  --heap-node-text-muted: #9ca3af;
+  /* Same blue as sidebar (nextra primary in dark mode) */
+  --heap-pill-top-bg: hsl(var(--nextra-primary-hue), var(--nextra-primary-saturation), 38%);
+  --heap-pill-top-text: hsl(var(--nextra-primary-hue), 50%, 92%);
+  --heap-pill-overlay-bg: #b45309;
+  --heap-pill-overlay-text: #fef3c7;
+  --heap-tool-chip-bg: #4b5563;
+  --heap-tool-chip-text: #e5e7eb;
+}
+.dark .heap-viewer-flow .heap-viewer-node {
+  color: var(--heap-node-text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.dark .heap-viewer-flow .heap-viewer-node > div:first-of-type {
+  color: var(--heap-node-text-muted);
+}
+.dark .heap-viewer-flow .heap-viewer-node > code {
+  color: var(--heap-node-text);
+}
+.dark .heap-viewer-flow .heap-viewer-node .heap-pill-top {
+  color: var(--heap-pill-top-text) !important;
+}
+.dark .heap-viewer-flow .heap-viewer-node .heap-pill-overlay {
+  color: var(--heap-pill-overlay-text) !important;
+}
+.dark .heap-viewer-flow .heap-viewer-node > div:has(.heap-tool-chip) {
+  color: var(--heap-node-text-muted) !important;
+}
+.dark .heap-viewer-flow .heap-viewer-node .heap-tool-chip {
+  background: var(--heap-tool-chip-bg) !important;
+  color: var(--heap-tool-chip-text) !important;
+}
+.dark .heap-viewer-flow .heap-viewer-node .heap-tool-chip + span {
+  color: var(--heap-node-text-muted);
+}
+
+/* Heap viewer: controls (zoom, fit view, lock) higher contrast in dark mode */
+.dark .heap-viewer-flow .react-flow__controls {
+  background: #fff !important;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+}
+.dark .heap-viewer-flow .react-flow__controls button {
+  background: #fff !important;
+  color: #374151 !important;
+  border-color: #e5e7eb !important;
+}
+.dark .heap-viewer-flow .react-flow__controls button:hover:not(:disabled) {
+  background: #f3f4f6 !important;
+  color: #111827 !important;
+}
+.dark .heap-viewer-flow .react-flow__controls button:disabled {
+  opacity: 0.5;
+}
+.dark .heap-viewer-flow .react-flow__controls button svg {
+  fill: currentColor !important;
 }

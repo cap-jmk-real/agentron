@@ -45,7 +45,8 @@ async function main() {
     pngToIco = require("png-to-ico");
   } catch (e) {
     console.error(
-      "Missing sharp or png-to-ico. From repo root run: pnpm install (from apps/desktop or root with deps)"
+      "Missing sharp or png-to-ico. From repo root run: pnpm install (from apps/desktop or root with deps)",
+      e
     );
     process.exit(1);
   }
@@ -54,8 +55,11 @@ async function main() {
 
   const pngBuffers = {};
   for (const size of SIZES) {
-    const buf = await sharp(iconSvg)
+    const supersampled = await sharp(iconSvg)
       .resize(size * SUPERSAMPLE, size * SUPERSAMPLE)
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+    const buf = await sharp(supersampled)
       .resize(size, size)
       .png({ compressionLevel: 9 })
       .toBuffer();
@@ -63,8 +67,11 @@ async function main() {
     writeToAll(`icon-${size}.png`, buf);
   }
 
-  const appleBuf = await sharp(iconSvg)
+  const appleSupersampled = await sharp(iconSvg)
     .resize(APPLE_TOUCH_SIZE * 2, APPLE_TOUCH_SIZE * 2)
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+  const appleBuf = await sharp(appleSupersampled)
     .resize(APPLE_TOUCH_SIZE, APPLE_TOUCH_SIZE)
     .png({ compressionLevel: 9 })
     .toBuffer();

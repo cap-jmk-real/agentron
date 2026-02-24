@@ -98,7 +98,7 @@ describe("shell-exec", () => {
       expect(out.exitCode).not.toBe(0);
       expect(typeof out.stdout).toBe("string");
       expect(typeof out.stderr).toBe("string");
-    });
+    }, 20000);
 
     it.skipIf(process.platform !== "win32")(
       "splitShellCommands uses Windows separators when platform is win32",

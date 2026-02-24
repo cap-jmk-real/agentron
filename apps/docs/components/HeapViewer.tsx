@@ -53,11 +53,12 @@ function HeapNode({ data, selected }: NodeProps<Node<HeapNodeData>>) {
   const isRoot = data.isRoot === true;
   return (
     <div
+      className="heap-viewer-node"
       style={{
         position: "relative",
         padding: "8px 12px",
         borderRadius: 8,
-        background: "var(--nx-bg-secondary, #f5f5f5)",
+        background: "var(--heap-node-bg, #f5f5f5)",
         boxShadow: selected
           ? "0 0 0 2px var(--nx-accents-6, #0070f3)"
           : "0 2px 6px rgba(0,0,0,0.08)",
@@ -84,14 +85,16 @@ function HeapNode({ data, selected }: NodeProps<Node<HeapNodeData>>) {
         <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>
           {data.isTopLevel && (
             <span
-              style={{ fontSize: 10, padding: "2px 6px", background: "#e0e7ff", borderRadius: 4 }}
+              className="heap-pill heap-pill-top"
+              style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4 }}
             >
               top
             </span>
           )}
           {data.isOverlay && (
             <span
-              style={{ fontSize: 10, padding: "2px 6px", background: "#fef3c7", borderRadius: 4 }}
+              className="heap-pill heap-pill-overlay"
+              style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4 }}
             >
               overlay
             </span>
@@ -107,12 +110,8 @@ function HeapNode({ data, selected }: NodeProps<Node<HeapNodeData>>) {
             {tools.slice(0, 5).map((t) => (
               <code
                 key={t}
-                style={{
-                  fontSize: "0.65rem",
-                  background: "#eee",
-                  padding: "2px 4px",
-                  borderRadius: 2,
-                }}
+                className="heap-tool-chip"
+                style={{ fontSize: "0.65rem", padding: "2px 4px", borderRadius: 2 }}
               >
                 {t}
               </code>
