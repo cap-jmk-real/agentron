@@ -5,9 +5,9 @@ import { defineConfig } from "vitest/config";
 function ciMaxWorkers(): number | undefined {
   if (!process.env.CI) return undefined;
   if (process.platform === "win32") {
-    // Windows CI is slower; use more workers to parallelize (I/O and DB-heavy tests benefit).
+    // Windows CI: 2–4 workers to parallelize without oversubscribing 2-core runners.
     const cpus = os.cpus().length || 2;
-    return Math.min(8, Math.max(6, cpus + 4));
+    return Math.min(4, Math.max(2, cpus));
   }
   return 2;
 }
