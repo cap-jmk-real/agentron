@@ -5,7 +5,8 @@ const withNextra = nextra({
   defaultShowCopyCode: true,
 });
 
-const basePath = process.env.BASE_PATH || "";
+// Next.js basePath must not end with / (see https://nextjs.org/docs/app/api-reference/config/next-config-js/basePath)
+const basePath = (process.env.BASE_PATH || "").replace(/\/+$/, "") || "";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

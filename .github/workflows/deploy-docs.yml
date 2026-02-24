@@ -38,7 +38,7 @@ jobs:
       - name: Build docs
         run: pnpm run build:docs
         env:
-          BASE_PATH: /${{ github.event.repository.name }}/
+          BASE_PATH: /${{ github.event.repository.name }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
