@@ -65,6 +65,9 @@ Thumbs.db
 # Turbo / monorepo
 .turbo/
 
+# Generated docs asset (built by build:docs via docs:heap-snapshot)
+apps/docs/public/heap-snapshot.json
+
 # Misc
 *.local
 .cache/

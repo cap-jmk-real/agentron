@@ -12,6 +12,7 @@ coverage
 package-lock.json
 pnpm-lock.yaml
 *.lock
+apps/docs/public/heap-snapshot.json
 # Data and logs
 .data
 *.log
