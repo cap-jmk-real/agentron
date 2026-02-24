@@ -7,6 +7,7 @@ const meta: MetaRecord = {
   assistant: "Agentron (Chat)",
   heap: "Heap (specialists)",
   "agent-architectures": "Agent architectures (comparison)",
+  "event-driven-architecture": "Event-driven architecture",
 };
 
 export default meta;

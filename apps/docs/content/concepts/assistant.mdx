@@ -5,7 +5,7 @@ description: Built-in natural-language chat assistant that creates and edits age
 
 # Agentron (Chat)
 
-**Agentron** is the built-in **chat assistant**. You talk in natural language; it uses an LLM and **tools** to create, edit, list, and manage agents, workflows, tools, sandboxes, and more. You can say things like *"Create a workflow that runs my weather agent then my summarizer"* and the assistant will call the right tools.
+**Agentron** is the built-in **chat assistant**. You talk in natural language; it uses an LLM and **tools** to create, edit, list, and manage agents, workflows, tools, sandboxes, and more. With heap on it runs at **Level 4** (recursive/self-building): the planner can create new tools and agents on the fly. With heap off it uses **Level 1** (ReAct + tools). You can say things like *"Create a workflow that runs my weather agent then my summarizer"* and the assistant will call the right tools.
 
 ---
 
@@ -16,9 +16,9 @@ description: Built-in natural-language chat assistant that creates and edits age
 
 On the chat page you get:
 
-- **Conversation list** — Previous chats; open one to continue or review.
-- **Ratings** — Rate assistant replies (e.g. thumbs up/down) to improve future behavior.
-- **Settings** — Customize the system prompt and choose which agents, workflows, and tools the assistant can see (context selection).
+- **Conversation list**: Previous chats; open one to continue or review.
+- **Ratings**: Rate assistant replies (e.g. thumbs up/down) to improve future behavior.
+- **Settings**: Customize the system prompt and choose which agents, workflows, and tools the assistant can see (context selection).
 
 ---
 
@@ -49,14 +49,14 @@ More tool calls in the same or follow-up turns, or a plain-text answer.
 </Steps>
 
 <Callout type="info">
-  The chat is not just Q&A — it can change your agents, workflows, and tools by calling the same APIs the UI uses.
+  The chat is not just Q&A: it can change your agents, workflows, and tools by calling the same APIs the UI uses.
 </Callout>
 
 ---
 
 ## How Chat routes (heap)
 
-When the assistant uses **heap mode**, it does not call every tool in one step. A **planner** (one LLM call) first chooses an ordered set of **specialists** (e.g. general, workflow, agent, improvement). Each specialist has a **limited set of tools**; the system runs them in order (or in parallel where allowed) and merges context. So the assistant may route your message to a workflow specialist, then an agent specialist, without exposing the full tool list to a single LLM. This keeps responses focused and within token limits. You don't need to configure this—it's part of how the chat backend works.
+When the assistant uses **heap mode**, it runs at **Level 4** (recursive/self-building): it does not call every tool in one step. A **planner** (one LLM call) first chooses an ordered set of **specialists** (e.g. general, workflow, agent, improvement) and can create new tools and agents on the fly. Each specialist has a **limited set of tools**; the system runs them in order (or in parallel where allowed) and merges context. So the assistant may route your message to a workflow specialist, then an agent specialist, without exposing the full tool list to a single LLM. This keeps responses focused and within token limits. You don't need to configure this; it's part of how the chat backend works.
 
 See the **[Heap (specialists)](/concepts/heap)** page for an interactive view of the production specialist registry.
 

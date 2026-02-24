@@ -1,18 +1,18 @@
 ---
-title: Tutorial — First agent (prompts)
+title: "Tutorial: First agent (prompts)"
 description: Create your first agent using prompts in the Agentron chat.
 ---
 
 # Tutorial: First agent (prompts)
 
-Create an agent by asking the Agentron assistant in natural language. No UI forms—just prompts that work.
+Create an agent by asking the Agentron assistant in natural language. No UI forms: just prompts that work.
 
 ---
 
 ## Prerequisites
 
 - Agentron running (`npm run dev:ui`, open http://localhost:3000)
-- At least one **LLM provider** configured (e.g. **Settings → LLM providers** — OpenAI, Anthropic, Ollama, or OpenRouter)
+- At least one **LLM provider** configured (e.g. **Settings → LLM providers**: OpenAI, Anthropic, Ollama, or OpenRouter)
 
 ---
 
@@ -22,8 +22,8 @@ Open **Chat** and send these in order (or adapt them).
 
 ### 1. See what you have
 
-- **"What LLM providers do I have?"** — The assistant calls `list_llm_providers` so you know which config to use.
-- **"List my tools."** — See built-in and any custom tools (e.g. `std-weather`, `std-fetch-url`).
+- **"What LLM providers do I have?"**: The assistant calls `list_llm_providers` so you know which config to use.
+- **"List my tools."**: See built-in and any custom tools (e.g. `std-weather`, `std-fetch-url`).
 
 ### 2. Create a simple agent
 
@@ -40,8 +40,8 @@ Open **Chat** and send these in order (or adapt them).
 
 ### 4. Run or inspect
 
-- **"Run my Hello Agent with input: Say hi."** — The assistant can use the run API or point you to the Runs page.
-- **"Show me my Hello Agent."** — `get_agent` and a summary.
+- **"Run my Hello Agent with input: Say hi."**: The assistant can use the run API or point you to the Runs page.
+- **"Show me my Hello Agent."**: `get_agent` and a summary.
 
 ---
 
@@ -49,9 +49,9 @@ Open **Chat** and send these in order (or adapt them).
 
 Behind the scenes, the assistant called tools such as:
 
-- `list_llm_providers` — to pick an LLM
-- `create_agent` — with `name`, `description`, `llmConfigId`, `graphNodes`, `graphEdges`
-- `list_tools` / `get_agent` / `update_agent` — to add tools
+- `list_llm_providers`: to pick an LLM
+- `create_agent`: with `name`, `description`, `llmConfigId`, `graphNodes`, `graphEdges`
+- `list_tools` / `get_agent` / `update_agent`: to add tools
 
 You can do the same via the **Agents** UI; the chat is another way in.
 
@@ -59,5 +59,5 @@ You can do the same via the **Agents** UI; the chat is another way in.
 
 ## Next
 
-- [First workflow (prompts)](/tutorials/first-workflow) — Connect two agents in a workflow with prompts
-- [Concepts: Agents](/concepts/agents) — Node types, decision layer, code agents
+- [First workflow (prompts)](/tutorials/first-workflow): Connect two agents in a workflow with prompts
+- [Concepts: Agents](/concepts/agents): Node types, decision layer, code agents

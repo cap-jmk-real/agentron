@@ -626,7 +626,7 @@
 .run-shell-terminal-body {
   margin: 0;
   padding: 1rem 1.25rem;
-  font-family: ui-monospace, "SF Mono", "Cascadia Code", "Consolas", "Liberation Mono", monospace;
+  font-family: var(--font-mono), "Space Mono", ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.8125rem;
   line-height: 1.5;
   color: var(--run-shell-fg, #e6edf3);
@@ -691,7 +691,7 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 0.8rem;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono), "Space Mono", ui-monospace, monospace;
   overflow: auto;
   max-height: 20rem;
   white-space: pre-wrap;

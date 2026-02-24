@@ -4,7 +4,7 @@
 
 :root {
   color-scheme: light;
-  font-family: "Inter", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-sans), "Space Grotesk", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   --bg: #f5f6fa;
   --surface: #ffffff;
   --surface-muted: #f1f5f9;
@@ -33,14 +33,14 @@ html[data-theme="dark"] {
   --bg: #0b1120;
   --surface: #111827;
   --surface-muted: #0f172a;
-  --text: #e2e8f0;
+  --text: #f1f5f9;
   --text-muted: #94a3b8;
   --primary: #7c3aed;
   --primary-strong: #5b7cfa;
   --border: rgba(148, 163, 184, 0.2);
   --shadow: 0 24px 60px rgba(2, 6, 23, 0.35);
   --sidebar-bg: #0b1120;
-  --sidebar-text: #e2e8f0;
+  --sidebar-text: #f1f5f9;
   --sidebar-text-muted: #94a3b8;
   --sidebar-hover: rgba(148, 163, 184, 0.15);
   --sidebar-active: rgba(91, 124, 250, 0.2);

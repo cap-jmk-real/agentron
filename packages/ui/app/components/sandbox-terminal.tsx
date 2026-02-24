@@ -50,8 +50,8 @@ export function SandboxTerminal({ sandboxId, sandboxName, className }: SandboxTe
       term = new Terminal({
         theme: {
           background: "var(--bg, #0b1120)",
-          foreground: "var(--text, #e2e8f0)",
-          cursor: "var(--text, #e2e8f0)",
+          foreground: "var(--text, #f1f5f9)",
+          cursor: "var(--text, #f1f5f9)",
           cursorAccent: "var(--bg, #0b1120)",
         },
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",

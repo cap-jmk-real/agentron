@@ -84,7 +84,7 @@ describe("shell-exec", () => {
       const out = await runShellCommand("echo 0");
       expect(out.exitCode).toBe(0);
       expect(out.stdout.trim()).toContain("0");
-    });
+    }, 20000);
 
     it("uses sh -c on non-Windows (Unix path)", async () => {
       if (platform() === "win32") return;

@@ -67,6 +67,8 @@ Thumbs.db
 
 # Generated docs asset (built by build:docs via docs:heap-snapshot)
 apps/docs/public/heap-snapshot.json
+# Local font sample page (preview only)
+apps/docs/public/font-samples.html
 
 # Misc
 *.local

@@ -6,6 +6,8 @@ import {
   ReactFlowProvider,
   Background,
   Controls,
+  Handle,
+  Position,
   useNodesState,
   useEdgesState,
   type Node,
@@ -13,6 +15,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { layoutNodesByGraph } from "../lib/heap-layout";
 
 type SpecialistEntry = {
   id: string;
@@ -29,53 +32,12 @@ type HeapSnapshot = {
 };
 
 const HEAP_ROOT_ID = "__heap_root__";
-const STEP_X = 320;
-const STEP_Y = 200;
 
 function getParentInTopLevel(id: string, topLevelIds: string[]): string | null {
   for (const p of topLevelIds) {
     if (p !== id && id.startsWith(p + "_")) return p;
   }
   return null;
-}
-
-function simpleLayout(
-  allIds: string[],
-  edges: { source: string; target: string }[],
-  specialistsById: Map<string, SpecialistEntry>,
-  topLevelIds: string[],
-  overlayIds: string[]
-): Map<string, { x: number; y: number }> {
-  const pos = new Map<string, { x: number; y: number }>();
-  const idSet = new Set(allIds);
-  const successors = new Map<string, string[]>();
-  for (const e of edges) {
-    if (idSet.has(e.source) && idSet.has(e.target)) {
-      if (!successors.has(e.source)) successors.set(e.source, []);
-      successors.get(e.source)!.push(e.target);
-    }
-  }
-  const layers: string[][] = [];
-  const visited = new Set<string>();
-  let frontier = [HEAP_ROOT_ID];
-  while (frontier.length > 0) {
-    layers.push([...frontier]);
-    const next: string[] = [];
-    for (const id of frontier) {
-      visited.add(id);
-      for (const t of successors.get(id) ?? []) {
-        if (!visited.has(t)) next.push(t);
-      }
-    }
-    frontier = [...new Set(next)];
-  }
-  for (let li = 0; li < layers.length; li++) {
-    const row = layers[li]!;
-    row.forEach((id, i) => {
-      pos.set(id, { x: li * STEP_X, y: i * STEP_Y });
-    });
-  }
-  return pos;
 }
 
 type HeapNodeData = {
@@ -92,6 +54,7 @@ function HeapNode({ data, selected }: NodeProps<Node<HeapNodeData>>) {
   return (
     <div
       style={{
+        position: "relative",
         padding: "8px 12px",
         borderRadius: 8,
         background: "var(--nx-bg-secondary, #f5f5f5)",
@@ -102,6 +65,8 @@ function HeapNode({ data, selected }: NodeProps<Node<HeapNodeData>>) {
         maxWidth: 260,
       }}
     >
+      <Handle type="target" position={Position.Left} style={{ width: 10, height: 10 }} />
+      <Handle type="source" position={Position.Right} style={{ width: 10, height: 10 }} />
       <div
         style={{
           fontSize: "0.65rem",
@@ -189,12 +154,12 @@ export function HeapViewer() {
     [data]
   );
 
-  const { allIds, edges, positions } = useMemo(() => {
+  const { allIds, edges, itemsWithPosition } = useMemo(() => {
     if (!data)
       return {
         allIds: [] as string[],
         edges: [] as { source: string; target: string }[],
-        positions: new Map<string, { x: number; y: number }>(),
+        itemsWithPosition: [] as { id: string; x?: number; y?: number }[],
       };
     const set = new Set<string>([HEAP_ROOT_ID]);
     function add(id: string) {
@@ -220,25 +185,34 @@ export function HeapViewer() {
         }
       });
     });
-    const positions = simpleLayout(
-      allIds,
+    const items: { id: string; x?: number; y?: number }[] = allIds.map((id) => ({ id }));
+    const itemsWithPosition = layoutNodesByGraph({
+      items,
+      getNodeId: (i) => i.id,
       edges,
-      specialistsById,
-      data.topLevelIds,
-      data.overlayIds
-    );
-    return { allIds, edges, positions };
+      setPosition: (item, x, y) => ({ ...item, x, y }),
+      options: {
+        startX: 40,
+        startY: 40,
+        nodeWidth: 260,
+        nodeHeight: 140,
+        gapX: 80,
+        gapY: 80,
+      },
+    });
+    return { allIds, edges, itemsWithPosition };
   }, [data, specialistsById]);
 
   const initialNodes: Node<HeapNodeData>[] = useMemo(() => {
     if (!data) return [];
-    return allIds.map((id) => {
-      const pos = positions.get(id) ?? { x: 0, y: 0 };
-      if (id === HEAP_ROOT_ID) {
+    return itemsWithPosition.map((n) => {
+      const x = n.x ?? 0;
+      const y = n.y ?? 0;
+      if (n.id === HEAP_ROOT_ID) {
         return {
           id: HEAP_ROOT_ID,
           type: "heap",
-          position: pos,
+          position: { x, y },
           data: {
             id: HEAP_ROOT_ID,
             isTopLevel: false,
@@ -248,20 +222,20 @@ export function HeapViewer() {
           },
         };
       }
-      const entry = specialistsById.get(id);
+      const entry = specialistsById.get(n.id);
       return {
-        id,
+        id: n.id,
         type: "heap",
-        position: pos,
+        position: { x, y },
         data: {
-          id,
-          isTopLevel: data.topLevelIds.includes(id),
-          isOverlay: data.overlayIds.includes(id),
+          id: n.id,
+          isTopLevel: data.topLevelIds.includes(n.id),
+          isOverlay: data.overlayIds.includes(n.id),
           toolNames: entry?.toolNames ?? [],
         },
       };
     });
-  }, [data, allIds, positions, specialistsById]);
+  }, [data, itemsWithPosition, specialistsById]);
 
   const initialEdges: Edge[] = useMemo(
     () =>
@@ -269,6 +243,7 @@ export function HeapViewer() {
         id: `e-${i}-${e.source}-${e.target}`,
         source: e.source,
         target: e.target,
+        style: { stroke: "#94a3b8", strokeWidth: 2 },
       })),
     [edges]
   );
@@ -303,6 +278,7 @@ export function HeapViewer() {
 
   return (
     <div
+      className="heap-viewer-flow"
       style={{
         height: 420,
         width: "100%",
@@ -319,6 +295,7 @@ export function HeapViewer() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes}
+          defaultEdgeOptions={{ style: { stroke: "#94a3b8", strokeWidth: 2 } }}
           minZoom={0.15}
           maxZoom={1.5}
           fitView

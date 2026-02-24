@@ -9,7 +9,7 @@ description: Optional end-to-end test suite that runs against a real local LLM (
   **For contributors.** This page is for running optional E2E tests with a local LLM. You don't need it for normal use or to run the app.
 </Callout>
 
-Run end-to-end tests against a **real local LLM** (Ollama). One command starts the server if needed and runs the suite—web search, custom code, browser fetch, self-improvement, chat-driven design, and more. These tests are **not** run in CI.
+Run end-to-end tests against a **real local LLM** (Ollama). One command starts the server if needed and runs the suite: web search, custom code, browser fetch, self-improvement, chat-driven design, and more. These tests are **not** run in CI.
 
 ---
 
@@ -125,14 +125,14 @@ Tests live under `packages/ui/__tests__/e2e/`:
 
 ## Covered areas
 
-- **Web search** — `std-web-search`
-- **Custom code** — `create_code_tool`, `std-run-code`
-- **Browser fetch** — `std-browser` / `std-fetch-url`
-- **Self-improvement** — `get_run_for_improvement`
-- **Chat-driven design** — One turn → create workflow, agent, execute
-- **Multi-agent workflow** — Fetch → summarize (planned)
-- **Containers** — `std-container-run` (skip if Podman unavailable)
-- **Request user help** — `std-request-user-help`, `respond_to_run`
+- **Web search**: `std-web-search`
+- **Custom code**: `create_code_tool`, `std-run-code`
+- **Browser fetch**: `std-browser` / `std-fetch-url`
+- **Self-improvement**: `get_run_for_improvement`
+- **Chat-driven design**: One turn to create workflow, agent, execute
+- **Multi-agent workflow**: Fetch to summarize (planned)
+- **Containers**: `std-container-run` (skip if Podman unavailable)
+- **Request user help**: `std-request-user-help`, `respond_to_run`
 
 ---
 

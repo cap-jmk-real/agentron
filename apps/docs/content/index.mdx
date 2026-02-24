@@ -1,6 +1,6 @@
 ---
-title: Agentron — Cutting-Edge Local AI Agent Orchestration & Automation
-description: Cutting-edge agent orchestration by Julian M. Kleber — ReAct + tools, production-ready multi-agent, local-first. Compare agent architectures (ReAct, static/dynamic multi-agent, RLM), orchestration patterns, and 2026 safety.
+title: Agentron - Cutting-Edge Local AI Agent Orchestration and Automation
+description: Cutting-edge agent orchestration by Julian M. Kleber. Level 1 (ReAct + tools), Level 2 (multi-agent), Level 4 (heap). Local-first. Compare agent architectures (Level 1 to 4), orchestration patterns, and 2026 safety.
 keywords:
   - Agentron
   - Julian M. Kleber
@@ -19,10 +19,10 @@ keywords:
 
 # Agentron
 
-**Agentron** is a **cutting-edge, local-first** platform for **AI agent orchestration** and **workflow automation** by **Julian M. Kleber**. It uses **ReAct + tools** (production-proven) with **bounded loops** and **cost control**, plus optional **static multi-agent** workflows. Design and run agents on your own infrastructure—no cloud lock-in, full data privacy, optional desktop app.
+**Agentron** is a **cutting-edge, local-first** platform for **AI agent orchestration** and **workflow automation** by **Julian M. Kleber**. It spans the **Level 1 to 4** taxonomy: **Level 1** (ReAct + tools) for chat and RAG, **Level 2** (static multi-agent) for workflows, **Level 4** (recursive/self-building) for heap, with bounded loops, cost control, and production safety. Design and run agents on your own infrastructure: no cloud lock-in, full data privacy, optional desktop app.
 
 <Callout type="important">
-  **Cutting-edge orchestration:** ReAct + tools for chat and RAG; static multi-agent workflows; max steps and loop limits for production safety. [Compare agent architectures →](/concepts/agent-architectures)
+  **Cutting-edge orchestration:** Level 1 (ReAct + tools) for chat/RAG; Level 2 (static multi-agent) for workflows; Level 4 (heap) when the planner assembles DAGs and can create tools/agents on the fly. Max steps and loop limits throughout. [Compare agent architectures →](/concepts/agent-architectures)
 </Callout>
 
 Visual agent builder, multi-agent workflows, and a chat assistant that creates and edits agents via natural language.
@@ -73,26 +73,27 @@ Agentron is an **enterprise-ready, local-first** platform that lets you design, 
 | Concept | Definition |
 | -------- | ---------- |
 | **Tool** | A callable capability (HTTP, MCP, native). Agents use tools to perform actions. |
-| **Agent** | An executable unit — either a **node agent** (graph of LLM/tool nodes) or **code agent** (custom script). |
+| **Agent** | An executable unit: either a **node agent** (graph of LLM/tool nodes) or **code agent** (custom script). |
 | **Workflow** | A graph of agents and edges. Orchestrates agents in sequence or loops for up to `maxRounds` cycles. |
 | **Agentron** | Built-in chat that uses tools to create/edit agents, workflows, and tools on behalf of the user. |
-| **Chat architecture (heap)** | When enabled, a planner chooses specialists (e.g. general, workflow, agent); each has limited tools and runs in order. See [Agentron (Chat)](/concepts/assistant#how-chat-routes-heap). |
-| **Agent architectures** | ReAct + tools (chat/RAG) vs multi-agent static (workflows) vs dynamic/recursive. [Compare architectures →](/concepts/agent-architectures) |
+| **Chat architecture (heap)** | **Level 4**: when enabled, a planner chooses specialists and can create new tools/agents on the fly; each specialist has limited tools and runs in order. See [Agentron (Chat)](/concepts/assistant#how-chat-routes-heap). |
+| **Agent architectures** | **Level 1** (ReAct + tools) chat/RAG, **Level 2** (static multi-agent) workflows, **Level 4** (recursive/self-building) heap. [Compare architectures →](/concepts/agent-architectures) |
 
 ---
 
 ## Start here
 
-- [Quick start](/quick-start) — Install, run, and try prompts in Chat.
-- [Tutorials](/tutorials/first-agent) — First agent, first workflow, first RAG (prompt-based).
-- [Tools](/concepts/tools) — HTTP, MCP, and native tools agents can call.
-- [Agents](/concepts/agents) — Node and code agents; graphs and sandboxes.
-- [Workflows](/concepts/workflows) — Multi-agent orchestration and max rounds.
-- [Agentron (Chat)](/concepts/assistant) — Natural-language assistant; [Heap (specialists)](/concepts/heap) for the interactive registry.
-- [Agent architectures (comparison)](/concepts/agent-architectures) — Taxonomy, orchestration patterns, production safety (2026).
-- [Capabilities](/capabilities) — Feature matrix and what users can do.
-- [Download](/download) — Desktop installers for Windows, macOS, Linux.
-- [E2E tests (local LLM)](/e2e-local-llm) — Optional end-to-end tests with Ollama.
+- [Quick start](/quick-start): Install, run, and try prompts in Chat.
+- [Brand story](/brand-story): Logo meaning and animation. [Design](/design): Typography (Space Grotesk), colors, logo; single place to iterate on branding.
+- [Tutorials](/tutorials/first-agent): First agent, first workflow, first RAG (prompt-based).
+- [Tools](/concepts/tools): HTTP, MCP, and native tools agents can call.
+- [Agents](/concepts/agents): Node and code agents; graphs and sandboxes.
+- [Workflows](/concepts/workflows): Multi-agent orchestration and max rounds.
+- [Agentron (Chat)](/concepts/assistant): Natural-language assistant; [Heap (specialists)](/concepts/heap) for the interactive registry.
+- [Agent architectures (comparison)](/concepts/agent-architectures): Level 1 to 4 taxonomy, orchestration patterns, production safety (2026).
+- [Capabilities](/capabilities): Feature matrix and what users can do.
+- [Download](/download): Desktop installers for Windows, macOS, Linux.
+- [E2E tests (local LLM)](/e2e-local-llm): Optional end-to-end tests with Ollama.
 
 ---
 
@@ -100,12 +101,12 @@ Agentron is an **enterprise-ready, local-first** platform that lets you design, 
 
 - Create, edit, delete **agents** (node or code) and **workflows** (multi-agent orchestration)
 - Create, edit **tools** (native, HTTP, MCP) and run workflows and agents
-- **Chat (Agentron)** — Natural-language assistant; use the **Chat** page for full-screen use, history, ratings, and settings (see [Agentron (Chat)](/concepts/assistant))
-- **Sandboxes** — Podman containers for code execution
-- **Knowledge / RAG** — Document ingestion and retrieval for agents
-- **Feedback** — Rate agent outputs for learning
-- **Custom functions** — JavaScript/Python/TypeScript code as tools
-- **Telegram** — Use a bot to delegate tasks; configure in **Settings → Telegram**
+- **Chat (Agentron)**: Natural-language assistant; use the **Chat** page for full-screen use, history, ratings, and settings (see [Agentron (Chat)](/concepts/assistant))
+- **Sandboxes**: Podman containers for code execution
+- **Knowledge / RAG**: Document ingestion and retrieval for agents
+- **Feedback**: Rate agent outputs for learning
+- **Custom functions**: JavaScript/Python/TypeScript code as tools
+- **Telegram**: Use a bot to delegate tasks; configure in **Settings**, **Telegram**
 
 ---
 
@@ -114,7 +115,7 @@ Agentron is an **enterprise-ready, local-first** platform that lets you design, 
 - **New here?** Start with [Quick start](/quick-start) and [Tutorials](/tutorials/first-agent).
 - **Building something?** Use [Concepts](/concepts/tools) and [Capabilities](/capabilities).
 - **Chat or heap?** See [Agentron (Chat)](/concepts/assistant) and [Heap (specialists)](/concepts/heap).
-- **For AI assistants:** [AI Guide](/ai-guide) — how to suggest the right actions to users.
+- **For AI assistants:** [AI Guide](/ai-guide): how to suggest the right actions to users.
 
 ---
 

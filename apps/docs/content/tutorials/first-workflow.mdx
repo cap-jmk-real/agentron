@@ -1,11 +1,11 @@
 ---
-title: Tutorial — First workflow (prompts)
+title: "Tutorial: First workflow (prompts)"
 description: Create your first workflow using prompts in the Agentron chat.
 ---
 
 # Tutorial: First workflow (prompts)
 
-Create a workflow that connects two agents by asking the Agentron assistant. No graph editor required—just prompts.
+Create a workflow that connects two agents by asking the Agentron assistant. No graph editor required: just prompts.
 
 ---
 
@@ -44,20 +44,20 @@ Open **Chat** and send these (or adapt).
 
 ### 4. Inspect or fix
 
-- **"Show me my Research then Summarize workflow."** — `get_workflow`
-- **"The last run failed. What went wrong?"** — The assistant uses `list_runs`, `get_run`, and optionally `get_workflow` / `get_agent` to diagnose (see [AI Guide: diagnose before fix](/ai-guide#diagnose-before-fix)).
+- **"Show me my Research then Summarize workflow."**: `get_workflow`
+- **"The last run failed. What went wrong?"**: The assistant uses `list_runs`, `get_run`, and optionally `get_workflow` / `get_agent` to diagnose (see [AI Guide: diagnose before fix](/ai-guide#diagnose-before-fix)).
 
 ---
 
 ## What the assistant did
 
-- `create_workflow` — empty workflow with a name
-- `update_workflow` — `nodes` (type `agent`, `config.agentId`), `edges` (source → target), `maxRounds`
-- `execute_workflow` — run with input
+- `create_workflow`: empty workflow with a name
+- `update_workflow`: `nodes` (type `agent`, `config.agentId`), `edges` (source → target), `maxRounds`
+- `execute_workflow`: run with input
 
 ---
 
 ## Next
 
-- [First RAG (prompts)](/tutorials/first-rag) — Add a knowledge collection and use it in chat or an agent
-- [Concepts: Workflows](/concepts/workflows) — Execution modes, branches, scheduling
+- [First RAG (prompts)](/tutorials/first-rag): Add a knowledge collection and use it in chat or an agent
+- [Concepts: Workflows](/concepts/workflows): Execution modes, branches, scheduling

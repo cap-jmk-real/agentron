@@ -4,7 +4,7 @@ This file summarizes how **famous Nextra-based doc sites** structure their repos
 
 ## Sources
 
-- **Nextra repo:** [shuding/nextra](https://github.com/shuding/nextra) — `examples/docs` and `examples/swr-site`
+- **Nextra repo:** [shuding/nextra](https://github.com/shuding/nextra): `examples/docs` and `examples/swr-site`
 - **SWR site:** The live [swr.vercel.app](https://swr.vercel.app) is built from the `swr-site` example (i18n, same Layout/Navbar/Footer pattern)
 
 ---
@@ -88,7 +88,7 @@ examples/swr-site/
 
 **Content:**
 
-- `content/en/`, `content/es/`, `content/ru/` — each locale has its own MDX tree. Sidebar and nav come from page map + _meta.
+- `content/en/`, `content/es/`, `content/ru/`: each locale has its own MDX tree. Sidebar and nav come from page map + _meta.
 
 ---
 

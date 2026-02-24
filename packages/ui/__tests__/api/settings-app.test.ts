@@ -1,7 +1,19 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { GET, PATCH } from "../../app/api/settings/app/route";
 
 describe("Settings app API", () => {
+  let restoreContainerVerify: () => void;
+
+  beforeAll(async () => {
+    const mod = await import("../../app/api/_lib/container-manager");
+    const spy = vi.spyOn(mod, "verifyContainerEngine").mockResolvedValue({ ok: true });
+    restoreContainerVerify = () => spy.mockRestore();
+  });
+
+  afterAll(() => {
+    restoreContainerVerify?.();
+  });
+
   it("GET /api/settings/app returns default maxFileUploadBytes and workflowMaxSelfFixRetries", async () => {
     const res = await GET();
     expect(res.status).toBe(200);

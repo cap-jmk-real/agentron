@@ -1,8 +1,8 @@
-/* Agentron docs — Nextra-style design, Agentron branding (logo, colours, fonts) */
+/* Agentron docs - Nextra-style design, Agentron branding (logo, colours, fonts) */
 
 @import "nextra-theme-docs/style.css";
 
-/* Theme variables — Agentron (indigo/violet from logo)
+/* Theme variables - Agentron (indigo/violet from logo)
    Violet pairs best with analogous (blue/slate) or neutrals; we avoid yellow. */
 :root {
   --nextra-bg: 255 255 255;
@@ -15,6 +15,24 @@
   --nextra-callout-warning-bg: rgb(241 245 253);
   --nextra-callout-warning-border: rgb(148 163 199);
   --nextra-callout-warning-text: rgb(51 65 85);
+  /* Callout important/primary: brand violet, same feel as sidebar highlight (not neon) */
+  --nextra-callout-important-bg: hsl(
+    var(--nextra-primary-hue),
+    var(--nextra-primary-saturation),
+    97%
+  );
+  --nextra-callout-important-border: hsl(
+    var(--nextra-primary-hue),
+    var(--nextra-primary-saturation),
+    75%
+  );
+  --nextra-callout-important-text: hsl(var(--nextra-primary-hue), 50%, 32%);
+  /* Callout info (blue): left accent matches border */
+  --nextra-callout-info-border: rgb(29 78 216);
+  --nextra-callout-info-icon: rgb(29 78 216);
+  /* Links: brand orange (visible in callouts and body) */
+  --nextra-link: hsl(24, 95%, 42%);
+  --nextra-link-hover: hsl(24, 95%, 32%);
 }
 
 .dark {
@@ -25,11 +43,22 @@
   --nextra-callout-warning-bg: rgb(30 41 59);
   --nextra-callout-warning-border: rgb(71 85 105);
   --nextra-callout-warning-text: rgb(203 213 225);
+  --nextra-callout-important-bg: hsl(var(--nextra-primary-hue), 25%, 18%);
+  --nextra-callout-important-border: hsl(var(--nextra-primary-hue), 40%, 45%);
+  --nextra-callout-important-text: hsl(var(--nextra-primary-hue), 35%, 82%);
+  --nextra-callout-info-border: rgb(96 165 250);
+  --nextra-callout-info-icon: rgb(96 165 250);
+  --nextra-link: hsl(28, 95%, 58%);
+  --nextra-link-hover: hsl(28, 95%, 70%);
 }
 
-/* Agentron typography — Inter (set in layout via --font-inter) */
+.dark main {
+  color: rgb(241 245 249);
+}
+
+/* Agentron typography - Space Grotesk (set in layout via --font-inter) */
 html {
-  font-family: var(--font-inter, ui-sans-serif, system-ui, sans-serif);
+  font-family: var(--font-inter), "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   letter-spacing: -0.011em;
@@ -133,49 +162,116 @@ main blockquote {
   padding: 0.75rem 1rem 0.75rem 1.25rem;
 }
 
-/* Code blocks: high contrast — dark in light mode, light in dark mode */
-main pre {
+/* Code (inline + block): inverted palette, high contrast. Shiki uses --shiki-* vars; we override so block + copy button are visible. */
+:root {
+  --code-bg: rgb(28 28 28);
+  --code-text: rgb(241 245 249);
+  --code-copy-bg: rgb(55 65 81);
+  --code-copy-text: rgb(241 245 249);
+  --code-copy-border: rgb(75 85 99);
+  /* Shiki: force our palette so Nextra .nextra-code span picks it up */
+  --shiki-light-bg: rgb(28 28 28);
+  --shiki-light: rgb(241 245 249);
+}
+.dark {
+  --code-bg: rgb(248 250 252);
+  --code-text: rgb(15 23 42);
+  --code-copy-bg: rgb(203 213 225);
+  --code-copy-text: rgb(15 23 42);
+  --code-copy-border: rgb(148 163 184);
+  --shiki-dark-bg: rgb(248 250 252);
+  --shiki-dark: rgb(15 23 42);
+}
+
+/* Inline */
+main :not(pre) > code,
+main p code,
+main li code,
+main td code,
+main code.nextra-code {
+  padding: 0.2em 0.45em !important;
+  border-radius: 0.25rem !important;
+  font-size: 0.9em !important;
+  font-weight: 500 !important;
+  font-family: var(--font-mono), "Space Mono", ui-monospace, Consolas, monospace !important;
+  background: var(--code-bg) !important;
+  color: var(--code-text) !important;
+  border: none !important;
+  word-break: break-word;
+}
+
+/* Block: force background and text so we beat Shiki/theme (including when vars are set inline) */
+main pre,
+main [class*="code"] pre,
+main div pre {
   margin-top: 1.25em;
   margin-bottom: 1.25em;
   padding: 1.25rem 1.5rem;
-  border-radius: 0.5rem;
-  border: 1px solid rgb(51 65 85);
-  background: rgb(30 41 59);
-  color: rgb(248 250 252);
+  border-radius: 0.375rem;
+  border: none;
+  background: var(--code-bg) !important;
+  color: var(--code-text) !important;
   overflow-x: auto;
   font-size: 0.875rem;
   line-height: 1.6;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
-}
-.dark main pre {
-  border-color: rgb(71 85 105);
-  background: rgb(51 65 85);
-  color: rgb(226 232 240);
+  font-family: var(--font-mono), "Space Mono", ui-monospace, Consolas, monospace;
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
 }
-main pre code {
-  padding: 0;
-  background: transparent;
-  border: none;
+main pre code,
+main pre code.nextra-code,
+main [class*="code"] pre code,
+main div pre code {
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
   font-size: inherit;
-  color: inherit;
+  color: inherit !important;
+}
+/* Shiki outputs .nextra-code span with bg/text from vars; force high-contrast when our vars are used */
+main pre code.nextra-code span,
+main pre .nextra-code span {
+  background: transparent !important;
+  color: var(--code-text) !important;
+}
+.dark main pre code.nextra-code span,
+.dark main pre .nextra-code span {
+  color: var(--code-text) !important;
+}
+.dark main pre,
+.dark main [class*="code"] pre,
+.dark main div pre {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
-/* Inline code: high contrast — dark bg in light mode, light bg in dark mode */
-main :not(pre) > code {
-  padding: 0.2em 0.45em;
-  border-radius: 0.25rem;
-  font-size: 0.9em;
-  font-weight: 500;
-  background: rgb(30 41 59);
-  color: rgb(248 250 252);
-  border: 1px solid rgb(51 65 85);
-  word-break: break-word;
+/* Copy button: Nextra renders it inside .nextra-code > pre > div. Always visible, clear icon. */
+main .nextra-code pre > div {
+  opacity: 1 !important;
 }
-.dark main :not(pre) > code {
-  background: rgb(203 213 225);
-  color: rgb(30 41 59);
-  border-color: rgb(148 163 184);
+main .nextra-code button[title="Copy code"] {
+  background: var(--code-copy-bg) !important;
+  color: var(--code-copy-text) !important;
+  border: 1px solid var(--code-copy-border) !important;
+  border-radius: 0.375rem !important;
+  padding: 0.375rem 0.5rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+main .nextra-code button[title="Copy code"]:hover {
+  filter: brightness(1.1);
+}
+/* Icon: Nextra copy icon is stroke-based (rect + path, no fill). Use stroke only so it stays crisp. */
+main .nextra-code button[title="Copy code"] .nextra-copy-icon,
+main .nextra-code button[title="Copy code"] svg {
+  width: 1em !important;
+  height: 1em !important;
+  flex-shrink: 0 !important;
+  display: block !important;
+  color: var(--code-copy-text) !important;
+  fill: none !important;
+  stroke: currentColor !important;
+  stroke-width: 2 !important;
+  shape-rendering: geometricPrecision !important;
 }
 
 /* Keyboard keys: pill style for shortcuts and key names */
@@ -183,7 +279,7 @@ main kbd {
   display: inline-block;
   padding: 0.2em 0.5em;
   font-size: 0.85em;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-mono), "Space Mono", ui-monospace, Menlo, Consolas, monospace;
   font-weight: 600;
   line-height: 1.3;
   color: rgb(51 65 85);
@@ -194,34 +290,32 @@ main kbd {
   white-space: nowrap;
 }
 .dark main kbd {
-  color: rgb(226 232 240);
+  color: rgb(241 245 249);
   background: rgb(51 65 85);
   border-color: rgb(71 85 105);
   box-shadow: 0 1px 0 rgb(71 85 105);
 }
 
-/* Links: blue (violet reads as visited); primary stays for branding elsewhere */
-main a[href] {
-  color: hsl(217, 91%, 60%);
+/* Links: brand orange (consistent in body and callouts, visible on blue) */
+main a[href],
+main a[href][class*="text-primary"],
+main [class*="callout"] a[href] {
+  color: var(--nextra-link) !important;
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition:
     color 0.15s,
     border-color 0.15s;
 }
-main a[href]:hover {
-  color: hsl(217, 91%, 45%);
+main a[href]:hover,
+main a[href][class*="text-primary"]:hover,
+main [class*="callout"] a[href]:hover {
+  color: var(--nextra-link-hover) !important;
   border-bottom-color: currentColor;
 }
-.dark main a[href] {
-  color: hsl(217, 85%, 65%);
-}
-.dark main a[href]:hover {
-  color: hsl(217, 85%, 78%);
-  border-bottom-color: currentColor;
-}
-main a[href]:focus-visible {
-  outline: 2px solid hsl(217, 91%, 50%);
+main a[href]:focus-visible,
+main [class*="callout"] a[href]:focus-visible {
+  outline: 2px solid var(--nextra-link);
   outline-offset: 2px;
   border-radius: 2px;
 }
@@ -232,29 +326,79 @@ main strong {
   color: inherit;
 }
 
-/* Callouts (Nextra Callout): extra spacing and clear left accent */
+/* Callouts (Nextra Callout): extra spacing; left accent colour matches callout type (set below per type) */
 main [data-callout],
 main [class*="callout"] {
   margin-top: 1.5em;
   margin-bottom: 1.5em;
   padding: 1rem 1.25rem;
   border-radius: 0.5rem;
-  border-left: 4px solid hsl(var(--nextra-primary-hue), var(--nextra-primary-saturation), 50%);
 }
 
-/* General docs tables: full width so no gap to the right on wide screens */
-main div:has(> table) {
-  width: 100%;
-  max-width: 100%;
-  margin-left: 0;
-  margin-right: 0;
+/* Table wrapper: responsive scroll, centered; no extra margin/padding on right (all tables, all pages) */
+main div:has(> table),
+main div.nextra-scrollbar:has(table),
+main div:has(table),
+main article div:has(> table),
+main [class*="content"] div:has(> table) {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  -webkit-overflow-scrolling: touch;
+  list-style: none;
   overflow-x: auto;
+  box-sizing: border-box;
 }
-main table {
+
+/* Agent architectures (and any section wrapper that contains a table): same wrapper behavior */
+main .agent-architectures-taxonomy:has(table),
+main .agent-architectures-patterns:has(table) {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  overflow-x: auto;
+  box-sizing: border-box;
+}
+
+/* Inner div (Nextra table wrapper) inside these sections: no extra margin/padding */
+main .agent-architectures-taxonomy > div:has(> table),
+main .agent-architectures-patterns > div:has(> table),
+main .compact-tables:has(table),
+main .compact-tables > div:has(> table) {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  overflow-x: auto;
+  box-sizing: border-box;
+}
+
+/* All content tables: same as intro tables – centered, fit-content, symmetric spacing */
+main table,
+main table.nextra-scrollbar,
+article table,
+main .agent-architectures-taxonomy table,
+main .agent-architectures-patterns table {
   margin-top: 1.5em;
   margin-bottom: 1.5em;
-  width: 100%;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  width: fit-content;
   max-width: 100%;
+  table-layout: auto;
   border-collapse: separate;
   border-spacing: 0;
   border: 1px solid rgb(226 232 240);
@@ -263,6 +407,12 @@ main table {
   font-size: 0.9375rem;
   line-height: 1.5;
   box-sizing: border-box;
+  display: table;
+}
+/* First column: cap width so it doesn’t dominate in wide tables; small tables size naturally */
+main table th:first-child,
+main table td:first-child {
+  max-width: 20em;
 }
 .dark main table {
   border-color: rgb(51 65 85);
@@ -274,7 +424,7 @@ main table thead {
   background: rgb(38 48 62);
 }
 main table th {
-  padding: 0.65rem 1rem;
+  padding: 0.65rem 1rem 0.65rem 1.25rem;
   text-align: left;
   font-weight: 600;
   font-size: 0.8125rem;
@@ -288,13 +438,13 @@ main table th {
   border-bottom-color: rgb(51 65 85);
 }
 main table td {
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 1rem 0.75rem 1.25rem;
   border-bottom: 1px solid rgb(241 245 249);
   color: rgb(30 41 59);
 }
 .dark main table td {
   border-bottom-color: rgb(51 65 85);
-  color: rgb(226 232 240);
+  color: rgb(241 245 249);
 }
 main table tbody tr:nth-child(even) {
   background: rgb(249 250 251);
@@ -312,20 +462,81 @@ main table tbody tr:last-child td {
   border-bottom: none;
 }
 
+/* Last column: extra padding so text is not flush to the border (responsive) */
+main table th:last-child,
+main table td:last-child {
+  padding-right: 1.25rem;
+}
+@media (min-width: 768px) {
+  main table th:last-child,
+  main table td:last-child {
+    padding-right: 1.5rem;
+  }
+}
+
 main hr {
   margin: 2.5rem 0;
 }
 
-/* Callouts: replace yellow (clashes with violet) with slate blue — harmonious with violet */
+/* Callout left accent: same base colour as callout border (icon and left border use border colour) */
+
+/* Info (blue): left border and icon use blue to match box */
+main .nextra-callout[class*="blue"] {
+  border-left: 4px solid var(--nextra-callout-info-border) !important;
+}
+main .nextra-callout[class*="blue"] > div:first-child {
+  color: var(--nextra-callout-info-icon) !important;
+}
+
+/* Warning (yellow → slate blue): left border and icon use warning border colour */
 main [class*="yellow"] {
   background: var(--nextra-callout-warning-bg) !important;
   border-color: var(--nextra-callout-warning-border) !important;
   color: var(--nextra-callout-warning-text) !important;
+  border-left: 4px solid var(--nextra-callout-warning-border) !important;
 }
+main [class*="yellow"] > div:first-child,
 main [class*="yellow"] [class*="text-yellow"],
 main [class*="yellow"] [class*="border-yellow"] {
-  color: var(--nextra-callout-warning-text) !important;
+  color: var(--nextra-callout-warning-border) !important;
   border-color: var(--nextra-callout-warning-border) !important;
+}
+
+/* Important (purple): left border and icon use brand violet to match box */
+main .nextra-callout[class*="purple"],
+main [class*="callout"][class*="purple"] {
+  background: var(--nextra-callout-important-bg) !important;
+  border-color: var(--nextra-callout-important-border) !important;
+  color: var(--nextra-callout-important-text) !important;
+  border-left: 4px solid var(--nextra-callout-important-border) !important;
+}
+main .nextra-callout[class*="purple"] > div:first-child,
+main [class*="callout"][class*="purple"] > div:first-child {
+  color: var(--nextra-callout-important-border) !important;
+}
+/* Callout links use brand orange like all docs links */
+main .nextra-callout[class*="purple"] a,
+main .nextra-callout[class*="purple"] [class*="text-primary"],
+main [class*="callout"][class*="purple"] a,
+main [class*="callout"][class*="purple"] [class*="text-primary"] {
+  color: var(--nextra-link) !important;
+}
+main .nextra-callout[class*="purple"] a:hover,
+main [class*="callout"][class*="purple"] a:hover {
+  color: var(--nextra-link-hover) !important;
+}
+
+/* Navbar: theme switch to the right of GitHub link (flex order) */
+.agentron-navbar a[href*="github"] {
+  order: 1;
+}
+.agentron-navbar a[href*="github"] ~ * {
+  order: 2;
+}
+
+/* Theme switcher only in navbar; hide it from the sidebar footer */
+aside.nextra-sidebar .nextra-sidebar-footer > *:first-child {
+  display: none;
 }
 
 /* Narrower sidebars so the middle content has more space and looks cleaner */
@@ -507,16 +718,18 @@ nav.nextra-toc {
   text-align: center;
 }
 
-/* Feature matrix — cards with breathing room (less cramped) */
+/* Feature matrix - no border on parent; cards with slight hover effect */
 .feature-matrix-cards {
   margin-top: 1.5rem;
   margin-bottom: 2rem;
+  border: none;
 }
 
 .feature-matrix-cards table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
+  border: none;
 }
 
 .feature-matrix-cards thead th {
@@ -547,12 +760,15 @@ nav.nextra-toc {
   border-bottom-color: rgb(51 65 85);
 }
 
+.feature-matrix-cards tbody tr {
+  transition: background-color 0.15s ease;
+}
 .feature-matrix-cards tbody tr:hover td {
-  background: rgb(249 250 251);
+  background: rgb(243 244 246);
 }
 
 .dark .feature-matrix-cards tbody tr:hover td {
-  background: rgb(38 48 62);
+  background: rgb(51 65 85);
 }
 
 .feature-matrix-cards tbody td:first-child {
@@ -600,25 +816,27 @@ nav.nextra-toc {
     flex-direction: column;
     padding: 1.25rem 1.5rem;
     gap: 0.5rem;
-    border: 1px solid rgb(226 232 240);
+    border: none;
     border-radius: 0.5rem;
     background: rgb(255 255 255);
     box-shadow: 0 1px 3px rgb(0 0 0 / 0.04);
-    transition: box-shadow 0.15s;
+    transition:
+      box-shadow 0.15s ease,
+      transform 0.15s ease;
   }
 
   .feature-matrix-cards tbody tr:hover {
-    box-shadow: 0 4px 12px rgb(0 0 0 / 0.06);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.08);
   }
 
   .dark .feature-matrix-cards tbody tr {
-    border-color: rgb(51 65 85);
+    border: none;
     background: rgb(30 41 59);
     box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
   }
 
   .dark .feature-matrix-cards tbody tr:hover {
-    box-shadow: 0 4px 12px rgb(0 0 0 / 0.2);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.25);
   }
 
   .feature-matrix-cards tbody td {
@@ -648,4 +866,317 @@ nav.nextra-toc {
   .dark .feature-matrix-cards tbody td:last-child {
     border-top-color: rgb(51 65 85);
   }
+}
+
+/* Brand page: at-a-glance card (logo + colors + typography) */
+.brand-card {
+  margin-top: 1rem;
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: rgb(248 250 252);
+  border: 1px solid rgb(226 232 240);
+  border-radius: 0.75rem;
+  box-sizing: border-box;
+}
+
+.dark .brand-card {
+  background: rgb(30 41 59);
+  border-color: rgb(51 65 85);
+}
+
+.brand-card-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 1.5rem;
+}
+
+.brand-card-logo {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-shrink: 0;
+}
+
+.brand-card-logo img {
+  display: block;
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+}
+
+.brand-card-typo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.brand-card-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgb(100 116 139);
+}
+
+.dark .brand-card-label {
+  color: rgb(148 163 184);
+}
+
+/* Theme cards wrapper: side-by-side on larger screens, stacked on small */
+.brand-card-themes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  flex: 1 1 320px;
+  min-width: 0;
+  align-items: stretch;
+}
+
+@media (max-width: 639px) {
+  .brand-card-themes {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+}
+
+/* Theme cards: fixed look, equal size when side by side */
+.brand-card-theme {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  box-sizing: border-box;
+  flex: 1 1 200px;
+  min-width: 0;
+  min-height: 10rem;
+}
+
+@media (min-width: 640px) {
+  .brand-card-theme {
+    flex: 1 1 0;
+    min-width: 180px;
+  }
+}
+
+.brand-card-theme-light {
+  background: rgb(248 250 252);
+  border-color: rgb(226 232 240);
+}
+
+.brand-card-theme-light .brand-card-label {
+  color: rgb(71 85 105);
+}
+
+.brand-card-theme-dark {
+  background: rgb(30 41 59);
+  border-color: rgb(51 65 85);
+}
+
+.brand-card-theme-dark .brand-card-label {
+  color: rgb(148 163 184);
+}
+
+.brand-card-sans {
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgb(15 23 42);
+}
+
+.dark .brand-card-sans {
+  color: rgb(241 245 249);
+}
+
+.brand-card-mono {
+  font-family: var(--font-mono), "Space Mono", ui-monospace, Consolas, monospace;
+  font-size: 0.875rem;
+  color: rgb(71 85 105);
+}
+
+.dark .brand-card-mono {
+  color: rgb(203 213 225);
+}
+
+.brand-card-colors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.brand-card-theme .brand-card-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-content: flex-start;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.brand-card-swatch {
+  width: 4.5rem;
+  height: 2.5rem;
+  border-radius: 0.375rem;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.brand-card-swatch-hex {
+  font-size: 0.625rem;
+  font-weight: 600;
+  font-family: var(--font-mono), "Space Mono", ui-monospace, monospace;
+  max-width: 100%;
+  padding: 0 2px;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* A→T→A logo animation (Brand story): tool (A) flips to task (T) and back; circle stays fixed. */
+.logo-loading-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 280px;
+}
+
+.logo-loading-stage .logo-loading-inner {
+  position: relative;
+}
+
+.logo-loading-stage .logo-loading-letters {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 50% 63.125%;
+  -webkit-transform-origin: 50% 63.125%;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+  animation: a-to-t-to-a 4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.logo-loading-stage .logo-loading-letters img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.logo-loading-stage .logo-loading-letters .logo-loading-back {
+  transform: rotateY(180deg);
+}
+
+.logo-loading-stage .logo-loading-circle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+@keyframes a-to-t-to-a {
+  0% {
+    transform: rotateY(180deg) rotateZ(45deg);
+  }
+  5% {
+    transform: rotateY(180deg) rotateZ(34deg);
+  }
+  10% {
+    transform: rotateY(180deg) rotateZ(22deg);
+  }
+  15% {
+    transform: rotateY(180deg) rotateZ(11deg);
+  }
+  20% {
+    transform: rotateY(180deg) rotateZ(0deg);
+  }
+  22% {
+    transform: rotateY(180deg) rotateZ(-8deg);
+  }
+  25% {
+    transform: rotateY(180deg) rotateZ(-24deg);
+  }
+  27% {
+    transform: rotateY(180deg) rotateZ(-12deg);
+  }
+  29% {
+    transform: rotateY(180deg) rotateZ(-4deg);
+  }
+  31% {
+    transform: rotateY(180deg) rotateZ(0deg);
+  }
+  33% {
+    transform: rotateY(144deg) rotateZ(0deg);
+  }
+  35% {
+    transform: rotateY(108deg) rotateZ(0deg);
+  }
+  37% {
+    transform: rotateY(72deg) rotateZ(0deg);
+  }
+  39% {
+    transform: rotateY(36deg) rotateZ(0deg);
+  }
+  41% {
+    transform: rotateY(0deg) rotateZ(0deg);
+  }
+  50% {
+    transform: rotateY(0deg) rotateZ(0deg);
+  }
+  55% {
+    transform: rotateY(0deg) rotateZ(11deg);
+  }
+  60% {
+    transform: rotateY(0deg) rotateZ(22deg);
+  }
+  65% {
+    transform: rotateY(0deg) rotateZ(34deg);
+  }
+  70% {
+    transform: rotateY(0deg) rotateZ(45deg);
+  }
+  72% {
+    transform: rotateY(0deg) rotateZ(55deg);
+  }
+  75% {
+    transform: rotateY(0deg) rotateZ(65deg);
+  }
+  77% {
+    transform: rotateY(0deg) rotateZ(58deg);
+  }
+  79% {
+    transform: rotateY(0deg) rotateZ(51deg);
+  }
+  81% {
+    transform: rotateY(0deg) rotateZ(45deg);
+  }
+  83% {
+    transform: rotateY(36deg) rotateZ(45deg);
+  }
+  85% {
+    transform: rotateY(72deg) rotateZ(45deg);
+  }
+  87% {
+    transform: rotateY(108deg) rotateZ(45deg);
+  }
+  89% {
+    transform: rotateY(144deg) rotateZ(45deg);
+  }
+  91% {
+    transform: rotateY(180deg) rotateZ(45deg);
+  }
+  100% {
+    transform: rotateY(180deg) rotateZ(45deg);
+  }
+}
+
+/* Heap viewer: edges must stay visible in light and dark theme */
+.heap-viewer-flow .react-flow {
+  --xy-edge-stroke-default: #94a3b8;
+  --xy-edge-stroke-width-default: 2;
+  --xy-edge-stroke-selected-default: #64748b;
 }

@@ -1,6 +1,6 @@
 ---
 title: Agent architectures (comparison)
-description: Cutting-edge agent architecture taxonomy—ReAct + tools, multi-agent static/dynamic, recursive—orchestration patterns, production safety (2026), and where Agentron sits.
+description: Cutting-edge agent architecture taxonomy (Level 1 to 4). ReAct plus tools, multi-agent static and dynamic, recursive. Orchestration patterns, production safety (2026), and where Agentron sits (all four levels).
 keywords:
   - agent architecture taxonomy
   - ReAct agents
@@ -13,7 +13,7 @@ keywords:
 
 # Agent architectures (comparison)
 
-This page compares **cutting-edge agent architectures** and explains where **Agentron** sits: production-ready **ReAct + tools** with optional **static multi-agent** design, cost control, and debuggable topology.
+This page compares **cutting-edge agent architectures** on a **Level 1 to 4** spectrum and explains where **Agentron** sits: it uses **all four levels**—Level 1 (chat/RAG), Level 2 (workflows), Level 3 (heap planner routing), Level 4 (heap, create tools/agents on the fly)—with cost control and debuggable topology.
 
 ---
 
@@ -21,14 +21,18 @@ This page compares **cutting-edge agent architectures** and explains where **Age
 
 Agent architectures sit on a **spectrum from design-time (human-controlled) to runtime (model-controlled)** structure:
 
-| Level | Architecture | Who decides structure | Used in production | Notes |
-| ----- | ------------ | --------------------- | -------------------- | ----- |
-| **1** | **ReAct + tools (orchestrator)** | Human picks tools; model picks order | ✅ Yes (ChatGPT, Claude, Erica) | Single agent, fixed tool set, dynamic tool selection/ordering. **Thought → Action → Observation**; cost control and loop limits are mandatory. |
-| **2** | **Multi-agent, static topology** | Human designs graph and roles | ✅ Yes (LangGraph, CrewAI, DSPy) | Predefined roles and flows. Predictable and debuggable; dominant in production. |
-| **3** | **Multi-agent, dynamic routing** | Model chooses which agents to invoke | ⚠️ Emerging | Model decides routing at runtime; more flexible, harder to debug. |
-| **4** | **Recursive / self-building (RLM)** | Model builds its own architecture | 🔬 Frontier research | Model writes agents/structure on the fly; less production-ready, high variance. |
+<div className="agent-architectures-taxonomy">
 
-**Agentron:** Chat and RAG use **Level 1 (ReAct + tools)** for notebook chat and inline block chat (retrieve, cite, optional web search). **Workflows** use **Level 2 (static topology)**—human-designed graph, configurable rounds. **Heap (chat specialists)** use **runtime-assembled DAG**: the planner (LLM) chooses which specialists and in what order/parallelism **per request**; the runtime builds a DAG from that plan and runs it. So for heap we use **Level 3 (dynamic routing)** / **recursive composition**—the agent assembles a DAG of agents for each request. Specialist definitions are human-defined; the **structure** (which specialists, order, parallelism) is model-determined each turn.
+| Level | Architecture | Who decides structure | Used in production | Agentron | Notes |
+| ----- | ------------ | --------------------- | -------------------- | -------- | ----- |
+| **1** | **ReAct + tools (orchestrator)** | Human picks tools; model picks order | ✅ Yes (ChatGPT, Claude, Erica) | **Yes** | Single agent, fixed tool set, dynamic tool selection/ordering. **Thought to Action to Observation**; cost control and loop limits are mandatory. Agentron uses this for **chat and RAG** (notebook and inline): one ReAct agent, fixed tool set, model picks order. |
+| **2** | **Multi-agent, static topology** | Human designs graph and roles | ✅ Yes (LangGraph, CrewAI, DSPy) | **Yes** | Predefined roles and flows. Predictable and debuggable; dominant in production. Agentron uses this for **workflows**: human-designed graph, configurable rounds. |
+| **3** | **Multi-agent, dynamic routing** | Model chooses which agents to invoke | ⚠️ Emerging | **Yes** | Model decides routing at runtime; more flexible, harder to debug. Agentron uses this in **heap**: the planner (LLM) chooses which specialists to invoke and in what order per request—model-chosen routing over specialists. |
+| **4** | **Recursive / self-building (RLM)** | Model builds its own architecture | 🔬 Frontier research | **Yes** | Model writes agents/structure on the fly; less production-ready, high variance. Agentron uses this in **heap**: the system can create new tools and agents on the fly; structure and novel agents are model-determined at runtime. |
+
+</div>
+
+**Where Agentron fits:** Agentron uses **all four levels** of the taxonomy. **Level 1 (ReAct + tools):** chat and RAG, notebook and inline block chat (retrieve, cite, optional web search); single agent, model picks tool order. **Level 2 (static topology):** workflows, human-designed graph, configurable rounds. **Level 3 (dynamic routing):** heap, the planner chooses which specialists to invoke and in what order per request (model-chosen routing). **Level 4 (recursive / self-building):** heap, the system can **create** new tools and agents on the fly; structure and novel agents are model-determined at runtime. The runtime builds a DAG from the plan and runs it. Specialist definitions can be human-defined or model-created.
 
 <Callout type="info">
   **Reference:** The design-time vs runtime taxonomy is widely cited; see e.g. [A Taxonomy of Agent Architectures: ReAct to Recursive Language Models](https://mitchgordon.me/tools/2026/01/14/taxonomy-of-agent-architectures.html) (Gordon, 2026) and the MIT [Recursive Language Models](https://arxiv.org/abs/2512.24601) paper (Zhang et al.).
@@ -40,15 +44,21 @@ Agent architectures sit on a **spectrum from design-time (human-controlled) to r
 
 When you use multiple agents, **orchestration pattern** matters:
 
+<div className="agent-architectures-patterns">
+
 | Pattern | Description | Pros | Cons |
 | ------- | ----------- | ---- | ---- |
 | **Hierarchical (supervisor/worker)** | Central supervisor decomposes and delegates | Good for compliance, clear ownership | Risk of bottleneck |
-| **Sequential pipeline** | Linear handoff (e.g. research → analyze → write) | Good for document/review flows | Fragile to single failure |
+| **Sequential pipeline** | Linear handoff (e.g. research to analyze to write) | Good for document/review flows | Fragile to single failure |
 | **Parallel (ensemble)** | Same task in parallel; aggregate results | Good for brainstorming, diversity | Higher cost, coordination |
 | **Event-driven (pub/sub)** | Message broker; agents react to events | Good for high volume, real-time | More moving parts |
 | **Peer-to-peer (mesh)** | No central coordinator | Resilient | Harder to debug |
 
-**Agentron:** Without heap, chat and RAG fit a **single ReAct agent with tools**. With heap, the planner outputs a plan (priorityOrder); the runtime **builds a DAG** from it and runs specialists by level—**general**, **workflow**, **agent**, **tools**, **knowledge**, **improve_run**, **improve_heap**, **improve_agents_workflows**. Heap “Studio” as agent-driven (e.g. “generate study guide”), heap is **hierarchical (supervisor/worker)** with **model-assembled DAG per request**; workflows remain **static topology** (human-defined graph).
+</div>
+
+**Where Agentron fits:** Agentron uses the **hierarchical (supervisor/worker)** pattern for heap: the planner delegates to specialists. That pattern can implement the others for agents (e.g. the supervisor can delegate in sequence, in parallel, or via events), so one orchestration style covers varied workflows. Internally, event-driven patterns are used for workflow execution, chat pub/sub, and the run queue; see [Event-driven architecture](/concepts/event-driven-architecture).
+
+**Agentron:** Without heap, chat and RAG use a single ReAct agent with tools. With heap, the planner outputs a plan (priorityOrder) and the runtime builds a DAG from it, running specialists by level (e.g. general, workflow, tools, knowledge). Heap is hierarchical with a model-assembled DAG per request and can create new tools and agents on the fly; workflows stay human-defined static topology.
 
 ---
 
@@ -80,25 +90,25 @@ Agentic systems can be decomposed into:
 | **Learning & adaptation** | Online learning, feedback loops (optional in v1). |
 | **Inter-agent communication** | Handoffs, contracts (relevant when multi-agent). |
 
-**Agentron (v1):** Strong on **perception** (retrieval, RAG) and **action** (tools, workflows); **reasoning** is the LLM. We can defer **learning/adaptation** and deep **inter-agent** protocols until needed.
+**Agentron (v1):** Strong on **perception** (retrieval, RAG) and **action** (tools, workflows); **reasoning** is the LLM. **Learning and adaptation:** auto-mode learning for created agents is supported; user-guided learning is possible for both the Agentron agent and created agents. Deep **inter-agent** protocols can be deferred until needed.
 
 ---
 
 ## Where Agentron fits (summary)
 
-- **Chat / RAG (no heap):** ReAct + tools (Level 1). Retrieve, cite, optional web search; max steps and cost control.
-- **Workflows:** Multi-agent static topology (Level 2). Human-designed graph, configurable rounds.
-- **Heap (chat):** **Recursive / runtime-assembled DAG.** The planner chooses which specialists and in what order/parallelism per request; the runtime assembles a DAG from the plan and runs it. Real specialists: **general** (Q&A, web search), **workflow**, **agent**, **tools**, **knowledge** (connectors), **improve_run**, **improve_heap**, **improve_agents_workflows**. Dynamic composition (Level 3); execution DAG is model-built each turn.
+- **Chat / RAG (no heap):** Level 1 (ReAct + tools). Retrieve, cite, optional web search; max steps and cost control.
+- **Workflows:** Level 2 (static topology). Human-designed graph, configurable rounds.
+- **Heap (chat):** Level 3 (dynamic routing)—planner chooses which specialists and in what order per request—and **Level 4 (recursive / self-building)**—system can **create** new tools and novel agents/architectures on the fly. The runtime assembles a DAG from the plan and runs it. Specialists include **general** (Q&A, web search), **workflow**, **agent**, **tools**, **knowledge** (connectors), **improve_run**, **improve_heap**, **improve_agents_workflows**; execution DAG and new tools/agents are model-built at runtime.
 - **No** unbounded ReAct loops; **yes** to provider-agnostic LLMs and MCP.
 
 ---
 
 ## Research & further reading
 
-- **Taxonomy (design-time vs runtime):** [A Taxonomy of Agent Architectures: ReAct to Recursive Language Models](https://mitchgordon.me/tools/2026/01/14/taxonomy-of-agent-architectures.html) — Mitchell A. Gordon, 2026. ReAct → multi-agent static → dynamic routing → RLM.
-- **Recursive Language Models:** [Recursive Language Models](https://arxiv.org/abs/2512.24601) — Zhang, Kraska, Khattab (MIT). Models that build their own architecture at runtime.
+- **Taxonomy (design-time vs runtime):** [A Taxonomy of Agent Architectures: ReAct to Recursive Language Models](https://mitchgordon.me/tools/2026/01/14/taxonomy-of-agent-architectures.html). Mitchell A. Gordon, 2026. ReAct to multi-agent static to dynamic routing to RLM.
+- **Recursive Language Models:** [Recursive Language Models](https://arxiv.org/abs/2512.24601). Zhang, Kraska, Khattab (MIT). Models that build their own architecture at runtime.
 - **ReAct and robustness:** e.g. Autono (ReAct-based robust agents with adaptive decision-making, memory; [arXiv:2504.04650](https://arxiv.org/html/2504.04650)).
-- **System-theoretic patterns:** NeurIPS 2025 workshop on agentic design patterns (Reasoning & world model, Perception & grounding, Action execution, Learning & adaptation, Inter-agent communication).
+- **System-theoretic patterns:** [Agentic Design Patterns: A System-Theoretic Framework](https://neurips.cc/virtual/2025/137224) (NeurIPS 2025). Reasoning and world model, Perception and grounding, Action execution, Learning and adaptation, Inter-agent communication.
 - **Production patterns:** LangGraph, CrewAI, DSPy for static multi-agent; OpenAI Assistants API, Claude tools for ReAct-style production.
 
 For in-repo deployment and runtime boundaries, see the [architecture](https://github.com/cap-jmk-real/agentron/blob/main/docs/architecture.md) doc in the repository.

@@ -1,0 +1,67 @@
+---
+title: Design
+description: "Agentron design system: typography (Space Grotesk), colors, logo and icons. Single place to iterate on docs and app branding."
+keywords:
+  - design
+  - typography
+  - Space Grotesk
+  - colors
+  - logo
+---
+
+# Design
+
+This page is the **single source of truth** for Agentron’s visual design. Use it to keep the **docs** and **Studio app** consistent when you change fonts, colors, or logo. For the logo meaning and animation, see [Brand story](/brand-story).
+
+## Brand at a glance
+
+<BrandCard />
+
+Logo (navbar), typography (Space Grotesk + Space Mono), and main app colors in one place. Dark-mode primary and app dark theme colors are in the tables below.
+
+---
+
+## Typography
+
+| Context | Font | Where it's set |
+| ------- | ---- | ----------------- |
+| **UI & body (app + docs)** | **Space Grotesk** | App: `packages/ui/app/layout.tsx` (next/font) + `packages/ui/app/css/globals-part1.css`. Docs: `apps/docs/app/layout.tsx` (next/font) + `apps/docs/app/globals.css` |
+| **Code / mono (app)** | **Space Mono** (same family as Space Grotesk) | App: `packages/ui/app/layout.tsx` (next/font, `--font-mono`) + globals-part2, part3, part6. Fallbacks: JetBrains Mono, SF Mono, etc. |
+| **Code (docs)** | **Space Mono** (same family as Space Grotesk) | Docs: `apps/docs/app/layout.tsx` (next/font, `--font-mono`) + `globals.css` for `main pre`, inline code, and `kbd`. |
+
+**Fonts match:** Both the Studio app and the docs use **Space Grotesk** for UI and **Space Mono** for code. To try other fonts: local preview at `apps/docs/public/font-samples.html` (gitignored).
+
+---
+
+## Colors
+
+Preview above shows **app light** swatches. Full reference:
+
+| Role | Light | Dark | Where |
+| ---- | ----- | ----- | ----- |
+| **Primary (brand)** | `#5b7cfa` / `#4f46e5` | `#7c3aed` / `#5b7cfa` | App: `packages/ui/app/css/globals-part1.css` (`--primary`, `--primary-strong`). Docs: `apps/docs/app/globals.css` (`--nextra-primary-hue` 262, etc.). |
+| **Background / surface** | `#f5f6fa`, `#ffffff` | `#0b1120`, `#111827` | App `:root` and `html[data-theme="dark"]`. |
+| **Callouts (warning)** | Slate blue | Dark slate | Docs only: `--nextra-callout-warning-*` in `globals.css`. |
+
+Use **violet/indigo** and **slate** for harmony; avoid yellow so it doesn't clash with the primary.
+
+---
+
+## Logo and icons
+
+| Asset | Location | Usage |
+| ----- | -------- | ----- |
+| **Logo (navbar)** | `apps/docs/public/img/logo.svg` | Shown in the card above; used in docs layout navbar. |
+| **Logo (animated)** | A→T→A: `img/icon-a-letter.svg`, `img/icon-t-letter.svg`, `img/icon-circle.svg` + CSS in `globals.css` | Shown on [Brand story](/brand-story); the switch to “T” symbolizes the tool adapting to the task. |
+| **Favicons** | `apps/docs/public/` and `packages/ui/public/` (`favicon.ico`, `icon-32.png`, `apple-touch-icon.png`) | Generated from `packages/ui/public/icon.svg` via `apps/desktop/scripts/generate-favicons.cjs`. |
+| **Icon set** | `packages/ui/public/icon*.svg` | App and docs; favicon script uses `icon.svg`. |
+
+To refresh favicons after changing the main icon: run the generate script, then rebuild docs and UI.
+
+---
+
+## Quick reference for changes
+
+- **Change brand font:** `packages/ui/app/layout.tsx`, `apps/docs/app/layout.tsx`, and the `font-family` in `packages/ui/app/css/globals-part1.css` and `apps/docs/app/globals.css`.
+- **Change primary color:** Docs `--nextra-primary-*` in `apps/docs/app/globals.css`; app `--primary` / `--primary-strong` in `packages/ui/app/css/globals-part1.css`.
+- **Change logo/favicon:** Edit `packages/ui/public/icon.svg`, run `node apps/desktop/scripts/generate-favicons.cjs`, commit updated assets in `apps/docs/public/` and `packages/ui/public/`.

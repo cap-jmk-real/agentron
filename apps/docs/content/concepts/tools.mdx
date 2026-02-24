@@ -57,8 +57,8 @@ A **tool** is a callable capability that agents use to perform actions. Tools ar
 
 Agentron ships with standard tools such as:
 
-- `std-weather` — weather data
-- `std-fetch-url` — fetch URL content  
+- `std-weather`: weather data
+- `std-fetch-url`: fetch URL content  
 - Others depending on installation
 
 ---
@@ -67,8 +67,8 @@ Agentron ships with standard tools such as:
 
 Create many HTTP tools at once from an OpenAPI 3.x (or Swagger) spec:
 
-1. **In chat** — Tell the assistant: "Add tools from this API: &lt;URL&gt;" or paste the spec. It uses `create_tools_from_openapi` with `specUrl` or `spec` to create one tool per operation. Each tool gets a stable id (e.g. `get_users`, `post_users`), correct URL and method, and `inputSchema` from parameters and request body.
-2. **Attach to agents** — After import, use `list_tools` to see the new ids, then `update_agent` with `toolIds`.
+1. **In chat**: Tell the assistant: "Add tools from this API: &lt;URL&gt;" or paste the spec. It uses `create_tools_from_openapi` with `specUrl` or `spec` to create one tool per operation. Each tool gets a stable id (e.g. `get_users`, `post_users`), correct URL and method, and `inputSchema` from parameters and request body.
+2. **Attach to agents**: After import, use `list_tools` to see the new ids, then `update_agent` with `toolIds`.
 
 <Callout type="info">
   HTTP tools from OpenAPI support path parameters (e.g. `/users/{id}`), query parameters (GET), and request body (POST/PUT/PATCH). The runtime substitutes placeholders and sends query/body as appropriate.
@@ -80,8 +80,8 @@ Create many HTTP tools at once from an OpenAPI 3.x (or Swagger) spec:
 
 Create tools that run custom code (JavaScript, Python, or TypeScript):
 
-1. **Create** — In chat, ask the assistant to "create a tool that does X". It uses `create_code_tool` with `name`, `language`, and `source`. The tool is created with a default runner sandbox; attach it to agents via `update_agent` with `toolIds` (returned `toolId` is e.g. `fn-<uuid>`).
-2. **Improve** — To change code: `get_tool(id)` → `config.functionId`, then `get_custom_function(functionId)` to read source, then `update_custom_function(id, { source: "..." })`. Optionally `update_tool` for name or `inputSchema`.
+1. **Create**: In chat, ask the assistant to "create a tool that does X". It uses `create_code_tool` with `name`, `language`, and `source`. The tool is created with a default runner sandbox; attach it to agents via `update_agent` with `toolIds` (returned `toolId` is e.g. `fn-<uuid>`).
+2. **Improve**: To change code: `get_tool(id)` → `config.functionId`, then `get_custom_function(functionId)` to read source, then `update_custom_function(id, { source: "..." })`. Optionally `update_tool` for name or `inputSchema`.
 
 <Callout type="warning">
   Code tools run in sandboxes (Podman/Docker). Use `list_custom_functions` to list all custom functions (id, name, language, description; no source in the list).
@@ -93,9 +93,9 @@ Create tools that run custom code (JavaScript, Python, or TypeScript):
 
 Steer a local [OpenClaw](https://openclaw.ai) instance (personal AI assistant gateway) from chat:
 
-- **send_to_openclaw** — Send a message or command to OpenClaw.
-- **openclaw_history** — Get recent chat history.
-- **openclaw_abort** — Abort the current run.
+- **send_to_openclaw**: Send a message or command to OpenClaw.
+- **openclaw_history**: Get recent chat history.
+- **openclaw_abort**: Abort the current run.
 
 **Running OpenClaw in a container:** Use the **alpine/openclaw** image (Docker Hub). Create a sandbox with `alpine/openclaw:latest`, expose port 18789 with **bind_sandbox_port**, then set `OPENCLAW_GATEWAY_URL` or pass **gatewayUrl** in the tool calls. The flow is container-engine agnostic (Docker or Podman). See [OpenClaw integration](/docs/openclaw-integration) for full details.
 
