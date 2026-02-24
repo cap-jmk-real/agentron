@@ -74,3 +74,4 @@ apps/docs/public/font-samples.html
 *.local
 .cache/
 .data/
+*.png
