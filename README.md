@@ -8,7 +8,7 @@
 [![Local-first](https://img.shields.io/badge/local--first-SQLite%20%2B%20Electron-8B5CF6?style=flat-square)](INSTALL.md)
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-0ea5e9?style=flat-square&logo=readthedocs&logoColor=white)](https://cap-jmk-real.github.io/agentron/)
 
-Agentron is a local-first, open-source platform for AI agent orchestration and workflow automation. The planner (LLM) assembles a DAG of agents per request (heap mode), so each turn uses a model-chosen specialist graph instead of a single ReAct-style orchestrator. You run everything on your own infrastructure: no cloud lock-in, full data privacy, optional desktop app.
+Agentron is a local-first, open-source platform for AI agent orchestration and workflow automation. With **heap mode** (**Level 4** — recursive/self-building), the planner assembles a DAG of agents per request and can create new tools and agents on the fly; each turn uses a model-chosen specialist graph. Without heap, chat uses **Level 1** (ReAct + tools). Workflows use **Level 2** (static multi-agent). You run everything on your own infrastructure: no cloud lock-in, full data privacy, optional desktop app.
 
 <details>
 <summary><strong>Table of contents</strong></summary>
@@ -16,6 +16,7 @@ Agentron is a local-first, open-source platform for AI agent orchestration and w
 - [About](#about)
 - [Features](#features)
 - [Agent architecture and orchestration](#agent-architecture-and-orchestration)
+- [Event-driven architecture](#event-driven-architecture)
 - [Getting started](#getting-started)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -28,21 +29,25 @@ Agentron is a local-first, open-source platform for AI agent orchestration and w
 
 ## About
 
-Agentron lets you design, run, and manage AI agents and multi-agent workflows locally. Its differentiator is **heap mode**: the planner chooses which specialists (e.g. **workflow**, **agent**) and in what order or parallelism per request; the runtime builds and runs that DAG. When heap is off, chat uses a single ReAct-style agent with tools. Ideal for teams that want cutting-edge agent orchestration with production safety (cost control, loop limits, provider-agnostic LLMs) and privacy-first automation without cloud-only platforms.
+Agentron lets you design, run, and manage AI agents and multi-agent workflows locally. Its differentiator is **heap mode** (**Level 4**): the planner chooses which specialists (e.g. **workflow**, **agent**) and in what order or parallelism per request and can create new tools and agents on the fly; the runtime builds and runs that DAG. When heap is off, chat uses **Level 1** (ReAct + tools). Workflows use **Level 2** (static multi-agent). Ideal for teams that want cutting-edge agent orchestration with production safety (cost control, loop limits, provider-agnostic LLMs) and privacy-first automation without cloud-only platforms.
 
 ## Features
 
-- **Heap (runtime-assembled DAG).** Planner selects specialists and order per request; runtime builds and runs the DAG. Model-chosen routing, not a single ReAct loop. Fallback: one ReAct-style agent when heap is off; max steps and loop limits throughout.
+- **Heap (Level 4 — recursive/self-building).** Planner selects specialists and order per request; runtime builds and runs the DAG; can create new tools and agents on the fly. Fallback: **Level 1** (one ReAct-style agent) when heap is off; max steps and loop limits throughout.
 - **Local-first and self-hosted.** SQLite storage, optional Electron desktop app; run on-premise or air-gapped.
 - **Visual agent builder.** Node-based graphs (LLM, tools, decision nodes) and code agents (JavaScript, Python, TypeScript) in sandboxes.
-- **Multi-agent workflows.** Human-designed graphs and configurable rounds; the chat assistant creates and edits agents, workflows, and tools via natural language.
+- **Multi-agent workflows (Level 2).** Human-designed graphs and configurable rounds; the chat assistant creates and edits agents, workflows, and tools via natural language.
 - **Tools and integrations.** Native, HTTP, and MCP tools; RAG and knowledge connectors (Notion, Google Drive, Dropbox, OneDrive, Confluence, GitBook, local folders); Podman sandboxes; OpenAI, Anthropic, Ollama, and remote LLM support; OpenClaw gateway integration.
 
 ## Agent architecture and orchestration
 
 **ReAct** (Reasoning + Acting) is the pattern used by most production assistants: one LLM, one context, a fixed set of tools; the model loops over thought, choose tool, act, observe. Used by ChatGPT (function calling), Claude (tools), and the OpenAI Assistants API: single orchestrator, fixed tool set, dynamic tool selection only.
 
-**Why Agentron is cutting edge:** With heap on, the planner assembles a DAG of specialists per request (runtime-assembled, Level 3). Specialists are real roles in the app (e.g. workflow, agent); the model picks which run and in what order each turn. Without heap, chat uses a single ReAct-style agent. Workflows use static topology (human-designed graphs). Max steps, loop detection, and tool-call budgets are enforced. For taxonomy and patterns, see [Agent architectures (comparison)](https://cap-jmk-real.github.io/agentron/concepts/agent-architectures) in the docs.
+**Why Agentron is cutting edge:** With heap on, Agentron runs at **Level 4** (recursive/self-building): the planner assembles a DAG of specialists per request and can create new tools and agents on the fly. Specialists are real roles in the app (e.g. workflow, agent); the model picks which run and in what order each turn. Without heap, chat uses **Level 1** (ReAct + tools). Workflows use **Level 2** (static topology, human-designed graphs). Max steps, loop detection, and tool-call budgets are enforced. For the full taxonomy (Levels 1–4), see [Agent architectures (comparison)](https://cap-jmk-real.github.io/agentron/concepts/agent-architectures) in the docs.
+
+## Event-driven architecture
+
+Agentron uses **event-driven** patterns under the hood for execution and delivery: **workflow runs** are driven by a DB-backed **event queue** (RunStarted, NodeRequested, NodeCompleted, UserResponded) with persisted run state for pause/resume and user-in-the-loop; **chat turns** can be consumed via a **pub/sub event channel** (SSE) so clients subscribe by `turnId` and receive the same stream as streaming POST; and **workflow execution** is **queued** (DB-backed job queue with bounded concurrency) so start/resume/scheduled runs are serialized and observable. For details, see [Event-driven architecture](https://cap-jmk-real.github.io/agentron/concepts/event-driven-architecture) in the docs.
 
 ## Getting started
 
@@ -126,7 +131,7 @@ Optional env: `OLLAMA_BASE_URL` (default `http://localhost:11434`), `E2E_SAVE_AR
 ## Documentation
 
 - [Documentation site](https://cap-jmk-real.github.io/agentron/) (concepts, quick start, tutorials, capabilities)
-- [Agent architectures (comparison)](https://cap-jmk-real.github.io/agentron/concepts/agent-architectures) (ReAct, multi-agent, recursive; where Agentron fits)
+- [Agent architectures (comparison)](https://cap-jmk-real.github.io/agentron/concepts/agent-architectures) (Level 1–4 taxonomy; where Agentron fits)
 - [INSTALL.md](INSTALL.md) (install, troubleshoot, desktop build)
 - [Download](https://cap-jmk-real.github.io/agentron/download) (desktop installers)
 

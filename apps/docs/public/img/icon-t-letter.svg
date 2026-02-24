@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none" aria-hidden="true" shape-rendering="geometricPrecision" overflow="hidden">
+  <defs>
+    <linearGradient id="t" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+  </defs>
+  <!-- T for logo loading: junction at 40.4 (circle); stem shortened to 54 so scaled bottom = 62.8 (max = a bottom); circle stays fixed in animation. -->
+  <g transform="translate(32,32) scale(1.4) translate(-32,-32)">
+    <path d="M4.5 30 H59.5 V38 H37 V54 H27 V38 H4.5 V30 Z" fill="url(#t)"/>
+  </g>
+</svg>

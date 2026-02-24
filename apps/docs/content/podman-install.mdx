@@ -5,7 +5,7 @@ description: Set up Podman or Docker as the container engine for Agentron sandbo
 
 # Container engine (Podman & Docker)
 
-Agentron uses a **container engine** to run sandboxes—isolated containers for code execution, custom functions, and agent tools. In **Settings → Container Engine** you choose **Podman** or **Docker**. Both work; this page explains setup for each and how they differ (including licensing).
+Agentron uses a **container engine** to run sandboxes: isolated containers for code execution, custom functions, and agent tools. In **Settings → Container Engine** you choose **Podman** or **Docker**. Both work; this page explains setup for each and how they differ (including licensing).
 
 <Callout type="info">
   **Need a GUI?** **Podman Desktop** sets up the Podman engine and a Podman machine for you. See [Podman Desktop downloads](https://podman-desktop.io/downloads). Docker Desktop provides a GUI for Docker.
@@ -160,7 +160,7 @@ sudo usermod -aG docker $USER
 | Distro | Install |
 | ------ | ------- |
 | **Ubuntu** (22.04+, 24.04+) | Add Docker’s APT repo and install. Full steps: [Install Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/). Quick path (after adding the repo): `sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin` |
-| **Debian** (12+) | [Install Docker Engine on Debian](https://docs.docker.com/engine/install/debian/) — add repo then `sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin` |
+| **Debian** (12+) | [Install Docker Engine on Debian](https://docs.docker.com/engine/install/debian/): add repo then `sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin` |
 | **Fedora** | `sudo dnf -y install dnf-plugins-core`<br/>`sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo`<br/>`sudo dnf -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin` |
 | **Arch / Manjaro** | `sudo pacman -S docker` then `sudo systemctl enable --now docker` |
 | **openSUSE** | [Install Docker Engine on openSUSE](https://docs.docker.com/engine/install/open-suse/) |
@@ -168,7 +168,7 @@ sudo usermod -aG docker $USER
 **Verify:** `docker run --rm hello-world`
 
 <Callout type="warning">
-  **Docker licensing:** Docker Desktop is free for individuals, small businesses (&lt;250 employees AND &lt;$10M revenue), education, and open-source projects. Larger companies need a [paid subscription](https://www.docker.com/pricing/). If licensing is a concern, use **Podman** or **Docker Engine** (CLI only, no Desktop)—both are open source.
+  **Docker licensing:** Docker Desktop is free for individuals, small businesses (&lt;250 employees AND &lt;$10M revenue), education, and open-source projects. Larger companies need a [paid subscription](https://www.docker.com/pricing/). If licensing is a concern, use **Podman** or **Docker Engine** (CLI only, no Desktop); both are open source.
 </Callout>
 
 ---

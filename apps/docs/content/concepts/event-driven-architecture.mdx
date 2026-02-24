@@ -1,0 +1,100 @@
+---
+title: Event-driven architecture
+description: "How Agentron uses event-driven patterns: workflow execution event queue, chat pub/sub (SSE), and workflow run queue for decoupled, observable execution."
+keywords:
+  - event-driven architecture
+  - pub/sub
+  - workflow execution events
+  - chat events SSE
+  - message queue
+  - run queue
+---
+
+# Event-driven architecture
+
+Agentron uses **event-driven** patterns in several places: workflow runs are driven by a **DB-backed event queue**; chat turns can be consumed via a **pub/sub event channel** (SSE); and workflow execution is **queued** so concurrency and ordering are predictable. This page describes each and how they fit together.
+
+---
+
+## Overview
+
+| Component | Pattern | Storage | Purpose |
+| --------- | ------- | ------- | ------- |
+| **Workflow execution** | Event queue (per run) | DB (`execution_events`, `execution_run_state`) | Step-by-step run progress; pause/resume; user-in-the-loop |
+| **Chat turn delivery** | Pub/sub by `turnId` | In-memory channel | Decouple POST (enqueue) from consumption; SSE subscription gets same events as streaming POST |
+| **Workflow run queue** | Job queue | DB (`workflow_queue`) | Serialize and bound concurrent workflow runs; scheduled + ad-hoc runs go through same queue |
+
+These are **internal** event-driven mechanisms. The **orchestration pattern** for multi-agent (e.g. heap) is still **hierarchical (supervisor/worker)** with a model-assembled DAG. See [Agent architectures (comparison)](/concepts/agent-architectures). The event-driven pieces here are about **how** runs and chat turns are executed and delivered, not how agents are coordinated.
+
+---
+
+## Workflow execution: event queue and run state
+
+Workflow runs use an **event-driven engine**: progress is represented as a **sequence of events** stored in the database, and **run state** is persisted so execution can pause, resume, and support user-in-the-loop.
+
+### Event types
+
+- **RunStarted**: Run begins; payload can include workflow and branch ids.
+- **NodeRequested(nodeId)**: Engine is about to run (or is running) a node; used for progress and logging.
+- **NodeCompleted(nodeId, output)**: Node finished; output is stored for downstream nodes and context.
+- **UserResponded(content)**: User replied to a “wait for user” node; content is fed into the run and execution continues.
+
+Events are **ordered by sequence** per execution. The engine enqueues events, processes the next pending event, updates run state (current node, round, shared context, status), and may pause when the workflow hits a user-input node.
+
+### Run state
+
+Run state is stored in `execution_run_state`: `executionId`, `workflowId`, `targetBranchId`, `currentNodeId`, `round`, `sharedContext`, `status` (`running` | `waiting_for_user` | `completed` | `failed`), `waitingAtNodeId`, `trailSnapshot`. This allows:
+
+- **Pause/resume**: When status is `waiting_for_user`, the run waits until a `UserResponded` event is enqueued (e.g. from the UI or API).
+- **Diagnosis**: The full event queue for a run can be listed (e.g. `GET /api/runs/:id/events`) and copied for support; see [Queues and diagnosis](https://github.com/cap-jmk-real/agentron/blob/main/docs/queues-and-diagnosis.md) in the repo.
+
+### Why event-driven for workflows
+
+- **Deterministic replay**: Events are append-only and ordered; run state is derived from them, which helps debugging and future replay/audit.
+- **User-in-the-loop**: “Wait for user” is modeled as a state plus a `UserResponded` event, so multiple clients (UI, API, integrations) can feed responses without tight coupling to the runner.
+- **Observability**: Event queue and run state are inspectable and copyable for diagnosis.
+
+---
+
+## Chat: pub/sub event channel (SSE)
+
+Chat supports a **decoupled** flow: the client can **POST** a message and get a `turnId`, then **subscribe** to events for that turn via **Server-Sent Events (SSE)** at `GET /api/chat/events?turnId=...`. The same event stream (trace steps, plan, step_start, todo_done, content_delta, done, error) is delivered whether the client uses streaming POST or POST + SSE.
+
+### How it works
+
+- **In-memory pub/sub**: Events are published by `turnId`; all subscribers for that `turnId` receive the same events. When the first client subscribes, any **pending job** for that `turnId` is started in the background (so the turn runs exactly once).
+- **Terminal events**: The stream ends with either `done` (success) or `error` (failure); after that, the channel is closed and the turn is marked finished.
+- **No durable queue**: The channel is in-memory; if the process restarts, in-flight turns are lost. The design is for real-time delivery to connected clients, not for durable job processing (that is handled by the workflow run queue and execution event queue).
+
+This gives you **event-driven delivery** for chat: producers (chat route) publish by `turnId`; consumers (SSE clients) subscribe by `turnId` and react to events. Useful for multiple tabs, custom UIs, or tools that want to “follow” a turn without holding the HTTP request that started it.
+
+---
+
+## Workflow run queue (job queue)
+
+Workflow **runs** (start, resume, scheduled) do not execute immediately in the HTTP handler. They are **enqueued** into a **DB-backed workflow queue** and processed by a worker with a **concurrency limit** (e.g. 2). This is a **job queue**, not pub/sub: one consumer processes each job; ordering is FIFO (by enqueue time).
+
+### Job types
+
+- **workflow_start**: Start a new run (e.g. from UI or `execute_workflow` tool); payload includes `runId`, `workflowId`, optional `branchId`.
+- **workflow_resume**: Resume a run that is `waiting_for_user`; payload includes `runId`, optional `resumeUserResponse`.
+- **scheduled**: Run triggered by the scheduler; payload includes `workflowId`, optional `branchId`.
+
+### Why a queue
+
+- **Bounded concurrency**: Prevents too many simultaneous workflow runs (LLM calls, I/O).
+- **Single place for execution**: Both API-triggered and scheduler-triggered runs go through the same queue, so retries and status are consistent.
+- **Wait for completion**: Callers (e.g. chat route when executing a workflow) can enqueue a job and **wait for that job** to finish (polling the queue and processing it if it’s the one being waited on), so the assistant gets the run result in the same turn.
+
+The queue is **event-like** in the sense that “something happened” (run requested) is recorded and processed asynchronously; the implementation is a **job queue** with a single worker pool, not a broadcast pub/sub.
+
+---
+
+## Relation to orchestration patterns
+
+In the [Agent architectures (comparison)](/concepts/agent-architectures) page, **event-driven (pub/sub)** is listed as one **orchestration pattern** for multi-agent systems (message broker; agents react to events). In Agentron:
+
+- **Multi-agent orchestration** (heap) is **hierarchical (supervisor/worker)** with a model-assembled DAG, not broker-based pub/sub between agents.
+- **Event-driven** in this doc refers to **how execution and delivery work**: event queue per workflow run, pub/sub for chat turn events, and a job queue for workflow runs. So “event-driven architecture” here is about **execution and observability**, not about replacing the planner/specialist DAG with a message broker.
+
+For diagnosis and queue visibility, see the repo doc [Queues and diagnosis](https://github.com/cap-jmk-real/agentron/blob/main/docs/queues-and-diagnosis.md).

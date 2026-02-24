@@ -2,7 +2,7 @@
   "name": "agentron-studio",
   "description": "Enterprise-ready local AI agent orchestration and workflow automation",
   "private": true,
-  "version": "0.1.5",
+  "version": "0.1.6",
   "engines": {
     "node": ">=24.11.1"
   },
@@ -79,8 +79,9 @@
     "test:e2e-llm": "node scripts/run-e2e-llm.mjs",
     "install:ui": "npm install --workspace packages/ui --omit=optional",
     "install:desktop": "npm install --workspace apps/desktop --include=dev",
-    "dev:docs": "node scripts/run-workspace.mjs apps/docs start",
+    "dev:docs": "node scripts/run-workspace.mjs apps/docs dev",
     "docs:heap-snapshot": "node scripts/run-workspace.mjs packages/ui export-heap-snapshot",
+    "generate-favicons": "node apps/desktop/scripts/generate-favicons.cjs",
     "build:docs": "(npm run docs:heap-snapshot || true) && (pnpm exec prettier --write apps/docs/public/heap-snapshot.json || true) && node scripts/run-workspace.mjs apps/docs build",
     "serve:docs": "node scripts/run-workspace.mjs apps/docs serve",
     "count-loc": "node scripts/count-loc.js",

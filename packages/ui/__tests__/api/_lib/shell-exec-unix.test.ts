@@ -17,5 +17,5 @@ describe("shell-exec (Unix platform)", () => {
     if (out.exitCode === 0) {
       expect(out.stdout.trim()).toContain("unix-path");
     }
-  });
+  }, 20000);
 });

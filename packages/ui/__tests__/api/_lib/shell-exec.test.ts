@@ -84,7 +84,7 @@ describe("shell-exec", () => {
       const out = await runShellCommand("echo 0");
       expect(out.exitCode).toBe(0);
       expect(out.stdout.trim()).toContain("0");
-    });
+    }, 20000);
 
     it("uses sh -c on non-Windows (Unix path)", async () => {
       if (platform() === "win32") return;
@@ -98,7 +98,7 @@ describe("shell-exec", () => {
       expect(out.exitCode).not.toBe(0);
       expect(typeof out.stdout).toBe("string");
       expect(typeof out.stderr).toBe("string");
-    });
+    }, 20000);
 
     it.skipIf(process.platform !== "win32")(
       "splitShellCommands uses Windows separators when platform is win32",

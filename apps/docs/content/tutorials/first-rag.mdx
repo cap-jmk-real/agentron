@@ -1,5 +1,5 @@
 ---
-title: Tutorial — First RAG (prompts)
+title: "Tutorial: First RAG (prompts)"
 description: Use knowledge (RAG) in Agentron via the chat and UI.
 ---
 
@@ -12,7 +12,7 @@ Add a **knowledge collection**, ingest a document, and use it from the Agentron 
 ## Prerequisites
 
 - Agentron running
-- An **embedding provider** configured (e.g. **Settings → Embedding** — Ollama, OpenAI, or OpenRouter)
+- An **embedding provider** configured (e.g. **Settings → Embedding**: Ollama, OpenAI, or OpenRouter)
 - A small document (e.g. a text file or a URL the assistant can fetch)
 
 ---
@@ -24,17 +24,17 @@ Open **Chat** and use the assistant where possible; some steps are easier in the
 ### 1. Create a collection (often via UI)
 
 - In the app: go to **Knowledge**, create a new **collection** (e.g. "Docs"). Choose encoding and embedding provider.
-- Or ask in chat: **"How do I create a RAG collection?"** — The assistant can explain and point you to Knowledge.
+- Or ask in chat: **"How do I create a RAG collection?"**: The assistant can explain and point you to Knowledge.
 
 ### 2. Add a document
 
 - In **Knowledge**: open your collection, add a document (upload a file or paste text / URL depending on your setup).
-- Or in chat: **"Add this to my Docs collection: [paste a short paragraph]."** — If the assistant has a tool or path to ingest text, it will use it.
+- Or in chat: **"Add this to my Docs collection: [paste a short paragraph]."**: If the assistant has a tool or path to ingest text, it will use it.
 
 ### 3. Use knowledge in chat
 
-- **"Using my Docs collection, what does it say about X?"** — The assistant can use RAG retrieval (if enabled for chat) and answer from the ingested content.
-- **"Search my knowledge for 'Y'."** — Same idea; the assistant retrieves and summarizes.
+- **"Using my Docs collection, what does it say about X?"**: The assistant can use RAG retrieval (if enabled for chat) and answer from the ingested content.
+- **"Search my knowledge for 'Y'."**: Same idea; the assistant retrieves and summarizes.
 
 ### 4. Attach collection to an agent (via UI)
 
@@ -54,5 +54,5 @@ For full setup (encoding, vector store, document store), see the **Knowledge** s
 
 ## Next
 
-- [Concepts: Agentron (Chat)](/concepts/assistant) — Context, tools, customization
-- [Capabilities](/capabilities) — Feature matrix including Knowledge / RAG
+- [Concepts: Agentron (Chat)](/concepts/assistant): Context, tools, customization
+- [Capabilities](/capabilities): Feature matrix including Knowledge / RAG

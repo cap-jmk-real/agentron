@@ -5,7 +5,7 @@ description: How the Agentron chat routes to specialists and the production heap
 
 # Heap (specialists)
 
-When the chat uses **heap mode**, a **planner** chooses an ordered set of **specialists**. Each specialist has a limited set of tools (up to 10); the system runs them in order (or in parallel where allowed) and merges context. This keeps responses focused and within token limits.
+When the chat uses **heap mode**, Agentron runs at **Level 4** (recursive/self-building): a **planner** chooses an ordered set of **specialists** and can create new tools and agents on the fly. Each specialist has a limited set of tools (up to 10); the system runs them in order (or in parallel where allowed) and merges context. This keeps responses focused and within token limits.
 
 ---
 
@@ -35,5 +35,5 @@ Some specialists **delegate** to sub-specialists (e.g. **agent** → agent_lifec
 
 ## See also
 
-- [Agentron (Chat)](/concepts/assistant) — Where to find the chat and how it uses tools
-- [How Chat routes (heap)](/concepts/assistant#how-chat-routes-heap) — Planner and specialists in one sentence
+- [Agentron (Chat)](/concepts/assistant): Where to find the chat and how it uses tools
+- [How Chat routes (heap)](/concepts/assistant#how-chat-routes-heap): Planner and specialists in one sentence

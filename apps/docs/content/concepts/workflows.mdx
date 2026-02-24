@@ -1,11 +1,11 @@
 ---
 title: Workflows
-description: Graphs of agents and edges. Multi-agent orchestration with maxRounds, branches, and execution modes.
+description: Graphs of agents and edges. Level 2 (static multi-agent) orchestration with maxRounds, branches, and execution modes.
 ---
 
 # Workflows
 
-A **workflow** is a graph of **agents** connected by **edges**. It orchestrates multiple agents and runs them in sequence or in loops.
+A **workflow** is a graph of **agents** connected by **edges**, **Level 2** (static multi-agent) in the agent-architecture taxonomy. It orchestrates multiple agents and runs them in sequence or in loops.
 
 ---
 
@@ -62,11 +62,11 @@ For loops (e.g. A → B → A), execution repeats up to `maxRounds` full cycles.
 
 ### 1. Create
 
-`create_workflow` — Creates an empty workflow with a name.
+`create_workflow`: Creates an empty workflow with a name.
 
 ### 2. Update
 
-`update_workflow` — Add `nodes` (agent nodes), `edges`, and `maxRounds`.
+`update_workflow`: Add `nodes` (agent nodes), `edges`, and `maxRounds`.
 
 </Steps>
 
@@ -92,15 +92,15 @@ For loops (e.g. A → B → A), execution repeats up to `maxRounds` full cycles.
 
 A workflow can define multiple **branches** (disconnected graphs). Each branch has:
 
-- **Graph** — `nodes`, `edges`, `maxRounds`
-- **Execution mode** — `one_time`, `interval`, or `continuous`
-- **Schedule** — For interval: required; for continuous: optional delay between runs
+- **Graph**: `nodes`, `edges`, `maxRounds`
+- **Execution mode**: `one_time`, `interval`, or `continuous`
+- **Schedule**: For interval: required; for continuous: optional delay between runs
 
 Branches run **in parallel** and **independently**. You can mix:
 
-- **One-time** — Run only when you call `execute_workflow` with that `branchId` (or from the UI).
-- **Interval** — Run on a fixed schedule (every N seconds, or daily/weekly). Require `schedule`.
-- **Continuous** — When a run completes, the next starts after a delay. Optional `schedule` in seconds.
+- **One-time**: Run only when you call `execute_workflow` with that `branchId` (or from the UI).
+- **Interval**: Run on a fixed schedule (every N seconds, or daily/weekly). Require `schedule`.
+- **Continuous**: When a run completes, the next starts after a delay. Optional `schedule` in seconds.
 
 The main workflow `nodes`/`edges` (without branches) are used for one-time or legacy runs when you don't pass a branch.
 
@@ -108,18 +108,18 @@ The main workflow `nodes`/`edges` (without branches) are used for one-time or le
 
 ## Schedules (interval and continuous)
 
-- **Interval** — `schedule` = seconds (e.g. `"60"`) or calendar:
+- **Interval**: `schedule` = seconds (e.g. `"60"`) or calendar:
   - **Daily:** `"daily@HH:mm"` (e.g. `"daily@09:00"`).
   - **Weekly:** `"weekly@d1,d2,..."` (days 0–6, Sunday = 0), e.g. `"weekly@1,3,5"` for Mon/Wed/Fri.
-- **Continuous** — `schedule` optional. If set (e.g. `"5"`), that's the delay in seconds between runs; otherwise a default delay is used.
+- **Continuous**: `schedule` optional. If set (e.g. `"5"`), that's the delay in seconds between runs; otherwise a default delay is used.
 
 ---
 
 ## Runs (executions)
 
 - Each workflow run creates an **execution** (run) with `targetType: "workflow"`, `targetId`: workflowId, and optionally `targetBranchId` when a branch was run.
-- **list_runs** — See recent runs.
-- **get_run(id)** — Inspect status, output, trail (per-agent input/output), and error.
+- **list_runs**: See recent runs.
+- **get_run(id)**: Inspect status, output, trail (per-agent input/output), and error.
 
 ---
 

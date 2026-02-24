@@ -1,12 +1,12 @@
 # Agentron Documentation
 
-Hostable documentation built with [Docusaurus](https://docusaurus.io/) — the same framework used by React, Jest, and other major projects.
+Hostable documentation built with [Nextra](https://nextra.site/): the same framework used by many Next.js documentation sites.
 
 ## Purpose
 
 This documentation is designed for:
-- **AI assistants and LLMs** — To understand concepts (tools, agents, workflows, assistant) and suggest actions to users
-- **Developers** — Architecture and feature reference
+- **AI assistants and LLMs**: To understand concepts (tools, agents, workflows, assistant) and suggest actions to users
+- **Developers**: Architecture and feature reference
 
 ## Running Locally
 
@@ -28,7 +28,7 @@ Output is in `apps/docs/build/`. Deploy to Vercel, Netlify, GitHub Pages, or any
 
 ## Structure
 
-- `docs/intro.md` — Overview for AIs
-- `docs/concepts/` — Tools, agents, workflows, assistant
-- `docs/capabilities.md` — Feature matrix
-- `docs/ai-guide.md` — Decision tree for suggesting user actions
+- `content/index.mdx`: Overview for AIs
+- `content/concepts/`: Tools, agents, workflows, assistant
+- `content/capabilities.mdx`: Feature matrix
+- `content/ai-guide.mdx`: Decision tree for suggesting user actions

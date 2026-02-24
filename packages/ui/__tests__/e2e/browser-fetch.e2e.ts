@@ -71,13 +71,15 @@ describe("e2e browser-fetch", () => {
     const trail = (execRes as { output?: { trail?: unknown[] } }).output?.trail ?? [];
     const outStr = typeof output === "string" ? output : JSON.stringify(output ?? "");
     const trailStr = JSON.stringify(trail);
-    const hasExample =
-      /example/.test(outStr.toLowerCase()) || /example/.test(trailStr.toLowerCase());
-    if (!hasExample) {
-      // Debug: log why fetch might have failed (runtime returns { error: "Fetch failed", message } when fetch() throws).
+    const checkedStr = status === "completed" ? outStr : trailStr;
+    const hasExampleInChecked = /example/.test(checkedStr.toLowerCase());
+    if (!hasExampleInChecked) {
+      // Debug: log when the assertion below would fail (runtime returns { error: "Fetch failed", message } when fetch() throws).
       const trailSnippet = JSON.stringify(trail, null, 2).slice(0, 4000);
       console.error(
-        "[e2e browser-fetch] Output does not contain 'example'. Run may have completed with fetch failure.\n" +
+        "[e2e browser-fetch] " +
+          (status === "completed" ? "Output" : "Trail") +
+          " does not contain 'example'. Run may have completed with fetch failure.\n" +
           "Full execRes (first 2500 chars):",
         JSON.stringify(execRes).slice(0, 2500)
       );

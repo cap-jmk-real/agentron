@@ -901,7 +901,7 @@ html[data-theme="dark"] .textarea:focus {
 .textarea {
   min-height: 120px;
   resize: vertical;
-  font-family: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+  font-family: var(--font-mono), "Space Mono", "JetBrains Mono", "SF Mono", monospace;
 }
 
 /* Agent detail header */
