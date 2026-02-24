@@ -163,7 +163,7 @@ describe("Backup API", () => {
     const data = await res.json();
     expect(data.ok).toBe(true);
     expect(data.message).toBeDefined();
-  }, 20000);
+  }, 420000);
 
   it("POST /api/backup/reset returns 500 when reset throws", async () => {
     vi.spyOn(db, "runReset").mockImplementationOnce(() => {

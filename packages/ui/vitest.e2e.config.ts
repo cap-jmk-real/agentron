@@ -14,7 +14,7 @@ export default defineConfig({
     testTimeout: 120_000,
     maxWorkers: process.env.CI ? 2 : 4,
     // Retries for local-model flakiness; failures after retries indicate real software issues.
-    retry: 4,
+    retry: 2,
   },
   resolve: {
     alias: {

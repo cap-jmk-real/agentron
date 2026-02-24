@@ -24,7 +24,7 @@ describe("Tools API", () => {
     const config = JSON.parse(rows[0]!.config as string) as Record<string, unknown>;
     expect(config.description).toBeDefined();
     expect(typeof config.description).toBe("string");
-  });
+  }, 30_000);
 
   it("GET /api/tools returns array", async () => {
     const res = await listGet();

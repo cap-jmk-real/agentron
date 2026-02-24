@@ -91,7 +91,8 @@ jobs:
       - name: Write coverage badge
         run: node scripts/write-coverage-badge.js
         env:
-          COVERAGE_SUMMARY_PATH: ${{ github.workspace }}/coverage-summary/packages/ui/coverage/coverage-summary.json
+          # download-artifact extracts to workspace root, so path is under workspace (no coverage-summary/ prefix)
+          COVERAGE_SUMMARY_PATH: ${{ github.workspace }}/packages/ui/coverage/coverage-summary.json
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

@@ -12,12 +12,12 @@ coverage
 package-lock.json
 pnpm-lock.yaml
 *.lock
+apps/docs/public/heap-snapshot.json
 # Data and logs
 .data
 *.log
 # Docs / assets that have their own formatting
 badges
-apps/docs/public/heap-snapshot.json
 *.md
 *.mdx
 *.svg
