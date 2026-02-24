@@ -30,7 +30,11 @@ export async function PATCH(request: Request, { params }: Params) {
     keyPath: body.keyPath !== undefined ? body.keyPath : existing.keyPath,
     modelBaseUrl: body.modelBaseUrl !== undefined ? body.modelBaseUrl : existing.modelBaseUrl,
   };
-  await db.update(remoteServers).set(toRemoteServerRow(updated)).where(eq(remoteServers.id, id)).run();
+  await db
+    .update(remoteServers)
+    .set(toRemoteServerRow(updated))
+    .where(eq(remoteServers.id, id))
+    .run();
   return json(updated);
 }
 

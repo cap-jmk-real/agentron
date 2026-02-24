@@ -1,11 +1,27 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import { POST as executePost } from "../../app/api/agents/[id]/execute/route";
 import { GET as agentsGet } from "../../app/api/agents/route";
 import { POST as agentsPost } from "../../app/api/agents/route";
+import { POST as workflowsPost } from "../../app/api/workflows/route";
+import { POST as workflowExecutePost } from "../../app/api/workflows/[id]/execute/route";
 import { GET as runsGet } from "../../app/api/runs/route";
 import { GET as runGet, PATCH as runPatch } from "../../app/api/runs/[id]/route";
 import { GET as traceGet } from "../../app/api/runs/[id]/trace/route";
+import { GET as eventsGet } from "../../app/api/runs/[id]/events/route";
+import { GET as messagesGet } from "../../app/api/runs/[id]/messages/route";
+import { GET as agentRequestGet } from "../../app/api/runs/[id]/agent-request/route";
 import { GET as pendingHelpGet } from "../../app/api/runs/pending-help/route";
+import { POST as convPost } from "../../app/api/chat/conversations/route";
+import { eq } from "drizzle-orm";
+import { db, executions, workflows, runLogs, toExecutionRow } from "../../app/api/_lib/db";
+import { setExecutionRunState } from "../../app/api/_lib/execution-events";
+import * as notificationsStore from "../../app/api/_lib/notifications-store";
+import * as runFailureSideEffects from "../../app/api/_lib/run-failure-side-effects";
+
+vi.mock("../../app/api/_lib/workflow-queue", () => ({
+  enqueueWorkflowStart: vi.fn().mockResolvedValue("job-1"),
+  waitForJob: vi.fn().mockResolvedValue(undefined),
+}));
 
 describe("Runs API", () => {
   let runId: string;
@@ -34,9 +50,12 @@ describe("Runs API", () => {
       const created = await createRes.json();
       agentId = created.id;
     }
-    const execRes = await executePost(new Request("http://localhost/api/agents/x/execute", { method: "POST" }), {
-      params: Promise.resolve({ id: agentId }),
-    });
+    const execRes = await executePost(
+      new Request("http://localhost/api/agents/x/execute", { method: "POST" }),
+      {
+        params: Promise.resolve({ id: agentId }),
+      }
+    );
     expect(execRes.status).toBe(202);
     const execBody = await execRes.json();
     runId = execBody.id;
@@ -48,6 +67,421 @@ describe("Runs API", () => {
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
     expect(data.some((r: { id: string }) => r.id === runId)).toBe(true);
+  });
+
+  it("GET /api/runs accepts targetType and targetId and limit query params", async () => {
+    const runRes = await runGet(new Request("http://localhost/api/runs/x"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    const run = await runRes.json();
+    const agentId = run.targetId;
+    const res = await runsGet(
+      new Request(`http://localhost/api/runs?targetType=agent&targetId=${agentId}&limit=5`)
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.every((r: { targetType: string }) => r.targetType === "agent")).toBe(true);
+    expect(data.every((r: { targetId: string }) => r.targetId === agentId)).toBe(true);
+    expect(data.length).toBeLessThanOrEqual(5);
+    if (data.length > 0) expect(data[0]).toHaveProperty("targetName");
+  });
+
+  it("GET /api/runs respects limit param and caps at 200", async () => {
+    const res = await runsGet(new Request("http://localhost/api/runs?limit=3"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeLessThanOrEqual(3);
+  });
+
+  it("GET /api/runs uses default limit when limit param missing or invalid", async () => {
+    const res = await runsGet(new Request("http://localhost/api/runs?limit=foo"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeLessThanOrEqual(50);
+  });
+
+  it("GET /api/runs with limit=0 uses default limit 50", async () => {
+    const res = await runsGet(new Request("http://localhost/api/runs?limit=0"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeLessThanOrEqual(50);
+  });
+
+  it("GET /api/runs with limit above 200 caps at 200", async () => {
+    const res = await runsGet(new Request("http://localhost/api/runs?limit=300"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeLessThanOrEqual(200);
+  });
+
+  it("GET /api/runs with targetId that matches no runs skips workflow and agent enrichment", async () => {
+    const res = await runsGet(
+      new Request("http://localhost/api/runs?targetId=00000000-0000-0000-0000-000000000001")
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBe(0);
+  });
+
+  it("GET /api/runs with limit=1 returns at most one run", async () => {
+    const res = await runsGet(new Request("http://localhost/api/runs?limit=1"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeLessThanOrEqual(1);
+  });
+
+  it("GET /api/runs/:id returns logs array when run has log entries", async () => {
+    await db
+      .insert(runLogs)
+      .values({
+        id: crypto.randomUUID(),
+        executionId: runId,
+        level: "info",
+        message: "test log message",
+        payload: null,
+        createdAt: Date.now(),
+      })
+      .run();
+    const res = await runGet(new Request("http://localhost/api/runs/x"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data.logs)).toBe(true);
+    expect(data.logs.length).toBeGreaterThanOrEqual(1);
+    const log = data.logs.find((l: { message: string }) => l.message === "test log message");
+    expect(log).toBeDefined();
+    expect(log.level).toBe("info");
+    expect(log.payload).toBeNull();
+  });
+
+  it("GET /api/runs with targetType=other skips workflow and agent name lookups", async () => {
+    const otherRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: otherRunId,
+          targetType: "other",
+          targetId: "custom-target-1",
+          status: "completed",
+        })
+      )
+      .run();
+    const res = await runsGet(
+      new Request("http://localhost/api/runs?targetType=other&targetId=custom-target-1")
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    const otherRun = data.find((r: { id: string }) => r.id === otherRunId);
+    expect(otherRun).toBeDefined();
+    expect(otherRun.targetType).toBe("other");
+    expect(otherRun.targetName).toBeUndefined();
+  });
+
+  it("GET /api/runs returns workflow runs with targetName when workflowIds present", async () => {
+    const wfRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Runs Workflow Name",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    expect(wfRes.status).toBe(201);
+    const wf = await wfRes.json();
+    const execRes = await workflowExecutePost(
+      new Request("http://localhost/api/workflows/x/execute", { method: "POST" }),
+      { params: Promise.resolve({ id: wf.id }) }
+    );
+    if (execRes.status !== 200) return;
+    const execData = await execRes.json();
+    const res = await runsGet(
+      new Request(`http://localhost/api/runs?targetType=workflow&targetId=${wf.id}`)
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    const workflowRun = data.find((r: { id: string }) => r.id === execData.id);
+    if (workflowRun) {
+      expect(workflowRun.targetType).toBe("workflow");
+      expect(workflowRun.targetName).toBe("Runs Workflow Name");
+    }
+  });
+
+  it("GET /api/runs with limit=200 returns up to 200 runs", async () => {
+    const res = await runsGet(new Request("http://localhost/api/runs?limit=200"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeLessThanOrEqual(200);
+    if (data.length > 0) {
+      const withName = data.filter((r: { targetName?: string }) => r.targetName != null);
+      expect(withName.length).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("GET /api/runs enriches list with targetName when only agent runs exist", async () => {
+    const res = await runsGet(new Request("http://localhost/api/runs?targetType=agent&limit=20"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    if (data.length > 0) {
+      expect(data.every((r: { targetType: string }) => r.targetType === "agent")).toBe(true);
+      data.forEach((r: { targetName?: string }) => expect(r).toHaveProperty("targetName"));
+    }
+  });
+
+  it("GET /api/runs enriches agent runs with agent name from DB", async () => {
+    const res = await runsGet(new Request("http://localhost/api/runs?targetType=agent&limit=5"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    const agentRun = data.find((r: { id: string }) => r.id === runId);
+    if (agentRun) {
+      expect(agentRun.targetType).toBe("agent");
+      expect(agentRun.targetName).toBeDefined();
+      expect(typeof agentRun.targetName).toBe("string");
+    }
+  });
+
+  it("GET /api/runs agent enrichment block runs when result contains agent runs", async () => {
+    const res = await runsGet(new Request("http://localhost/api/runs?targetType=agent&limit=10"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    const agentRuns = data.filter((r: { targetType: string }) => r.targetType === "agent");
+    if (agentRuns.length > 0) {
+      agentRuns.forEach((r: { targetName?: string }) => {
+        expect(r).toHaveProperty("targetName");
+        expect(typeof r.targetName).toBe("string");
+      });
+    }
+  });
+
+  it("GET /api/runs enriches list with targetName for both workflow and agent runs", async () => {
+    const wfRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Runs Enrichment Workflow",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    const wf = await wfRes.json();
+    const workflowRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: workflowRunId,
+          targetType: "workflow",
+          targetId: wf.id,
+          status: "completed",
+        })
+      )
+      .run();
+    const res = await runsGet(new Request("http://localhost/api/runs"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    const workflowRun = data.find((r: { targetType: string }) => r.targetType === "workflow");
+    const agentRun = data.find((r: { targetType: string }) => r.targetType === "agent");
+    expect(workflowRun).toBeDefined();
+    expect(workflowRun.targetName).toBe("Runs Enrichment Workflow");
+    expect(agentRun).toBeDefined();
+    expect(agentRun.targetName).toBeDefined();
+  });
+
+  it("GET /api/runs returns targetName undefined for non-workflow non-agent targetType", async () => {
+    const otherRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: otherRunId,
+          targetType: "other",
+          targetId: "some-target",
+          status: "completed",
+        })
+      )
+      .run();
+    const res = await runsGet(new Request("http://localhost/api/runs"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const otherRun = data.find((r: { id: string }) => r.id === otherRunId);
+    expect(otherRun).toBeDefined();
+    expect(otherRun.targetType).toBe("other");
+    expect(otherRun.targetName).toBeUndefined();
+  });
+
+  it("GET /api/runs returns empty targetName when run references deleted workflow", async () => {
+    const orphanWfId = crypto.randomUUID();
+    const orphanRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: orphanRunId,
+          targetType: "workflow",
+          targetId: orphanWfId,
+          status: "completed",
+        })
+      )
+      .run();
+    const res = await runsGet(
+      new Request(`http://localhost/api/runs?targetType=workflow&targetId=${orphanWfId}`)
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const run = data.find((r: { id: string }) => r.id === orphanRunId);
+    expect(run).toBeDefined();
+    expect(run.targetType).toBe("workflow");
+    expect(run.targetName).toBeUndefined();
+  });
+
+  it("GET /api/runs returns empty targetName when run references deleted agent", async () => {
+    const orphanAgentId = crypto.randomUUID();
+    const orphanRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: orphanRunId,
+          targetType: "agent",
+          targetId: orphanAgentId,
+          status: "completed",
+        })
+      )
+      .run();
+    const res = await runsGet(
+      new Request(`http://localhost/api/runs?targetType=agent&targetId=${orphanAgentId}`)
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const run = data.find((r: { id: string }) => r.id === orphanRunId);
+    expect(run).toBeDefined();
+    expect(run.targetType).toBe("agent");
+    expect(run.targetName).toBeUndefined();
+  });
+
+  it("GET /api/runs uses empty string for targetName when workflow or agent name is null (defensive ??)", async () => {
+    const wfRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Null Name Workflow",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    const wf = await wfRes.json();
+    const wfRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: wfRunId,
+          targetType: "workflow",
+          targetId: wf.id,
+          status: "completed",
+        })
+      )
+      .run();
+    const listRes = await runsGet(new Request("http://localhost/api/runs?limit=5"));
+    const list = await listRes.json();
+    const agentRun = list.find((r: { targetType: string }) => r.targetType === "agent");
+    const agentId = agentRun?.targetId ?? "";
+    let selectCallCount = 0;
+    const origSelect = db.select.bind(db);
+    vi.spyOn(db, "select").mockImplementation(((...args: unknown[]) => {
+      selectCallCount++;
+      if (selectCallCount === 1) return origSelect(...(args as Parameters<typeof db.select>));
+      if (selectCallCount === 2)
+        return {
+          from: () => ({
+            where: () => Promise.resolve([{ id: wf.id, name: null }]),
+          }),
+        } as unknown as ReturnType<typeof db.select>;
+      return {
+        from: () => ({
+          where: () => Promise.resolve([{ id: agentId, name: null }]),
+        }),
+      } as unknown as ReturnType<typeof db.select>;
+    }) as typeof db.select);
+    try {
+      const res = await runsGet(new Request("http://localhost/api/runs?limit=10"));
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      const wfRun = data.find((r: { id: string }) => r.id === wfRunId);
+      if (wfRun) {
+        expect(wfRun.targetName).toBe("");
+      }
+      const agRun = data.find(
+        (r: { targetType: string; targetId: string }) => r.targetId === agentId
+      );
+      if (agRun) {
+        expect(agRun.targetName).toBe("");
+      }
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("GET /api/runs/:id returns run with targetName for workflow run", async () => {
+    const wfRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Runs Test Workflow",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    const wf = await wfRes.json();
+    const workflowId = wf.id;
+    const workflowRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: workflowRunId,
+          targetType: "workflow",
+          targetId: workflowId,
+          status: "completed",
+        })
+      )
+      .run();
+    const res = await runGet(new Request("http://localhost/api/runs/x"), {
+      params: Promise.resolve({ id: workflowRunId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.targetType).toBe("workflow");
+    expect(data.targetId).toBe(workflowId);
+    expect(data.targetName).toBe("Runs Test Workflow");
   });
 
   it("GET /api/runs/:id returns run with output when patched", async () => {
@@ -78,6 +512,55 @@ describe("Runs API", () => {
     expect(data.error).toBe("Not found");
   });
 
+  it("GET /api/runs/:id returns run with targetName for agent run", async () => {
+    const res = await runGet(new Request("http://localhost/api/runs/x"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.targetType).toBe("agent");
+    expect(data.targetId).toBeDefined();
+    expect(data.targetName).toBeDefined();
+    expect(typeof data.targetName).toBe("string");
+  });
+
+  it("GET /api/runs/:id returns targetName undefined for run with targetType other", async () => {
+    const otherRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: otherRunId,
+          targetType: "other",
+          targetId: "custom-target",
+          status: "completed",
+        })
+      )
+      .run();
+    const res = await runGet(new Request("http://localhost/api/runs/x"), {
+      params: Promise.resolve({ id: otherRunId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.targetType).toBe("other");
+    expect(data.targetId).toBe("custom-target");
+    expect(data.targetName).toBeUndefined();
+  });
+
+  it("PATCH /api/runs/:id returns 404 for unknown id", async () => {
+    const res = await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed" }),
+      }),
+      { params: Promise.resolve({ id: "non-existent-run-id-99999" }) }
+    );
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe("Not found");
+  });
+
   it("PATCH /api/runs/:id returns 400 for invalid JSON body", async () => {
     const res = await runPatch(
       new Request("http://localhost/api/runs/x", {
@@ -92,6 +575,145 @@ describe("Runs API", () => {
     expect(data.error).toBeDefined();
   });
 
+  it("PATCH /api/runs/:id returns 400 for non-JSON body", async () => {
+    const res = await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "text/plain" },
+        body: "plain text body",
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("Invalid JSON");
+  });
+
+  it("PATCH /api/runs/:id with empty or no-op body returns run unchanged", async () => {
+    const res = await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBe(runId);
+    expect(data.status).toBe("completed");
+  });
+
+  it("PATCH /api/runs/:id with status failed triggers notification path", async () => {
+    const res = await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "failed", output: { error: "Something went wrong" } }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.status).toBe("failed");
+  });
+
+  it("PATCH /api/runs/:id with status waiting_for_user triggers notification path", async () => {
+    const res = await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { question: "Continue?", suggestions: ["yes", "no"] },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.status).toBe("waiting_for_user");
+  });
+
+  it("PATCH /api/runs/:id returns 200 when createRunNotification throws", async () => {
+    vi.spyOn(notificationsStore, "createRunNotification").mockRejectedValueOnce(
+      new Error("notification fail")
+    );
+    const res = await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed", output: { done: true } }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.status).toBe("completed");
+    vi.restoreAllMocks();
+  });
+
+  it("PATCH /api/runs/:id returns 200 when ensureRunFailureSideEffects throws", async () => {
+    vi.spyOn(runFailureSideEffects, "ensureRunFailureSideEffects").mockRejectedValueOnce(
+      new Error("side effect fail")
+    );
+    const res = await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "failed", output: { error: "run failed" } }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.status).toBe("failed");
+    vi.restoreAllMocks();
+  });
+
+  it("PATCH /api/runs/:id with only output in body updates output", async () => {
+    const res = await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ output: { custom: "data" } }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.output).toEqual({ custom: "data" });
+  });
+
+  it("PATCH /api/runs/:id with output null clears output", async () => {
+    const res = await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed", output: null }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.output == null).toBe(true);
+  });
+
+  it("PATCH /api/runs/:id with only finishedAt updates run", async () => {
+    const ts = Date.now();
+    const res = await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ finishedAt: ts }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.finishedAt).toBe(ts);
+  });
+
   it("GET /api/runs/:id/trace returns 404 for non-existent run", async () => {
     const res = await traceGet(new Request("http://localhost/api/runs/nonexistent-id/trace"), {
       params: Promise.resolve({ id: "nonexistent-id" }),
@@ -101,12 +723,859 @@ describe("Runs API", () => {
     expect(data.error).toBe("Not found");
   });
 
+  it("GET /api/runs/:id/trace returns targetName for agent run", async () => {
+    const res = await traceGet(new Request("http://localhost/api/runs/x/trace"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.targetType).toBe("agent");
+    expect(data.targetName).toBeDefined();
+    expect(data.executionLog).toBeDefined();
+    expect(Array.isArray(data.executionLog)).toBe(true);
+  });
+
+  it("GET /api/runs/:id/events returns 404 for non-existent run", async () => {
+    const res = await eventsGet(new Request("http://localhost/api/runs/nonexistent-id/events"), {
+      params: Promise.resolve({ id: "nonexistent-id" }),
+    });
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe("Run not found");
+  });
+
+  it("GET /api/runs/:id/events returns events and runState for existing run", async () => {
+    const res = await eventsGet(new Request("http://localhost/api/runs/x/events"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.runId).toBe(runId);
+    expect(Array.isArray(data.events)).toBe(true);
+    expect(data).toHaveProperty("copyForDiagnosis");
+  });
+
+  it("GET /api/runs/:id/events returns runState with truncated sharedContext and trailSnapshotLength", async () => {
+    const runIdWithState = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: runIdWithState,
+          targetType: "workflow",
+          targetId: crypto.randomUUID(),
+          status: "running",
+        })
+      )
+      .run();
+    const longContext = "x".repeat(600);
+    const trailSnapshot = [{ step: 1 }, { step: 2 }];
+    await setExecutionRunState(runIdWithState, {
+      workflowId: crypto.randomUUID(),
+      round: 0,
+      sharedContext: longContext,
+      status: "running",
+      trailSnapshot,
+    });
+    const res = await eventsGet(new Request("http://localhost/api/runs/x/events"), {
+      params: Promise.resolve({ id: runIdWithState }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.runState).toBeDefined();
+    expect(data.runState.sharedContextPreview).toContain("[truncated]");
+    expect(data.runState.sharedContextPreview.length).toBe(500 + "... [truncated]".length);
+    expect(data.runState.trailSnapshotLength).toBe(JSON.stringify(trailSnapshot).length);
+  });
+
+  it("GET /api/runs/:id/events returns runState with short sharedContext and null trailSnapshot", async () => {
+    const runIdShort = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: runIdShort,
+          targetType: "workflow",
+          targetId: crypto.randomUUID(),
+          status: "running",
+        })
+      )
+      .run();
+    await setExecutionRunState(runIdShort, {
+      workflowId: crypto.randomUUID(),
+      round: 0,
+      sharedContext: "short",
+      status: "running",
+      trailSnapshot: null,
+    });
+    const res = await eventsGet(new Request("http://localhost/api/runs/x/events"), {
+      params: Promise.resolve({ id: runIdShort }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.runState).toBeDefined();
+    expect(data.runState.sharedContextPreview).toBe("short");
+    expect(data.runState.trailSnapshotLength).toBe(0);
+  });
+
+  it("GET /api/runs/:id/messages returns 404 for non-existent run", async () => {
+    const res = await messagesGet(
+      new Request("http://localhost/api/runs/nonexistent-id/messages"),
+      {
+        params: Promise.resolve({ id: "nonexistent-id" }),
+      }
+    );
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe("Run not found");
+  });
+
+  it("GET /api/runs/:id/messages returns messages for existing run", async () => {
+    const res = await messagesGet(new Request("http://localhost/api/runs/x/messages"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.runId).toBe(runId);
+    expect(Array.isArray(data.messages)).toBe(true);
+  });
+
+  it("GET /api/runs/:id/messages accepts limit param", async () => {
+    const res = await messagesGet(new Request("http://localhost/api/runs/x/messages?limit=5"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.runId).toBe(runId);
+    expect(Array.isArray(data.messages)).toBe(true);
+  });
+
+  it("GET /api/runs/:id/messages uses default limit when limit param omitted", async () => {
+    const res = await messagesGet(new Request("http://localhost/api/runs/x/messages"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.runId).toBe(runId);
+    expect(Array.isArray(data.messages)).toBe(true);
+  });
+
+  it("GET /api/runs/:id/messages clamps limit param to 1-100", async () => {
+    const res = await messagesGet(new Request("http://localhost/api/runs/x/messages?limit=150"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.runId).toBe(runId);
+    expect(Array.isArray(data.messages)).toBe(true);
+  });
+
+  it("GET /api/runs/:id/messages uses 50 when limit param invalid", async () => {
+    const res = await messagesGet(new Request("http://localhost/api/runs/x/messages?limit=abc"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.runId).toBe(runId);
+    expect(Array.isArray(data.messages)).toBe(true);
+  });
+
+  it("PATCH /api/runs/:id returns 400 when body is not JSON", async () => {
+    const res = await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "text/plain" },
+        body: "not json",
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("Invalid JSON");
+  });
+
+  it("GET /api/runs/:id/agent-request returns 404 for non-existent run", async () => {
+    const res = await agentRequestGet(
+      new Request("http://localhost/api/runs/nonexistent-id/agent-request"),
+      {
+        params: Promise.resolve({ id: "nonexistent-id" }),
+      }
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("GET /api/runs/:id/agent-request returns question and options when run waiting_for_user", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { question: "Choose one?", options: ["A", "B", "C"] },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBe("Choose one?");
+    expect(data.options).toEqual(["A", "B", "C"]);
+  });
+
+  it("GET /api/runs/:id/agent-request returns question from suggestions when run waiting_for_user", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { output: { question: "Pick?", suggestions: ["X", "Y"] } },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBe("Pick?");
+    expect(data.options).toEqual(["X", "Y"]);
+  });
+
+  it("GET /api/runs/:id/agent-request returns empty question/options when output is invalid JSON", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "waiting_for_user", output: {} }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    await db
+      .update(executions)
+      .set({ output: "not valid json", status: "waiting_for_user" })
+      .where(eq(executions.id, runId))
+      .run();
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBeUndefined();
+    expect(data.options).toEqual([]);
+  });
+
+  it("GET /api/runs/:id/agent-request returns empty question/options when output parses to non-object", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "waiting_for_user", output: 42 }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBeUndefined();
+    expect(data.options).toEqual([]);
+  });
+
+  it("GET /api/runs/:id/agent-request returns empty question/options when run not waiting_for_user", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed", output: {} }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBeUndefined();
+    expect(data.options).toEqual([]);
+  });
+
+  it("GET /api/runs/:id/agent-request uses nested output.question and inner options", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { output: { question: "Nested question?", options: ["X", "Y"] } },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBe("Nested question?");
+    expect(data.options).toEqual(["X", "Y"]);
+  });
+
+  it("GET /api/runs/:id/agent-request uses message and top-level suggestions", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { message: "Please pick", suggestions: ["S1", "S2"] },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBe("Please pick");
+    expect(data.options).toEqual(["S1", "S2"]);
+  });
+
+  it("GET /api/runs/:id/agent-request uses inner.options when inner.suggestions absent", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { output: { question: "Pick one", options: ["Alpha", "Beta"] } },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBe("Pick one");
+    expect(data.options).toEqual(["Alpha", "Beta"]);
+  });
+
+  it("GET /api/runs/:id/agent-request uses top-level options when inner arrays absent", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { question: "Choose", options: ["One", "Two"] },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.options).toEqual(["One", "Two"]);
+  });
+
+  it("GET /api/runs/:id/agent-request maps option-like values to strings", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { question: "Pick", options: [1, "two", 3] },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBe("Pick");
+    expect(data.options).toEqual(["1", "two", "3"]);
+  });
+
+  it("GET /api/runs/:id/agent-request uses inner message when only output.output.message present", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { output: { message: "Reply with your choice" } },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBe("Reply with your choice");
+    expect(Array.isArray(data.options)).toBe(true);
+  });
+
+  it("GET /api/runs/:id/agent-request uses flat message when no question or inner question", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { message: "Only top-level message", options: ["Yes", "No"] },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBe("Only top-level message");
+    expect(data.options).toEqual(["Yes", "No"]);
+  });
+
+  it("GET /api/runs/:id/agent-request uses out.suggestions when inner has no suggestions or options", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { output: { question: "Pick" }, suggestions: ["A", "B", "C"] },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBe("Pick");
+    expect(data.options).toEqual(["A", "B", "C"]);
+  });
+
+  it("GET /api/runs/:id/trace returns targetName for agent run", async () => {
+    const res = await traceGet(new Request("http://localhost/api/runs/x/trace"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBe(runId);
+    expect(data.targetType).toBe("agent");
+    expect(data).toHaveProperty("targetName");
+    expect(Array.isArray(data.trail)).toBe(true);
+    expect(Array.isArray(data.executionLog)).toBe(true);
+  });
+
+  it("GET /api/runs/:id/trace returns targetName for workflow run", async () => {
+    const wfRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Trace Workflow Name",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    const wf = await wfRes.json();
+    const wfRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: wfRunId,
+          targetType: "workflow",
+          targetId: wf.id,
+          status: "completed",
+        })
+      )
+      .run();
+    const res = await traceGet(new Request("http://localhost/api/runs/x/trace"), {
+      params: Promise.resolve({ id: wfRunId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.targetType).toBe("workflow");
+    expect(data.targetName).toBe("Trace Workflow Name");
+  });
+
+  it("GET /api/runs/:id/trace returns targetName for agent run when agent exists", async () => {
+    const listRes = await agentsGet();
+    const list = await listRes.json();
+    const agent = Array.isArray(list) && list.length > 0 ? list[0] : null;
+    if (!agent) return;
+    const res = await traceGet(new Request("http://localhost/api/runs/x/trace"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.targetType).toBe("agent");
+    expect(data.targetId).toBe(agent.id);
+    expect(data.targetName).toBe(agent.name ?? agent.id);
+  });
+
+  it("GET /api/runs/:id/trace returns undefined targetName when workflow was deleted", async () => {
+    const orphanWfId = crypto.randomUUID();
+    const orphanRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: orphanRunId,
+          targetType: "workflow",
+          targetId: orphanWfId,
+          status: "completed",
+        })
+      )
+      .run();
+    const res = await traceGet(new Request("http://localhost/api/runs/x/trace"), {
+      params: Promise.resolve({ id: orphanRunId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.targetType).toBe("workflow");
+    expect(data.targetId).toBe(orphanWfId);
+    expect(data.targetName).toBeUndefined();
+  });
+
+  it("GET /api/runs/:id/trace returns undefined targetName for run with targetType other", async () => {
+    const otherRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: otherRunId,
+          targetType: "other",
+          targetId: "custom-target",
+          status: "completed",
+        })
+      )
+      .run();
+    const res = await traceGet(new Request("http://localhost/api/runs/x/trace"), {
+      params: Promise.resolve({ id: otherRunId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.targetType).toBe("other");
+    expect(data.targetId).toBe("custom-target");
+    expect(data.targetName).toBeUndefined();
+  });
+
+  it("GET /api/runs/:id/trace returns undefined targetName when agent was deleted", async () => {
+    const orphanAgentId = crypto.randomUUID();
+    const orphanRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: orphanRunId,
+          targetType: "agent",
+          targetId: orphanAgentId,
+          status: "completed",
+        })
+      )
+      .run();
+    const res = await traceGet(new Request("http://localhost/api/runs/x/trace"), {
+      params: Promise.resolve({ id: orphanRunId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.targetType).toBe("agent");
+    expect(data.targetId).toBe(orphanAgentId);
+    expect(data.targetName).toBeUndefined();
+  });
+
+  it("GET /api/runs/pending-help tolerates run with invalid JSON output", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: "not valid json",
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === runId);
+    expect(req).toBeDefined();
+    expect(req.question).toBe("Needs your input");
+  });
+
+  it("GET /api/runs/pending-help uses targetId as targetName when targetType is not workflow or agent", async () => {
+    const otherRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: otherRunId,
+          targetType: "other",
+          targetId: "custom-target-id",
+          status: "waiting_for_user",
+          conversationId: null,
+        })
+      )
+      .run();
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === otherRunId);
+    expect(req).toBeDefined();
+    expect(req.targetName).toBe("custom-target-id");
+    expect(req.targetType).toBe("other");
+  });
+
+  it("GET /api/runs/:id/agent-request returns empty when output JSON parse fails", async () => {
+    await db
+      .update(executions)
+      .set({
+        status: "waiting_for_user",
+        output: "invalid { json",
+      })
+      .where(eq(executions.id, runId))
+      .run();
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBeUndefined();
+    expect(data.options).toEqual([]);
+  });
+
+  it("GET /api/runs/:id/agent-request returns empty when output is JSON null", async () => {
+    await db
+      .update(executions)
+      .set({
+        status: "waiting_for_user",
+        output: "null",
+      })
+      .where(eq(executions.id, runId))
+      .run();
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.question).toBeUndefined();
+    expect(data.options).toEqual([]);
+  });
+
+  it("GET /api/runs/:id/agent-request uses output when DB returns output as object", async () => {
+    let selectCallCount = 0;
+    const spy = vi.spyOn(db, "select").mockImplementation(((...args: unknown[]) => {
+      selectCallCount++;
+      if (selectCallCount === 1) {
+        return {
+          from: () => ({
+            where: () => ({
+              limit: () =>
+                Promise.resolve([
+                  {
+                    status: "waiting_for_user",
+                    output: { question: "From object", options: ["A", "B"] },
+                  },
+                ]),
+            }),
+          }),
+        } as unknown as ReturnType<typeof db.select>;
+      }
+      return {
+        from: () => ({ where: () => ({ limit: () => Promise.resolve([]) }) }),
+      } as unknown as ReturnType<typeof db.select>;
+    }) as typeof db.select);
+    try {
+      const res = await agentRequestGet(
+        new Request("http://localhost/api/runs/mock-id/agent-request"),
+        { params: Promise.resolve({ id: "mock-id" }) }
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.question).toBe("From object");
+      expect(data.options).toEqual(["A", "B"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("GET /api/runs/:id/agent-request uses out.options when inner has no suggestions or options", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { output: {}, options: ["Option1", "Option2"] },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await agentRequestGet(new Request("http://localhost/api/runs/x/agent-request"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.options).toEqual(["Option1", "Option2"]);
+  });
+
+  it("GET /api/runs/pending-help includes run with null conversationId", async () => {
+    const runRes = await runGet(new Request("http://localhost/api/runs/x"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    const run = await runRes.json();
+    const nullConvRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: nullConvRunId,
+          targetType: "agent",
+          targetId: run.targetId,
+          status: "waiting_for_user",
+          output: { question: "Null conv?" },
+          conversationId: null,
+        })
+      )
+      .run();
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === nullConvRunId);
+    expect(req).toBeDefined();
+    expect(req.question).toBe("Null conv?");
+  });
+
+  it("GET /api/runs/pending-help includes run with empty conversationId", async () => {
+    const emptyConvRunId = crypto.randomUUID();
+    const runRes = await runGet(new Request("http://localhost/api/runs/x"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    const run = await runRes.json();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: emptyConvRunId,
+          targetType: "agent",
+          targetId: run.targetId,
+          status: "waiting_for_user",
+          output: { question: "Empty conv?" },
+          conversationId: "",
+        })
+      )
+      .run();
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === emptyConvRunId);
+    expect(req).toBeDefined();
+    expect(req.question).toBe("Empty conv?");
+  });
+
   it("GET /api/runs/pending-help returns count and requests array", async () => {
     const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(typeof data.count).toBe("number");
     expect(Array.isArray(data.requests)).toBe(true);
+  });
+
+  it("GET /api/runs/pending-help uses default question when run has no output", async () => {
+    const noOutputRunId = crypto.randomUUID();
+    const runRes = await runGet(new Request("http://localhost/api/runs/x"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    const run = await runRes.json();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: noOutputRunId,
+          targetType: "agent",
+          targetId: run.targetId,
+          status: "waiting_for_user",
+          output: null,
+        })
+      )
+      .run();
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === noOutputRunId);
+    expect(req).toBeDefined();
+    expect(req.question).toBe("Needs your input");
+    expect(req.reason).toBeUndefined();
+    expect(req.suggestions).toBeUndefined();
+  });
+
+  it("GET /api/runs/pending-help keeps default question when output.question is whitespace-only", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { question: "   ", reason: "Need input" },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === runId);
+    expect(req).toBeDefined();
+    expect(req.question).toBe("Needs your input");
+  });
+
+  it("GET /api/runs/pending-help uses default question when run output is empty object", async () => {
+    const emptyOutputRunId = crypto.randomUUID();
+    const runRes = await runGet(new Request("http://localhost/api/runs/x"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    const run = await runRes.json();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: emptyOutputRunId,
+          targetType: "agent",
+          targetId: run.targetId,
+          status: "waiting_for_user",
+          output: {},
+        })
+      )
+      .run();
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === emptyOutputRunId);
+    expect(req).toBeDefined();
+    expect(req.question).toBe("Needs your input");
   });
 
   it("GET /api/runs/pending-help returns requests with names when runs are waiting_for_user", async () => {
@@ -128,6 +1597,530 @@ describe("Runs API", () => {
     expect(Array.isArray(data.requests)).toBe(true);
   });
 
+  it("GET /api/runs/pending-help populates targetName for both workflow and agent when both types present", async () => {
+    const wfRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Pending Help Workflow",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    const wf = await wfRes.json();
+    const wfRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: wfRunId,
+          targetType: "workflow",
+          targetId: wf.id,
+          status: "waiting_for_user",
+          output: JSON.stringify({ question: "Workflow needs input" }),
+        })
+      )
+      .run();
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { question: "Agent needs input" },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.count).toBeGreaterThanOrEqual(2);
+    const wfReq = data.requests.find((r: { runId: string }) => r.runId === wfRunId);
+    const agentReq = data.requests.find((r: { runId: string }) => r.runId === runId);
+    expect(wfReq).toBeDefined();
+    expect(wfReq.targetName).toBe("Pending Help Workflow");
+    expect(agentReq).toBeDefined();
+  });
+
+  it("GET /api/runs/pending-help returns request with reason and suggestions from output", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: {
+            question: "Which option?",
+            reason: "Need choice",
+            suggestions: ["A", "B", "C"],
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === runId);
+    if (req) {
+      expect(req.question).toBe("Which option?");
+      expect(req.reason).toBe("Need choice");
+      expect(req.suggestions).toEqual(["A", "B", "C"]);
+    }
+  });
+
+  it("GET /api/runs/pending-help leaves suggestions undefined when output.suggestions is not an array", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { question: "Pick?", suggestions: null },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === runId);
+    expect(req).toBeDefined();
+    expect(req.question).toBe("Pick?");
+    expect(req.suggestions).toBeUndefined();
+  });
+
+  it("GET /api/runs/pending-help returns empty suggestions array when output.suggestions is []", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { question: "Choose one", suggestions: [] },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === runId);
+    expect(req).toBeDefined();
+    expect(req.suggestions).toEqual([]);
+  });
+
+  it("GET /api/runs/pending-help filters non-string suggestions", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: {
+            question: "Choose one",
+            suggestions: [1, "valid", null, "also-valid"],
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === runId);
+    if (req) {
+      expect(req.suggestions).toEqual(["valid", "also-valid"]);
+    }
+  });
+
+  it("GET /api/runs/pending-help uses output.message when reason absent", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { message: "Please confirm" },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === runId);
+    if (req) expect(req.reason).toBe("Please confirm");
+  });
+
+  it("GET /api/runs/pending-help uses output.message when reason is whitespace-only", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { reason: "   ", message: "Use this message" },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === runId);
+    expect(req).toBeDefined();
+    expect(req.reason).toBe("Use this message");
+  });
+
+  it("GET /api/runs/pending-help uses output.reason when present (no message)", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { reason: "Only reason field", suggestions: ["OK"] },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === runId);
+    expect(req).toBeDefined();
+    expect(req.reason).toBe("Only reason field");
+    expect(req.question).toBe("Needs your input");
+  });
+
+  it("GET /api/runs/pending-help caps suggestions at 20", async () => {
+    const many = Array.from({ length: 25 }, (_, i) => `opt-${i}`);
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { question: "Pick one", suggestions: many },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === runId);
+    expect(req).toBeDefined();
+    expect(req.suggestions).toHaveLength(20);
+    expect(req.suggestions[0]).toBe("opt-0");
+    expect(req.suggestions[19]).toBe("opt-19");
+  });
+
+  it("GET /api/runs/pending-help returns targetId as targetName for non-workflow non-agent run", async () => {
+    const otherRunId = crypto.randomUUID();
+    const runRow = toExecutionRow({
+      id: otherRunId,
+      targetType: "other",
+      targetId: "custom-target-1",
+      status: "waiting_for_user",
+      output: { question: "Continue?" },
+    });
+    await db.insert(executions).values(runRow).run();
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === otherRunId);
+    expect(req).toBeDefined();
+    expect(req.targetType).toBe("other");
+    expect(req.targetName).toBe("custom-target-1");
+  });
+
+  it("GET /api/runs/pending-help includes run whose conversationId is in DB", async () => {
+    const convRes = await convPost(
+      new Request("http://localhost/api/chat/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Pending Help Conv" }),
+      })
+    );
+    const conv = await convRes.json();
+    const convId = conv.id as string;
+    const runRes = await runGet(new Request("http://localhost/api/runs/x"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    const run = await runRes.json();
+    const linkedRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: linkedRunId,
+          targetType: "agent",
+          targetId: run.targetId,
+          status: "waiting_for_user",
+          output: { question: "Linked conv?" },
+          conversationId: convId,
+        })
+      )
+      .run();
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === linkedRunId);
+    expect(req).toBeDefined();
+    expect(req.question).toBe("Linked conv?");
+  });
+
+  it("GET /api/runs/pending-help excludes run whose conversationId is not in DB", async () => {
+    const runRes = await runGet(new Request("http://localhost/api/runs/x"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    const run = await runRes.json();
+    const orphanRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: orphanRunId,
+          targetType: "agent",
+          targetId: run.targetId,
+          status: "waiting_for_user",
+          output: { question: "Orphan?" },
+          conversationId: "non-existent-conversation-id",
+        })
+      )
+      .run();
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const included = data.requests.find((r: { runId: string }) => r.runId === orphanRunId);
+    expect(included).toBeUndefined();
+  });
+
+  it("GET /api/runs/pending-help when only agent runs are waiting populates agent names only", async () => {
+    const createRes = await agentsPost(
+      new Request("http://localhost/api/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Pending Help Agent Only",
+          kind: "node",
+          type: "internal",
+          protocol: "native",
+          capabilities: [],
+          scopes: [],
+        }),
+      })
+    );
+    const created = await createRes.json();
+    const agentOnlyRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: agentOnlyRunId,
+          targetType: "agent",
+          targetId: created.id,
+          status: "waiting_for_user",
+          output: { question: "Agent-only input?" },
+        })
+      )
+      .run();
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === agentOnlyRunId);
+    expect(req).toBeDefined();
+    expect(req.targetType).toBe("agent");
+    expect(req.targetName).toBe("Pending Help Agent Only");
+  });
+
+  it("GET /api/runs/pending-help returns workflow name for waiting workflow run", async () => {
+    const wfRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Pending Help Workflow",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    const wf = await wfRes.json();
+    const wfRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: wfRunId,
+          targetType: "workflow",
+          targetId: wf.id,
+          status: "waiting_for_user",
+          output: { question: "Approve?" },
+        })
+      )
+      .run();
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === wfRunId);
+    expect(req).toBeDefined();
+    expect(req.targetType).toBe("workflow");
+    expect(req.targetName).toBe("Pending Help Workflow");
+  });
+
+  it("GET /api/runs/pending-help uses targetId as targetName when workflow name is empty", async () => {
+    const wfRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Will Be Empty",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    const wf = await wfRes.json();
+    await db.update(workflows).set({ name: "" }).where(eq(workflows.id, wf.id)).run();
+    const emptyNameRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: emptyNameRunId,
+          targetType: "workflow",
+          targetId: wf.id,
+          status: "waiting_for_user",
+          output: { question: "Confirm?" },
+        })
+      )
+      .run();
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const req = data.requests.find((r: { runId: string }) => r.runId === emptyNameRunId);
+    expect(req).toBeDefined();
+    expect(req.targetType).toBe("workflow");
+    expect(req.targetName).toBe(wf.id);
+  });
+
+  it("GET /api/runs/pending-help populates both workflow and agent names when both present", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "waiting_for_user",
+          output: { question: "Agent needs input" },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const wfRes = await workflowsPost(
+      new Request("http://localhost/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Dual Lookup Workflow",
+          nodes: [],
+          edges: [],
+          executionMode: "manual",
+        }),
+      })
+    );
+    const wf = await wfRes.json();
+    const wfRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: wfRunId,
+          targetType: "workflow",
+          targetId: wf.id,
+          status: "waiting_for_user",
+          output: { question: "Workflow needs input" },
+        })
+      )
+      .run();
+    const res = await pendingHelpGet(new Request("http://localhost/api/runs/pending-help"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const agentReq = data.requests.find((r: { runId: string }) => r.runId === runId);
+    const wfReq = data.requests.find((r: { runId: string }) => r.runId === wfRunId);
+    if (agentReq) {
+      expect(agentReq.targetType).toBe("agent");
+      expect(agentReq.targetName).toBeDefined();
+    }
+    if (wfReq) {
+      expect(wfReq.targetType).toBe("workflow");
+      expect(wfReq.targetName).toBe("Dual Lookup Workflow");
+    }
+  });
+
+  it("GET /api/runs/:id/trace returns empty trail when output has no trail key", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed", output: { success: true } }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await traceGet(new Request("http://localhost/api/runs/x/trace"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.trail).toEqual([]);
+    expect(Array.isArray(data.executionLog)).toBe(true);
+  });
+
+  it("GET /api/runs/:id/trace returns empty trail when output is array", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed", output: [] }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await traceGet(new Request("http://localhost/api/runs/x/trace"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.trail).toEqual([]);
+  });
+
+  it("GET /api/runs/:id/trace returns empty trail when output.trail is not an array", async () => {
+    await runPatch(
+      new Request("http://localhost/api/runs/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "completed",
+          output: { trail: "not-an-array" },
+        }),
+      }),
+      { params: Promise.resolve({ id: runId }) }
+    );
+    const res = await traceGet(new Request("http://localhost/api/runs/x/trace"), {
+      params: Promise.resolve({ id: runId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.trail).toEqual([]);
+  });
+
   it("GET /api/runs/:id/trace returns run metadata and trail when run has output.trail", async () => {
     const trail = [
       { nodeId: "n1", agentId: "a1", agentName: "Agent One", order: 0, input: "in", output: "out" },
@@ -136,7 +2129,10 @@ describe("Runs API", () => {
       new Request("http://localhost/api/runs/x", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "completed", output: { success: true, output: "done", trail } }),
+        body: JSON.stringify({
+          status: "completed",
+          output: { success: true, output: "done", trail },
+        }),
       }),
       { params: Promise.resolve({ id: runId }) }
     );
@@ -154,5 +2150,69 @@ describe("Runs API", () => {
     expect(data.trail[0].nodeId).toBe("n1");
     expect(data.trail[0].input).toBe("in");
     expect(data.trail[0].output).toBe("out");
+    expect(data.executionLog).toBeDefined();
+    expect(Array.isArray(data.executionLog)).toBe(true);
+  });
+
+  it("GET /api/runs/:id/trace returns undefined targetName when workflow was deleted", async () => {
+    const deletedWfId = crypto.randomUUID();
+    const traceRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: traceRunId,
+          targetType: "workflow",
+          targetId: deletedWfId,
+          status: "completed",
+          output: { trail: [] },
+        })
+      )
+      .run();
+    const res = await traceGet(new Request("http://localhost/api/runs/x/trace"), {
+      params: Promise.resolve({ id: traceRunId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.targetType).toBe("workflow");
+    expect(data.targetId).toBe(deletedWfId);
+    expect(data.targetName).toBeUndefined();
+  });
+
+  it("GET /api/runs/:id/trace returns targetName from agents table for agent run", async () => {
+    const agentRes = await agentsPost(
+      new Request("http://localhost/api/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Trace-Agent-Name",
+          kind: "node",
+          type: "internal",
+          protocol: "native",
+          capabilities: [],
+          scopes: [],
+        }),
+      })
+    );
+    const agent = await agentRes.json();
+    const traceRunId = crypto.randomUUID();
+    await db
+      .insert(executions)
+      .values(
+        toExecutionRow({
+          id: traceRunId,
+          targetType: "agent",
+          targetId: agent.id,
+          status: "completed",
+        })
+      )
+      .run();
+    const res = await traceGet(new Request("http://localhost/api/runs/x/trace"), {
+      params: Promise.resolve({ id: traceRunId }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.targetType).toBe("agent");
+    expect(data.targetName).toBe("Trace-Agent-Name");
   });
 });

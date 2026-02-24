@@ -6,7 +6,11 @@ export type MCPToolCall = {
 };
 
 /** Transport interface compatible with MCP Client.connect() */
-type MCPTransport = { start(): Promise<void>; close(): Promise<void>; send(message: unknown): Promise<void> };
+type MCPTransport = {
+  start(): Promise<void>;
+  close(): Promise<void>;
+  send(message: unknown): Promise<void>;
+};
 
 async function createStreamableTransport(url: URL): Promise<MCPTransport> {
   // SDK subpath has no bundled type declarations; use type assertion
@@ -42,7 +46,7 @@ export class MCPClient {
     await this.connect();
     const result = await this.client!.callTool({
       name: call.toolName,
-      arguments: (call.input ?? {}) as Record<string, unknown>
+      arguments: (call.input ?? {}) as Record<string, unknown>,
     });
     return result;
   }

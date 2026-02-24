@@ -22,8 +22,13 @@ export async function PUT(request: Request, { params }: Params) {
   if (!existing) return new Response(null, { status: 404 });
   const existingTool = fromToolRow(existing);
   const tool = id.startsWith("std-")
-    ? { ...existingTool, id, inputSchema: payload.inputSchema ?? existingTool.inputSchema, outputSchema: payload.outputSchema ?? existingTool.outputSchema }
-    : { ...payload, id } as typeof existingTool;
+    ? {
+        ...existingTool,
+        id,
+        inputSchema: payload.inputSchema ?? existingTool.inputSchema,
+        outputSchema: payload.outputSchema ?? existingTool.outputSchema,
+      }
+    : ({ ...payload, id } as typeof existingTool);
   await db.update(toolsTable).set(toToolRow(tool)).where(eq(toolsTable.id, id)).run();
   return json(tool);
 }
@@ -31,7 +36,10 @@ export async function PUT(request: Request, { params }: Params) {
 export async function DELETE(_: Request, { params }: Params) {
   const { id } = await params;
   if (id.startsWith("std-")) {
-    return new Response(JSON.stringify({ error: "Standard tools cannot be deleted" }), { status: 400, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: "Standard tools cannot be deleted" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
   await db.delete(toolsTable).where(eq(toolsTable.id, id)).run();
   return json({ ok: true });

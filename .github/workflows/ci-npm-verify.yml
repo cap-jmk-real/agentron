@@ -1,0 +1,52 @@
+# Runs weekly (and on demand) to verify the repo still builds and tests.
+name: CI (weekly verify)
+
+on:
+  schedule:
+    # Weekly, Sunday 00:00 UTC
+    - cron: "0 0 * * 0"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm config set optional true && pnpm install --frozen-lockfile
+
+      - name: Rebuild better-sqlite3
+        run: pnpm rebuild better-sqlite3
+
+      - name: Security audit (fail on critical)
+        run: pnpm audit --audit-level=critical
+        continue-on-error: true
+
+      - name: Check formatting
+        run: pnpm run format:check
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Lint UI
+        run: pnpm run lint:ui
+
+      - name: Test (UI) with coverage
+        run: pnpm run test:coverage
+
+      - name: Check file lengths (max 1000 lines)
+        run: pnpm run check:file-lengths
+        continue-on-error: true
+
+      - name: Build docs
+        run: pnpm run build:docs

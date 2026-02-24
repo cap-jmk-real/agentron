@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { UserCheck, Check, X } from "lucide-react";
 import LogoLoading from "./components/logo-loading";
 
@@ -32,28 +33,42 @@ function fmtTokens(n: number) {
 }
 
 export default function HomePage() {
+  const router = useRouter();
   const [workflows, setWorkflows] = useState<WorkflowOverview[]>([]);
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
   const [agentsMap, setAgentsMap] = useState<Record<string, { name: string }>>({});
   const [workflowsMap, setWorkflowsMap] = useState<Record<string, { name: string }>>({});
   const [loading, setLoading] = useState(true);
 
-  const loadWorkflows = () =>
-    fetch("/api/stats/workflows")
+  useEffect(() => {
+    fetch("/api/setup/status")
       .then((r) => r.json())
-      .then((data) => setWorkflows(data.workflows ?? []));
+      .then((data: { vaultExists?: boolean }) => {
+        if (data.vaultExists === false) router.replace("/setup");
+      })
+      .catch(() => {});
+  }, [router]);
 
-  const loadPendingTasks = () =>
-    fetch("/api/tasks?status=pending_approval")
+  const loadHome = () =>
+    fetch("/api/home")
       .then((r) => r.json())
-      .then((data) => {
-        setPendingTasks(data.tasks ?? []);
-        setAgentsMap(data.agents ?? {});
-        setWorkflowsMap(data.workflows ?? {});
-      });
+      .then(
+        (data: {
+          workflows?: WorkflowOverview[];
+          tasks?: PendingTask[];
+          agents?: Record<string, { name: string }>;
+          workflowsMap?: Record<string, { name: string }>;
+        }) => {
+          setWorkflows(data.workflows ?? []);
+          setPendingTasks(data.tasks ?? []);
+          setAgentsMap(data.agents ?? {});
+          setWorkflowsMap(data.workflowsMap ?? {});
+        }
+      )
+      .finally(() => setLoading(false));
 
   useEffect(() => {
-    Promise.all([loadWorkflows(), loadPendingTasks()]).finally(() => setLoading(false));
+    loadHome();
   }, []);
 
   const resolveTask = async (taskId: string, status: "approved" | "rejected") => {
@@ -62,25 +77,43 @@ export default function HomePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    await loadPendingTasks();
+    loadHome();
   };
 
   return (
     <div>
-      <h1 style={{ margin: "0 0 0.25rem" }}>AgentOS Studio</h1>
+      <h1 style={{ margin: "0 0 0.25rem" }}>Agentron</h1>
       <p style={{ color: "var(--text-muted)", margin: "0 0 1.5rem", fontSize: "0.9rem" }}>
         Overview of active workflows and token usage.
       </p>
 
       {pendingTasks.length > 0 && (
         <section style={{ marginBottom: "1.5rem" }}>
-          <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: "0 0 0.75rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <h2
+            style={{
+              fontSize: "1rem",
+              fontWeight: 600,
+              margin: "0 0 0.75rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+            }}
+          >
             <UserCheck size={18} /> Tasks needing approval
           </h2>
           <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", margin: "0 0 0.5rem" }}>
             These agents in a workflow are waiting for your approval before continuing.
           </p>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <ul
+            style={{
+              listStyle: "none",
+              padding: 0,
+              margin: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.5rem",
+            }}
+          >
             {pendingTasks.map((task) => (
               <li
                 key={task.id}
@@ -97,7 +130,8 @@ export default function HomePage() {
               >
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: "0.875rem" }}>
-                    {workflowsMap[task.workflowId]?.name ?? task.workflowId} → {agentsMap[task.agentId]?.name ?? task.agentId}
+                    {workflowsMap[task.workflowId]?.name ?? task.workflowId} →{" "}
+                    {agentsMap[task.agentId]?.name ?? task.agentId}
                   </div>
                   <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
                     Step: {task.stepName}
@@ -131,18 +165,39 @@ export default function HomePage() {
       )}
 
       <section style={{ marginBottom: "1.5rem" }}>
-        <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: "0 0 0.75rem" }}>Active workflows</h2>
+        <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: "0 0 0.75rem" }}>
+          Active workflows
+        </h2>
         {loading ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem", padding: "1rem 0" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "0.75rem",
+              padding: "1rem 0",
+            }}
+          >
             <LogoLoading size={48} />
             <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", margin: 0 }}>Loading…</p>
           </div>
         ) : workflows.length === 0 ? (
           <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
-            No workflows yet. Create one from <Link href="/workflows" style={{ color: "var(--link)" }}>Workflows</Link> or via the chat.
+            No workflows yet. Create one from{" "}
+            <Link href="/workflows" style={{ color: "var(--link)" }}>
+              Workflows
+            </Link>{" "}
+            or via the chat.
           </p>
         ) : (
-          <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)" }}>
+          <div
+            style={{
+              overflowX: "auto",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              background: "var(--surface)",
+            }}
+          >
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--border)", textAlign: "left" }}>
@@ -157,14 +212,25 @@ export default function HomePage() {
                 {workflows.map((wf) => (
                   <tr key={wf.id} style={{ borderBottom: "1px solid var(--border)" }}>
                     <td style={{ padding: "0.6rem 0.75rem" }}>
-                      <Link href={`/stats/workflows/${wf.id}`} style={{ color: "var(--text)", textDecoration: "none", fontWeight: 500 }}>
+                      <Link
+                        href={`/stats/workflows/${wf.id}`}
+                        style={{ color: "var(--text)", textDecoration: "none", fontWeight: 500 }}
+                      >
                         {wf.name}
                       </Link>
                     </td>
-                    <td style={{ padding: "0.6rem 0.75rem", color: "var(--text-muted)" }}>{wf.agentCount}</td>
-                    <td style={{ padding: "0.6rem 0.75rem", color: "var(--text-muted)" }}>{wf.llmCount}</td>
-                    <td style={{ padding: "0.6rem 0.75rem", color: "var(--text-muted)" }}>{fmtTokens(wf.totalTokens)}</td>
-                    <td style={{ padding: "0.6rem 0.75rem", color: "var(--text-muted)" }}>{wf.totalRuns}</td>
+                    <td style={{ padding: "0.6rem 0.75rem", color: "var(--text-muted)" }}>
+                      {wf.agentCount}
+                    </td>
+                    <td style={{ padding: "0.6rem 0.75rem", color: "var(--text-muted)" }}>
+                      {wf.llmCount}
+                    </td>
+                    <td style={{ padding: "0.6rem 0.75rem", color: "var(--text-muted)" }}>
+                      {fmtTokens(wf.totalTokens)}
+                    </td>
+                    <td style={{ padding: "0.6rem 0.75rem", color: "var(--text-muted)" }}>
+                      {wf.totalRuns}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -174,7 +240,11 @@ export default function HomePage() {
       </section>
 
       <p style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-        Go to <Link href="/stats" style={{ color: "var(--link)" }}>Statistics</Link> for full breakdown by agent and cost.
+        Go to{" "}
+        <Link href="/stats" style={{ color: "var(--link)" }}>
+          Statistics
+        </Link>{" "}
+        for full breakdown by agent and cost.
       </p>
     </div>
   );

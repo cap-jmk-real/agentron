@@ -14,5 +14,10 @@ export async function POST(_: Request, { params }: Params) {
   }
   const config = fromLlmConfigRow(rows[0]);
 
-  return json({ ok: true, provider: config.provider, model: config.model, message: "Connection successful" });
+  return json({
+    ok: true,
+    provider: config.provider,
+    model: config.model,
+    message: "Connection successful",
+  });
 }

@@ -1,6 +1,7 @@
 import { json } from "../_lib/response";
 import { db, feedback, toFeedbackRow, fromFeedbackRow } from "../_lib/db";
 import { eq } from "drizzle-orm";
+import { embedFeedbackOnCreate } from "../_lib/feedback-retrieval";
 
 export const runtime = "nodejs";
 
@@ -29,8 +30,17 @@ export async function POST(request: Request) {
   const entry = {
     ...payload,
     id,
-    createdAt: Date.now()
+    createdAt: Date.now(),
   };
   await db.insert(feedback).values(toFeedbackRow(entry)).run();
+  embedFeedbackOnCreate({
+    id: entry.id,
+    targetType: entry.targetType,
+    targetId: entry.targetId,
+    input: entry.input,
+    output: entry.output,
+    label: entry.label,
+    notes: entry.notes,
+  }).catch(() => {});
   return json(entry, { status: 201 });
 }

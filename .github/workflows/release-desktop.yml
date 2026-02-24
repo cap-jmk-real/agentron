@@ -29,7 +29,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.os == 'Windows' && 'C:\\Users\\runner\\AppData\\Local\\electron-builder\\Cache' || (runner.os == 'macOS' && '~/Library/Caches/electron-builder') || '~/.cache/electron-builder' }}
-          key: electron-builder-${{ runner.os }}-${{ hashFiles('apps/desktop/package.json', 'package-lock.json') }}
+          key: electron-builder-${{ runner.os }}-${{ hashFiles('apps/desktop/package.json', 'pnpm-lock.yaml') }}
           restore-keys: |
             electron-builder-${{ runner.os }}-
 
@@ -37,24 +37,30 @@ jobs:
         uses: actions/cache@v4
         with:
           path: packages/ui/.next/cache
-          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json', 'packages/ui/**') }}
+          key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/ui/package.json', 'packages/ui/next.config.mjs') }}
           restore-keys: |
             nextjs-${{ runner.os }}-
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm config set optional true && pnpm install --frozen-lockfile
 
-      - name: Install optional deps (for Vitest/coverage)
-        run: npm install --include=optional
+      - name: Rebuild better-sqlite3
+        run: pnpm rebuild better-sqlite3
 
       - name: Run tests with coverage
-        run: npm run test:coverage --workspace packages/ui
+        run: pnpm run test:coverage
+        env:
+          # Windows runners (2 cores) benefit from some parallelism; 4 workers avoids thrashing.
+          VITEST_MAX_WORKERS: ${{ runner.os == 'Windows' && '4' || '' }}
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -63,20 +69,26 @@ jobs:
           path: packages/ui/coverage/
         if: always()
 
-      - name: Install sharp with optional deps (for icon export)
-        run: npm install --include=optional sharp --workspace apps/desktop
-
       - name: Build UI
-        run: npm run build:ui
+        run: pnpm run build:ui
 
       - name: Build desktop (main + preload)
-        run: npm run build --workspace apps/desktop
+        run: pnpm --filter @agentron-studio/desktop run build
 
       - name: Rebuild native modules for Electron
-        run: npm run rebuild:electron --workspace apps/desktop
+        run: pnpm --filter @agentron-studio/desktop run rebuild:electron
+
+      - name: Add VS C++ workload (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $vsPath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools"
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+          if (Test-Path $installer) {
+            & $installer modify --installPath $vsPath --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive --norestart
+          }
 
       - name: Create distributable
-        run: npm run dist --workspace apps/desktop
+        run: pnpm --filter @agentron-studio/desktop run dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

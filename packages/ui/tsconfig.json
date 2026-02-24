@@ -13,14 +13,29 @@
     "jsx": "react-jsx",
     "incremental": true,
     "esModuleInterop": true,
-    "plugins": [{"name": "next"}],
+    "plugins": [{ "name": "next" }],
     "paths": {
-      "@modelcontextprotocol/sdk/client/streamableHttp": ["../../node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.js"],
-      "@modelcontextprotocol/sdk/server/mcp": ["../../node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js"],
-      "@modelcontextprotocol/sdk/server/streamableHttp": ["../../node_modules/@modelcontextprotocol/sdk/dist/esm/server/streamableHttp.js"],
-      "@modelcontextprotocol/sdk/server/express": ["../../node_modules/@modelcontextprotocol/sdk/dist/esm/server/express.js"]
+      "@modelcontextprotocol/sdk/client/streamableHttp": [
+        "../../node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.js"
+      ],
+      "@modelcontextprotocol/sdk/server/mcp": [
+        "../../node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js"
+      ],
+      "@modelcontextprotocol/sdk/server/streamableHttp": [
+        "../../node_modules/@modelcontextprotocol/sdk/dist/esm/server/streamableHttp.js"
+      ],
+      "@modelcontextprotocol/sdk/server/express": [
+        "../../node_modules/@modelcontextprotocol/sdk/dist/esm/server/express.js"
+      ]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", "**/*.d.ts", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.d.ts",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
   "exclude": ["node_modules"]
 }

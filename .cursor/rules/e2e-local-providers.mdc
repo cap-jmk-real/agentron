@@ -1,0 +1,11 @@
+---
+description: E2E tests use only local LLM and embedding providers; never cloud
+globs: "packages/ui/__tests__/e2e/**/*.e2e.ts"
+alwaysApply: false
+---
+
+# E2E: local providers only
+
+- **E2E tests must use only local providers.** Do not use cloud providers (OpenAI, OpenRouter, etc.) in e2e.
+- **LLM:** Use the seeded e2e config from [e2e-setup.ts](packages/ui/__tests__/e2e/e2e-setup.ts): `E2E_LLM_CONFIG_ID` (Ollama). All chat/workflow e2e tests already use `providerId: E2E_LLM_CONFIG_ID`.
+- **Embedding:** When an e2e creates encoding configs or collections that need embeddings, use a **local embedding provider** (Ollama) and an encoding config that references it. Do not create encoding configs with `provider: "openai"` or any cloud provider. See [knowledge-connectors-filesystem.e2e.ts](packages/ui/__tests__/e2e/knowledge-connectors-filesystem.e2e.ts) for the pattern: create embedding provider (type `"local"`, endpoint Ollama), then encoding config with `embeddingProviderId` and a local model (e.g. `nomic-embed-text`).

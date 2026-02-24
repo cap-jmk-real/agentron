@@ -1,13 +1,16 @@
-/** System stats polling interval: 0.01s to 2s. Stored in ms. */
-export const SYSTEM_STATS_INTERVAL_MIN_MS = 10;
-export const SYSTEM_STATS_INTERVAL_MAX_MS = 2000;
-export const SYSTEM_STATS_INTERVAL_DEFAULT_MS = 400;
+/** System stats polling interval: 0.5s to 5s. Stored in ms. Min 500ms to avoid flooding server (was 200ms). */
+export const SYSTEM_STATS_INTERVAL_MIN_MS = 500;
+export const SYSTEM_STATS_INTERVAL_MAX_MS = 5000;
+export const SYSTEM_STATS_INTERVAL_DEFAULT_MS = 2000;
 
 const STORAGE_KEY = "agentron-studio/system-stats-interval-ms";
 export const SYSTEM_STATS_INTERVAL_CHANGED_EVENT = "system-stats-interval-changed";
 
 function clamp(ms: number): number {
-  return Math.max(SYSTEM_STATS_INTERVAL_MIN_MS, Math.min(SYSTEM_STATS_INTERVAL_MAX_MS, Math.round(ms)));
+  return Math.max(
+    SYSTEM_STATS_INTERVAL_MIN_MS,
+    Math.min(SYSTEM_STATS_INTERVAL_MAX_MS, Math.round(ms))
+  );
 }
 
 /** Read interval from localStorage (clamped). Uses default if missing or invalid. */

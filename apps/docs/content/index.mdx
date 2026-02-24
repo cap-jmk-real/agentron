@@ -1,0 +1,124 @@
+---
+title: Agentron — Local AI Agent Orchestration & Automation
+description: Agentron by Julian M. Kleber — local-first platform for AI agent orchestration and workflow automation. Self-hosted multi-agent design, visual builder, optional desktop app.
+keywords:
+  - Agentron
+  - Julian M. Kleber
+  - Julian Kleber
+  - AI agent orchestration
+  - local AI
+  - workflow automation
+  - multi-agent
+  - local-first
+  - self-hosted AI
+---
+
+# Agentron
+
+**Agentron** is a local-first platform for **AI agent orchestration** and **workflow automation** by **Julian M. Kleber**. Design and run multi-agent systems on your own infrastructure—no cloud lock-in, full data privacy, optional desktop app.
+
+<Callout type="important">
+  **Design and run multi-agent systems on your own infrastructure—no cloud lock-in, full data privacy, optional desktop app.**
+</Callout>
+
+Visual agent builder, multi-agent workflows, and a chat assistant that creates and edits agents via natural language.
+
+---
+
+## Quick start
+
+<Steps>
+
+### 1. Install and run
+
+From the project root: `npm run install:ui` then `npm run dev:ui`. Open **http://localhost:3000**.
+
+### 2. Try the assistant
+
+Go to **Chat** and say: **"What tools do I have?"** or **"Create a simple agent that says hello."**
+
+### 3. Desktop app (optional)
+
+Download installers from the [Download](/download) page; launch after the web UI is running.
+
+</Steps>
+
+**Prerequisites:** Node.js (see `.nvmrc`, e.g. 22.x). Full steps: [Quick start](/quick-start) and **INSTALL** in the repo.
+
+---
+
+## What is Agentron?
+
+Agentron is an **enterprise-ready, local-first** platform that lets you design, configure, and run multi-agent systems entirely on your own infrastructure.
+
+| Component | Description |
+| --------- | ----------- |
+| **Next.js web UI** | Dashboard, visual agent/workflow editors, and chat |
+| **Local runtime** | Executes agents and multi-agent workflows |
+| **SQLite storage** | All resources persisted locally (self-hosted, on-premise) |
+| **Optional Electron** | Desktop app for Windows, macOS, and Linux |
+
+<Callout type="info">
+  This documentation is designed for **AI assistants** and **LLMs** so they can guide users, suggest actions, and answer questions accurately.
+</Callout>
+
+---
+
+## Core concepts
+
+| Concept | Definition |
+| -------- | ---------- |
+| **Tool** | A callable capability (HTTP, MCP, native). Agents use tools to perform actions. |
+| **Agent** | An executable unit — either a **node agent** (graph of LLM/tool nodes) or **code agent** (custom script). |
+| **Workflow** | A graph of agents and edges. Orchestrates agents in sequence or loops for up to `maxRounds` cycles. |
+| **Agentron** | Built-in chat that uses tools to create/edit agents, workflows, and tools on behalf of the user. |
+| **Chat architecture (heap)** | When enabled, a planner chooses specialists (e.g. general, workflow, agent); each has limited tools and runs in order. See [Agentron (Chat)](/concepts/assistant#how-chat-routes-heap). |
+
+---
+
+## Start here
+
+- [Quick start](/quick-start) — Install, run, and try prompts in Chat.
+- [Tutorials](/tutorials/first-agent) — First agent, first workflow, first RAG (prompt-based).
+- [Tools](/concepts/tools) — HTTP, MCP, and native tools agents can call.
+- [Agents](/concepts/agents) — Node and code agents; graphs and sandboxes.
+- [Workflows](/concepts/workflows) — Multi-agent orchestration and max rounds.
+- [Agentron (Chat)](/concepts/assistant) — Natural-language assistant; [Heap (specialists)](/concepts/heap) for the interactive registry.
+- [Capabilities](/capabilities) — Feature matrix and what users can do.
+- [Download](/download) — Desktop installers for Windows, macOS, Linux.
+- [E2E tests (local LLM)](/e2e-local-llm) — Optional end-to-end tests with Ollama.
+
+---
+
+## Key capabilities
+
+- Create, edit, delete **agents** (node or code) and **workflows** (multi-agent orchestration)
+- Create, edit **tools** (native, HTTP, MCP) and run workflows and agents
+- **Chat (Agentron)** — Natural-language assistant; use the **Chat** page for full-screen use, history, ratings, and settings (see [Agentron (Chat)](/concepts/assistant))
+- **Sandboxes** — Podman containers for code execution
+- **Knowledge / RAG** — Document ingestion and retrieval for agents
+- **Feedback** — Rate agent outputs for learning
+- **Custom functions** — JavaScript/Python/TypeScript code as tools
+- **Telegram** — Use a bot to delegate tasks; configure in **Settings → Telegram**
+
+---
+
+## How to use this documentation
+
+- **New here?** Start with [Quick start](/quick-start) and [Tutorials](/tutorials/first-agent).
+- **Building something?** Use [Concepts](/concepts/tools) and [Capabilities](/capabilities).
+- **Chat or heap?** See [Agentron (Chat)](/concepts/assistant) and [Heap (specialists)](/concepts/heap).
+- **For AI assistants:** [AI Guide](/ai-guide) — how to suggest the right actions to users.
+
+---
+
+## Deployment
+
+| Scenario | Notes |
+| -------- | ----- |
+| **Typical** | Single deployment (Agentron on port 3000) |
+| **MCP** | Agentron can expose an MCP server for IDEs and other tools |
+| **Telegram** | Set your bot's webhook to `https://<your-domain>/api/telegram/webhook`. Optional: `TELEGRAM_WEBHOOK_SECRET` and `?secret=YOUR_SECRET`. See **Settings → Telegram** in the app. |
+| **Docs** | This site is hosted on GitHub Pages and updates when the default branch is updated |
+
+Agentron is an open-source project by **Julian M. Kleber**.

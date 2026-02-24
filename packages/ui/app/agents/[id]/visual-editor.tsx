@@ -36,9 +36,17 @@ export default function VisualEditor({ agentId, definition, onDefinitionChange }
     <div className="card">
       <h3 style={{ margin: "0 0 0.25rem" }}>Visual Workflow</h3>
       <p style={{ margin: "0 0 1rem", fontSize: "0.82rem", color: "var(--text-muted)" }}>
-        Define the tool graph for this agent. Each item is a tool (LLM, Input, Output, etc.) in the execution flow.
+        Define the tool graph for this agent. Each item is a tool (LLM, Input, Output, etc.) in the
+        execution flow.
       </p>
-      <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+      <label
+        style={{
+          display: "block",
+          marginBottom: "0.5rem",
+          fontSize: "0.85rem",
+          color: "var(--text-muted)",
+        }}
+      >
         Tools / graph (JSON)
       </label>
       <textarea
@@ -47,7 +55,14 @@ export default function VisualEditor({ agentId, definition, onDefinitionChange }
         defaultValue={nodesStr}
         onChange={(e) => updateGraph("nodes", e.target.value)}
       />
-      <label style={{ display: "block", margin: "0.75rem 0 0.5rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+      <label
+        style={{
+          display: "block",
+          margin: "0.75rem 0 0.5rem",
+          fontSize: "0.85rem",
+          color: "var(--text-muted)",
+        }}
+      >
         Edges (JSON)
       </label>
       <textarea

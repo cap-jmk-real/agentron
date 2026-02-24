@@ -203,12 +203,22 @@ export default function ToolEditPage() {
   if (isStandard) {
     return (
       <div>
-        <Link href="/tools" className="button button-ghost button-small" style={{ marginBottom: "1rem", display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+        <Link
+          href="/tools"
+          className="button button-ghost button-small"
+          style={{
+            marginBottom: "1rem",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.4rem",
+          }}
+        >
           <ArrowLeft size={14} /> Tools
         </Link>
         <h1>{tool.name}</h1>
         <p style={{ color: "var(--text-muted)", marginTop: "0.25rem", marginBottom: "1rem" }}>
-          Standard tools can&apos;t be edited. Save a copy with your own name to customize and use as your own tool.
+          Standard tools can&apos;t be edited. Save a copy with your own name to customize and use
+          as your own tool.
         </p>
         <form onSubmit={createCopy} className="card">
           <div className="field">
@@ -234,7 +244,16 @@ export default function ToolEditPage() {
 
   return (
     <div>
-      <Link href="/tools" className="button button-ghost button-small" style={{ marginBottom: "1rem", display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+      <Link
+        href="/tools"
+        className="button button-ghost button-small"
+        style={{
+          marginBottom: "1rem",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "0.4rem",
+        }}
+      >
         <ArrowLeft size={14} /> Tools
       </Link>
       <h1>{tool.name}</h1>
@@ -244,11 +263,7 @@ export default function ToolEditPage() {
       <form onSubmit={save} className="card">
         <div className="field">
           <label>Name</label>
-          <input
-            className="input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="field">
           <label>Protocol</label>
@@ -277,7 +292,11 @@ export default function ToolEditPage() {
             </div>
             <div className="field">
               <label>Method</label>
-              <select className="select" value={httpMethod} onChange={(e) => setHttpMethod(e.target.value)}>
+              <select
+                className="select"
+                value={httpMethod}
+                onChange={(e) => setHttpMethod(e.target.value)}
+              >
                 <option value="GET">GET</option>
                 <option value="POST">POST</option>
                 <option value="PUT">PUT</option>

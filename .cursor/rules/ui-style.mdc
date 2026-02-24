@@ -1,0 +1,16 @@
+---
+description: UI style — global CSS, design tokens, layout (packages/ui)
+globs: packages/ui/**/*.tsx, packages/ui/**/*.css
+alwaysApply: false
+---
+
+# UI Style (packages/ui)
+
+When editing UI (especially `packages/ui/app/` and `packages/ui/app/globals.css`):
+
+- **Prefer global CSS over inline styles.** Put styles in `globals.css` (or a CSS module); use class names. Avoid `style={{ ... }}` except for truly dynamic values (e.g. computed width/visibility from props/state).
+- **Separate styling from component logic.** Keep layout/visual styling in CSS; components focus on structure, behavior, and class names.
+- **Semantic class names:** e.g. `.chat-input-bar`, `.canvas-container`, `.card-header`.
+- **Design tokens:** Use CSS variables only: `--bg`, `--surface`, `--surface-muted`, `--text`, `--text-muted`, `--primary`, `--primary-strong`, `--border`, `--shadow`, and sidebar tokens. Do not introduce new hex/rgba for backgrounds, text, or primary actions.
+- **Layout:** Header (topbar) must align with sidebar; content area must not overlap (z-index/flex). Chat and sections use the same radius scale (6–10px) and surface tokens.
+- **Safe API data:** Guard with `Array.isArray(data.x) ? data.x : []` before `.map()`.

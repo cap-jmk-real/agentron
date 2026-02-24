@@ -4,7 +4,8 @@ type OpenAIChatResponse = {
   id: string;
   choices?: Array<{
     message?: {
-      content?: string;
+      /** String (legacy) or array of parts (e.g. [{ type: "text", text: "..." }]) in newer APIs */
+      content?: string | Array<{ type?: string; text?: string }>;
       tool_calls?: Array<{
         id: string;
         type: string;
@@ -19,19 +20,64 @@ type OpenAIChatResponse = {
   };
 };
 
+/** Normalize OpenAI-style content (string or array of parts) to a single string for LLMResponse.content */
+function normalizeContent(
+  raw: string | Array<{ type?: string; text?: string }> | undefined
+): string {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw;
+  if (!Array.isArray(raw)) return String(raw);
+  return raw
+    .map((part) =>
+      part && typeof part === "object" && typeof part.text === "string" ? part.text : ""
+    )
+    .filter(Boolean)
+    .join("");
+}
+
 /** Ensure base URL has no trailing /v1 so we can append /v1/chat/completions once. */
 function normalizeOpenAIEndpoint(endpoint: string): string {
   return endpoint.replace(/\/v1\/?$/, "").replace(/\/$/, "") || endpoint;
 }
 
-function buildRequestBody(request: LLMRequest, config: ResolvedLLMConfig, temperatureOverride?: number) {
+/** Models that require max_completion_tokens instead of max_tokens (OpenAI API). */
+function modelRequiresMaxCompletionTokens(model: string): boolean {
+  const m = (model || "").toLowerCase();
+  return (
+    m.startsWith("gpt-5") ||
+    m.startsWith("o1") ||
+    m.startsWith("o3") ||
+    m.startsWith("o4") ||
+    /^o\d+-mini$/i.test(m)
+  );
+}
+
+export type OpenAICompatibleOptions = {
+  /** Use max_completion_tokens instead of max_tokens (required for newer OpenAI models e.g. gpt-5-mini). */
+  useMaxCompletionTokens?: boolean;
+};
+
+function buildRequestBody(
+  request: LLMRequest,
+  config: ResolvedLLMConfig,
+  temperatureOverride?: number,
+  options?: OpenAICompatibleOptions
+) {
   const temperature = temperatureOverride ?? request.temperature;
+  const useMaxCompletionTokens =
+    options?.useMaxCompletionTokens === true || modelRequiresMaxCompletionTokens(config.model);
+  const completionLimit =
+    request.maxTokens !== undefined && request.maxTokens !== null
+      ? useMaxCompletionTokens
+        ? { max_completion_tokens: request.maxTokens }
+        : { max_tokens: request.maxTokens }
+      : {};
   return {
     model: config.model,
     messages: mapMessagesToApi(request.messages ?? []),
     ...(temperature !== undefined && temperature !== null ? { temperature } : {}),
     top_p: request.topP,
-    max_tokens: request.maxTokens,
+    ...completionLimit,
     ...(request.tools && request.tools.length > 0 ? { tools: request.tools } : {}),
   };
 }
@@ -40,49 +86,51 @@ export const openAICompatibleChat = async (
   endpoint: string,
   config: ResolvedLLMConfig,
   request: LLMRequest,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  options?: OpenAICompatibleOptions
 ): Promise<LLMResponse> => {
   const base = normalizeOpenAIEndpoint(endpoint);
-  let body = buildRequestBody(request, config);
+  let body = buildRequestBody(request, config, undefined, options);
   let response = await fetch(`${base}/v1/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...headers
+      ...headers,
     },
     body: JSON.stringify(body),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
+    let errorText = await response.text();
     if (response.status === 400) {
       try {
         const err = JSON.parse(errorText) as { error?: { param?: string; code?: string } };
         if (err.error?.param === "temperature" && err.error?.code === "unsupported_value") {
-          body = buildRequestBody(request, config, 1);
+          body = buildRequestBody(request, config, 1, options);
           response = await fetch(`${base}/v1/chat/completions`, {
             method: "POST",
             headers: { "Content-Type": "application/json", ...headers },
             body: JSON.stringify(body),
           });
+          if (!response.ok) errorText = await response.text();
         }
       } catch {
         // ignore parse error, throw original below
       }
     }
     if (!response.ok) {
-      const retryErrorText = await response.text();
       let hint = "";
       if (response.status === 404) {
-        hint = " For 404: check that the model name is supported by your provider and that the endpoint URL in Settings → LLM Providers is correct.";
+        hint =
+          " For 404: check that the model name is supported by your provider and that the endpoint URL in Settings → LLM Providers is correct.";
       }
-      throw new Error(`LLM request failed (${response.status}): ${retryErrorText || errorText}${hint}`);
+      throw new Error(`LLM request failed (${response.status}): ${errorText}${hint}`);
     }
   }
 
   const data = (await response.json()) as OpenAIChatResponse;
   const msg = data.choices?.[0]?.message;
-  const content = msg?.content ?? "";
+  const content = normalizeContent(msg?.content);
 
   const rawToolCalls = msg?.tool_calls ?? [];
   const toolCalls = rawToolCalls
@@ -103,9 +151,9 @@ export const openAICompatibleChat = async (
     usage: {
       promptTokens,
       completionTokens,
-      totalTokens: data.usage?.total_tokens ?? (promptTokens + completionTokens),
+      totalTokens: data.usage?.total_tokens ?? promptTokens + completionTokens,
     },
-    raw: data
+    raw: data,
   };
 };
 

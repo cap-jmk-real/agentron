@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none" aria-hidden="true" shape-rendering="geometricPrecision">
+  <defs>
+    <linearGradient id="a" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+  </defs>
+  <!-- A: scaled 1.4 from center to fill the pictogram. Single source of truth for logo. -->
+  <path d="M32 2.2 L6.8 62.8 H18 Q20.8 57.2 26.4 40.4 H36.4 Q43.2 57.2 46 62.8 H57.2 Z" fill="url(#a)"/>
+  <circle cx="32" cy="40.4" r="7.7" fill="#EEF2FF"/>
+  <circle cx="32" cy="40.4" r="3.92" fill="#4f46e5"/>
+</svg>

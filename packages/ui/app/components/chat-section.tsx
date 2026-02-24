@@ -2,13 +2,11 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { flushSync } from "react-dom";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
-  Send,
   Loader,
-  Square,
+  Loader2,
   MessageSquarePlus,
-  List,
   PanelLeftClose,
   Trash2,
   ExternalLink,
@@ -17,156 +15,47 @@ import {
   Copy,
   Check,
   Circle,
+  CircleDot,
   ThumbsUp,
   ThumbsDown,
-  Star,
   ChevronDown,
   ChevronRight,
+  RotateCw,
 } from "lucide-react";
-import { ChatMessageContent, ChatToolResults, getAssistantMessageDisplayContent, ReasoningContent } from "./chat-message-content";
+import { hasAskUserWaitingForInput, normalizeToolResults } from "./chat-message-content";
+import { performChatStreamSend } from "../hooks/useChatStream";
+import { NOTIFICATIONS_UPDATED_EVENT } from "../lib/notifications-events";
+
+/** Minimum time (ms) to show the loading status bar after sending (so option clicks show visible feedback). */
+const MIN_LOADING_DISPLAY_MS = 600;
+
 import ChatFeedbackModal from "./chat-feedback-modal";
-import LogoLoading from "./logo-loading";
+import MessageFeedbackModal from "./message-feedback-modal";
+import {
+  loadChatState,
+  saveChatState,
+  shouldSkipLoadingFalseFromOtherTab,
+  subscribeToChatStateChanges,
+  getRunWaiting as getRunWaitingFromCache,
+  setRunWaiting as setRunWaitingInCache,
+  LOADING_FRESH_MS,
+  getLastActiveConversationId,
+} from "../lib/chat-state-cache";
+import { getDraft, setDraft } from "../lib/chat-drafts";
+import { getConversationIdFromSearchParams } from "../lib/chat-url-params";
+import { randomId, getUiContext, getMessageCopyText } from "./chat-modal-utils";
+import { ChatSectionMain } from "./chat-section-main";
+import { ChatSectionSidebar } from "./chat-section-sidebar";
+import type { Message, ToolResult, InteractivePrompt } from "./chat-types";
 
-/** UUID v4; works in insecure context where crypto.randomUUID is not available */
-function randomId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  const bytes = new Uint8Array(16);
-  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
-    crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
-  }
-  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
-  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
-function getUiContext(pathname: string | null): string {
-  if (!pathname || pathname === "/") return "User is on the home/dashboard.";
-  const segments = pathname.replace(/^\/+|\/+$/g, "").split("/");
-  if (segments[0] === "workflows") {
-    if (segments[1]) return `User is on the workflow detail page (editing workflow id: ${segments[1]}).`;
-    return "User is on the workflows list page.";
-  }
-  if (segments[0] === "agents") {
-    if (segments[1]) return `User is on the agent detail page (editing agent id: ${segments[1]}).`;
-    return "User is on the agents list page.";
-  }
-  if (segments[0] === "runs") {
-    if (segments[1]) return `User is on the run detail page (run id: ${segments[1]}).`;
-    return "User is on the runs list page.";
-  }
-  if (pathname.startsWith("/knowledge")) return "User is on the knowledge / RAG page.";
-  if (pathname.startsWith("/settings")) return "User is on the settings area.";
-  if (pathname.startsWith("/stats")) return "User is on the stats page.";
-  if (pathname.startsWith("/chat")) return "User is on the Agentron chat page.";
-  return `User is on: ${pathname}.`;
-}
-
-type ToolResult = { name: string; args: Record<string, unknown>; result: unknown };
-
-type TraceStep = { phase: string; label?: string; contentPreview?: string };
-
-type Message = {
+type ConversationItem = {
   id: string;
-  role: "user" | "assistant";
-  content: string;
-  toolResults?: ToolResult[];
-  reasoning?: string;
-  todos?: string[];
-  completedStepIndices?: number[];
-  executingStepIndex?: number;
-  executingToolName?: string;
-  executingTodoLabel?: string;
-  executingSubStepLabel?: string;
-  rephrasedPrompt?: string | null;
-  /** Live trace steps during thinking (e.g. "Rephrasing…", "Calling LLM…"). */
-  traceSteps?: TraceStep[];
+  title: string | null;
+  rating: number | null;
+  note: string | null;
+  createdAt: number;
 };
-
-const CHAT_SECTION_STATE_KEY = "agentron-chat-section-state";
-const CHAT_SECTION_STATE_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
-
-function loadChatSectionState(conversationId: string): { messages: Message[]; loading: boolean; timestamp: number } | null {
-  if (typeof sessionStorage === "undefined") return null;
-  try {
-    const raw = sessionStorage.getItem(CHAT_SECTION_STATE_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw) as { conversationId: string; messages: Message[]; loading: boolean; timestamp: number };
-    if (data.conversationId !== conversationId) return null;
-    if (Date.now() - data.timestamp > CHAT_SECTION_STATE_MAX_AGE_MS) return null;
-    return { messages: data.messages ?? [], loading: !!data.loading, timestamp: data.timestamp };
-  } catch {
-    return null;
-  }
-}
-
-function saveChatSectionState(conversationId: string, messages: Message[], loading: boolean) {
-  if (typeof sessionStorage === "undefined") return;
-  try {
-    sessionStorage.setItem(
-      CHAT_SECTION_STATE_KEY,
-      JSON.stringify({ conversationId, messages, loading, timestamp: Date.now() })
-    );
-  } catch {
-    // ignore
-  }
-}
-
-/** Copy text to clipboard; works in insecure contexts (HTTP) via execCommand fallback. */
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // fall through to fallback
-  }
-  try {
-    const el = document.createElement("textarea");
-    el.value = text;
-    el.setAttribute("readonly", "");
-    el.style.position = "fixed";
-    el.style.left = "-9999px";
-    document.body.appendChild(el);
-    el.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(el);
-    return ok;
-  } catch {
-    return false;
-  }
-}
-
-function getToolResultCopyLine(result: unknown): string {
-  if (result === null || result === undefined) return "done";
-  if (typeof result === "object" && "message" in (result as Record<string, unknown>))
-    return String((result as Record<string, unknown>).message);
-  if (typeof result === "string") return result;
-  return "done";
-}
-
-function getMessageCopyText(msg: Message): string {
-  const parts: string[] = [];
-  if (msg.content.trim()) parts.push(msg.content.trim());
-  if (msg.toolResults && msg.toolResults.length > 0) {
-    parts.push("");
-    parts.push("Tool results:");
-    for (const r of msg.toolResults) {
-      parts.push(`${r.name}: ${getToolResultCopyLine(r.result)}`);
-    }
-  }
-  return parts.join("\n");
-}
-
-type ConversationItem = { id: string; title: string | null; rating: number | null; note: string | null; createdAt: number };
 type LlmProvider = { id: string; provider: string; model: string; endpoint?: string };
-
-type PendingHelpRequest = { runId: string; question: string; reason?: string; targetName: string; targetType: string };
 
 type Props = {
   onOpenSettings?: () => void;
@@ -174,72 +63,141 @@ type Props = {
 
 export default function ChatSection({ onOpenSettings }: Props) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const replyToRunId = searchParams.get("runId")?.trim() || undefined;
+  const conversationFromUrl = getConversationIdFromSearchParams((k) => searchParams.get(k));
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(conversationFromUrl);
   const [conversationList, setConversationList] = useState<ConversationItem[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [noteDraft, setNoteDraft] = useState("");
   const [savingNote, setSavingNote] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [messageFeedback, setMessageFeedback] = useState<{
+    msg: Message;
+    label: "good" | "bad";
+  } | null>(null);
+  const [messageFeedbackSubmitting, setMessageFeedbackSubmitting] = useState(false);
+  const [feedbackByContentKey, setFeedbackByContentKey] = useState<Record<string, "good" | "bad">>(
+    {}
+  );
   const [providers, setProviders] = useState<LlmProvider[]>([]);
   const [providerId, setProviderId] = useState("");
+  const [chatMode, setChatMode] = useState<"traditional" | "heap">("traditional");
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [collapsedStepsByMsg, setCollapsedStepsByMsg] = useState<Record<string, boolean>>({});
-  const [pendingHelp, setPendingHelp] = useState<{ count: number; requests: PendingHelpRequest[] }>({ count: 0, requests: [] });
-  const [respondingToRunId, setRespondingToRunId] = useState<string | null>(null);
-  const [pendingReplyByRunId, setPendingReplyByRunId] = useState<Record<string, string>>({});
+  const [shellCommandLoading, setShellCommandLoading] = useState(false);
+  const [pendingInputIds, setPendingInputIds] = useState<Set<string>>(new Set());
+  const [runWaiting, setRunWaiting] = useState(false);
+  const [runWaitingData, setRunWaitingData] = useState<{
+    runId: string;
+    question?: string;
+    options?: string[];
+  } | null>(null);
+  /** Option label currently being sent from the "What the agent needs" card; cleared when loading becomes false. */
+  const [runWaitingOptionSending, setRunWaitingOptionSending] = useState<string | null>(null);
+  /** When set, an option was just clicked for this message; show loading on that option and disable others until send completes. */
+  const [optionSending, setOptionSending] = useState<{ messageId: string; label: string } | null>(
+    null
+  );
 
   const CHAT_DEFAULT_PROVIDER_KEY = "chat-default-provider-id";
+  const CHAT_MODE_KEY = "chat-mode";
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const prevConversationIdRef = useRef<string | null>(null);
+  const crossTabStateRef = useRef<{ messageCount: number; loading: boolean }>({
+    messageCount: 0,
+    loading: false,
+  });
+  const loadingStartedAtRef = useRef<number | null>(null);
+  const minLoadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** When the user last changed the input (keystroke); used to avoid overwriting with stale draft from broadcast. */
+  const lastLocalInputChangeAtRef = useRef<number>(0);
+  /** Current input value so broadcast handler can read latest without stale closure. */
+  const currentInputRef = useRef(input);
+  currentInputRef.current = input;
+  /** Latest message count so load effect's background fetch does not overwrite when we have more messages (e.g. in-progress turn). */
+  const latestMessageCountRef = useRef(0);
+  latestMessageCountRef.current = messages.length;
+  /** Current conversationId so notification-driven refetch can read latest without stale closure. */
+  const conversationIdRef = useRef<string | null>(conversationId);
+  conversationIdRef.current = conversationId;
+
+  const resizeInput = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, []);
+
+  useEffect(() => {
+    resizeInput();
+  }, [input, resizeInput]);
 
   const startNewChat = useCallback(() => {
-    fetch("/api/chat/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) })
+    fetch("/api/chat/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
       .then((r) => r.json())
       .then((data) => {
         if (data.id) {
           setConversationId(data.id);
           setMessages([]);
-          setConversationList((prev) => [{ id: data.id, title: null, rating: null, note: null, createdAt: Date.now() }, ...prev]);
+          setConversationList((prev) => [
+            { id: data.id, title: null, rating: null, note: null, createdAt: Date.now() },
+            ...prev,
+          ]);
         }
       })
       .catch(() => {});
   }, []);
 
-  const deleteConversation = useCallback(async (id: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    try {
-      const res = await fetch(`/api/chat/conversations/${id}`, { method: "DELETE" });
-      if (!res.ok) return;
-      const nextList = conversationList.filter((c) => c.id !== id);
-      setConversationList(nextList);
-      if (conversationId === id) {
-        if (nextList.length > 0) {
-          setConversationId(nextList[0].id);
-          setMessages([]);
-        } else {
-          setConversationId(null);
-          setMessages([]);
-          startNewChat();
+  const deleteConversation = useCallback(
+    async (id: string, e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        const res = await fetch(`/api/chat/conversations/${id}`, { method: "DELETE" });
+        if (!res.ok) return;
+        const nextList = conversationList.filter((c) => c.id !== id);
+        setConversationList(nextList);
+        if (conversationId === id) {
+          if (nextList.length > 0) {
+            setConversationId(nextList[0].id);
+            setMessages([]);
+          } else {
+            setConversationId(null);
+            setMessages([]);
+            startNewChat();
+          }
         }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
-  }, [conversationId, conversationList, startNewChat]);
+    },
+    [conversationId, conversationList, startNewChat]
+  );
 
   const fetchConversationList = useCallback(() => {
-    fetch("/api/chat/conversations")
+    fetch("/api/chat/conversations", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : [];
         setConversationList(list);
         setConversationId((current) => {
-          if (!current && list.length > 0) return list[0].id;
+          if (!current && list.length > 0) {
+            const lastActive = getLastActiveConversationId();
+            if (lastActive && list.some((c: { id: string }) => c.id === lastActive))
+              return lastActive;
+            return list[0].id;
+          }
           return current;
         });
         setLoaded(true);
@@ -251,6 +209,356 @@ export default function ChatSection({ onOpenSettings }: Props) {
     fetchConversationList();
   }, [fetchConversationList]);
 
+  useEffect(() => {
+    if (conversationFromUrl) setConversationId(conversationFromUrl);
+  }, [conversationFromUrl]);
+
+  // Content key for matching feedback to messages (stable across restore/API replace)
+  const feedbackContentKey = useCallback(
+    (prev: string, out: string) => `${prev}\n\x00\n${out}`,
+    []
+  );
+
+  // Load chat feedback and map by (input, output) so thumb state survives restore and API message replace
+  useEffect(() => {
+    if (messages.length === 0) {
+      setFeedbackByContentKey({});
+      return;
+    }
+    fetch("/api/feedback?targetType=chat")
+      .then((r) => r.json())
+      .then((list: { input: unknown; output: unknown; label: string; createdAt: number }[]) => {
+        const items = Array.isArray(list) ? list : [];
+        const byKey: Record<string, "good" | "bad"> = {};
+        items
+          .filter((f) => f.label === "good" || f.label === "bad")
+          .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+          .forEach((f) => {
+            const inStr = typeof f.input === "string" ? f.input : JSON.stringify(f.input ?? "");
+            const outStr = typeof f.output === "string" ? f.output : JSON.stringify(f.output ?? "");
+            const key = `${inStr}\n\x00\n${outStr}`;
+            if (byKey[key] === undefined) byKey[key] = f.label as "good" | "bad";
+          });
+        setFeedbackByContentKey(byKey);
+      })
+      .catch(() => setFeedbackByContentKey({}));
+  }, [messages]);
+
+  useEffect(() => {
+    const fetchPendingFromNotifications = () => {
+      fetch("/api/notifications?status=active&types=chat&limit=100")
+        .then((r) => r.json())
+        .then((d) => {
+          const items = Array.isArray(d.items) ? d.items : [];
+          setPendingInputIds(new Set(items.map((n: { sourceId: string }) => n.sourceId)));
+        })
+        .catch(() => setPendingInputIds(new Set()));
+    };
+    fetchPendingFromNotifications();
+    const interval = setInterval(fetchPendingFromNotifications, 5000);
+    const onUpdated = () => {
+      fetchPendingFromNotifications();
+    };
+    window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+    };
+  }, []);
+
+  const fetchRunWaiting = useCallback(() => {
+    if (!conversationId) return;
+    fetch(`/api/chat/run-waiting?conversationId=${encodeURIComponent(conversationId)}`, {
+      cache: "no-store",
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.runWaiting === true) {
+          const runId = d.runId ?? "";
+          const data = {
+            runId,
+            question: d.question,
+            options: Array.isArray(d.options) ? d.options : [],
+          };
+          const willFetchAgentRequest = !!(
+            runId &&
+            (!data.question?.trim() || (Array.isArray(data.options) && data.options.length === 0))
+          );
+          // #region agent log
+          fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              location: "chat-section:fetchRunWaiting",
+              message: "run-waiting true",
+              data: {
+                runId,
+                questionLen: data.question?.length ?? 0,
+                optionsLen: data.options?.length ?? 0,
+                willFetchAgentRequest,
+              },
+              hypothesisId: "H1",
+              timestamp: Date.now(),
+            }),
+          }).catch(() => {});
+          // #endregion
+          setRunWaiting(true);
+          setRunWaitingData(data);
+          setRunWaitingInCache(conversationId, data);
+          // If run-waiting didn't return question/options, fetch from run's agent-request endpoint (single source of truth)
+          if (willFetchAgentRequest) {
+            fetch(`/api/runs/${encodeURIComponent(runId)}/agent-request`, { cache: "no-store" })
+              .then((ar) => (ar.ok ? ar.json() : null))
+              .then((payload: { question?: string; options?: string[] } | null) => {
+                if (!payload) return;
+                const question =
+                  typeof payload.question === "string" && payload.question.trim()
+                    ? payload.question.trim()
+                    : undefined;
+                const options = Array.isArray(payload.options) ? payload.options : [];
+                // #region agent log
+                fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    location: "chat-section:agent-request-then",
+                    message: "agent-request response",
+                    data: {
+                      runId,
+                      questionLen: question?.length ?? 0,
+                      optionsLen: options.length,
+                      willMerge: !!(question || options.length > 0),
+                    },
+                    hypothesisId: "H4",
+                    timestamp: Date.now(),
+                  }),
+                }).catch(() => {});
+                // #endregion
+                if (question || options.length > 0) {
+                  setRunWaitingData((prev) =>
+                    prev?.runId === runId && prev
+                      ? {
+                          runId: prev.runId,
+                          question: question ?? prev.question,
+                          options: options.length > 0 ? options : (prev.options ?? []),
+                        }
+                      : prev
+                  );
+                  setRunWaitingInCache(conversationId, {
+                    runId,
+                    question,
+                    options: options.length > 0 ? options : (data.options ?? []),
+                  });
+                }
+              })
+              .catch(() => {});
+          }
+        } else {
+          setRunWaiting(false);
+          setRunWaitingData(null);
+          setRunWaitingInCache(conversationId, null);
+        }
+      })
+      .catch(() => {
+        setRunWaiting(false);
+        setRunWaitingData(null);
+        setRunWaitingInCache(conversationId, null);
+      });
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId) {
+      setRunWaiting(false);
+      setRunWaitingData(null);
+      return;
+    }
+    const cached = getRunWaitingFromCache(conversationId);
+    if (cached) {
+      setRunWaiting(true);
+      setRunWaitingData(cached);
+    }
+    fetchRunWaiting();
+    const interval = setInterval(fetchRunWaiting, 2000);
+    return () => clearInterval(interval);
+  }, [conversationId, fetchRunWaiting]);
+
+  useEffect(() => {
+    const syncRunBannerFromNotifications = () => {
+      fetch("/api/notifications?status=active&types=run&limit=1")
+        .then((r) => r.json())
+        .then((d) => {
+          const items = Array.isArray(d.items) ? d.items : [];
+          if (items.length === 0) return;
+          const first = items[0];
+          const runId = first.sourceId;
+          fetch(`/api/runs/${encodeURIComponent(runId)}`, { cache: "no-store" })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((run: { conversationId?: string | null } | null) => {
+              const runConvId = run?.conversationId ?? null;
+              if (runConvId && runConvId === conversationIdRef.current) {
+                fetch(`/api/chat?conversationId=${encodeURIComponent(runConvId)}`, {
+                  cache: "no-store",
+                })
+                  .then((r) => r.json())
+                  .then((data) => {
+                    if (!Array.isArray(data)) return;
+                    const apiMessages = data.map((m: Record<string, unknown>) => {
+                      const raw = m.toolCalls;
+                      const toolResults = (
+                        Array.isArray(raw) ? normalizeToolResults(raw) : undefined
+                      ) as ToolResult[] | undefined;
+                      return {
+                        id: m.id as string,
+                        role: m.role as "user" | "assistant",
+                        content: m.content as string,
+                        toolResults,
+                        ...(m.status !== undefined && {
+                          status: m.status as "completed" | "waiting_for_input",
+                        }),
+                        ...(m.interactivePrompt != null && {
+                          interactivePrompt: m.interactivePrompt as InteractivePrompt,
+                        }),
+                        ...(m.todos != null && { todos: m.todos as string[] }),
+                        ...(m.completedStepIndices != null && {
+                          completedStepIndices: m.completedStepIndices as number[],
+                        }),
+                      } as Message;
+                    });
+                    setMessages((prev) => {
+                      const skip = apiMessages.length < prev.length;
+                      const lastPrev = prev[prev.length - 1];
+                      const lastApi = apiMessages[apiMessages.length - 1];
+                      const localRicher =
+                        lastPrev?.role === "assistant" &&
+                        lastApi?.role === "assistant" &&
+                        (lastPrev.content ?? "").trim().length > 0 &&
+                        (lastApi.content ?? "").trim().length === 0;
+                      if (skip || localRicher) return prev;
+                      return apiMessages;
+                    });
+                  })
+                  .catch(() => {});
+              }
+            })
+            .catch(() => {});
+        })
+        .catch(() => {});
+    };
+    syncRunBannerFromNotifications();
+    const interval = setInterval(syncRunBannerFromNotifications, 10_000);
+    const onUpdated = () => {
+      syncRunBannerFromNotifications();
+    };
+    window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+    };
+  }, []);
+
+  // When we have a waiting run but no question (e.g. from cache or run started outside chat), fetch agent-request by run ID
+  useEffect(() => {
+    const data = runWaitingData;
+    if (!data?.runId) return;
+    const noRealQuestion =
+      !data.question ||
+      data.question.trim() === "" ||
+      data.question === "The agent is waiting for your input.";
+    if (!noRealQuestion) return;
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "chat-section:backfill-effect",
+        message: "backfill running",
+        data: { runId: data.runId },
+        hypothesisId: "H4",
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+    let cancelled = false;
+    fetch(`/api/runs/${encodeURIComponent(data.runId)}/agent-request`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((payload: { question?: string; options?: string[] } | null) => {
+        if (cancelled || !payload) return;
+        const question =
+          typeof payload.question === "string" && payload.question.trim()
+            ? payload.question.trim()
+            : undefined;
+        const options = Array.isArray(payload.options) ? payload.options : [];
+        // #region agent log
+        fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            location: "chat-section:backfill-then",
+            message: "backfill agent-request response",
+            data: {
+              runId: data.runId,
+              questionLen: question?.length ?? 0,
+              optionsLen: options.length,
+            },
+            hypothesisId: "H4",
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion
+        if (question || options.length > 0) {
+          setRunWaitingData((prev) =>
+            prev?.runId === data.runId
+              ? {
+                  ...prev,
+                  question: question ?? prev?.question,
+                  options: options.length > 0 ? options : (prev?.options ?? []),
+                }
+              : prev
+          );
+          if (conversationId) {
+            setRunWaitingInCache(conversationId, {
+              runId: data.runId,
+              question: question ?? undefined,
+              options: options.length > 0 ? options : (data.options ?? []),
+            });
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [runWaitingData?.runId, runWaitingData?.question, conversationId]);
+
+  // Per-conversation input drafts: save when switching away, load when switching to a conversation
+  useEffect(() => {
+    const prev = prevConversationIdRef.current;
+    if (prev) setDraft(prev, input);
+    prevConversationIdRef.current = conversationId;
+    if (conversationId) {
+      setInput(getDraft(conversationId));
+      lastLocalInputChangeAtRef.current = Date.now();
+    }
+  }, [conversationId]);
+
+  // Save draft on page unload so refresh/navigation preserves it (including empty = clear draft)
+  useEffect(() => {
+    const onBeforeUnload = () => {
+      if (conversationId) setDraft(conversationId, input);
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [conversationId, input]);
+
+  // Debounced draft save so text typed here is visible in the FAB modal (and survives without switching conversation)
+  useEffect(() => {
+    if (!conversationId) return;
+    const t = setTimeout(() => {
+      setDraft(conversationId, input);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [conversationId, input]);
+
   // Refetch list when user returns to the tab so conversations started in the FAB are visible
   useEffect(() => {
     const onFocus = () => fetchConversationList();
@@ -258,35 +566,85 @@ export default function ChatSection({ onOpenSettings }: Props) {
     return () => window.removeEventListener("focus", onFocus);
   }, [fetchConversationList]);
 
-  // Load messages when conversation changes; restore from sessionStorage if we have recent state (e.g. user returned while thinking)
+  // Load messages when conversation changes; restore from shared cache if we have recent state (e.g. user returned while thinking)
   useEffect(() => {
     if (!conversationId) return;
-    const restored = loadChatSectionState(conversationId);
+    const restored = loadChatState(conversationId);
     if (restored) {
-      setMessages(restored.messages);
-      // If the saved state was loading and is recent (within 90s), treat it as in-flight so the user
-      // sees the thinking indicator; otherwise assume idle.
-      const isFresh = Date.now() - restored.timestamp <= 90_000;
-      setLoading(restored.loading && isFresh);
+      // #region agent log
+      if (typeof fetch !== "undefined")
+        fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "26876c" },
+          body: JSON.stringify({
+            sessionId: "26876c",
+            location: "chat-section:apply_restored",
+            message: "apply restored cache",
+            data: { msgLen: restored.messages.length, loading: restored.loading },
+            hypothesisId: "H4",
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+      // #endregion
+      const isFresh = Date.now() - restored.timestamp <= LOADING_FRESH_MS;
+      const restoredLoading = restored.loading && isFresh;
+      crossTabStateRef.current = {
+        messageCount: restored.messages.length,
+        loading: restoredLoading,
+      };
+      setMessages(restored.messages as Message[]);
+      setLoading(restoredLoading);
+      if (
+        restored.runWaiting != null &&
+        typeof restored.runWaiting === "object" &&
+        typeof (restored.runWaiting as { runId: string }).runId === "string"
+      ) {
+        setRunWaiting(true);
+        setRunWaitingData(
+          restored.runWaiting as { runId: string; question?: string; options?: string[] }
+        );
+      }
       setLoaded(true);
-      // Background fetch: if response completed while away, use API state
-      fetch(`/api/chat?conversationId=${encodeURIComponent(conversationId)}`)
+      // Background fetch: API is source of truth so updates are visible after refresh
+      fetch(`/api/chat?conversationId=${encodeURIComponent(conversationId)}`, { cache: "no-store" })
         .then((r) => r.json())
         .then((data) => {
           if (!Array.isArray(data)) return;
-          const apiMessages = data.map((m: Record<string, unknown>) => ({
-            id: m.id as string,
-            role: m.role as "user" | "assistant",
-            content: m.content as string,
-            toolResults: m.toolCalls as ToolResult[] | undefined,
-          })) as Message[];
-          if (!restored.loading) return;
-          const useApi = apiMessages.length > restored.messages.length
-            || (apiMessages.length > 0 && restored.messages.length > 0
-                && (apiMessages[apiMessages.length - 1] as Message).role === "assistant"
-                && (apiMessages[apiMessages.length - 1] as Message).content.trim()
-                && !(restored.messages[restored.messages.length - 1] as Message).content.trim());
-          if (useApi) {
+          const apiMessages = data.map((m: Record<string, unknown>) => {
+            const raw = m.toolCalls;
+            const toolResults = (Array.isArray(raw) ? normalizeToolResults(raw) : undefined) as
+              | ToolResult[]
+              | undefined;
+            return {
+              id: m.id as string,
+              role: m.role as "user" | "assistant",
+              content: m.content as string,
+              toolResults,
+              ...(m.status !== undefined && {
+                status: m.status as "completed" | "waiting_for_input",
+              }),
+              ...(m.interactivePrompt != null && {
+                interactivePrompt: m.interactivePrompt as InteractivePrompt,
+              }),
+              ...(m.todos != null && { todos: m.todos as string[] }),
+              ...(m.completedStepIndices != null && {
+                completedStepIndices: m.completedStepIndices as number[],
+              }),
+            } as Message;
+          });
+          // Prefer API when it has at least as many messages as we had at restore; do not overwrite when we have more messages locally (in-progress or just-finished turn)
+          const currentCount = latestMessageCountRef.current;
+          const useApi =
+            apiMessages.length >= restored.messages.length && apiMessages.length >= currentCount;
+          const lastRestored = restored.messages[restored.messages.length - 1];
+          const lastApi = apiMessages[apiMessages.length - 1];
+          const localRicher =
+            lastRestored?.role === "assistant" &&
+            lastApi?.role === "assistant" &&
+            (lastRestored.content ?? "").trim().length > 0 &&
+            (lastApi.content ?? "").trim().length === 0;
+          if (useApi && !localRicher) {
+            crossTabStateRef.current = { messageCount: apiMessages.length, loading: false };
             setMessages(apiMessages);
             setLoading(false);
           }
@@ -294,43 +652,208 @@ export default function ChatSection({ onOpenSettings }: Props) {
         .catch(() => {});
       return;
     }
-    setLoaded(false);
-    fetch(`/api/chat?conversationId=${encodeURIComponent(conversationId)}`)
+    const currentCountAtStart = latestMessageCountRef.current;
+    // #region agent log
+    if (typeof fetch !== "undefined")
+      fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ce22a5" },
+        body: JSON.stringify({
+          sessionId: "ce22a5",
+          location: "chat-section:load_no_cache",
+          message: "load effect no cache, fetching",
+          data: { conversationId, currentCount: currentCountAtStart },
+          hypothesisId: "H1",
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    // #endregion
+    // When we already have optimistic messages (e.g. just sent: user + placeholder), don't set loaded false so persist keeps running and UI doesn't flicker
+    if (currentCountAtStart < 2) setLoaded(false);
+    fetch(`/api/chat?conversationId=${encodeURIComponent(conversationId)}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) {
-          setMessages(data.map((m: Record<string, unknown>) => ({
+        if (!Array.isArray(data)) return;
+        const currentCount = latestMessageCountRef.current;
+        const useApi = data.length >= currentCount;
+        // #region agent log
+        if (typeof fetch !== "undefined")
+          fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ce22a5" },
+            body: JSON.stringify({
+              sessionId: "ce22a5",
+              location: "chat-section:load_no_cache_set",
+              message: "no-cache fetch result",
+              data: { apiLen: data.length, currentCount, useApi },
+              hypothesisId: "H1",
+              timestamp: Date.now(),
+            }),
+          }).catch(() => {});
+        // #endregion
+        if (!useApi) {
+          setLoaded(true);
+          return;
+        }
+        const msgs = data.map((m: Record<string, unknown>) => {
+          const raw = m.toolCalls;
+          const toolResults = (Array.isArray(raw) ? normalizeToolResults(raw) : undefined) as
+            | ToolResult[]
+            | undefined;
+          return {
             id: m.id as string,
             role: m.role as "user" | "assistant",
             content: m.content as string,
-            toolResults: m.toolCalls as ToolResult[] | undefined,
-          })));
-        }
+            toolResults,
+            ...(m.status !== undefined && {
+              status: m.status as "completed" | "waiting_for_input",
+            }),
+            ...(m.interactivePrompt != null && {
+              interactivePrompt: m.interactivePrompt as InteractivePrompt,
+            }),
+            ...(m.todos != null && { todos: m.todos as string[] }),
+            ...(m.completedStepIndices != null && {
+              completedStepIndices: m.completedStepIndices as number[],
+            }),
+          } as Message;
+        });
+        let applied = false;
+        setMessages((prev) => {
+          const lastPrev = prev[prev.length - 1];
+          const lastApi = msgs[msgs.length - 1];
+          const localRicher =
+            lastPrev?.role === "assistant" &&
+            lastApi?.role === "assistant" &&
+            (lastPrev.content ?? "").trim().length > 0 &&
+            (lastApi.content ?? "").trim().length === 0;
+          if (localRicher) return prev;
+          applied = true;
+          return msgs;
+        });
+        crossTabStateRef.current = {
+          messageCount: applied ? msgs.length : latestMessageCountRef.current,
+          loading: false,
+        };
+        setLoading(false);
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
   }, [conversationId]);
 
-  // Persist messages and loading so returning to the page restores thinking state
+  // Persist messages, loading, and draft (debounced; broadcasts to other tabs via BroadcastChannel)
+  const persistDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!conversationId || !loaded) return;
-    saveChatSectionState(conversationId, messages, loading);
-  }, [conversationId, loaded, messages, loading]);
+    if (persistDebounceRef.current) clearTimeout(persistDebounceRef.current);
+    persistDebounceRef.current = setTimeout(() => {
+      persistDebounceRef.current = null;
+      // #region agent log
+      if (typeof fetch !== "undefined")
+        fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            location: "chat-section:persist",
+            message: "saveChatState",
+            data: { msgLen: messages.length, loading },
+            hypothesisId: "H3",
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+      // #endregion
+      saveChatState(conversationId, messages, loading, input);
+    }, 600);
+    return () => {
+      if (persistDebounceRef.current) clearTimeout(persistDebounceRef.current);
+    };
+  }, [conversationId, loaded, messages, loading, input]);
 
-  const currentConversation = conversationId ? conversationList.find((c) => c.id === conversationId) : null;
+  // Cross-tab: when another tab updates the cache, show updated thinking state (throttled to avoid constant refresh)
+  const crossTabApplyRef = useRef<{
+    conversationId: string;
+    timestamp: number;
+    appliedAt: number;
+  } | null>(null);
+  const CROSS_TAB_THROTTLE_MS = 2500;
+  useEffect(() => {
+    const unsubscribe = subscribeToChatStateChanges((cid, data) => {
+      if (cid !== conversationId) return;
+      const now = Date.now();
+      const prev = crossTabApplyRef.current;
+      if (prev?.conversationId === cid && data.timestamp <= prev.timestamp) return;
+      if (prev?.conversationId === cid && now - prev.appliedAt < CROSS_TAB_THROTTLE_MS) return;
+      const state = crossTabStateRef.current;
+      const msgCount = data.messages?.length ?? 0;
+      if (data.loading && msgCount <= state.messageCount && !state.loading) return;
+      if (shouldSkipLoadingFalseFromOtherTab(state, data.loading, msgCount)) return;
+      // Don't apply stale "loading true" broadcast that would re-show spinner and overwrite completed response (stream finished in this tab, then old persist broadcasts)
+      if (!state.loading && data.loading && msgCount <= state.messageCount) return;
+      // #region agent log
+      if (typeof fetch !== "undefined")
+        fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            location: "chat-section:cross_tab",
+            message: "cross-tab apply",
+            data: { msgLen: data.messages?.length, loading: data.loading },
+            hypothesisId: "H2",
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+      // #endregion
+      crossTabApplyRef.current = { conversationId: cid, timestamp: data.timestamp, appliedAt: now };
+      const isFresh = now - data.timestamp <= LOADING_FRESH_MS;
+      const nextLoading = data.loading && isFresh;
+      crossTabStateRef.current = { messageCount: msgCount, loading: nextLoading };
+      setMessages(data.messages as Message[]);
+      setLoading(nextLoading);
+      // Only apply incoming draft when not actively typing (avoids overwriting with older debounced save = isolated word pieces)
+      if (data.draft !== undefined) {
+        const idleMs = 2000;
+        const current = currentInputRef.current;
+        if (current === "" || now - lastLocalInputChangeAtRef.current > idleMs)
+          setInput(data.draft);
+      }
+      if (data.runWaiting !== undefined) {
+        const rw = data.runWaiting;
+        if (
+          rw != null &&
+          typeof rw === "object" &&
+          typeof (rw as { runId: string }).runId === "string"
+        ) {
+          setRunWaiting(true);
+          setRunWaitingData(rw as { runId: string; question?: string; options?: string[] });
+        } else {
+          setRunWaiting(false);
+          setRunWaitingData(null);
+        }
+      }
+    });
+    return unsubscribe;
+  }, [conversationId]);
+
+  const currentConversation = conversationId
+    ? conversationList.find((c) => c.id === conversationId)
+    : null;
   useEffect(() => {
     setNoteDraft(currentConversation?.note ?? "");
   }, [currentConversation?.id, currentConversation?.note]);
 
-  const saveConversationRating = useCallback(async (rating: number | null) => {
-    if (!conversationId) return;
-    await fetch(`/api/chat/conversations/${conversationId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rating }),
-    });
-    setConversationList((prev) => prev.map((c) => (c.id === conversationId ? { ...c, rating } : c)));
-  }, [conversationId]);
+  const saveConversationRating = useCallback(
+    async (rating: number | null) => {
+      if (!conversationId) return;
+      await fetch(`/api/chat/conversations/${conversationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating }),
+      });
+      setConversationList((prev) =>
+        prev.map((c) => (c.id === conversationId ? { ...c, rating } : c))
+      );
+    },
+    [conversationId]
+  );
 
   const saveConversationNote = useCallback(async () => {
     if (!conversationId) return;
@@ -341,38 +864,45 @@ export default function ChatSection({ onOpenSettings }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ note: noteDraft.trim() || null }),
       });
-      setConversationList((prev) => prev.map((c) => (c.id === conversationId ? { ...c, note: noteDraft.trim() || null } : c)));
+      setConversationList((prev) =>
+        prev.map((c) => (c.id === conversationId ? { ...c, note: noteDraft.trim() || null } : c))
+      );
     } finally {
       setSavingNote(false);
     }
   }, [conversationId, noteDraft]);
 
-  const fetchPendingHelp = useCallback(() => {
-    fetch("/api/runs/pending-help")
-      .then((r) => r.json())
-      .then((data) => {
-        const count = typeof data.count === "number" ? data.count : 0;
-        const requests = Array.isArray(data.requests) ? data.requests as PendingHelpRequest[] : [];
-        setPendingHelp({ count, requests });
-      })
-      .catch(() => setPendingHelp({ count: 0, requests: [] }));
-  }, []);
-
   useEffect(() => {
-    fetchPendingHelp();
-    const interval = setInterval(fetchPendingHelp, 8000);
-    return () => clearInterval(interval);
-  }, [fetchPendingHelp]);
-
-  useEffect(() => {
-    fetch("/api/llm/providers")
-      .then((r) => r.json())
-      .then((data) => {
-        const list = Array.isArray(data) ? data : [];
-        setProviders(list);
-        const saved = typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_DEFAULT_PROVIDER_KEY) : null;
-        const valid = saved && list.some((p: LlmProvider) => p.id === saved);
-        setProviderId(valid ? saved : (list[0]?.id ?? ""));
+    Promise.all([
+      fetch("/api/llm/providers").then((r) => {
+        if (!r.ok) return [];
+        return r.json().then((data) => (Array.isArray(data) ? data : []));
+      }),
+      fetch("/api/ollama/models")
+        .then((r) => (r.ok ? r.json() : { models: [] }))
+        .catch(() => ({ models: [] })),
+    ])
+      .then(([raw, ollamaData]) => {
+        const list = (raw as LlmProvider[]).filter(
+          (p) => p && typeof p.id === "string" && p.id.trim() !== ""
+        ) as LlmProvider[];
+        const ollamaModels = Array.isArray((ollamaData as { models?: { name: string }[] }).models)
+          ? (ollamaData as { models: { name: string }[] }).models.map((m) => m.name)
+          : [];
+        const merged: LlmProvider[] = [...list];
+        if (ollamaModels.length > 0) {
+          for (const name of ollamaModels) {
+            if (!merged.some((p) => p.id === `local:${name}`))
+              merged.push({ id: `local:${name}`, provider: "local", model: name });
+          }
+        }
+        setProviders(merged);
+        const saved =
+          typeof localStorage !== "undefined"
+            ? localStorage.getItem(CHAT_DEFAULT_PROVIDER_KEY)
+            : null;
+        const valid = saved && merged.some((p) => p.id === saved);
+        setProviderId(valid ? saved : (merged[0]?.id ?? ""));
       })
       .catch(() => setProviders([]));
   }, []);
@@ -380,537 +910,434 @@ export default function ChatSection({ onOpenSettings }: Props) {
   const handleProviderChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setProviderId(value);
-    if (typeof localStorage !== "undefined" && value) localStorage.setItem(CHAT_DEFAULT_PROVIDER_KEY, value);
+    if (typeof localStorage !== "undefined" && value)
+      localStorage.setItem(CHAT_DEFAULT_PROVIDER_KEY, value);
   }, []);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+    if (typeof window === "undefined") return;
+    try {
+      const s = localStorage.getItem(CHAT_MODE_KEY);
+      if (s === "heap") setChatMode("heap");
+    } catch {
+      // ignore
+    }
+  }, []);
+  const handleChatModeChange = useCallback((mode: "traditional" | "heap") => {
+    setChatMode(mode);
+    try {
+      localStorage.setItem(CHAT_MODE_KEY, mode);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const lastMsg = messages[messages.length - 1];
+  const lastTraceSteps = lastMsg?.role === "assistant" ? lastMsg.traceSteps : undefined;
+  const lastTracePhase = lastTraceSteps?.length
+    ? lastTraceSteps[lastTraceSteps.length - 1].phase
+    : undefined;
+  // Unstick: if last message has a "done" trace step but loading is still true (e.g. "done" event missed), clear loading
+  useEffect(() => {
+    if (loading && lastMsg?.role === "assistant" && lastTracePhase === "done") {
+      setLoading(false);
+      crossTabStateRef.current = { ...crossTabStateRef.current, loading: false };
+    }
+  }, [loading, lastMsg?.role, lastTracePhase]);
+  // Clear option-sending state when request finishes so buttons are clickable again
+  useEffect(() => {
+    if (!loading) {
+      setOptionSending(null);
+      setRunWaitingOptionSending(null);
+    }
+  }, [loading]);
+  // Only auto-scroll when we're actively streaming (loading + assistant last), not on every messages update (refetch/cross-tab would scroll away)
+  useEffect(() => {
+    if (loading && lastMsg?.role === "assistant") {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }
+  }, [loading, lastTraceSteps, lastMsg?.role]);
 
   const stopRequest = useCallback(() => {
     abortRef.current?.abort();
   }, []);
 
-  const send = useCallback(async () => {
-    const text = input.trim();
-    if (!text || loading) return;
-    setInput("");
-    const userMsg: Message = { id: randomId(), role: "user", content: text };
-    const placeholderId = randomId();
-    const placeholderMsg: Message = { id: placeholderId, role: "assistant", content: "" };
-    setMessages((prev) => [...prev, userMsg, placeholderMsg]);
-    setLoading(true);
-    abortRef.current = new AbortController();
-    const updatePlaceholder = (updates: Partial<Message>, flush = false) => {
-      const updater = () => setMessages((prev) => prev.map((m) => (m.id === placeholderId ? { ...m, ...updates } : m)));
-      if (flush) flushSync(updater);
-      else updater();
-    };
-    try {
-      const history = messages.map((m) => ({ role: m.role, content: m.content }));
-      const body: Record<string, unknown> = { message: text, history };
-      if (providerId) body.providerId = providerId;
-      body.uiContext = getUiContext(pathname);
-      if (conversationId) body.conversationId = conversationId;
-      const res = await fetch("/api/chat?stream=1", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify(body),
-        signal: abortRef.current.signal,
+  const send = useCallback(
+    async (textOverride?: string, extraBody?: Record<string, unknown>) => {
+      const text = textOverride !== undefined ? textOverride : input.trim();
+      if (!text || loading) return;
+      abortRef.current?.abort();
+      const sendingFromAgentRequestCard = textOverride !== undefined && runWaitingData != null;
+      if (!sendingFromAgentRequestCard) {
+        setRunWaiting(false);
+        setRunWaitingData(null);
+      }
+      if (textOverride === undefined && !extraBody?.continueShellApproval) {
+        setInput("");
+        if (conversationId) setDraft(conversationId, "");
+      }
+      const userMsg: Message = { id: randomId(), role: "user", content: text };
+      const placeholderId = randomId();
+      flushSync(() => {
+        setMessages((prev) => [
+          ...prev,
+          userMsg,
+          { id: placeholderId, role: "assistant", content: "" },
+        ]);
       });
-      if (!res.ok) {
-        const raw = await res.text();
-        let errMsg = "Request failed";
-        try {
-          const data = raw ? JSON.parse(raw) : {};
-          const e = data.error?.trim().replace(/^\.\s*/, "") || "";
-          if (e && e !== ".") errMsg = e;
-        } catch {}
-        updatePlaceholder({ content: `Error: ${errMsg}` });
-        setLoading(false);
-        abortRef.current = null;
-        return;
+      // #region agent log
+      if (typeof fetch !== "undefined")
+        fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "26876c" },
+          body: JSON.stringify({
+            sessionId: "26876c",
+            location: "chat-section:send_flushed",
+            message: "send: flushed user+placeholder",
+            data: {
+              messagesLen: messages.length,
+              placeholderId: placeholderId.slice(0, 8),
+              conversationId: conversationId ?? null,
+            },
+            hypothesisId: "H2",
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+      // #endregion
+      loadingStartedAtRef.current = Date.now();
+      if (minLoadingTimerRef.current) {
+        clearTimeout(minLoadingTimerRef.current);
+        minLoadingTimerRef.current = null;
       }
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      if (!reader) {
-        updatePlaceholder({ content: "Error: No response body." });
-        setLoading(false);
-        abortRef.current = null;
-        return;
-      }
-      try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n\n");
-          buffer = lines.pop() ?? "";
-          for (const line of lines) {
-            const dataMatch = line.match(/^data:\s*(.+)$/m);
-            if (!dataMatch) continue;
-            try {
-              const event = JSON.parse(dataMatch[1].trim()) as {
-                type: string;
-                reasoning?: string;
-                todos?: string[];
-                index?: number;
-                stepIndex?: number;
-                content?: string;
-                toolResults?: ToolResult[];
-                messageId?: string;
-                userMessageId?: string;
-                conversationId?: string;
-                conversationTitle?: string;
-                rephrasedPrompt?: string;
-                completedStepIndices?: number[];
-                error?: string;
-                phase?: string;
-                label?: string;
-                contentPreview?: string;
-              };
-              if (event.type === "trace_step") {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === placeholderId
-                      ? { ...m, traceSteps: [...(m.traceSteps ?? []), { phase: event.phase ?? "", label: event.label, contentPreview: event.contentPreview }] }
-                      : m
-                  )
-                );
-              } else if (event.type === "rephrased_prompt" && event.rephrasedPrompt != null) updatePlaceholder({ rephrasedPrompt: event.rephrasedPrompt });
-              else if (event.type === "plan") updatePlaceholder({ reasoning: event.reasoning ?? "", todos: event.todos ?? [], completedStepIndices: [], executingStepIndex: undefined, executingToolName: undefined, executingTodoLabel: undefined, executingSubStepLabel: undefined }, true);
-              else if (event.type === "step_start" && event.stepIndex !== undefined) updatePlaceholder({
-                executingStepIndex: event.stepIndex,
-                executingToolName: (event as { toolName?: string }).toolName,
-                executingTodoLabel: (event as { todoLabel?: string }).todoLabel,
-                executingSubStepLabel: (event as { subStepLabel?: string }).subStepLabel,
-              }, true);
-              else if (event.type === "todo_done" && event.index !== undefined) {
-                flushSync(() =>
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === placeholderId ? { ...m, completedStepIndices: [...(m.completedStepIndices ?? []), event.index!], executingStepIndex: undefined, executingToolName: undefined, executingTodoLabel: undefined, executingSubStepLabel: undefined } : m
-                    )
-                  )
-                );
-              } else if (event.type === "done") {
-                updatePlaceholder({
-                  content: event.content ?? "",
-                  toolResults: event.toolResults,
-                  ...(event.reasoning !== undefined && { reasoning: event.reasoning }),
-                  ...(event.todos !== undefined && { todos: event.todos }),
-                  completedStepIndices: event.completedStepIndices,
-                  executingStepIndex: undefined,
-                  executingToolName: undefined,
-                  executingTodoLabel: undefined,
-                  executingSubStepLabel: undefined,
-                  ...(event.rephrasedPrompt !== undefined && { rephrasedPrompt: event.rephrasedPrompt }),
-                }, true);
-                if (event.messageId) setMessages((prev) => prev.map((m) => (m.id === placeholderId ? { ...m, id: event.messageId! } : m)));
-                if (event.userMessageId) setMessages((prev) => prev.map((m) => (m.id === userMsg.id ? { ...m, id: event.userMessageId! } : m)));
-                if (event.conversationId) {
-                  setConversationId(event.conversationId);
-                  const newTitle = event.conversationTitle ?? null;
-                  setConversationList((prev) => {
-                    const has = prev.some((c) => c.id === event.conversationId);
-                    if (has) return prev.map((c) => (c.id === event.conversationId ? { ...c, title: newTitle ?? c.title } : c));
-                    return [{ id: event.conversationId!, title: newTitle, rating: null, note: null, createdAt: Date.now() }, ...prev];
-                  });
-                }
-              } else if (event.type === "error") {
-                const errorContent = `Error: ${event.error ?? "Unknown error"}`;
-                if (event.messageId) setMessages((prev) => prev.map((m) => (m.id === placeholderId ? { ...m, id: event.messageId!, content: errorContent } : m)));
-                else updatePlaceholder({ content: errorContent });
-                if (event.userMessageId) setMessages((prev) => prev.map((m) => (m.id === userMsg.id ? { ...m, id: event.userMessageId! } : m)));
-              }
-            } catch {
-              // skip
-            }
-          }
+      setLoading(true);
+      crossTabStateRef.current = { messageCount: messages.length + 2, loading: true };
+      abortRef.current = new AbortController();
+      const setLoadingWithMinDisplay = (v: boolean) => {
+        if (v) {
+          setLoading(true);
+          return;
         }
-      } finally {
-        reader.releaseLock();
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
-        updatePlaceholder({ content: "Request stopped." });
-        setInput(text);
-      } else {
-        updatePlaceholder({ content: "Failed to reach assistant." });
-      }
-    } finally {
-      setLoading(false);
+        const started = loadingStartedAtRef.current;
+        const elapsed = started != null ? Date.now() - started : MIN_LOADING_DISPLAY_MS;
+        const remaining = Math.max(0, MIN_LOADING_DISPLAY_MS - elapsed);
+        if (remaining > 0) {
+          minLoadingTimerRef.current = setTimeout(() => {
+            minLoadingTimerRef.current = null;
+            setLoading(false);
+            crossTabStateRef.current = { ...crossTabStateRef.current, loading: false };
+          }, remaining);
+        } else {
+          setLoading(false);
+          crossTabStateRef.current = { ...crossTabStateRef.current, loading: false };
+        }
+      };
+      await performChatStreamSend({
+        text,
+        messages,
+        placeholderId,
+        userMsgId: userMsg.id,
+        conversationId,
+        providerId,
+        uiContext: getUiContext(pathname),
+        setMessages,
+        setConversationId,
+        setConversationList,
+        setLoading: setLoadingWithMinDisplay,
+        abortSignal: abortRef.current?.signal,
+        randomId,
+        normalizeToolResults,
+        buildBody: (base) => base,
+        extraBody: {
+          ...(replyToRunId && { runId: replyToRunId }),
+          useHeapMode: chatMode === "heap",
+          ...extraBody,
+        },
+        onRunFinished: (runId, status, details) => {
+          if (status === "waiting_for_user") {
+            if (details && (details.question || (details.options && details.options.length > 0))) {
+              setRunWaiting(true);
+              setRunWaitingData({
+                runId,
+                question: details.question,
+                options: details.options,
+              });
+              if (conversationId)
+                setRunWaitingInCache(conversationId, {
+                  runId,
+                  question: details.question,
+                  options: details.options,
+                });
+            }
+            void fetchRunWaiting();
+          }
+          if (conversationId) {
+            fetch(`/api/chat?conversationId=${encodeURIComponent(conversationId)}`, {
+              cache: "no-store",
+            })
+              .then((r) => r.json())
+              .then((data) => {
+                if (!Array.isArray(data)) return;
+                const apiMessages = data.map((m: Record<string, unknown>) => {
+                  const raw = m.toolCalls;
+                  const toolResults = (
+                    Array.isArray(raw) ? normalizeToolResults(raw) : undefined
+                  ) as ToolResult[] | undefined;
+                  return {
+                    id: m.id as string,
+                    role: m.role as "user" | "assistant",
+                    content: m.content as string,
+                    toolResults,
+                    ...(m.status !== undefined && {
+                      status: m.status as "completed" | "waiting_for_input",
+                    }),
+                    ...(m.interactivePrompt != null && {
+                      interactivePrompt: m.interactivePrompt as InteractivePrompt,
+                    }),
+                    ...(m.todos != null && { todos: m.todos as string[] }),
+                    ...(m.completedStepIndices != null && {
+                      completedStepIndices: m.completedStepIndices as number[],
+                    }),
+                  } as Message;
+                });
+                setMessages((prev) => {
+                  const skip = apiMessages.length < prev.length;
+                  const lastPrev = prev[prev.length - 1];
+                  const lastApi = apiMessages[apiMessages.length - 1];
+                  const localRicher =
+                    lastPrev?.role === "assistant" &&
+                    lastApi?.role === "assistant" &&
+                    (lastPrev.content ?? "").trim().length > 0 &&
+                    (lastApi.content ?? "").trim().length === 0;
+                  if (skip || localRicher) return prev;
+                  return apiMessages;
+                });
+              })
+              .catch(() => {});
+          }
+        },
+        onDone: fetchRunWaiting,
+        onAbort: () => {
+          abortRef.current = null;
+          if (minLoadingTimerRef.current) {
+            clearTimeout(minLoadingTimerRef.current);
+            minLoadingTimerRef.current = null;
+          }
+          setLoading(false);
+          crossTabStateRef.current = { ...crossTabStateRef.current, loading: false };
+        },
+        onInputRestore: (t) => setInput(t),
+      });
       abortRef.current = null;
-    }
-  }, [input, loading, messages, providerId, conversationId, pathname]);
+    },
+    [
+      input,
+      loading,
+      messages,
+      providerId,
+      conversationId,
+      pathname,
+      replyToRunId,
+      fetchRunWaiting,
+      runWaitingData,
+      chatMode,
+    ]
+  );
 
-  const rateFeedback = useCallback(async (msg: Message, label: "good" | "bad") => {
-    const prevUser = messages[messages.indexOf(msg) - 1];
-    await fetch("/api/feedback", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ targetType: "chat", targetId: "chat", input: prevUser?.content ?? "", output: msg.content, label }),
-    });
-  }, [messages]);
-
-  const handleRespondToRun = useCallback(
-    async (runId: string, response: string) => {
-      if (!response.trim()) return;
-      setRespondingToRunId(runId);
+  const handleShellCommandApprove = useCallback(
+    async (command: string) => {
+      if (shellCommandLoading || loading) return;
+      setShellCommandLoading(true);
       try {
-        const res = await fetch(`/api/runs/${runId}/respond`, {
+        const res = await fetch("/api/shell-command/execute", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ response: response.trim() }),
+          body: JSON.stringify({ command }),
         });
-        if (res.ok) {
-          fetchPendingHelp();
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const err = data.error || "Command failed";
+          send(`The shell command failed: ${err}`);
+          return;
         }
+        const stdout = (data.stdout ?? "").trim();
+        const stderr = (data.stderr ?? "").trim();
+        const exitCode = data.exitCode;
+        send("Command approved and run.", {
+          continueShellApproval: { command, stdout, stderr, exitCode },
+        });
+      } catch {
+        send("Failed to execute the shell command.");
       } finally {
-        setRespondingToRunId(null);
+        setShellCommandLoading(false);
       }
     },
-    [fetchPendingHelp]
+    [shellCommandLoading, loading, send]
   );
+
+  const handleShellCommandAddToAllowlist = useCallback(
+    async (command: string) => {
+      if (shellCommandLoading) return;
+      setShellCommandLoading(true);
+      try {
+        const res = await fetch("/api/settings/app", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ addShellCommand: command }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          const added = (data.addedCommands as string[] | undefined) ?? [command];
+          const msg =
+            added.length > 1
+              ? `Added ${added.length} commands to the allowlist. You can run them again; they will execute without approval next time.`
+              : `Added "${added[0] ?? command}" to the allowlist. You can run it again; it will execute without approval next time.`;
+          send(msg);
+        } else {
+          send(`Failed to add to allowlist: ${data.error || "Unknown error"}`);
+        }
+      } catch {
+        send("Failed to add command to allowlist.");
+      } finally {
+        setShellCommandLoading(false);
+      }
+    },
+    [shellCommandLoading, send]
+  );
+
+  const openMessageFeedback = useCallback((msg: Message, label: "good" | "bad") => {
+    setMessageFeedback({ msg, label });
+  }, []);
+
+  const submitMessageFeedback = useCallback(
+    async (notes: string) => {
+      if (!messageFeedback) return;
+      setMessageFeedbackSubmitting(true);
+      const prevUser = messages[messages.indexOf(messageFeedback.msg) - 1];
+      const prevContent = prevUser?.content ?? "";
+      const outputContent = messageFeedback.msg.content;
+      const key = feedbackContentKey(prevContent, outputContent);
+      const label = messageFeedback.label;
+      try {
+        await fetch("/api/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetType: "chat",
+            targetId: "chat",
+            input: prevContent,
+            output: outputContent,
+            label,
+            notes: notes || undefined,
+          }),
+        });
+        setMessageFeedback(null);
+        setFeedbackByContentKey((prev) => ({ ...prev, [key]: label }));
+      } finally {
+        setMessageFeedbackSubmitting(false);
+      }
+    },
+    [messageFeedback, messages, feedbackContentKey]
+  );
+
+  const closeMessageFeedback = useCallback(() => setMessageFeedback(null), []);
+
+  const handleCancelRun = useCallback(async () => {
+    if (!runWaitingData?.runId) return;
+    try {
+      await fetch(`/api/runs/${encodeURIComponent(runWaitingData.runId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "cancelled", finishedAt: Date.now() }),
+      });
+      setRunWaiting(false);
+      setRunWaitingData(null);
+      if (conversationId) setRunWaitingInCache(conversationId, null);
+      setLoading(false);
+      crossTabStateRef.current = { ...crossTabStateRef.current, loading: false };
+    } catch {
+      // ignore
+    }
+  }, [runWaitingData?.runId, conversationId]);
 
   return (
     <section className="chat-section">
-      {sidebarOpen && (
-        <aside className="chat-section-sidebar">
-          <div className="chat-section-sidebar-header">
-            <button type="button" className="chat-section-sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar">
-              <PanelLeftClose size={18} />
-            </button>
-            <span className="chat-section-sidebar-title">Chat</span>
-          </div>
-          <button type="button" className="chat-section-new-chat" onClick={startNewChat}>
-            <MessageSquarePlus size={18} />
-            New chat
-          </button>
-          <ul className="chat-section-conversations">
-            {conversationList.map((c) => (
-              <li key={c.id} className="chat-section-conv-item">
-                <button
-                  type="button"
-                  className={`chat-section-conv-btn ${c.id === conversationId ? "active" : ""}`}
-                  onClick={() => setConversationId(c.id)}
-                >
-                  <span className="chat-section-conv-title">{(c.title && c.title.trim()) ? c.title.trim() : "New chat"}</span>
-                </button>
-                <button type="button" className="chat-section-conv-delete" onClick={(e) => deleteConversation(c.id, e)} title="Delete" aria-label="Delete">
-                  <Trash2 size={14} />
-                </button>
-              </li>
-            ))}
-          </ul>
-          <div className="chat-section-sidebar-footer">
-            <a href={conversationId ? `/chat/traces?conversationId=${encodeURIComponent(conversationId)}` : "/chat/traces"} target="_blank" rel="noopener noreferrer" className="chat-section-sidebar-link">
-              <GitBranch size={16} />
-              Stack traces
-            </a>
-            {onOpenSettings && (
-              <button type="button" className="chat-section-sidebar-link" onClick={onOpenSettings}>
-                <Settings2 size={16} />
-                Settings
-              </button>
-            )}
-          </div>
-        </aside>
-      )}
+      <ChatSectionSidebar
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        conversationList={conversationList}
+        conversationId={conversationId}
+        setConversationId={(id) => setConversationId(id)}
+        loading={loading}
+        messages={messages}
+        pendingInputIds={pendingInputIds}
+        deleteConversation={deleteConversation}
+        startNewChat={startNewChat}
+        onOpenSettings={onOpenSettings}
+      />
 
-      <div className="chat-section-main">
-        <header className="chat-section-header">
-          {!sidebarOpen && (
-            <button type="button" className="chat-section-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open sidebar">
-              <List size={20} />
-            </button>
-          )}
-          <span className="chat-section-brand">Agentron</span>
-          <select
-            className="chat-section-model-select"
-            value={providerId}
-            onChange={handleProviderChange}
-            title="Select model"
-          >
-            <option value="">Select model…</option>
-            {[...providers]
-              .sort((a, b) => a.model.localeCompare(b.model, undefined, { sensitivity: "base" }) || a.provider.localeCompare(b.provider))
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.model} ({p.provider})
-                </option>
-              ))}
-          </select>
-        </header>
-
-        <div className="chat-section-messages" ref={scrollRef}>
-          {pendingHelp.requests.length > 0 && (
-            <div className="chat-section-pending-help">
-              <div className="chat-section-pending-help-title">Agent needs your input</div>
-              <p className="chat-section-pending-help-sub">Respond here to unblock the run. Your reply is sent to the agent.</p>
-              {pendingHelp.requests.map((req) => (
-                <div key={req.runId} className="chat-section-pending-help-card">
-                  <div className="chat-section-pending-help-card-header">
-                    <span className="chat-section-pending-help-card-target">{req.targetName || req.targetType}</span>
-                    <a href={`/runs/${req.runId}`} target="_blank" rel="noopener noreferrer" className="chat-section-pending-help-card-link">View run</a>
-                  </div>
-                  <p className="chat-section-pending-help-card-question">{req.question}</p>
-                  {req.reason && <p className="chat-section-pending-help-card-reason">{req.reason}</p>}
-                  <div className="chat-section-pending-help-card-reply">
-                    <input
-                      type="text"
-                      className="chat-section-input"
-                      placeholder="Your response…"
-                      value={pendingReplyByRunId[req.runId] ?? ""}
-                      onChange={(e) => setPendingReplyByRunId((prev) => ({ ...prev, [req.runId]: e.target.value }))}
-                      onKeyDown={(e) => e.key === "Enter" && handleRespondToRun(req.runId, pendingReplyByRunId[req.runId] ?? "")}
-                      disabled={respondingToRunId === req.runId}
-                    />
-                    <button
-                      type="button"
-                      className="chat-section-send"
-                      disabled={!(pendingReplyByRunId[req.runId] ?? "").trim() || respondingToRunId === req.runId}
-                      onClick={() => {
-                        const text = pendingReplyByRunId[req.runId] ?? "";
-                        handleRespondToRun(req.runId, text);
-                        setPendingReplyByRunId((prev) => ({ ...prev, [req.runId]: "" }));
-                      }}
-                      title="Send response to agent"
-                    >
-                      {respondingToRunId === req.runId ? <Loader size={18} className="spin" /> : <Send size={18} />}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {!loaded ? (
-            <div className="chat-section-loading">Loading…</div>
-          ) : messages.length === 0 ? (
-            <div className="chat-section-welcome">
-              <div className="chat-section-welcome-icon">AI</div>
-              <h2 className="chat-section-welcome-title">How can I help?</h2>
-              <p className="chat-section-welcome-sub">Ask anything about agents, workflows, and tools.</p>
-            </div>
-          ) : (
-            <div className="chat-section-message-list">
-              {messages.map((msg, index) => {
-                const isLast = index === messages.length - 1;
-                const hideActions = loading && isLast && msg.role === "assistant";
-                return (
-                  <div key={msg.id} className={`chat-section-msg chat-section-msg-${msg.role}`}>
-                    {msg.role === "assistant" && msg.rephrasedPrompt != null && msg.rephrasedPrompt.trim() !== "" && (
-                      <div className="chat-section-rephrased">
-                        <span className="chat-section-rephrased-label">Rephrased</span>
-                        <p className="chat-section-rephrased-text">{msg.rephrasedPrompt}</p>
-                      </div>
-                    )}
-                    {msg.role === "assistant" && (msg.traceSteps?.length ?? 0) > 0 && (
-                      <div className="chat-section-trace-steps">
-                        <span className="chat-section-trace-step" title={msg.traceSteps![msg.traceSteps!.length - 1].contentPreview ?? undefined}>
-                          {loading && isLast && msg.executingToolName === "execute_workflow"
-                            ? "Running workflow…"
-                            : msg.traceSteps![msg.traceSteps!.length - 1].label ?? msg.traceSteps![msg.traceSteps!.length - 1].phase}
-                        </span>
-                      </div>
-                    )}
-                    {msg.role === "assistant" && isLast && loading && (
-                      <span className="chat-section-typing">
-                        <LogoLoading size={20} className="chat-section-typing-logo" />
-                        {msg.todos?.length
-                          ? (msg.completedStepIndices?.length === msg.todos.length
-                              ? "Completing…"
-                              : msg.executingToolName
-                                ? (msg.executingSubStepLabel ? `${msg.executingSubStepLabel} (${msg.executingToolName === "execute_workflow" ? "workflow" : msg.executingToolName})…` : msg.executingToolName === "execute_workflow" ? "Running workflow…" : `Running ${msg.executingToolName}…`)
-                                : `Step ${(msg.executingStepIndex ?? 0) + 1} of ${msg.todos.length}`)
-                          : "Thinking…"}
-                      </span>
-                    )}
-                    {msg.role === "assistant" && msg.reasoning && isLast && (
-                      <div className="chat-section-plan">
-                        <span className="chat-section-plan-label">Reasoning</span>
-                        <ReasoningContent text={msg.reasoning} />
-                      </div>
-                    )}
-                    {msg.role === "assistant" && msg.todos && msg.todos.length > 0 && (
-                      <div className="chat-section-todos-wrap">
-                        {(() => {
-                          const allDone =
-                            msg.completedStepIndices &&
-                            msg.completedStepIndices.length >= msg.todos!.length;
-                          const collapsed =
-                            collapsedStepsByMsg[msg.id] ?? !!allDone;
-                          const toggle = () =>
-                            setCollapsedStepsByMsg((prev) => ({
-                              ...prev,
-                              [msg.id]: !collapsed,
-                            }));
-                          return (
-                            <>
-                              <button
-                                type="button"
-                                onClick={toggle}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "space-between",
-                                  width: "100%",
-                                  background: "transparent",
-                                  border: "none",
-                                  padding: 0,
-                                  margin: 0,
-                                  cursor: "pointer",
-                                  font: "inherit",
-                                }}
-                              >
-                                <span className="chat-section-todos-label">
-                                  Steps
-                                </span>
-                                <span
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 4,
-                                    fontSize: "0.78rem",
-                                    color: "var(--text-muted)",
-                                  }}
-                                >
-                                  {allDone ? "Done" : "In progress"}
-                                  {collapsed ? (
-                                    <ChevronRight size={12} />
-                                  ) : (
-                                    <ChevronDown size={12} />
-                                  )}
-                                </span>
-                              </button>
-                              {!collapsed && (
-                                <ul className="chat-section-todos">
-                                  {msg.todos.map((todo, i) => (
-                                    <li
-                                      key={i}
-                                      className={
-                                        msg.completedStepIndices?.includes(i)
-                                          ? "done"
-                                          : msg.executingStepIndex === i
-                                          ? "active"
-                                          : ""
-                                      }
-                                    >
-                                      <span className="chat-section-todo-icon">
-                                        {msg.completedStepIndices?.includes(
-                                          i
-                                        ) ? (
-                                          <Check size={12} />
-                                        ) : msg.executingStepIndex === i ? (
-                                          <Loader
-                                            size={12}
-                                            className="spin"
-                                          />
-                                        ) : (
-                                          <Circle size={12} />
-                                        )}
-                                      </span>
-                                      <span className="chat-section-todo-text">
-                                        {todo}
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </div>
-                    )}
-                    {(() => {
-                      const list = msg.toolResults ?? [];
-                      const filtered = list.filter((r) => r.name !== "ask_user");
-                      const displayContent = msg.role === "assistant" ? getAssistantMessageDisplayContent(msg.content, list) : msg.content;
-                      return (
-                        <>
-                          {filtered.length > 0 ? <ChatToolResults results={filtered} /> : null}
-                          {msg.role === "assistant" && msg.content.startsWith("Error: ") ? (
-                            <div className="chat-section-error">
-                              <p>Something went wrong.</p>
-                              <a href={conversationId ? `/chat/traces?conversationId=${encodeURIComponent(conversationId)}` : "/chat/traces"} target="_blank" rel="noopener noreferrer">
-                                View stack trace <ExternalLink size={12} />
-                              </a>
-                            </div>
-                          ) : displayContent.trim() !== "" ? (
-                            <ChatMessageContent content={displayContent} />
-                          ) : null}
-                        </>
-                      );
-                    })()}
-                    {msg.role === "assistant" && !hideActions && (
-                      <div className="chat-section-msg-actions">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const ok = await copyToClipboard(getMessageCopyText(msg));
-                            if (ok) {
-                              setCopiedMsgId(msg.id);
-                              setTimeout(() => setCopiedMsgId(null), 1500);
-                            }
-                          }}
-                          title="Copy message and tool results"
-                        >
-                          {copiedMsgId === msg.id ? <Check size={14} /> : <Copy size={14} />}
-                        </button>
-                        <button type="button" onClick={() => rateFeedback(msg, "good")} title="Good"><ThumbsUp size={14} /></button>
-                        <button type="button" onClick={() => rateFeedback(msg, "bad")} title="Bad"><ThumbsDown size={14} /></button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div className="chat-section-input-wrap">
-          <div className="chat-section-input-inner">
-            <input
-              className="chat-section-input"
-              placeholder="Message Agentron…"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
-              disabled={loading}
-            />
-            {loading ? (
-              <button type="button" className="chat-section-send" onClick={stopRequest} title="Stop"><Square size={18} fill="currentColor" /></button>
-            ) : (
-              <button
-                type="button"
-                className="chat-section-send"
-                onClick={send}
-                disabled={!input.trim() || !providerId}
-                title={!providerId ? "Select a model" : "Send"}
-              >
-                <Send size={18} />
-              </button>
-            )}
-          </div>
-          <button type="button" className="chat-section-feedback-btn" onClick={() => setShowFeedbackModal(true)}>
-            <Star size={14} /> Feedback
-          </button>
-        </div>
-      </div>
+      <ChatSectionMain
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        loaded={loaded}
+        messages={messages}
+        scrollRef={scrollRef}
+        providers={providers}
+        loading={loading}
+        lastMsg={lastMsg}
+        collapsedStepsByMsg={collapsedStepsByMsg}
+        setCollapsedStepsByMsg={setCollapsedStepsByMsg}
+        copiedMsgId={copiedMsgId}
+        setCopiedMsgId={setCopiedMsgId}
+        openMessageFeedback={openMessageFeedback}
+        feedbackByContentKey={feedbackByContentKey}
+        feedbackContentKey={feedbackContentKey}
+        send={send}
+        providerId={providerId}
+        conversationId={conversationId}
+        getMessageCopyText={getMessageCopyText}
+        handleShellCommandApprove={handleShellCommandApprove}
+        handleShellCommandAddToAllowlist={handleShellCommandAddToAllowlist}
+        shellCommandLoading={shellCommandLoading}
+        optionSending={optionSending}
+        setOptionSending={setOptionSending}
+        runWaiting={runWaiting}
+        runWaitingData={runWaitingData}
+        runWaitingOptionSending={runWaitingOptionSending}
+        setRunWaitingOptionSending={setRunWaitingOptionSending}
+        onCancelRun={handleCancelRun}
+        handleProviderChange={handleProviderChange}
+        chatMode={chatMode}
+        handleChatModeChange={handleChatModeChange}
+        inputRef={inputRef}
+        input={input}
+        setInput={setInput}
+        lastLocalInputChangeAtRef={lastLocalInputChangeAtRef}
+        resizeInput={resizeInput}
+        stopRequest={stopRequest}
+        setShowFeedbackModal={setShowFeedbackModal}
+      />
 
       {showFeedbackModal && (
         <ChatFeedbackModal
-            open={showFeedbackModal}
-            onClose={() => setShowFeedbackModal(false)}
-            conversationId={conversationId}
-            currentConversation={currentConversation ?? null}
-            noteDraft={noteDraft}
-            setNoteDraft={setNoteDraft}
-            savingNote={savingNote}
-            saveConversationRating={saveConversationRating}
-            saveConversationNote={saveConversationNote}
-          />
+          open={showFeedbackModal}
+          onClose={() => setShowFeedbackModal(false)}
+          conversationId={conversationId}
+          currentConversation={currentConversation ?? null}
+          noteDraft={noteDraft}
+          setNoteDraft={setNoteDraft}
+          savingNote={savingNote}
+          saveConversationRating={saveConversationRating}
+          saveConversationNote={saveConversationNote}
+        />
+      )}
+      {messageFeedback && (
+        <MessageFeedbackModal
+          open
+          onClose={closeMessageFeedback}
+          label={messageFeedback.label}
+          onSubmit={submitMessageFeedback}
+          submitting={messageFeedbackSubmitting}
+        />
       )}
     </section>
   );

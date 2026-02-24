@@ -13,7 +13,10 @@ export const agents = sqliteTable("agents", {
   scopes: text("scopes").notNull(),
   llmConfig: text("llm_config"),
   definition: text("definition"),
-  createdAt: integer("created_at").notNull()
+  ragCollectionId: text("rag_collection_id"),
+  feedbackLastN: integer("feedback_last_n"),
+  feedbackRetrieveCap: integer("feedback_retrieve_cap"),
+  createdAt: integer("created_at").notNull(),
 });
 
 export const workflows = sqliteTable("workflows", {
@@ -26,7 +29,30 @@ export const workflows = sqliteTable("workflows", {
   schedule: text("schedule"),
   maxRounds: integer("max_rounds"),
   turnInstruction: text("turn_instruction"),
-  createdAt: integer("created_at").notNull()
+  branches: text("branches"),
+  /** Optional explicit execution order: JSON array of steps (node id or { parallel: nodeIds }). */
+  executionOrder: text("execution_order"),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** Version history for agents: one row per update, snapshot = state before that update. Used for audit and rollback. */
+export const agentVersions = sqliteTable("agent_versions", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  version: integer("version").notNull(),
+  snapshot: text("snapshot").notNull(),
+  createdAt: integer("created_at").notNull(),
+  conversationId: text("conversation_id"),
+});
+
+/** Version history for workflows: one row per update, snapshot = state before that update. Used for audit and rollback. */
+export const workflowVersions = sqliteTable("workflow_versions", {
+  id: text("id").primaryKey(),
+  workflowId: text("workflow_id").notNull(),
+  version: integer("version").notNull(),
+  snapshot: text("snapshot").notNull(),
+  createdAt: integer("created_at").notNull(),
+  conversationId: text("conversation_id"),
 });
 
 export const tools = sqliteTable("tools", {
@@ -35,7 +61,7 @@ export const tools = sqliteTable("tools", {
   protocol: text("protocol").notNull(),
   config: text("config").notNull(),
   inputSchema: text("input_schema"),
-  outputSchema: text("output_schema")
+  outputSchema: text("output_schema"),
 });
 
 export const prompts = sqliteTable("prompts", {
@@ -43,7 +69,7 @@ export const prompts = sqliteTable("prompts", {
   name: text("name").notNull(),
   description: text("description"),
   arguments: text("arguments"),
-  template: text("template").notNull()
+  template: text("template").notNull(),
 });
 
 export const llmConfigs = sqliteTable("llm_configs", {
@@ -52,24 +78,26 @@ export const llmConfigs = sqliteTable("llm_configs", {
   model: text("model").notNull(),
   apiKeyRef: text("api_key_ref"),
   endpoint: text("endpoint"),
-  extra: text("extra")
+  extra: text("extra"),
 });
 
 export const executions = sqliteTable("executions", {
   id: text("id").primaryKey(),
   targetType: text("target_type").notNull(),
   targetId: text("target_id").notNull(),
+  targetBranchId: text("target_branch_id"),
+  conversationId: text("conversation_id"),
   status: text("status").notNull(),
   startedAt: integer("started_at").notNull(),
   finishedAt: integer("finished_at"),
-  output: text("output")
+  output: text("output"),
 });
 
 export const contexts = sqliteTable("contexts", {
   id: text("id").primaryKey(),
   key: text("key").notNull(),
   value: text("value").notNull(),
-  updatedAt: integer("updated_at").notNull()
+  updatedAt: integer("updated_at").notNull(),
 });
 
 // --- New tables ---
@@ -82,7 +110,7 @@ export const conversations = sqliteTable("conversations", {
   summary: text("summary"),
   lastUsedProvider: text("last_used_provider"),
   lastUsedModel: text("last_used_model"),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 export const chatMessages = sqliteTable("chat_messages", {
@@ -92,7 +120,8 @@ export const chatMessages = sqliteTable("chat_messages", {
   content: text("content").notNull(),
   toolCalls: text("tool_calls"),
   llmTrace: text("llm_trace"),
-  createdAt: integer("created_at").notNull()
+  rephrasedPrompt: text("rephrased_prompt"),
+  createdAt: integer("created_at").notNull(),
 });
 
 export const chatAssistantSettings = sqliteTable("chat_assistant_settings", {
@@ -105,14 +134,34 @@ export const chatAssistantSettings = sqliteTable("chat_assistant_settings", {
   temperature: text("temperature"),
   historyCompressAfter: integer("history_compress_after"),
   historyKeepRecent: integer("history_keep_recent"),
-  updatedAt: integer("updated_at").notNull()
+  plannerRecentMessages: integer("planner_recent_messages"),
+  ragRetrieveLimit: integer("rag_retrieve_limit"),
+  feedbackLastN: integer("feedback_last_n"),
+  feedbackRetrieveCap: integer("feedback_retrieve_cap"),
+  feedbackMinScore: text("feedback_min_score"),
+  updatedAt: integer("updated_at").notNull(),
 });
 
 export const assistantMemory = sqliteTable("assistant_memory", {
   id: text("id").primaryKey(),
   key: text("key"),
   content: text("content").notNull(),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
+});
+
+/** User-saved credentials (e.g. API keys) keyed by credentialKey from ask_credentials. Encrypted with vault master password; never echoed in chat. */
+export const savedCredentials = sqliteTable("saved_credentials", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** Single row: vault salt and encrypted check value. Used to verify master password; credentials are encrypted with key derived from master password. */
+export const vaultMeta = sqliteTable("vault_meta", {
+  id: text("id").primaryKey(),
+  salt: text("salt").notNull(),
+  check: text("check").notNull(),
+  createdAt: integer("created_at").notNull(),
 });
 
 export const files = sqliteTable("files", {
@@ -121,7 +170,7 @@ export const files = sqliteTable("files", {
   mimeType: text("mime_type").notNull(),
   size: integer("size").notNull(),
   path: text("path").notNull(),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 export const sandboxes = sqliteTable("sandboxes", {
@@ -131,7 +180,7 @@ export const sandboxes = sqliteTable("sandboxes", {
   status: text("status").notNull(),
   containerId: text("container_id"),
   config: text("config").notNull(),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 export const sandboxSiteBindings = sqliteTable("sandbox_site_bindings", {
@@ -140,7 +189,7 @@ export const sandboxSiteBindings = sqliteTable("sandbox_site_bindings", {
   host: text("host").notNull(),
   containerPort: integer("container_port").notNull(),
   hostPort: integer("host_port").notNull(),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 export const customFunctions = sqliteTable("custom_functions", {
@@ -150,7 +199,7 @@ export const customFunctions = sqliteTable("custom_functions", {
   language: text("language").notNull(),
   source: text("source").notNull(),
   sandboxId: text("sandbox_id"),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 export const feedback = sqliteTable("feedback", {
@@ -162,7 +211,18 @@ export const feedback = sqliteTable("feedback", {
   output: text("output").notNull(),
   label: text("label").notNull(),
   notes: text("notes"),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
+});
+
+/** Embeddings for feedback items; used to retrieve relevant feedback by query similarity. */
+export const feedbackVectors = sqliteTable("feedback_vectors", {
+  id: text("id").primaryKey(),
+  feedbackId: text("feedback_id").notNull(),
+  targetType: text("target_type").notNull(),
+  targetId: text("target_id").notNull(),
+  embedding: text("embedding").notNull(),
+  textForEmbed: text("text_for_embed").notNull(),
+  createdAt: integer("created_at").notNull(),
 });
 
 export const tokenUsage = sqliteTable("token_usage", {
@@ -175,7 +235,7 @@ export const tokenUsage = sqliteTable("token_usage", {
   promptTokens: integer("prompt_tokens").notNull(),
   completionTokens: integer("completion_tokens").notNull(),
   estimatedCost: text("estimated_cost"),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 export const modelPricing = sqliteTable("model_pricing", {
@@ -183,7 +243,7 @@ export const modelPricing = sqliteTable("model_pricing", {
   modelPattern: text("model_pattern").notNull(),
   inputCostPerM: text("input_cost_per_m").notNull(),
   outputCostPerM: text("output_cost_per_m").notNull(),
-  updatedAt: integer("updated_at").notNull()
+  updatedAt: integer("updated_at").notNull(),
 });
 
 export const remoteServers = sqliteTable("remote_servers", {
@@ -195,7 +255,7 @@ export const remoteServers = sqliteTable("remote_servers", {
   authType: text("auth_type").notNull(),
   keyPath: text("key_path"),
   modelBaseUrl: text("model_base_url"),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 export const tasks = sqliteTable("tasks", {
@@ -211,7 +271,7 @@ export const tasks = sqliteTable("tasks", {
   output: text("output"),
   createdAt: integer("created_at").notNull(),
   resolvedAt: integer("resolved_at"),
-  resolvedBy: text("resolved_by")
+  resolvedBy: text("resolved_by"),
 });
 
 // --- Skills (Anthropic-style: reusable capabilities attached to agents) ---
@@ -222,7 +282,7 @@ export const skills = sqliteTable("skills", {
   type: text("type").notNull(),
   content: text("content"),
   config: text("config"),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 export const agentSkills = sqliteTable(
@@ -232,7 +292,7 @@ export const agentSkills = sqliteTable(
     skillId: text("skill_id").notNull(),
     sortOrder: integer("sort_order").notNull(),
     config: text("config"),
-    createdAt: integer("created_at").notNull()
+    createdAt: integer("created_at").notNull(),
   },
   (t) => [primaryKey({ columns: [t.agentId, t.skillId] })]
 );
@@ -244,7 +304,100 @@ export const runLogs = sqliteTable("run_logs", {
   level: text("level").notNull(),
   message: text("message").notNull(),
   payload: text("payload"),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
+});
+
+/** Workflow/execution messages: persisted conversation per run so agents communicate via messages and Agentron can read them. */
+export const workflowMessages = sqliteTable("workflow_messages", {
+  id: text("id").primaryKey(),
+  executionId: text("execution_id").notNull(),
+  nodeId: text("node_id"),
+  agentId: text("agent_id"),
+  role: text("role").notNull(), // 'agent' | 'user' | 'system'
+  content: text("content").notNull(),
+  messageType: text("message_type"),
+  metadata: text("metadata"),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** Event queue for event-driven workflow execution. Processed in sequence order. */
+export const executionEvents = sqliteTable("execution_events", {
+  id: text("id").primaryKey(),
+  executionId: text("execution_id").notNull(),
+  sequence: integer("sequence").notNull(),
+  type: text("type").notNull(), // NodeRequested | NodeCompleted | UserResponded | RunStarted
+  payload: text("payload"), // JSON
+  processedAt: integer("processed_at"),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** Run state for event-driven workflow (current node, round, sharedContext snapshot). */
+export const executionRunState = sqliteTable("execution_run_state", {
+  executionId: text("execution_id").primaryKey(),
+  workflowId: text("workflow_id").notNull(),
+  targetBranchId: text("target_branch_id"),
+  currentNodeId: text("current_node_id"),
+  round: integer("round").notNull(),
+  sharedContext: text("shared_context").notNull(), // JSON
+  status: text("status").notNull(), // running | waiting_for_user | completed | failed
+  waitingAtNodeId: text("waiting_at_node_id"),
+  trailSnapshot: text("trail_snapshot"), // JSON array of ExecutionTraceStep for resume
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/** Workflow run queue (DB-backed). type: workflow_start | workflow_resume | scheduled. */
+export const workflowQueue = sqliteTable("workflow_queue", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  payload: text("payload").notNull(), // JSON
+  status: text("status").notNull(), // queued | running | completed | failed
+  runId: text("run_id"), // for workflow_start/resume, the execution id
+  enqueuedAt: integer("enqueued_at").notNull(),
+  startedAt: integer("started_at"),
+  finishedAt: integer("finished_at"),
+  error: text("error"),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** Chat turn locks: one active turn per conversation (DB-backed serialization). */
+export const conversationLocks = sqliteTable("conversation_locks", {
+  conversationId: text("conversation_id").primaryKey(),
+  startedAt: integer("started_at").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** Atomistic log of chat (and later workflow) steps for the Message queue UI. Persisted as steps run so the Queues page can show them immediately. */
+export const messageQueueLog = sqliteTable("message_queue_log", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id").notNull(),
+  messageId: text("message_id"),
+  type: text("type").notNull(),
+  phase: text("phase"),
+  label: text("label"),
+  payload: text("payload"),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** Per-run execution log for workflow debugging (LLM requests/responses, tool calls/results). Same level of detail as message queue log for agentron. */
+export const executionLog = sqliteTable("execution_log", {
+  id: text("id").primaryKey(),
+  executionId: text("execution_id").notNull(),
+  sequence: integer("sequence").notNull(),
+  phase: text("phase").notNull(),
+  label: text("label"),
+  payload: text("payload"),
+  createdAt: integer("created_at").notNull(),
+});
+
+// --- RAG: embedding providers (configured in Settings; referenced by encoding configs) ---
+export const ragEmbeddingProviders = sqliteTable("rag_embedding_providers", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // openai | openrouter | local | custom_http | huggingface
+  endpoint: text("endpoint"),
+  apiKeyRef: text("api_key_ref"),
+  extra: text("extra"),
+  createdAt: integer("created_at").notNull(),
 });
 
 // --- RAG: encoding config (user-configured; changing it requires re-encoding vectors) ---
@@ -254,7 +407,9 @@ export const ragEncodingConfigs = sqliteTable("rag_encoding_configs", {
   provider: text("provider").notNull(),
   modelOrEndpoint: text("model_or_endpoint").notNull(),
   dimensions: integer("dimensions").notNull(),
-  createdAt: integer("created_at").notNull()
+  embeddingProviderId: text("embedding_provider_id"),
+  endpoint: text("endpoint"),
+  createdAt: integer("created_at").notNull(),
 });
 
 // --- RAG: document store (MinIO, S3, GCS, etc.) ---
@@ -266,7 +421,7 @@ export const ragDocumentStores = sqliteTable("rag_document_stores", {
   region: text("region"),
   endpoint: text("endpoint"),
   credentialsRef: text("credentials_ref"),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 // --- RAG: vector store (where vectors are stored per collection) ---
@@ -275,7 +430,7 @@ export const ragVectorStores = sqliteTable("rag_vector_stores", {
   name: text("name").notNull(),
   type: text("type").notNull(),
   config: text("config"),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 // --- RAG: collections (per-agent or deployment-wide) ---
@@ -287,7 +442,8 @@ export const ragCollections = sqliteTable("rag_collections", {
   encodingConfigId: text("encoding_config_id").notNull(),
   documentStoreId: text("document_store_id").notNull(),
   vectorStoreId: text("vector_store_id"),
-  createdAt: integer("created_at").notNull()
+  ragRetrieveLimit: integer("rag_retrieve_limit"),
+  createdAt: integer("created_at").notNull(),
 });
 
 // --- RAG: bundled vectors (when no external vector store) ---
@@ -298,7 +454,7 @@ export const ragVectors = sqliteTable("rag_vectors", {
   chunkIndex: integer("chunk_index").notNull(),
   text: text("text").notNull(),
   embedding: text("embedding").notNull(),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 // --- RAG: documents (ingested; vectors stored in vector DB keyed by id) ---
@@ -309,7 +465,7 @@ export const ragDocuments = sqliteTable("rag_documents", {
   storePath: text("store_path").notNull(),
   mimeType: text("mime_type"),
   metadata: text("metadata"),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 // --- RAG: connectors (Google Drive, Dropbox, etc.) ---
@@ -320,7 +476,7 @@ export const ragConnectors = sqliteTable("rag_connectors", {
   config: text("config").notNull(),
   status: text("status").notNull(),
   lastSyncAt: integer("last_sync_at"),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 // --- Autonomous agent / improvement (plan §2.0) ---
@@ -336,7 +492,7 @@ export const improvementJobs = sqliteTable("improvement_jobs", {
   architectureSpec: text("architecture_spec"),
   lastTrainedAt: integer("last_trained_at"),
   lastFeedbackAt: integer("last_feedback_at"),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 export const techniqueInsights = sqliteTable("technique_insights", {
@@ -347,7 +503,7 @@ export const techniqueInsights = sqliteTable("technique_insights", {
   outcome: text("outcome").notNull(),
   summary: text("summary").notNull(),
   config: text("config"),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 export const techniquePlaybook = sqliteTable("technique_playbook", {
@@ -358,7 +514,7 @@ export const techniquePlaybook = sqliteTable("technique_playbook", {
   downsides: text("downsides"),
   interactions: text("interactions"),
   observed: text("observed"),
-  updatedAt: integer("updated_at").notNull()
+  updatedAt: integer("updated_at").notNull(),
 });
 
 export const guardrails = sqliteTable("guardrails", {
@@ -366,7 +522,7 @@ export const guardrails = sqliteTable("guardrails", {
   scope: text("scope").notNull(),
   scopeId: text("scope_id"),
   config: text("config").notNull(),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 export const agentStoreEntries = sqliteTable("agent_store_entries", {
@@ -376,7 +532,7 @@ export const agentStoreEntries = sqliteTable("agent_store_entries", {
   storeName: text("store_name").notNull(),
   key: text("key").notNull(),
   value: text("value").notNull(),
-  createdAt: integer("created_at").notNull()
+  createdAt: integer("created_at").notNull(),
 });
 
 export const trainingRuns = sqliteTable("training_runs", {
@@ -388,5 +544,42 @@ export const trainingRuns = sqliteTable("training_runs", {
   outputModelRef: text("output_model_ref"),
   config: text("config"),
   createdAt: integer("created_at").notNull(),
-  finishedAt: integer("finished_at")
+  finishedAt: integer("finished_at"),
+});
+
+/** Eval results for MLOps: persisted metrics from evaluate_model (jobId, optional instanceRef, metrics JSON). */
+export const evalResults = sqliteTable("eval_results", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id").notNull(),
+  trainingRunId: text("training_run_id"),
+  instanceRef: text("instance_ref"),
+  evalSetRef: text("eval_set_ref"),
+  metrics: text("metrics").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** One-shot reminders. taskType: "message" = post static text to chat; "assistant_task" = insert user message and run one assistant turn. */
+export const reminders = sqliteTable("reminders", {
+  id: text("id").primaryKey(),
+  runAt: integer("run_at").notNull(),
+  message: text("message").notNull(),
+  conversationId: text("conversation_id"),
+  taskType: text("task_type").notNull(),
+  status: text("status").notNull(),
+  createdAt: integer("created_at").notNull(),
+  firedAt: integer("fired_at"),
+});
+
+/** Notifications (run completed/failed, chat needs input). Event-driven; created by run/chat APIs, listed by GET /api/notifications. */
+export const notifications = sqliteTable("notifications", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(), // run | chat | system
+  sourceId: text("source_id").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  severity: text("severity").notNull(), // info | success | warning | error
+  status: text("status").notNull(), // active | cleared
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  metadata: text("metadata"), // JSON
 });

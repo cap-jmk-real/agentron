@@ -1,5 +1,6 @@
 import { runReset } from "../../_lib/db";
 import { json } from "../../_lib/response";
+import { logApiError } from "../../_lib/api-logger";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,7 @@ export async function POST() {
     runReset();
     return json({ ok: true, message: "Database reset. All data cleared. Refresh the app." });
   } catch (e) {
+    logApiError("/api/backup/reset", "POST", e);
     const message = e instanceof Error ? e.message : "Reset failed";
     return json({ error: message }, { status: 500 });
   }

@@ -18,10 +18,7 @@ export interface RefineResult {
 /**
  * Uses an LLM to analyze feedback and suggest improvements to the agent's prompt.
  */
-export async function refinePrompt(
-  input: RefineInput,
-  callLLM: LLMCaller
-): Promise<RefineResult> {
+export async function refinePrompt(input: RefineInput, callLLM: LLMCaller): Promise<RefineResult> {
   const goodCount = input.feedback.filter((f) => f.label === "good").length;
   const badCount = input.feedback.filter((f) => f.label === "bad").length;
 
@@ -36,9 +33,7 @@ export async function refinePrompt(
     .join("\n");
 
   const stepsText = input.currentSteps?.length
-    ? input.currentSteps
-        .map((s, i) => `  ${i + 1}. [${s.type}] ${s.name}: ${s.content}`)
-        .join("\n")
+    ? input.currentSteps.map((s, i) => `  ${i + 1}. [${s.type}] ${s.name}: ${s.content}`).join("\n")
     : "  (no steps defined)";
 
   const metaPrompt = `You are an expert AI prompt engineer. Analyze the feedback on an agent's performance and rewrite its system prompt and steps to improve future outputs.
@@ -55,11 +50,16 @@ ${badNotes ? `\nCommon issues in BAD runs:\n${badNotes}` : ""}
 ${goodNotes ? `\nWhat users liked in GOOD runs:\n${goodNotes}` : ""}
 
 Sample BAD outputs:
-${input.feedback
-  .filter((f) => f.label === "bad")
-  .slice(0, 3)
-  .map((f) => `Input: ${JSON.stringify(f.input)}\nOutput: ${JSON.stringify(f.output)}${f.notes ? `\nNote: ${f.notes}` : ""}`)
-  .join("\n---\n") || "(none)"}
+${
+  input.feedback
+    .filter((f) => f.label === "bad")
+    .slice(0, 3)
+    .map(
+      (f) =>
+        `Input: ${JSON.stringify(f.input)}\nOutput: ${JSON.stringify(f.output)}${f.notes ? `\nNote: ${f.notes}` : ""}`
+    )
+    .join("\n---\n") || "(none)"
+}
 
 Respond in this exact JSON format:
 {
@@ -85,7 +85,8 @@ Only output valid JSON, nothing else.`;
   } catch {
     return {
       suggestedSystemPrompt: response.content,
-      reasoning: "LLM response could not be parsed as JSON. Raw response returned as suggested prompt.",
+      reasoning:
+        "LLM response could not be parsed as JSON. Raw response returned as suggested prompt.",
     };
   }
 }

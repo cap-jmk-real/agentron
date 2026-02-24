@@ -16,5 +16,8 @@ export async function POST(_: Request, { params }: Params) {
     status: "queued",
   };
   await db.insert(executions).values(toExecutionRow(run)).run();
-  return json({ id: runId, targetType: run.targetType, targetId: run.targetId, status: run.status }, { status: 202 });
+  return json(
+    { id: runId, targetType: run.targetType, targetId: run.targetId, status: run.status },
+    { status: 202 }
+  );
 }

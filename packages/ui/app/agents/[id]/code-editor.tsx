@@ -36,9 +36,7 @@ export default function CodeEditor({ agentId, definition, onDefinitionChange }: 
           <input
             className="input"
             value={entrypoint}
-            onChange={(e) =>
-              onDefinitionChange({ ...definition, entrypoint: e.target.value })
-            }
+            onChange={(e) => onDefinitionChange({ ...definition, entrypoint: e.target.value })}
             placeholder="run"
           />
         </div>
@@ -48,10 +46,11 @@ export default function CodeEditor({ agentId, definition, onDefinitionChange }: 
             className="textarea"
             rows={14}
             value={source}
-            onChange={(e) =>
-              onDefinitionChange({ ...definition, source: e.target.value })
-            }
-            style={{ fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace", fontSize: "0.88rem" }}
+            onChange={(e) => onDefinitionChange({ ...definition, source: e.target.value })}
+            style={{
+              fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace",
+              fontSize: "0.88rem",
+            }}
           />
         </div>
       </div>

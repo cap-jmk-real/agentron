@@ -35,4 +35,32 @@ describe("Chat conversations API", () => {
     const data = await res.json();
     expect(data.id).toBeDefined();
   });
+
+  it("POST /api/chat/conversations with invalid JSON creates with null title", async () => {
+    const res = await listPost(
+      new Request("http://localhost/api/chat/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not json",
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBeDefined();
+    expect(data.title).toBeNull();
+  });
+
+  it("POST /api/chat/conversations with whitespace-only title creates with null title", async () => {
+    const res = await listPost(
+      new Request("http://localhost/api/chat/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "   " }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBeDefined();
+    expect(data.title).toBeNull();
+  });
 });

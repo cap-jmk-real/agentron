@@ -1,0 +1,21 @@
+---
+description: Run and summarize test coverage after each work cycle
+alwaysApply: true
+---
+
+# Coverage report after each cycle
+
+At the **end of each work cycle** (when you finish a batch of tasks, before considering the cycle complete):
+
+1. **Run the coverage suite** from the repo root:
+   - `npm run test:coverage`
+   - Or from `packages/ui`: `pnpm vitest run --coverage`
+
+2. **Summarize for the user** in a short "Coverage report" block:
+   - **Test results**: X passed / Y failed (and which test file(s) failed if any)
+   - **Coverage**: lines, statements, functions, branches (from the text-summary or terminal output)
+   - **Gaps**: any thresholds missed (e.g. branch coverage) or known excluded areas
+
+Keep the summary to a few lines so the user can quickly see where things stand. If the full suite is slow, you may run only the UI package coverage; mention scope if you narrow it.
+
+This gives the user a clear snapshot of test and coverage status after each cycle.

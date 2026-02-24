@@ -1,0 +1,22 @@
+---
+description: Coverage and failing tests — add tests for gaps; fix failures before relaxing tests
+alwaysApply: true
+---
+
+# Coverage and test failures
+
+## Coverage
+
+- **Improve coverage by adding tests**, not by excluding code from coverage (e.g. no `/* c8 ignore */` or coverage config exclusions to hit targets).
+- If coverage fails or is low, add or extend tests for the uncovered code paths. Only in rare cases (e.g. unreachable defensive code) document why exclusion is justified.
+- The **branch coverage threshold** is 70% (in `packages/ui/vitest.config.ts`). Aim for 100% branch coverage by adding tests for missing branches; do not lower the threshold below 70%.
+
+## Do not relax tests
+
+- **Do not relax unit or e2e tests unless strictly necessary.** Prefer fixing the implementation or test setup so the test passes and still asserts the intended behavior. Relaxing assertions (e.g. allowing previously failing cases to pass, weakening expectations) is only acceptable when the test no longer reflects valid requirements (obsolete behavior, flaky for non-product reasons, or duplicate). Do not relax to make the suite pass when the test still encodes valid behavior.
+
+## When a test fails
+
+1. **First: try to fix the problem.** Fix the implementation or the test setup so the test passes and the behavior matches the intended product behavior.
+2. **Check business logic.** Ensure the fix aligns with what the product should do; prefer fixing the code over changing the test when the test encodes valid requirements.
+3. **Relax or delete a test only when it no longer makes sense.** If a test asserts obsolete behavior, is flaky for non-product reasons, or duplicates another test, then update or remove it. Do not relax or delete a test just to make the suite pass when the test still reflects valid behavior.

@@ -28,7 +28,14 @@ export async function PUT(request: Request, { params }: Params) {
   const { id } = await params;
   const rows = await db.select().from(ragDocumentStores).where(eq(ragDocumentStores.id, id));
   if (rows.length === 0) return json({ error: "Not found" }, { status: 404 });
-  let body: { name?: string; type?: string; bucket?: string; region?: string; endpoint?: string; credentialsRef?: string };
+  let body: {
+    name?: string;
+    type?: string;
+    bucket?: string;
+    region?: string;
+    endpoint?: string;
+    credentialsRef?: string;
+  };
   try {
     body = await request.json();
   } catch {

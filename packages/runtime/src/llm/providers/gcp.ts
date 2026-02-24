@@ -14,5 +14,5 @@ export const gcpProvider: LLMProviderAdapter = {
     }
 
     return openAICompatibleChat(config.endpoint, config, request, headers);
-  }
+  },
 };

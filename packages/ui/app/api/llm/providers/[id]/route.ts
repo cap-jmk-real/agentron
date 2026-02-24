@@ -1,5 +1,6 @@
 import { json } from "../../../_lib/response";
 import { db, llmConfigs, toLlmConfigRow } from "../../../_lib/db";
+import { logApiError } from "../../../_lib/api-logger";
 import { eq } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
@@ -7,14 +8,21 @@ type Params = { params: Promise<{ id: string }> };
 export const runtime = "nodejs";
 
 /** Build extra for storage; on PUT, merge with existing apiKey if new one is empty. */
-async function buildExtraForPut(id: string, payload: Record<string, unknown>): Promise<Record<string, unknown> | undefined> {
+async function buildExtraForPut(
+  id: string,
+  payload: Record<string, unknown>
+): Promise<Record<string, unknown> | undefined> {
   const { apiKey, rateLimit, contextLength, extra: rawExtra } = payload;
-  const extraObj = (rawExtra && typeof rawExtra === "object" && !Array.isArray(rawExtra)) ? rawExtra as Record<string, unknown> : {};
+  const extraObj =
+    rawExtra && typeof rawExtra === "object" && !Array.isArray(rawExtra)
+      ? (rawExtra as Record<string, unknown>)
+      : {};
   const { apiKey: _drop, ...safeExtra } = extraObj;
   const out: Record<string, unknown> = { ...safeExtra };
   if (rateLimit != null) out.rateLimit = rateLimit;
   if (contextLength != null && contextLength !== "") {
-    const n = typeof contextLength === "number" ? contextLength : parseInt(String(contextLength), 10);
+    const n =
+      typeof contextLength === "number" ? contextLength : parseInt(String(contextLength), 10);
     if (Number.isInteger(n) && n > 0) out.contextLength = n;
   }
   const keyFromPayload = apiKey != null ? String(apiKey).trim() : "";
@@ -36,18 +44,34 @@ async function buildExtraForPut(id: string, payload: Record<string, unknown>): P
 }
 
 export async function PUT(request: Request, { params }: Params) {
-  const { id } = await params;
-  const payload = (await request.json()) as Record<string, unknown>;
-  const { apiKey: _a, rateLimit: _r, extra: _e, ...rest } = payload;
-  const extra = await buildExtraForPut(id, payload);
-  const config = { ...rest, id, extra };
-  await db.update(llmConfigs).set(toLlmConfigRow(config as Parameters<typeof toLlmConfigRow>[0])).where(eq(llmConfigs.id, id)).run();
-  const safe = { ...config, extra: extra ? { ...extra, apiKey: undefined } : undefined };
-  return json(safe);
+  try {
+    const { id } = await params;
+    const payload = (await request.json()) as Record<string, unknown>;
+    const { apiKey: _a, rateLimit: _r, extra: _e, ...rest } = payload;
+    const extra = await buildExtraForPut(id, payload);
+    const config = { ...rest, id, extra };
+    await db
+      .update(llmConfigs)
+      .set(toLlmConfigRow(config as Parameters<typeof toLlmConfigRow>[0]))
+      .where(eq(llmConfigs.id, id))
+      .run();
+    const safe = { ...config, extra: extra ? { ...extra, apiKey: undefined } : undefined };
+    return json(safe);
+  } catch (err) {
+    logApiError("/api/llm/providers/[id]", "PUT", err);
+    const message = err instanceof Error ? err.message : String(err);
+    return json({ error: message }, { status: 500 });
+  }
 }
 
 export async function DELETE(_: Request, { params }: Params) {
-  const { id } = await params;
-  await db.delete(llmConfigs).where(eq(llmConfigs.id, id)).run();
-  return json({ ok: true });
+  try {
+    const { id } = await params;
+    await db.delete(llmConfigs).where(eq(llmConfigs.id, id)).run();
+    return json({ ok: true });
+  } catch (err) {
+    logApiError("/api/llm/providers/[id]", "DELETE", err);
+    const message = err instanceof Error ? err.message : String(err);
+    return json({ error: message }, { status: 500 });
+  }
 }

@@ -1,0 +1,15 @@
+---
+description: Release and version tagging — bump, merge to main, CI
+globs: package.json, apps/**/package.json, scripts/**
+alwaysApply: false
+---
+
+# Release & tagging
+
+- **Releases** are created only when merging to `main`. Version from `package.json`; GitHub Release with desktop installers for `v{version}`.
+- **Preparing vX.Y.Z:** Bump before pushing the branch that will be merged:
+  1. `npm run release:bump` (or `-- minor` / `-- major`). Patch: `npm run release:bump` or `-- patch`.
+  2. Run tests and builds; optionally `npm run release:prepare` (bump patch + test + build:ui + build:docs).
+  3. Commit: `git add -A && git commit -m "chore(release): vX.Y.Z"`.
+  4. Merge to `main`; desktop release workflow creates GitHub Release and installers.
+- **Consistency:** Every merge to `main` must have a version bump. `release:bump` keeps root, `apps/desktop`, and `apps/docs` aligned.

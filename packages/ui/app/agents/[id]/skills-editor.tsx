@@ -123,7 +123,8 @@ export default function SkillsEditor({ agentId }: Props) {
         <BookOpen size={16} /> Skills
       </h3>
       <p style={{ color: "var(--text-muted)", fontSize: "0.82rem", margin: "0 0 1rem" }}>
-        Attach reusable capabilities to this agent (e.g. document handling, code execution, domain instructions). Similar to Anthropic Agent Skills.
+        Attach reusable capabilities to this agent (e.g. document handling, code execution, domain
+        instructions). Similar to Anthropic Agent Skills.
       </p>
 
       {assigned.length === 0 ? (
@@ -149,12 +150,24 @@ export default function SkillsEditor({ agentId }: Props) {
               <div>
                 <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{s.name}</span>
                 {s.type && (
-                  <span style={{ marginLeft: "0.5rem", fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                  <span
+                    style={{
+                      marginLeft: "0.5rem",
+                      fontSize: "0.75rem",
+                      color: "var(--text-muted)",
+                    }}
+                  >
                     ({s.type})
                   </span>
                 )}
                 {s.description && (
-                  <p style={{ margin: "0.25rem 0 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                  <p
+                    style={{
+                      margin: "0.25rem 0 0",
+                      fontSize: "0.8rem",
+                      color: "var(--text-muted)",
+                    }}
+                  >
                     {s.description}
                   </p>
                 )}
@@ -206,7 +219,9 @@ export default function SkillsEditor({ agentId }: Props) {
                 }}
               >
                 {available.length === 0 ? (
-                  <div style={{ padding: "0.75rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                  <div
+                    style={{ padding: "0.75rem", fontSize: "0.85rem", color: "var(--text-muted)" }}
+                  >
                     No other skills. Create one below.
                   </div>
                 ) : (
@@ -241,7 +256,11 @@ export default function SkillsEditor({ agentId }: Props) {
             </>
           )}
         </div>
-        <button type="button" className="button button-secondary" onClick={() => setCreateOpen((v) => !v)}>
+        <button
+          type="button"
+          className="button button-secondary"
+          onClick={() => setCreateOpen((v) => !v)}
+        >
           <Plus size={14} /> Create new skill
         </button>
       </div>
@@ -278,17 +297,29 @@ export default function SkillsEditor({ agentId }: Props) {
             </div>
             <div className="field">
               <label>Type</label>
-              <select className="select" value={newType} onChange={(e) => setNewType(e.target.value)}>
+              <select
+                className="select"
+                value={newType}
+                onChange={(e) => setNewType(e.target.value)}
+              >
                 <option value="instruction">Instruction</option>
                 <option value="document">Document</option>
                 <option value="code">Code</option>
               </select>
             </div>
             <div style={{ display: "flex", gap: "0.5rem" }}>
-              <button className="button" onClick={createSkill} disabled={creating || !newName.trim()}>
+              <button
+                className="button"
+                onClick={createSkill}
+                disabled={creating || !newName.trim()}
+              >
                 {creating ? "Creating..." : "Create & attach to agent"}
               </button>
-              <button type="button" className="button button-secondary" onClick={() => setCreateOpen(false)}>
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => setCreateOpen(false)}
+              >
                 Cancel
               </button>
             </div>

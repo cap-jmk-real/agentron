@@ -1,11 +1,9 @@
 import { json } from "../_lib/response";
 import { db, sandboxes, fromSandboxRow, toSandboxRow } from "../_lib/db";
+import { getContainerManager, withContainerInstallHint } from "../_lib/container-manager";
 import { eq } from "drizzle-orm";
-import { PodmanManager } from "@agentron-studio/runtime";
 
 export const runtime = "nodejs";
-
-const podman = new PodmanManager();
 
 const RUNNER_NODE_NAME = "agentron-runner-node";
 const RUNNER_PYTHON_NAME = "agentron-runner-python";
@@ -13,25 +11,35 @@ const RUNNER_NODE_IMAGE = "node:22-slim";
 const RUNNER_PYTHON_IMAGE = "python:3.12-slim";
 
 async function ensureRunnerSandbox(name: string, image: string): Promise<string> {
+  const podman = getContainerManager();
   const rows = await db.select().from(sandboxes).where(eq(sandboxes.name, name)).limit(1);
   if (rows.length > 0) {
     const sb = fromSandboxRow(rows[0]);
     if (sb.containerId && sb.status === "running") return sb.containerId;
     const newContainerId = await podman.create(image, `${name}-${sb.id}`, { network: true });
-    await db.update(sandboxes).set({ status: "running", containerId: newContainerId }).where(eq(sandboxes.id, sb.id)).run();
+    await db
+      .update(sandboxes)
+      .set({ status: "running", containerId: newContainerId })
+      .where(eq(sandboxes.id, sb.id))
+      .run();
     return newContainerId;
   }
   const id = `runner-${name}-${Date.now()}`;
   const containerId = await podman.create(image, `${name}-${id}`, { network: true });
-  await db.insert(sandboxes).values(toSandboxRow({
-    id,
-    name,
-    image,
-    status: "running",
-    containerId,
-    config: {},
-    createdAt: Date.now(),
-  })).run();
+  await db
+    .insert(sandboxes)
+    .values(
+      toSandboxRow({
+        id,
+        name,
+        image,
+        status: "running",
+        containerId,
+        config: {},
+        createdAt: Date.now(),
+      })
+    )
+    .run();
   return containerId;
 }
 
@@ -76,6 +84,7 @@ else:
     command = `node -e ${JSON.stringify(codeWithInput)}`;
   }
 
+  const podman = getContainerManager();
   try {
     const result = await podman.exec(containerId, command);
     let output: unknown = null;
@@ -87,16 +96,19 @@ else:
       }
     }
     if (result.exitCode !== 0) {
-      return json({
-        error: result.stderr || "Execution failed",
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode,
-      }, { status: 500 });
+      return json(
+        {
+          error: result.stderr || "Execution failed",
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+        },
+        { status: 500 }
+      );
     }
     return json({ output, stdout: result.stdout, stderr: result.stderr });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = withContainerInstallHint(err instanceof Error ? err.message : String(err));
     return json({ error: message }, { status: 500 });
   }
 }

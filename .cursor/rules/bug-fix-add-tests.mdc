@@ -1,0 +1,15 @@
+---
+description: When fixing a bug, add or update tests to prevent the same bug from recurring.
+alwaysApply: true
+---
+
+# Bug fixes: add corresponding tests
+
+When you **fix a bug** (in code, API, or tool behavior):
+
+1. **Add or update tests** that would have failed before the fix and pass after it. Prefer a focused unit or integration test that encodes the previously broken behavior and the expected correct behavior.
+2. **Place tests** next to the code they protect (same package/module) or in the existing test file for that module (e.g. `execute-tool.test.ts` for `execute-tool.ts`).
+3. **Test the contract, not the implementation:** assert inputs/outputs, error messages, or observable behavior so the test stays valid when refactoring.
+4. **Do this when possible:** If the fix is in code that is hard to test (e.g. deep in a UI callback with no public API), add a short comment explaining why no test was added, or add a test at the nearest testable boundary.
+
+This reduces regressions and documents the intended behavior for future changes.

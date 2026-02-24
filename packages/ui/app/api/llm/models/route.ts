@@ -12,12 +12,18 @@ export async function GET(request: Request) {
   // For local/Ollama, also try to get installed models
   if (provider === "local") {
     try {
-      const res = await fetch("http://localhost:11434/api/tags", { signal: AbortSignal.timeout(3000) });
+      const res = await fetch("http://localhost:11434/api/tags", {
+        signal: AbortSignal.timeout(3000),
+      });
       if (res.ok) {
-        const data = (await res.json()) as { models?: Array<{ name: string; size: number; details?: { parameter_size?: string } }> };
+        const data = (await res.json()) as {
+          models?: Array<{ name: string; size: number; details?: { parameter_size?: string } }>;
+        };
         const catalogById = new Map(models.map((m) => [m.id, m]));
         const installed = (data.models ?? []).map((m) => {
-          const catalog = catalogById.get(m.name) ?? [...catalogById.values()].find((c) => m.name.startsWith(c.id.split(":")[0]));
+          const catalog =
+            catalogById.get(m.name) ??
+            [...catalogById.values()].find((c) => m.name.startsWith(c.id.split(":")[0]));
           return {
             id: m.name,
             name: m.name,

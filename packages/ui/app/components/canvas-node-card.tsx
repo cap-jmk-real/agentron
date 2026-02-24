@@ -15,10 +15,14 @@ type Props = {
   onRemove?: () => void;
   /** Main body content below the header */
   children: ReactNode;
-  /** Whether to render a target handle at the top. Default true. */
+  /** Whether to render a target handle at the top. Default true when flow is vertical. */
   handleTop?: boolean;
-  /** Whether to render a source handle at the bottom. Default true. */
+  /** Whether to render a source handle at the bottom. Default true when flow is vertical. */
   handleBottom?: boolean;
+  /** For horizontal (left-to-right) flow: target handle on the left. When set, top/bottom handles are not used. */
+  handleLeft?: boolean;
+  /** For horizontal flow: source handle on the right. When set with handleLeft, uses LTR flow. */
+  handleRight?: boolean;
   /** Minimum width of the card (CSS value) */
   minWidth?: number | string;
   /** Maximum width of the card (CSS value) */
@@ -46,7 +50,6 @@ const labelStyle: React.CSSProperties = {
   textTransform: "uppercase",
 };
 
-
 /**
  * Shared card shell for canvas nodes (agent graph and workflow canvases).
  * Provides consistent styling: padding, border, header with icon + label + remove button,
@@ -60,11 +63,20 @@ export function CanvasNodeCard({
   children,
   handleTop = true,
   handleBottom = true,
+  handleLeft,
+  handleRight,
   minWidth,
   maxWidth,
 }: Props) {
+  const horizontal = handleLeft !== undefined || handleRight !== undefined;
+  const showTargetLeft = horizontal && handleLeft !== false;
+  const showSourceRight = horizontal && handleRight !== false;
+  const showTargetTop = !horizontal && handleTop;
+  const showSourceBottom = !horizontal && handleBottom;
+
   const style: React.CSSProperties = {
     ...cardStyle,
+    position: "relative",
     border: `2px solid ${selected ? "var(--primary)" : "var(--border)"}`,
     ...(minWidth != null && { minWidth: typeof minWidth === "number" ? minWidth : minWidth }),
     ...(maxWidth != null && { maxWidth: typeof maxWidth === "number" ? maxWidth : maxWidth }),
@@ -72,14 +84,22 @@ export function CanvasNodeCard({
 
   return (
     <div style={style}>
-      {handleTop && (
+      {showTargetLeft && (
+        <Handle type="target" position={Position.Left} style={{ width: 10, height: 10 }} />
+      )}
+      {showTargetTop && (
         <Handle type="target" position={Position.Top} style={{ top: 0, width: 10, height: 10 }} />
       )}
-      {/* Wrapper with nopan so the whole node body does not trigger canvas pan; cursor over controls is set by .nopan in CSS */}
-      <div className="nopan" style={{ cursor: "default" }}>
+      {/* Drag handle: only icon+label start node drag; rest is nodrag so click works on controls */}
+      <div className="nopan">
         <div style={headerStyle}>
-          {icon}
-          <span style={labelStyle}>{label}</span>
+          <div
+            className="drag-handle"
+            style={{ display: "flex", alignItems: "center", gap: "0.35rem", minWidth: 0 }}
+          >
+            {icon}
+            <span style={labelStyle}>{label}</span>
+          </div>
           {onRemove && (
             <button
               type="button"
@@ -98,10 +118,23 @@ export function CanvasNodeCard({
             </button>
           )}
         </div>
-        {children}
+        <div
+          className="nodrag"
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {children}
+        </div>
       </div>
-      {handleBottom && (
-        <Handle type="source" position={Position.Bottom} style={{ bottom: 0, width: 10, height: 10 }} />
+      {showSourceRight && (
+        <Handle type="source" position={Position.Right} style={{ width: 10, height: 10 }} />
+      )}
+      {showSourceBottom && (
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          style={{ bottom: 0, width: 10, height: 10 }}
+        />
       )}
     </div>
   );

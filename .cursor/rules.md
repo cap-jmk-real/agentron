@@ -1,3 +1,10 @@
+**Canonical rules:** All Cursor rules for this repo live in **`.cursor/rules/*.mdc`** (this folder). Clone the repo and open it as the workspace root — Cursor will load these rules for you and any other dev/machine. This file is a long-form reference; the .mdc rules are what Cursor uses for scoping.
+
+- **Do not relax tests** (unit or e2e) unless the test no longer reflects valid behavior; fix implementation or setup first (see `coverage-and-test-failures.mdc`).
+- **Check repo or docs** when implementing or debugging external APIs/schemas; avoid assuming (see `check-repo-and-docs.mdc`).
+
+---
+
 ## UI Style Guide
 
 When working on the UI (especially `packages/ui/app/` and `packages/ui/app/globals.css`), follow this guide for consistency and maintainability.
@@ -40,7 +47,7 @@ Tests are **not written for vanity metrics**, but coverage is used as a **risk s
 * **Critical business logic**:
 
   * Must be covered by **unit tests**
-  * Expected coverage: **~90x   x       –100%**
+  * Expected coverage: **~90–100%**
 
 * **Non-critical logic / glue code**:
 
@@ -65,10 +72,23 @@ Coverage should:
 
 ### How to evaluate coverage
 
-* **Run coverage (UI):** From repo root run `npm run test:coverage --workspace packages/ui`, or from `packages/ui` run `npm run test:coverage`. This runs the test suite with the V8 coverage provider and prints a text summary in the terminal.
+* **Run coverage (UI):** From repo root run `npm run test:coverage` (or `pnpm run test:coverage`), or from `packages/ui` run `npm run test:coverage`. This runs the test suite with the V8 coverage provider and prints a text summary in the terminal.
 * **Reports:** A summary (statements, branches, functions, lines) is printed after the run. An HTML report is written to `packages/ui/coverage/`; open `packages/ui/coverage/index.html` in a browser for per-file, line-by-line coverage.
 * **When to run:** Run coverage when adding or changing tests, when touching critical paths, or before pushing (alongside `npm test`). CI runs tests with coverage in the docs and desktop workflows; the coverage report is uploaded as an artifact.
 * **Interpretation:** Use the summary and HTML report to find uncovered lines and branches. Treat coverage as a risk signal (see Coverage Expectations above); acknowledge and justify gaps. No coverage threshold is enforced in CI; the goal is visibility and informed decisions.
+
+---
+
+### No LLMs in tests when possible (testing paradigm)
+
+Tests must run **without real LLM calls** wherever the behavior under test is code paths, data flow, or tool execution. Use **deterministic inputs and mocks** so we know the code works regardless of model variance.
+
+- **Mock in tests:** Router output (fixed `priorityOrder` + `refinedTask`). Specialist runs: mock `runSpecialist` / LLM to return fixed content or tool_calls. Tool handlers: real or in-process mocks with deterministic responses. Heap runner, registry, validation, context merge, and chat-route branching are tested with **no live LLM provider**.
+- **Statistical behavior in production:** Non-deterministic LLM output is handled by **human-in-the-loop** (user confirms goal, gives feedback) and **self-improvement** (improver updates prompts/specialists from run logs and feedback). Tests do **not** rely on "good" or "bad" LLM output; they rely on fixed mock responses.
+- **When an LLM might appear in tests:** Only for tests that explicitly assert "router or specialist produces valid JSON" or "refine produces a suggestion" from a **single canned prompt/response** (e.g. fixture response from a file). Prefer still mocking the LLM client so the test stays deterministic and fast.
+- **Improvement / planner / heap tests:** Mock `get_run_for_improvement` with fixture run + logs; mock the improver’s or planner’s LLM to return a fixed plan or update payload. Assert flow and DB updates, not model quality.
+
+Apply this when writing or reviewing tests for: heap runner, chat route (heap mode), improvement workflow, improvement-planning specialist, run-improve loop.
 
 ---
 
@@ -137,6 +157,8 @@ Whenever code behavior changes:
 * Remove obsolete tests
 * Ensure test names still reflect behavior
 
+**When fixing a bug:** Add (or update) a corresponding test that would have failed before the fix and passes after it, so the same bug cannot recur. See `.cursor/rules/bug-fix-add-tests.mdc` for details.
+
 Failing tests are treated as:
 
 * A signal of incorrect code **or**
@@ -153,6 +175,7 @@ Work is **not complete** unless:
 * Edge cases and failure modes are covered
 * Integration tests exist where boundaries matter
 * Coverage gaps are intentional and explained
+* Tests for heap, improvement, or assistant paths use **deterministic mocks** (no real LLM) when testing code flow; statistical behavior is left to human-in-the-loop and self-improvement in production
 
 ---
 
@@ -164,10 +187,11 @@ Before presenting code, the agent asks:
 * What assumptions are encoded in tests?
 * Are critical paths protected by unit tests?
 * Are boundaries validated by integration tests?
+* For heap/improvement/assistant tests: did I use deterministic mocks (no real LLM) so the test verifies code flow, not model output?
 * Did I run the unit tests?
-* Did I run the test coverage (`npm run test:coverage --workspace packages/ui`) and check the report?
+* Did I run the test coverage (`npm run test:coverage`) and check the report?
 * Did I run the build (and fix any errors)?
-* Before pushing: did I run `npm run pre-push` (or all CI steps: typecheck, lint, test, build:ui, build:docs, desktop dist) locally to save CI minutes?
+* Before pushing: did I run `pnpm run ci:local` (CI steps plus build:ui and desktop dist) locally to verify the full pipeline?
 
 ---
 
@@ -175,12 +199,12 @@ Before presenting code, the agent asks:
 
 After modifying code, **always run the relevant build(s)** to catch and fix potential build errors before considering the change complete.
 
-- **Before pushing:** Run `npm run pre-push` to run all CI steps locally (typecheck, lint, test, build:ui, build:docs, desktop dist) and avoid wasting CI minutes. If the desktop build fails with "file is being used", close Agentron Studio, any Explorer windows showing `apps/desktop/release/`, and restart Cursor so the watcher excludes take effect (see `.vscode/settings.json`).
+- **Before pushing:** Run `pnpm run ci:local` to run CI steps plus build:ui and desktop dist; fix any failures so the full pipeline is verified locally. If desktop dist fails with "file is being used", close Agentron Studio and any Explorer windows showing `apps/desktop/release/`, then retry.
 
 - **Default:** Run `npm run build:ui` when changing app/UI, packages/ui, packages/core, or packages/runtime code.
 - **Docs:** Run `npm run build:docs` when changing anything under `apps/docs/`.
 - **Desktop (Electron):** When changing `apps/desktop` or anything the desktop app depends on, run `npm run build:ui` then `npm run dist --workspace apps/desktop` to verify the Electron build and installer packaging.
-- **Before pushing:** Run `npm run pre-push` so all CI checks pass locally and CI minutes are not wasted.
+- **Before pushing:** Run `pnpm run ci:local` so all CI checks pass locally and CI minutes are not wasted.
 - If the build or typecheck fails, fix the errors and re-run until they pass. Do not leave broken builds.
 
 ---
@@ -206,6 +230,64 @@ After modifying code, **always run the relevant build(s)** to catch and fix pote
 
 - **CI:** PRs to `main` run the desktop build (to verify the app builds). Merging to `main` creates the GitHub Release with installers and deploys docs.
 
-## Promopt Generation
+---
 
-*
+## Chat assistant specialist structure (multi-agent / heap)
+
+When editing the **assistant agent specialist structure** (tool sets per specialist, specialist registry, router, or chat route that runs them):
+
+- **Cap: No more than 10 tools per specialist.** If a domain would exceed 10 tools, split it into sub-specialists (e.g. Workflow → "Workflow definition" + "Run control"). Applies to any file that defines or registers per-specialist tool sets (e.g. `packages/runtime/src/chat/tools/`, specialist registry, chat route).
+- **Logging:** Add traceable execution logging so the assistant stack can be followed in logs. Use a single **trace id** per chat turn; log at **router** (priorityOrder, refinedTask summary), **specialist** (specialistId, start/end), **tool** (toolName, result/error), and when a specialist **delegates** (delegateHeap, depth) with the same trace id. Prefer structured key=value or JSON so logs can be filtered. See `.cursor/rules/assistant-specialist-structure.mdc` for full details.
+- **Delegators / deep heap:** Specialists can act as delegators by returning a sub-heap (`delegateHeap`); the runtime runs it with a heap stack and depth limit before continuing the parent heap. No extra "invoke specialist" tool; cap 10 tools per specialist still applies.
+- **Recursive prompts:** Do not overload any LLM with all specialist descriptions. Router gets only **top-level** specialist ids (small list); each delegator gets only its **delegateTargets** (sub-specialists it can delegate to). Scoped lists per node keep prompts short.
+- **Small choice set at every level:** Too many specialist options at once hurts decisions (same as too many tools). Cap **branching factor**: router top-level list ≤ 7; each delegator's `delegateTargets` ≤ 7. If you have more sub-specialists, add an intermediate layer (group into meta-specialists) so no LLM ever sees "choose one of 12."
+
+---
+
+## Chat assistant & tools: reduce LLM usage
+
+When **adding or changing chat assistant tools** (e.g. in `packages/ui/app/api/chat/route.ts` executeTool, or runtime tools used by the assistant), **evaluate whether a server-side or “skip-LLM” path makes sense** and implement it when it does.
+
+### Why
+
+- Every rephrase and every assistant turn costs tokens and latency.
+- User actions that are **deterministic** (e.g. “run this command”, “yes delete these”, “add to allowlist”) do not need the LLM to “decide” again; the server can execute and then hand a single, clear message to the LLM for the next step.
+
+### Patterns already in use
+
+1. **Shell approval**  
+   User clicks “Approve & Run” → server runs the command via `/api/shell-command/execute`; client sends `continueShellApproval: { command, stdout, stderr, exitCode }` → chat route skips rephrase and builds a short effective message; one assistant call continues the conversation.
+
+2. **Delete confirmation**  
+   Last assistant turn had `list_agents` + `list_workflows` + `ask_user` with options; user sends the first (affirmative) option → server runs `delete_agent` / `delete_workflow` for the listed ids, then injects a single message (“User confirmed. Deletions done. Now create …”) → one assistant call does creation/wiring only.
+
+3. **Synthetic messages**  
+   Messages that are system-generated (e.g. “The user approved and ran: …”, “Added … to the allowlist”) or short non-questions skip rephrase via `shouldSkipRephrase()`.
+
+### Rule for new or changed tools
+
+When you **create or significantly change** a chat assistant tool:
+
+1. **Evaluate**
+   - Does this tool sometimes require **user confirmation** (e.g. approval, “Yes/No” choice)?
+   - After the user confirms, is the **next step deterministic** (e.g. “run X”, “delete these”, “add to list”)?
+   - If yes: consider a **confirmation path**: server detects the confirmation (e.g. from last assistant tool results + user message), runs the deterministic actions (same tool executor), then calls the assistant once with a single injected message so the LLM only does the *next* logical step (e.g. create, summarize, offer options).
+
+2. **Implement when it makes sense**
+   - Add detection (e.g. last assistant message’s tool results + user message matching an option).
+   - Run the tool(s) server-side in the chat route (reuse `executeTool` or the same logic).
+   - Build a short, explicit `effectiveMessage` and set a flag (e.g. `confirmationPathMessage`) so the route skips rephrase and uses this message for one assistant call.
+   - Document the pattern in this section or in code comments so future tools can follow it.
+
+3. **Do not** add server-side paths for actions that are **not** deterministic (e.g. “interpret what the user meant” or “choose from many valid next steps”). Those remain LLM-driven.
+
+### Where to wire this
+
+- **Chat route:** `packages/ui/app/api/chat/route.ts` — payload handling, `effectiveMessage` branches, and any “confirmation path” logic (e.g. `continueShellApproval`, delete-confirm).
+- **Runtime tools:** `packages/runtime/src/chat/tools/` — tool definitions and prompts; keep tool contracts stable so the route can rely on result shapes (e.g. `list_agents` / `list_workflows` + `ask_user` with `options`) for detection.
+
+---
+
+## Prompt generation
+
+(Reserved for future prompt-generation rules.)

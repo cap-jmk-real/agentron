@@ -8,15 +8,26 @@ import type { AssistantToolDef } from "./types";
 export const IMPROVEMENT_TOOLS: AssistantToolDef[] = [
   {
     name: "create_improvement_job",
-    description: "Create an improvement job to track a model to improve. Used when building an agent that improves a small LLM from feedback or runs training. Returns job id.",
+    description:
+      "Create an improvement job to track a model to improve. Used when building an agent that improves a small LLM from feedback or runs training. Returns job id.",
     parameters: {
       type: "object",
       properties: {
         name: { type: "string", description: "Optional job name" },
-        scopeType: { type: "string", enum: ["agent", "workflow", "job"], description: "Scope type" },
+        scopeType: {
+          type: "string",
+          enum: ["agent", "workflow", "job"],
+          description: "Scope type",
+        },
         scopeId: { type: "string", description: "Agent id, workflow id, or leave empty" },
-        studentLlmConfigId: { type: "string", description: "LLM config for the student (small) model" },
-        teacherLlmConfigId: { type: "string", description: "Optional LLM config for teacher (distillation)" },
+        studentLlmConfigId: {
+          type: "string",
+          description: "LLM config for the student (small) model",
+        },
+        teacherLlmConfigId: {
+          type: "string",
+          description: "Optional LLM config for teacher (distillation)",
+        },
       },
       required: [],
     },
@@ -37,14 +48,18 @@ export const IMPROVEMENT_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "update_improvement_job",
-    description: "Update an improvement job (e.g. current model ref, instance refs, architecture spec) after training completes or when scope changes.",
+    description:
+      "Update an improvement job (e.g. current model ref, instance refs, architecture spec) after training completes or when scope changes.",
     parameters: {
       type: "object",
       properties: {
         id: { type: "string" },
         currentModelRef: { type: "string" },
         instanceRefs: { type: "array", items: { type: "string" } },
-        architectureSpec: { type: "object", description: "Optional architecture spec for train-from-spec" },
+        architectureSpec: {
+          type: "object",
+          description: "Optional architecture spec for train-from-spec",
+        },
         lastTrainedAt: { type: "number" },
       },
       required: ["id"],
@@ -52,14 +67,22 @@ export const IMPROVEMENT_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "generate_training_data",
-    description: "Generate training dataset for model improvement. Strategies: from_feedback (user ratings → SFT/preference), teacher (distillation from stronger model), self_play, contrastive. Returns dataset ref (path or id) and summary. Use before trigger_training.",
+    description:
+      "Generate training dataset for model improvement. Strategies: from_feedback (user ratings → SFT/preference), teacher (distillation from stronger model), self_play, contrastive. Returns dataset ref (path or id) and summary. Use before trigger_training.",
     parameters: {
       type: "object",
       properties: {
-        strategy: { type: "string", enum: ["from_feedback", "teacher", "self_play", "contrastive"], description: "Data strategy" },
+        strategy: {
+          type: "string",
+          enum: ["from_feedback", "from_runs", "teacher", "self_play", "contrastive"],
+          description: "Data strategy",
+        },
         scopeType: { type: "string", enum: ["agent", "workflow", "improvement_job"] },
         scopeId: { type: "string", description: "targetId or jobId" },
-        since: { type: "number", description: "Optional timestamp: only include feedback/runs after this" },
+        since: {
+          type: "number",
+          description: "Optional timestamp: only include feedback/runs after this",
+        },
         jobId: { type: "string", description: "Improvement job id when scope is improvement_job" },
       },
       required: ["strategy"],
@@ -67,27 +90,44 @@ export const IMPROVEMENT_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "evaluate_model",
-    description: "Run the student (or a given instance) on an eval set; return metrics. Use to check if improvement is good enough or to compare instances.",
+    description:
+      "Run the student (or a given instance) on an eval set; return metrics. Use to check if improvement is good enough or to compare instances.",
     parameters: {
       type: "object",
       properties: {
         jobId: { type: "string" },
         instanceRef: { type: "string", description: "Optional; omit to use job's current model" },
-        evalSetRef: { type: "string", description: "Optional ref to eval set from a store or path" },
+        evalSetRef: {
+          type: "string",
+          description: "Optional ref to eval set from a store or path",
+        },
       },
       required: ["jobId"],
     },
   },
   {
     name: "trigger_training",
-    description: "Start a training run. Backend: local (HTTP trainer), replicate, or huggingface. Pass dataset ref from generate_training_data. Use addInstance: true to spawn a new instance without replacing current.",
+    description:
+      "Start a training run. Backend: local (HTTP trainer), replicate, or huggingface. Pass dataset ref from generate_training_data. Use addInstance: true to spawn a new instance without replacing current.",
     parameters: {
       type: "object",
       properties: {
         jobId: { type: "string" },
         datasetRef: { type: "string", description: "Path or id from generate_training_data" },
-        backend: { type: "string", enum: ["local", "replicate", "huggingface"], description: "Training backend" },
-        addInstance: { type: "boolean", description: "If true, create new instance without replacing current" },
+        backend: {
+          type: "string",
+          enum: ["local", "replicate", "huggingface"],
+          description: "Training backend",
+        },
+        addInstance: {
+          type: "boolean",
+          description: "If true, create new instance without replacing current",
+        },
+        experimentLabel: {
+          type: "string",
+          description:
+            "Optional label for experiment tracking (stored in run config for filtering)",
+        },
         config: { type: "object", description: "Optional hyperparams (epochs, lr, etc.)" },
       },
       required: ["jobId", "datasetRef", "backend"],
@@ -95,16 +135,20 @@ export const IMPROVEMENT_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "get_training_status",
-    description: "Poll a training run; returns status (pending/running/completed/failed) and output model ref when done. Use after trigger_training to wait for completion then update_improvement_job.",
+    description:
+      "Poll a training run; returns status (pending/running/completed/failed) and output model ref when done. Use after trigger_training to wait for completion then update_improvement_job.",
     parameters: {
       type: "object",
-      properties: { runId: { type: "string", description: "Training run id from trigger_training" } },
+      properties: {
+        runId: { type: "string", description: "Training run id from trigger_training" },
+      },
       required: ["runId"],
     },
   },
   {
     name: "decide_optimization_target",
-    description: "Given scope (job/agent/tool), returns what to optimize: prompt, model_instance, or architecture, with reason. Use to branch: prompt → update_agent/update_tool; model_instance → generate_training_data + trigger_training; architecture → propose_architecture + trigger_training.",
+    description:
+      "Given scope (job/agent/tool), returns what to optimize: prompt, model_instance, or architecture, with reason. Use to branch: prompt → update_agent/update_tool; model_instance → generate_training_data + trigger_training; architecture → propose_architecture + trigger_training.",
     parameters: {
       type: "object",
       properties: {
@@ -116,16 +160,20 @@ export const IMPROVEMENT_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "get_technique_knowledge",
-    description: "Return the technique playbook (LoRA, distillation, contrastive, etc.): what each is, when to use, downsides. Optionally include recent insights for a job. Call when designing improvement flow to pick the right technique.",
+    description:
+      "Return the technique playbook (LoRA, distillation, contrastive, etc.): what each is, when to use, downsides. Optionally include recent insights for a job. Call when designing improvement flow to pick the right technique.",
     parameters: {
       type: "object",
-      properties: { jobId: { type: "string", description: "Optional; include recent insights for this job" } },
+      properties: {
+        jobId: { type: "string", description: "Optional; include recent insights for this job" },
+      },
       required: [],
     },
   },
   {
     name: "record_technique_insight",
-    description: "Store an insight after a run (e.g. 'teacher distillation helped', 'contrastive caused instability'). Future get_technique_knowledge for same job includes these.",
+    description:
+      "Store an insight after a run (e.g. 'teacher distillation helped', 'contrastive caused instability'). Future get_technique_knowledge for same job includes these.",
     parameters: {
       type: "object",
       properties: {
@@ -140,7 +188,8 @@ export const IMPROVEMENT_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "propose_architecture",
-    description: "Attach an architecture spec to a job or next training run (e.g. reduce layers, change hidden size). trigger_training will pass it to the backend when train-from-spec is supported.",
+    description:
+      "Attach an architecture spec to a job or next training run (e.g. reduce layers, change hidden size). trigger_training will pass it to the backend when train-from-spec is supported.",
     parameters: {
       type: "object",
       properties: {
@@ -152,7 +201,8 @@ export const IMPROVEMENT_TOOLS: AssistantToolDef[] = [
   },
   {
     name: "spawn_instance",
-    description: "Create a new model instance without replacing current (multi-instance specialization). Same as trigger_training with addInstance: true; optionally tag for tool or scope.",
+    description:
+      "Create a new model instance without replacing current (multi-instance specialization). Same as trigger_training with addInstance: true; optionally tag for tool or scope.",
     parameters: {
       type: "object",
       properties: {
@@ -162,6 +212,38 @@ export const IMPROVEMENT_TOOLS: AssistantToolDef[] = [
         tag: { type: "string", description: "Optional tag e.g. 'code', 'browser'" },
       },
       required: ["jobId", "datasetRef", "backend"],
+    },
+  },
+  {
+    name: "register_trained_model",
+    description:
+      "Register a trained model (outputModelRef from get_training_status) as an LLM config so agents can use it. Returns llmConfigId; then update_improvement_job (currentModelRef or instanceRefs) or update_agent (llmConfigId).",
+    parameters: {
+      type: "object",
+      properties: {
+        outputModelRef: {
+          type: "string",
+          description: "Path or Ollama model name from training run output",
+        },
+        name: {
+          type: "string",
+          description: "Optional label for the config (e.g. improved-agent-xyz)",
+        },
+        jobId: { type: "string", description: "Optional; link to improvement job" },
+      },
+      required: ["outputModelRef"],
+    },
+  },
+  {
+    name: "list_specialist_models",
+    description:
+      "List specialist model instances for an agent (improvement jobs scoped to that agent; returns currentModelRef and instanceRefs resolved to LLM config ids).",
+    parameters: {
+      type: "object",
+      properties: {
+        agentId: { type: "string", description: "Agent id to list specialist models for" },
+      },
+      required: ["agentId"],
     },
   },
 ];

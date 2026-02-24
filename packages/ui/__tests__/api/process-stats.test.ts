@@ -10,6 +10,7 @@ describe("Process stats API", () => {
     expect(data.memory).toHaveProperty("rss");
     expect(data.memory).toHaveProperty("heapTotal");
     expect(data.memory).toHaveProperty("heapUsed");
+    expect(data.memory).toHaveProperty("external");
     expect(data).toHaveProperty("cpu");
     expect(data.cpu).toHaveProperty("user");
     expect(data.cpu).toHaveProperty("system");

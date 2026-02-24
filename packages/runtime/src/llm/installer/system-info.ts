@@ -42,15 +42,23 @@ function detectGpu(): GpuInfo[] {
         });
       }
       // Intel Mac: could have AMD GPU; we don't run amd/rocm on macOS typically, skip extra checks
-    } catch { /* no GPU info */ }
+    } catch {
+      /* no GPU info */
+    }
   }
 
   if (platform === "linux" || platform === "win32") {
     // NVIDIA: try on every call (no cache) so that newly installed drivers are detected when the user reopens the page/app
-    const nvidiaCmds = platform === "win32" ? ["nvidia-smi"] : ["nvidia-smi", "/usr/bin/nvidia-smi", "/usr/lib/nvidia/bin/nvidia-smi"];
+    const nvidiaCmds =
+      platform === "win32"
+        ? ["nvidia-smi"]
+        : ["nvidia-smi", "/usr/bin/nvidia-smi", "/usr/lib/nvidia/bin/nvidia-smi"];
     for (const cmd of nvidiaCmds) {
       try {
-        const output = execSync(`${cmd} --query-gpu=name,memory.total --format=csv,noheader,nounits`, { timeout: 5000, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+        const output = execSync(
+          `${cmd} --query-gpu=name,memory.total --format=csv,noheader,nounits`,
+          { timeout: 5000, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+        ).trim();
         const lines = output.split("\n").filter((l) => l && !l.startsWith("name,"));
         for (const line of lines) {
           const parts = line.split(",").map((s) => s.trim());
@@ -61,32 +69,50 @@ function detectGpu(): GpuInfo[] {
           }
         }
         if (gpus.length > 0) break;
-      } catch { continue; }
+      } catch {
+        continue;
+      }
     }
 
     // AMD ROCm (Linux) or AMD on Windows (no standard CLI; skip or use wmic)
     if (gpus.length === 0 && platform === "linux") {
       try {
-        const out = execSync("which rocm-smi 2>/dev/null && rocm-smi --showmeminfo vram 2>/dev/null || true", { timeout: 5000, shell: "/bin/sh", encoding: "utf8" });
+        const out = execSync(
+          "which rocm-smi 2>/dev/null && rocm-smi --showmeminfo vram 2>/dev/null || true",
+          { timeout: 5000, shell: "/bin/sh", encoding: "utf8" }
+        );
         if (out.includes("vram") || out.includes("VRAM")) {
           gpus.push({ available: true, name: "AMD GPU (ROCm)", vram: 0, backend: "rocm" });
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
 
     // Intel GPU (Linux: intel_gpu_top or sysfs)
     if (gpus.length === 0 && platform === "linux") {
       try {
-        const hasIntel = execSync("ls /dev/dri/renderD* 2>/dev/null | head -1", { timeout: 2000, shell: "/bin/sh", encoding: "utf8" }).trim();
+        const hasIntel = execSync("ls /dev/dri/renderD* 2>/dev/null | head -1", {
+          timeout: 2000,
+          shell: "/bin/sh",
+          encoding: "utf8",
+        }).trim();
         if (hasIntel) {
           gpus.push({ available: true, name: "Intel GPU", vram: 0, backend: "none" });
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
 
   if (gpus.length === 0) {
-    gpus.push({ available: false, name: "No GPU detected (drivers may vary by OS)", vram: 0, backend: "none" });
+    gpus.push({
+      available: false,
+      name: "No GPU detected (drivers may vary by OS)",
+      vram: 0,
+      backend: "none",
+    });
   }
 
   return gpus;
@@ -99,13 +125,22 @@ function getDiskSpace(targetPath?: string): { total: number; free: number; path:
   try {
     if (platform === "win32") {
       const drive = checkPath.slice(0, 2);
-      const output = execSync(`wmic logicaldisk where "DeviceID='${drive}'" get Size,FreeSpace /format:csv`, { timeout: 5000 }).toString();
+      const output = execSync(
+        `wmic logicaldisk where "DeviceID='${drive}'" get Size,FreeSpace /format:csv`,
+        { timeout: 5000 }
+      ).toString();
       const lines = output.trim().split("\n").filter(Boolean);
       const lastLine = lines[lines.length - 1];
       const parts = lastLine.split(",");
-      return { total: parseInt(parts[2] || "0", 10), free: parseInt(parts[1] || "0", 10), path: drive };
+      return {
+        total: parseInt(parts[2] || "0", 10),
+        free: parseInt(parts[1] || "0", 10),
+        path: drive,
+      };
     } else {
-      const output = execSync(`df -k "${checkPath}" | tail -1`, { timeout: 5000 }).toString().trim();
+      const output = execSync(`df -k "${checkPath}" | tail -1`, { timeout: 5000 })
+        .toString()
+        .trim();
       const parts = output.split(/\s+/);
       const total = parseInt(parts[1] || "0", 10) * 1024;
       const free = parseInt(parts[3] || "0", 10) * 1024;
@@ -124,8 +159,9 @@ export async function getSystemResources(): Promise<SystemResources> {
   };
 
   // Check disk space where Ollama stores models
-  const ollamaDir = process.env.OLLAMA_MODELS
-    ?? (os.platform() === "darwin" || os.platform() === "linux"
+  const ollamaDir =
+    process.env.OLLAMA_MODELS ??
+    (os.platform() === "darwin" || os.platform() === "linux"
       ? `${os.homedir()}/.ollama/models`
       : `${os.homedir()}\\.ollama\\models`);
   const disk = getDiskSpace(ollamaDir);
@@ -193,11 +229,15 @@ export async function checkCompatibility(parameterSize: string): Promise<Compati
 
   const canRun = system.ram.free >= requirements.ramMinimum * 0.7; // Allow some flexibility
   if (!canRun) {
-    warnings.push(`Model needs ~${fmtBytes(requirements.ramMinimum)} RAM but only ${fmtBytes(system.ram.free)} is free`);
+    warnings.push(
+      `Model needs ~${fmtBytes(requirements.ramMinimum)} RAM but only ${fmtBytes(system.ram.free)} is free`
+    );
   }
 
   if (system.disk.free < requirements.diskSize) {
-    warnings.push(`Model needs ~${fmtBytes(requirements.diskSize)} disk but only ${fmtBytes(system.disk.free)} is free`);
+    warnings.push(
+      `Model needs ~${fmtBytes(requirements.diskSize)} disk but only ${fmtBytes(system.disk.free)} is free`
+    );
   }
 
   const primaryGpu = system.gpu.find((g) => g.available) ?? system.gpu[0];
@@ -214,12 +254,21 @@ export async function checkCompatibility(parameterSize: string): Promise<Compati
       const layerFraction = primaryGpu.vram / requirements.vramRecommended;
       recommendedGpuLayers = Math.min(Math.floor(totalLayers * layerFraction), totalLayers);
       if (recommendedGpuLayers > 0) {
-        warnings.push(`Full GPU offload needs ~${fmtBytes(requirements.vramRecommended)} VRAM (have ${fmtBytes(primaryGpu.vram)}). Recommend ${recommendedGpuLayers} layers on GPU.`);
+        warnings.push(
+          `Full GPU offload needs ~${fmtBytes(requirements.vramRecommended)} VRAM (have ${fmtBytes(primaryGpu.vram)}). Recommend ${recommendedGpuLayers} layers on GPU.`
+        );
       }
     }
   } else if (!primaryGpu.available) {
     warnings.push("No GPU detected. Model will run on CPU only.");
   }
 
-  return { canRun: canRun || system.ram.total >= requirements.ramMinimum, canRunOnGpu, warnings, system, requirements, recommendedGpuLayers };
+  return {
+    canRun: canRun || system.ram.total >= requirements.ramMinimum,
+    canRunOnGpu,
+    warnings,
+    system,
+    requirements,
+    recommendedGpuLayers,
+  };
 }

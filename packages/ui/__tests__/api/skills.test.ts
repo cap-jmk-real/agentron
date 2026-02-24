@@ -12,6 +12,50 @@ describe("Skills API", () => {
     expect(Array.isArray(data)).toBe(true);
   });
 
+  it("GET /api/skills returns description and config as undefined when null", async () => {
+    const res = await listPost(
+      new Request("http://localhost/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Skill No Desc Config",
+          type: "prompt",
+          description: null,
+          content: null,
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const created = await res.json();
+    const listRes = await listGet();
+    const data = await listRes.json();
+    const found = data.find((s: { id: string }) => s.id === created.id);
+    expect(found).toBeDefined();
+    expect(found.description).toBeUndefined();
+    expect(found.config).toBeUndefined();
+  });
+
+  it("GET /api/skills returns parsed config when present", async () => {
+    const res = await listPost(
+      new Request("http://localhost/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Skill With Config",
+          type: "prompt",
+          config: { key: "value" },
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const created = await res.json();
+    const listRes = await listGet();
+    const data = await listRes.json();
+    const found = data.find((s: { id: string }) => s.id === created.id);
+    expect(found).toBeDefined();
+    expect(found.config).toEqual({ key: "value" });
+  });
+
   it("POST /api/skills returns 400 for invalid JSON", async () => {
     const res = await listPost(
       new Request("http://localhost/api/skills", {
@@ -65,6 +109,223 @@ describe("Skills API", () => {
     expect(data.error).toBe("Not found");
   });
 
+  it("GET /api/skills/:id returns description and config as undefined when null", async () => {
+    const postRes = await listPost(
+      new Request("http://localhost/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Skill Null Fields", type: "prompt", content: null }),
+      })
+    );
+    const created = await postRes.json();
+    const res = await getOne(new Request("http://localhost/api/skills/x"), {
+      params: Promise.resolve({ id: created.id }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.description).toBeUndefined();
+    expect(data.config).toBeUndefined();
+  });
+
+  it("GET /api/skills/:id returns parsed config when skill has config", async () => {
+    const postRes = await listPost(
+      new Request("http://localhost/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Skill With Config For Get",
+          type: "prompt",
+          config: { foo: "bar", count: 1 },
+        }),
+      })
+    );
+    const created = await postRes.json();
+    const res = await getOne(new Request("http://localhost/api/skills/x"), {
+      params: Promise.resolve({ id: created.id }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.config).toEqual({ foo: "bar", count: 1 });
+  });
+
+  it("PUT /api/skills/:id with body that has no updatable fields returns 200 and current skill", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unknownField: "ignored" }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBe(createdId);
+  });
+
+  it("PUT /api/skills/:id with config null clears stored config", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: null }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.config).toBeUndefined();
+  });
+
+  it("PUT /api/skills/:id returns 404 for unknown id", async () => {
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Any" }),
+      }),
+      { params: Promise.resolve({ id: "non-existent-skill-id" }) }
+    );
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe("Not found");
+  });
+
+  it("PUT /api/skills/:id returns 400 for invalid JSON", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: "not json",
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("Invalid JSON");
+  });
+
+  it("PUT /api/skills/:id accepts config null to clear", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: null }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.config).toBeUndefined();
+  });
+
+  it("PUT /api/skills/:id updates config with object", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: { key: "value", count: 2 } }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.config).toEqual({ key: "value", count: 2 });
+  });
+
+  it("PUT /api/skills/:id with empty body returns 200 and current skill unchanged", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBe(createdId);
+    expect(data.name).toBe("Test Skill");
+  });
+
+  it("PUT /api/skills/:id updates only description", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: "Updated description only" }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.description).toBe("Updated description only");
+  });
+
+  it("PUT /api/skills/:id with only name preserves existing config", async () => {
+    const createRes = await listPost(
+      new Request("http://localhost/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Skill For Config Preserve",
+          type: "prompt",
+          config: { preserved: true },
+        }),
+      })
+    );
+    const created = await createRes.json();
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Name Only Update" }),
+      }),
+      { params: Promise.resolve({ id: created.id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.name).toBe("Name Only Update");
+    expect(data.config).toEqual({ preserved: true });
+  });
+
+  it("PUT /api/skills/:id updates config with object", async () => {
+    if (!createdId) return;
+    const configObj = { enabled: true, count: 2 };
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: configObj }),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.config).toEqual(configObj);
+  });
+
+  it("PUT /api/skills/:id with empty body returns current skill unchanged", async () => {
+    if (!createdId) return;
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: createdId }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.name).toBe("Test Skill");
+  });
+
   it("PUT /api/skills/:id updates skill", async () => {
     if (!createdId) return;
     const res = await putOne(
@@ -80,11 +341,87 @@ describe("Skills API", () => {
     expect(data.name).toBe("Updated Skill");
   });
 
+  it("PUT /api/skills/:id with only type updates type and leaves others unchanged", async () => {
+    const createRes = await listPost(
+      new Request("http://localhost/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Skill For Type Update",
+          type: "prompt",
+          content: "Keep this",
+          config: { key: "v" },
+        }),
+      })
+    );
+    const created = await createRes.json();
+    const res = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "custom" }),
+      }),
+      { params: Promise.resolve({ id: created.id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.type).toBe("custom");
+    expect(data.name).toBe("Skill For Type Update");
+    expect(data.content).toBe("Keep this");
+    expect(data.config).toEqual({ key: "v" });
+  });
+
+  it("PUT /api/skills/:id with config object then config null hits config update path", async () => {
+    const createRes = await listPost(
+      new Request("http://localhost/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Skill Config Path", type: "prompt" }),
+      })
+    );
+    const created = await createRes.json();
+    const putRes = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: { a: 1 } }),
+      }),
+      { params: Promise.resolve({ id: created.id }) }
+    );
+    expect(putRes.status).toBe(200);
+    const data1 = await putRes.json();
+    expect(data1.config).toEqual({ a: 1 });
+    const putNullRes = await putOne(
+      new Request("http://localhost/api/skills/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: null }),
+      }),
+      { params: Promise.resolve({ id: created.id }) }
+    );
+    expect(putNullRes.status).toBe(200);
+    const data2 = await putNullRes.json();
+    expect(data2.config).toBeUndefined();
+  });
+
+  it("DELETE /api/skills/:id returns 404 for unknown id", async () => {
+    const res = await deleteOne(
+      new Request("http://localhost/api/skills/x", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "non-existent-skill-id" }) }
+    );
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe("Not found");
+  });
+
   it("DELETE /api/skills/:id removes skill", async () => {
     if (!createdId) return;
-    const res = await deleteOne(new Request("http://localhost/api/skills/x", { method: "DELETE" }), {
-      params: Promise.resolve({ id: createdId }),
-    });
+    const res = await deleteOne(
+      new Request("http://localhost/api/skills/x", { method: "DELETE" }),
+      {
+        params: Promise.resolve({ id: createdId }),
+      }
+    );
     expect(res.status).toBe(200);
     const getRes = await getOne(new Request("http://localhost/api/skills/x"), {
       params: Promise.resolve({ id: createdId }),

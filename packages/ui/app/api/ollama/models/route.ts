@@ -4,7 +4,9 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const res = await fetch("http://localhost:11434/api/tags", { signal: AbortSignal.timeout(5000) });
+    const res = await fetch("http://localhost:11434/api/tags", {
+      signal: AbortSignal.timeout(5000),
+    });
     if (!res.ok) return json({ error: "Ollama not responding" }, { status: 502 });
 
     const data = (await res.json()) as {
@@ -13,7 +15,12 @@ export async function GET() {
         size: number;
         digest: string;
         modified_at: string;
-        details?: { parameter_size?: string; quantization_level?: string; family?: string; format?: string };
+        details?: {
+          parameter_size?: string;
+          quantization_level?: string;
+          family?: string;
+          format?: string;
+        };
       }>;
     };
 
@@ -31,12 +38,22 @@ export async function GET() {
     // Also get running models
     let running: Array<{ name: string; size: number; sizeVram: number }> = [];
     try {
-      const psRes = await fetch("http://localhost:11434/api/ps", { signal: AbortSignal.timeout(3000) });
+      const psRes = await fetch("http://localhost:11434/api/ps", {
+        signal: AbortSignal.timeout(3000),
+      });
       if (psRes.ok) {
-        const psData = (await psRes.json()) as { models?: Array<{ name: string; size: number; size_vram: number }> };
-        running = (psData.models ?? []).map((m) => ({ name: m.name, size: m.size, sizeVram: m.size_vram }));
+        const psData = (await psRes.json()) as {
+          models?: Array<{ name: string; size: number; size_vram: number }>;
+        };
+        running = (psData.models ?? []).map((m) => ({
+          name: m.name,
+          size: m.size,
+          sizeVram: m.size_vram,
+        }));
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     return json({ models, running });
   } catch {

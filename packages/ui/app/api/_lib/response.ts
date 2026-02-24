@@ -3,6 +3,6 @@ export const json = (data: unknown, init?: ResponseInit) =>
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    }
+      ...(init?.headers ?? {}),
+    },
   });

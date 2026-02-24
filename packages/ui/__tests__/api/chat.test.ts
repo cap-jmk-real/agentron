@@ -1,27 +1,16 @@
+/**
+ * Chat API tests are split by describe block into:
+ * - chat-improve-agents.test.ts
+ * - chat-api.test.ts (Chat API + mock)
+ * - chat-stream.test.ts (processChatStreamEvent)
+ * - chat-events-sse.test.ts (Chat events SSE)
+ * This file is kept for reference; run the above files for chat tests.
+ */
+
 import { describe, it, expect } from "vitest";
-import { GET } from "../../app/api/chat/route";
-import { POST as convPost } from "../../app/api/chat/conversations/route";
 
-describe("Chat API", () => {
-  it("GET /api/chat returns messages array", async () => {
-    const res = await GET(new Request("http://localhost/api/chat"));
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(Array.isArray(data)).toBe(true);
-  });
-
-  it("GET /api/chat?conversationId=id returns messages for conversation", async () => {
-    const createRes = await convPost(
-      new Request("http://localhost/api/chat/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Chat get test" }),
-      })
-    );
-    const conv = await createRes.json();
-    const res = await GET(new Request(`http://localhost/api/chat?conversationId=${conv.id}`));
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(Array.isArray(data)).toBe(true);
+describe("Chat (legacy placeholder)", () => {
+  it("chat tests are in chat-api.test.ts, chat-stream.test.ts, chat-events-sse.test.ts, chat-improve-agents.test.ts", () => {
+    expect(true).toBe(true);
   });
 });

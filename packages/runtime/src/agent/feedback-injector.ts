@@ -11,12 +11,13 @@ export function buildFeedbackInjection(items: Feedback[]): string {
 
   const lines: string[] = [
     "## Learning from past runs",
-    "The user has labeled previous outputs. Use these to improve your responses.\n"
+    "The user has labeled previous outputs. Use these to improve your responses.\n",
   ];
 
   for (const fb of items) {
     const inputStr = typeof fb.input === "string" ? fb.input : JSON.stringify(fb.input, null, 2);
-    const outputStr = typeof fb.output === "string" ? fb.output : JSON.stringify(fb.output, null, 2);
+    const outputStr =
+      typeof fb.output === "string" ? fb.output : JSON.stringify(fb.output, null, 2);
     const tag = fb.label.toUpperCase();
 
     lines.push(`### ${tag} example${fb.notes ? ` (user note: "${fb.notes}")` : ""}:`);

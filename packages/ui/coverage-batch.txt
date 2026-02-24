@@ -1,0 +1,57 @@
+﻿
+ RUN  v3.2.4 C:/Users/Julian/Documents/Programming/agentron/packages/ui
+      Coverage enabled with v8
+
+node.exe : 'wmic' is not recognized as an internal or external command,
+At C:\Users\Julian\AppData\Roaming\npm\pnpm.ps1:24 char:5
++     & "node$exe"  "$basedir/node_modules/pnpm/bin/pnpm.cjs" $args
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ('wmic' is not r...ternal command,:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+operable program or batch file.
+ Ô£ô __tests__/api/_lib/shell-exec.test.ts (12 tests) 10074ms
+   Ô£ô shell-exec > runShellCommand > runs simple command and returns stdout, stderr, exitCode  8152ms
+   Ô£ô shell-exec > runShellCommand > returns exitCode 0 for successful command  1049ms
+   Ô£ô shell-exec > runShellCommand > returns non-zero exitCode when command fails or fails to spawn  867ms
+'wmic' is not recognized as an internal or external command,
+operable program or batch file.
+ Ô£ô __tests__/api/system-stats.test.ts (5 tests) 18438ms
+   Ô£ô System stats API > GET /api/system-stats returns snapshot with ram, process, cpu, disk, gpu  8457ms
+   Ô£ô System stats API > getCachedSystemStats returns same snapshot within cache TTL  5238ms
+   Ô£ô System stats API > collectSystemStats returns snapshot with required shape  3881ms
+   Ô£ô System stats API > pushHistory and getHistory append and return history  860ms
+ Ô£ô __tests__/api/_lib/telegram-settings.test.ts (5 tests) 21457ms
+   Ô£ô telegram-settings > getTelegramSettings > returns hasToken true when botToken is set via update then get  21181ms
+ Ô£ô __tests__/api/rag-upload.test.ts (10 tests) 471ms
+ Ô£ô __tests__/api/llm-providers-id.test.ts (8 tests) 578ms
+ Ô£ô __tests__/api/chat-settings.test.ts (15 tests) 884ms
+   Ô£ô Chat settings API > PATCH /api/chat/settings with new row uses historyKeepRecent and plannerRecentMessages  308ms
+ Ô£ô __tests__/api/skills.test.ts (25 tests) 1103ms
+   Ô£ô Skills API > PUT /api/skills/:id with only type updates type and leaves others unchanged  313ms
+ Ô£ô __tests__/api/_lib/execution-events.test.ts (14 tests) 1179ms
+   Ô£ô execution-events > setExecutionRunState update path when row exists  348ms
+ Ô£ô __tests__/api/rag-ingest.test.ts (12 tests) 1043ms
+ Ô£ô __tests__/api/rag-connectors.test.ts (16 tests) 1050ms
+   Ô£ô RAG connectors API > POST /api/rag/connectors persists config.ingestAfterSync and GET :id returns it  367ms
+ Ô£ô __tests__/api/_lib/rag.test.ts (12 tests) 1046ms
+   Ô£ô rag > retrieveChunks > returns empty array when collection has pgvector store and queryPgvector throws  373ms
+ Ô£ô __tests__/api/rag.test.ts (46 tests) 1085ms
+ Ô£ô __tests__/api/chat-run-waiting.test.ts (10 tests) 1119ms
+   Ô£ô Chat run-waiting API > GET /api/chat/run-waiting returns runWaiting true with question from message when output has message but no question  353ms
+ Ô£ô __tests__/api/_lib/chat-queue.test.ts (9 tests) 1427ms
+   Ô£ô chat-queue > runs same-conversation handlers serially  461ms
+ Ô£ô __tests__/api/tasks.test.ts (14 tests) 440ms
+ Ô£ô __tests__/api/chat-pending-input.test.ts (12 tests) 1769ms
+   Ô£ô Chat pending-input API > GET /api/chat/pending-input includes conversation when assistant has ask_user with waitingForUser  332ms
+   Ô£ô Chat pending-input API > GET /api/chat/pending-input excludes conversation when assistant message has null toolCalls  373ms
+ Ô£ô __tests__/api/vault-credentials.test.ts (56 tests) 1596ms
+ Ô£ô __tests__/api/tools.test.ts (12 tests) 1903ms
+   Ô£ô Tools API > GET /api/tools returns array  1706ms
+ Ô£ô __tests__/api/queues.test.ts (16 tests) 982ms
+ Ô£ô __tests__/api/_lib/rag-limits.test.ts (11 tests) 221ms
+ Ô£ô __tests__/api/stats.test.ts (25 tests) 1004ms
+ Ô£ô __tests__/api/agents.test.ts (41 tests) 670ms
+ Ô£ô __tests__/api/workflows.test.ts (38 tests) 830ms
+ Ô£ô __tests__/api/import.test.ts (20 tests) 1070ms
+   Ô£ô Import API > POST /api/import imports tools  865ms

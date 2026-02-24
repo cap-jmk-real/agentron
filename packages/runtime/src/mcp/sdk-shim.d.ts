@@ -2,7 +2,13 @@
 declare module "@modelcontextprotocol/sdk/server/mcp" {
   export class McpServer {
     constructor(options: { name: string; version: string });
-    registerTool(name: string, schema: { description: string; inputSchema: unknown }, handler: (input: unknown) => Promise<{ content: Array<{ type: string; text: string }>; structuredContent?: unknown }>): void;
+    registerTool(
+      name: string,
+      schema: { description: string; inputSchema: unknown },
+      handler: (
+        input: unknown
+      ) => Promise<{ content: Array<{ type: string; text: string }>; structuredContent?: unknown }>
+    ): void;
     connect(transport: unknown): Promise<void>;
     close(): void;
   }

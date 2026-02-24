@@ -17,12 +17,21 @@ export async function GET(_: Request, { params }: Params) {
   const agentMap = new Map(allAgents.map((a) => [a.id, a]));
 
   // Per-agent breakdown within this workflow
-  const byAgent: Record<string, { name: string; promptTokens: number; completionTokens: number; cost: number; count: number }> = {};
+  const byAgent: Record<
+    string,
+    { name: string; promptTokens: number; completionTokens: number; cost: number; count: number }
+  > = {};
   for (const r of rows) {
     const aid = r.agentId ?? "unknown";
     if (!byAgent[aid]) {
       const agent = agentMap.get(aid);
-      byAgent[aid] = { name: agent?.name ?? "Unknown", promptTokens: 0, completionTokens: 0, cost: 0, count: 0 };
+      byAgent[aid] = {
+        name: agent?.name ?? "Unknown",
+        promptTokens: 0,
+        completionTokens: 0,
+        cost: 0,
+        count: 0,
+      };
     }
     byAgent[aid].promptTokens += r.promptTokens;
     byAgent[aid].completionTokens += r.completionTokens;
@@ -32,7 +41,10 @@ export async function GET(_: Request, { params }: Params) {
 
   const totalPrompt = rows.reduce((s, r) => s + r.promptTokens, 0);
   const totalCompletion = rows.reduce((s, r) => s + r.completionTokens, 0);
-  const totalCost = rows.reduce((s, r) => s + (r.estimatedCost ? parseFloat(r.estimatedCost) : 0), 0);
+  const totalCost = rows.reduce(
+    (s, r) => s + (r.estimatedCost ? parseFloat(r.estimatedCost) : 0),
+    0
+  );
 
   return json({
     workflow: { id: wf.id, name: wf.name },
@@ -43,10 +55,12 @@ export async function GET(_: Request, { params }: Params) {
       totalTokens: totalPrompt + totalCompletion,
       estimatedCost: Math.round(totalCost * 1_000_000) / 1_000_000,
     },
-    agents: Object.entries(byAgent).map(([id, data]) => ({
-      id,
-      ...data,
-      estimatedCost: Math.round(data.cost * 1_000_000) / 1_000_000,
-    })).sort((a, b) => (b.promptTokens + b.completionTokens) - (a.promptTokens + a.completionTokens)),
+    agents: Object.entries(byAgent)
+      .map(([id, data]) => ({
+        id,
+        ...data,
+        estimatedCost: Math.round(data.cost * 1_000_000) / 1_000_000,
+      }))
+      .sort((a, b) => b.promptTokens + b.completionTokens - (a.promptTokens + a.completionTokens)),
   });
 }

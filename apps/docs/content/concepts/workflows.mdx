@@ -1,0 +1,149 @@
+---
+title: Workflows
+description: Graphs of agents and edges. Multi-agent orchestration with maxRounds, branches, and execution modes.
+---
+
+# Workflows
+
+A **workflow** is a graph of **agents** connected by **edges**. It orchestrates multiple agents and runs them in sequence or in loops.
+
+---
+
+## Workflow structure
+
+| Element | Description |
+| ------- | ----------- |
+| **nodes** | Typically agent nodes: `{ id, type: "agent", config: { agentId } }` |
+| **edges** | `{ id, from: nodeId, to: nodeId }` define execution order |
+| **maxRounds** | With edges, execution follows the graph and stops after this many full cycles (prevents infinite loops) |
+| **branches** (optional) | Disconnected graphs, each with its own `nodes`, `edges`, `maxRounds`, **executionMode**, and optional **schedule**. Branches run in parallel. See [Disconnected graphs and mixed execution](#disconnected-graphs-and-mixed-execution). |
+
+---
+
+## Execution modes
+
+Each workflow (and each **branch**) has an execution mode. You can mix modes across branches.
+
+| Mode | Description |
+| ---- | ----------- |
+| **one_time** | Run only when explicitly triggered (e.g. `execute_workflow` or Run button). Never auto-scheduled. |
+| **interval** | Run on a fixed schedule: every N seconds, or daily/weekly (e.g. `schedule: "60"` or `"daily@09:00"`). |
+| **continuous** | Run repeatedly: when one run completes, the next starts after an optional delay. Good for "run as long as possible" or daemon-style agents. Optional `schedule` (seconds) = delay between runs. |
+
+---
+
+## How execution works
+
+<Steps>
+
+### 1. Follow edges
+
+The workflow engine follows edges from node to node.
+
+### 2. Run each agent
+
+Each agent node runs with the previous output as input.
+
+### 3. Pass output
+
+Agent output is passed to the next node.
+
+### 4. Loops
+
+For loops (e.g. A → B → A), execution repeats up to `maxRounds` full cycles.
+
+</Steps>
+
+---
+
+## Creating a workflow
+
+<Steps>
+
+### 1. Create
+
+`create_workflow` — Creates an empty workflow with a name.
+
+### 2. Update
+
+`update_workflow` — Add `nodes` (agent nodes), `edges`, and `maxRounds`.
+
+</Steps>
+
+**Example:** Two agents talking, max 10 rounds
+
+```json
+{
+  "nodes": [
+    { "id": "a1", "type": "agent", "config": { "agentId": "<agent-1-id>" } },
+    { "id": "a2", "type": "agent", "config": { "agentId": "<agent-2-id>" } }
+  ],
+  "edges": [
+    { "id": "e1", "from": "a1", "to": "a2" },
+    { "id": "e2", "from": "a2", "to": "a1" }
+  ],
+  "maxRounds": 10
+}
+```
+
+---
+
+## Disconnected graphs and mixed execution
+
+A workflow can define multiple **branches** (disconnected graphs). Each branch has:
+
+- **Graph** — `nodes`, `edges`, `maxRounds`
+- **Execution mode** — `one_time`, `interval`, or `continuous`
+- **Schedule** — For interval: required; for continuous: optional delay between runs
+
+Branches run **in parallel** and **independently**. You can mix:
+
+- **One-time** — Run only when you call `execute_workflow` with that `branchId` (or from the UI).
+- **Interval** — Run on a fixed schedule (every N seconds, or daily/weekly). Require `schedule`.
+- **Continuous** — When a run completes, the next starts after a delay. Optional `schedule` in seconds.
+
+The main workflow `nodes`/`edges` (without branches) are used for one-time or legacy runs when you don't pass a branch.
+
+---
+
+## Schedules (interval and continuous)
+
+- **Interval** — `schedule` = seconds (e.g. `"60"`) or calendar:
+  - **Daily:** `"daily@HH:mm"` (e.g. `"daily@09:00"`).
+  - **Weekly:** `"weekly@d1,d2,..."` (days 0–6, Sunday = 0), e.g. `"weekly@1,3,5"` for Mon/Wed/Fri.
+- **Continuous** — `schedule` optional. If set (e.g. `"5"`), that's the delay in seconds between runs; otherwise a default delay is used.
+
+---
+
+## Runs (executions)
+
+- Each workflow run creates an **execution** (run) with `targetType: "workflow"`, `targetId`: workflowId, and optionally `targetBranchId` when a branch was run.
+- **list_runs** — See recent runs.
+- **get_run(id)** — Inspect status, output, trail (per-agent input/output), and error.
+
+---
+
+## Improving from a run
+
+When a run fails or you want to refine behavior, you can **retry with improvement**. On the run page, use **Retry** (and optionally add a short note). The system can run an **improver** workflow that:
+
+- Loads run context (e.g. summary and recent errors) via tools like `get_run_for_improvement`
+- Optionally uses your note and past feedback
+- Updates agents or workflows (e.g. prompts, tool sets) and then starts a new run
+
+So you get "fix and rerun" without editing everything by hand. The chat assistant and run page support this flow; see [Agentron (Chat)](/concepts/assistant) for how the assistant uses run context.
+
+---
+
+## Suggested user actions
+
+<div className="compact-tables">
+
+| User wants… | Action |
+| ----------- | ------ |
+| "Create a workflow with two agents" | `create_agent` × 2, then `create_workflow`, then `update_workflow` with nodes, edges, maxRounds. |
+| "Fix a failed workflow" | `get_run(runId)` or `list_runs` + `get_run` to diagnose; then `get_workflow`, `get_agent`; apply fixes with `update_workflow` or `update_agent`. |
+| "Add an agent to my workflow" | `get_workflow(id)`, then `update_workflow` with new node and edges. |
+| "What went wrong with my run?" | `get_run(id)` to see output, trail, and error. |
+
+</div>

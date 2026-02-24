@@ -2,6 +2,8 @@ import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
 import { runBackup } from "../../_lib/db";
+import { json } from "../../_lib/response";
+import { logApiError } from "../../_lib/api-logger";
 
 export const runtime = "nodejs";
 
@@ -20,6 +22,10 @@ export async function GET() {
         "Content-Length": String(buffer.length),
       },
     });
+  } catch (e) {
+    logApiError("/api/backup/export", "GET", e);
+    const message = e instanceof Error ? e.message : "Export failed";
+    return json({ error: message }, { status: 500 });
   } finally {
     try {
       fs.unlinkSync(tempPath);

@@ -160,10 +160,32 @@ Optional: support `steps: [...]` for executing a sequence in one call (batch of 
 
 ---
 
+## Enabling browser automation
+
+To use the **std-browser-automation** tool (navigate, click, fill, getContent, screenshot, waitFor):
+
+1. Start Chrome with remote debugging:  
+   `chrome --remote-debugging-port=9222`  
+   (On macOS you may need the full path, e.g. `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-port=9222`.)
+2. Ensure at least one tab is open. The tool connects to the first context and first page.
+3. Attach **std-browser-automation** (and **std-request-user-help** when the agent should ask the user to choose from a list) to the workflow agent. For "get list from web then ask user which one", the runtime injects an instruction so the agent uses the browser first, then calls request_user_help.
+
+Login/session reuse: the tool uses the user's existing Chrome instance, so cookies and logged-in sessions (e.g. LinkedIn) are available. For credentials, use the vault when the user has approved (see optional vault integration).
+
+### Vault and credentials for browser login (optional)
+
+For "login then fetch list" agents (e.g. LinkedIn, Sales Navigator): the workflow run or browser tool can resolve credentials from the vault when the user has approved (e.g. "use vault credentials"). Document for users: store credentials in the vault and approve their use for the run; the agent's system prompt should state "use vault-stored credentials only when permitted" and must not log or echo them.
+
+**Current gap:** Workflow runs do **not** have a tool to retrieve vault credentials. The chat assistant has `ask_credentials` / `getStoredCredential` (with vault key from the request). When a workflow runs in the background, there is no request and no vault key. So when the agent tries to fill `#username` and `#password` via std-browser-automation, it has no values to pass. **To enable vault-in-workflow:** (1) Add a standard tool (e.g. `std-get-vault-credential` or `get_credential`) that workflow runs can call with a `credentialKey` (e.g. `linkedin_email`, `linkedin_password` or a composite key). (2) When the user approves "use vault credentials" for a run (e.g. via respond_to_run or a dedicated "approve vault for this run" action), pass a vault key or a short-lived token into the run context (e.g. stored server-side keyed by runId, or derived from the conversation that started the run). (3) In `executeStudioTool`, when the tool is the vault-credential tool, call `getStoredCredential(credentialKey, vaultKey)` and return the value (or a structured object with email/password for a composite key). The agent can then call std-browser-automation with action `fill`, selector `#username`, value `<email>`, and same for `#password`.
+
+### Human-like behavior and LinkedIn
+
+LinkedIn (and similar sites) often use bot detection, 2FA, and captchas. **Using the user's real browser (CDP)** helps: the same Chrome instance the user uses can have an existing session or the user can complete 2FA/captcha in that window while the agent waits. The agent already "figures out where to click and fill" by using CSS selectors (`#username`, `#password`, `button[type="submit"]`, etc.); the LLM chooses these from the page content or from common patterns. So the agent **can** enter credentials once it has the values (via the vault tool above). For cookie banners or overlays (e.g. "Accept" blocking the viewport), the agent may need to scroll or wait for the element to be clickable; the current timeout/retry in Playwright can fail if the element is covered. Improving the browser tool to scroll into view or use `force: true` for such clicks is a separate enhancement.
+
 ## Next Steps
 
-1. Add `playwright` to `packages/runtime`.
-2. Implement CDP browser tool in `builtins.ts` or a new module.
-3. Add a `std-browser-interactive` tool definition in the DB and register it.
+1. ~~Add `playwright` to `packages/runtime`.~~ Done.
+2. ~~Implement CDP browser tool.~~ Done: `packages/runtime/src/tools/browser-automation.ts`; tool id `std-browser-automation`.
+3. ~~Add tool definition in the DB and wire in run-workflow.~~ Done.
 4. Add assistant tool descriptions for “enable browser automation” and “record demonstration”.
 5. Implement recording pipeline (CDP or extension) and workflow generation from recorded steps.

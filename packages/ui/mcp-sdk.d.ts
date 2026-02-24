@@ -5,7 +5,9 @@ declare module "@modelcontextprotocol/sdk/server/mcp" {
     registerTool(
       name: string,
       schema: { description: string; inputSchema: unknown },
-      handler: (input: unknown) => Promise<{ content: Array<{ type: string; text: string }>; structuredContent?: unknown }>
+      handler: (
+        input: unknown
+      ) => Promise<{ content: Array<{ type: string; text: string }>; structuredContent?: unknown }>
     ): void;
     connect(transport: unknown): Promise<void>;
     close(): void;

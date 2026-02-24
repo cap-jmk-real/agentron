@@ -1,20 +1,38 @@
 import path from "node:path";
 import fs from "node:fs";
+import { getDataDir } from "./db";
 
 const DEFAULT_MAX_FILE_UPLOAD_BYTES = 50 * 1024 * 1024; // 50MB
 const MIN_MAX_BYTES = 1 * 1024 * 1024; // 1MB
 const MAX_MAX_BYTES = 500 * 1024 * 1024; // 500MB
 
+const DEFAULT_WORKFLOW_MAX_SELF_FIX_RETRIES = 3;
+const MIN_SELF_FIX_RETRIES = 0;
+const MAX_SELF_FIX_RETRIES = 10;
+
+export type ContainerEngine = "podman" | "docker";
+
+export type WebSearchProvider = "duckduckgo" | "brave" | "google";
+
 export type AppSettings = {
   maxFileUploadBytes: number;
+  containerEngine: ContainerEngine;
+  /** Allowed shell commands (exact match). When the assistant runs run_shell_command, if the command is in this list, it executes without user approval. */
+  shellCommandAllowlist: string[];
+  /** Max automatic retries per workflow agent step when a tool fails and the agent would request_user_help. 0 = disabled. */
+  workflowMaxSelfFixRetries: number;
+  /** Web search provider for std-web-search. Default duckduckgo. */
+  webSearchProvider?: WebSearchProvider;
+  /** Brave Search API key when webSearchProvider is brave. */
+  braveSearchApiKey?: string;
+  /** Google CSE API key when webSearchProvider is google. */
+  googleCseKey?: string;
+  /** Google CSE CX (search engine ID) when webSearchProvider is google. */
+  googleCseCx?: string;
 };
 
 function getSettingsPath(): string {
-  const dataDir = process.env.AGENTRON_DATA_DIR ?? path.join(process.cwd(), ".data");
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-  return path.join(dataDir, "app-settings.json");
+  return path.join(getDataDir(), "app-settings.json");
 }
 
 function loadRaw(): Partial<AppSettings> {
@@ -45,9 +63,55 @@ export function getMaxFileUploadBytes(): number {
   return Math.floor(v);
 }
 
+function normalizeContainerEngine(v: unknown): ContainerEngine {
+  return v === "docker" ? "docker" : "podman";
+}
+
+/**
+ * Returns the configured container engine (used by API routes that run containers).
+ * Default "podman" if unset or invalid.
+ */
+export function getContainerEngine(): ContainerEngine {
+  return normalizeContainerEngine(loadRaw().containerEngine);
+}
+
 /**
  * Returns full app settings for the settings API (GET).
  */
+function normalizeShellCommandAllowlist(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    .map((s) => s.trim());
+}
+
+export function getShellCommandAllowlist(): string[] {
+  return normalizeShellCommandAllowlist(loadRaw().shellCommandAllowlist);
+}
+
+function normalizeWorkflowMaxSelfFixRetries(v: unknown): number {
+  const n =
+    typeof v === "number" && !Number.isNaN(v)
+      ? Math.floor(v)
+      : DEFAULT_WORKFLOW_MAX_SELF_FIX_RETRIES;
+  return Math.min(MAX_SELF_FIX_RETRIES, Math.max(MIN_SELF_FIX_RETRIES, n));
+}
+
+export function getWorkflowMaxSelfFixRetries(): number {
+  return normalizeWorkflowMaxSelfFixRetries(loadRaw().workflowMaxSelfFixRetries);
+}
+
+function normalizeWebSearchProvider(v: unknown): WebSearchProvider {
+  if (v === "brave" || v === "google") return v;
+  return "duckduckgo";
+}
+
+function normalizeOptionalString(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const s = v.trim();
+  return s.length > 0 ? s : undefined;
+}
+
 export function getAppSettings(): AppSettings {
   const raw = loadRaw();
   const max = raw.maxFileUploadBytes;
@@ -55,11 +119,30 @@ export function getAppSettings(): AppSettings {
     typeof max === "number" && !Number.isNaN(max) && max >= MIN_MAX_BYTES && max <= MAX_MAX_BYTES
       ? Math.floor(max)
       : DEFAULT_MAX_FILE_UPLOAD_BYTES;
-  return { maxFileUploadBytes };
+  const containerEngine = normalizeContainerEngine(raw.containerEngine);
+  const shellCommandAllowlist = normalizeShellCommandAllowlist(raw.shellCommandAllowlist);
+  const workflowMaxSelfFixRetries = normalizeWorkflowMaxSelfFixRetries(
+    raw.workflowMaxSelfFixRetries
+  );
+  const webSearchProvider = normalizeWebSearchProvider(raw.webSearchProvider);
+  const braveSearchApiKey = normalizeOptionalString(raw.braveSearchApiKey);
+  const googleCseKey = normalizeOptionalString(raw.googleCseKey);
+  const googleCseCx = normalizeOptionalString(raw.googleCseCx);
+  return {
+    maxFileUploadBytes,
+    containerEngine,
+    shellCommandAllowlist,
+    workflowMaxSelfFixRetries,
+    webSearchProvider,
+    braveSearchApiKey,
+    googleCseKey,
+    googleCseCx,
+  };
 }
 
 /**
  * Updates app settings. Validates and clamps maxFileUploadBytes to [1MB, 500MB].
+ * Accepts containerEngine "podman" | "docker".
  */
 export function updateAppSettings(updates: Partial<AppSettings>): AppSettings {
   const current = getAppSettings();
@@ -70,7 +153,44 @@ export function updateAppSettings(updates: Partial<AppSettings>): AppSettings {
       maxFileUploadBytes = Math.floor(Math.min(MAX_MAX_BYTES, Math.max(MIN_MAX_BYTES, v)));
     }
   }
-  const next: AppSettings = { maxFileUploadBytes };
+  const containerEngine =
+    updates.containerEngine !== undefined
+      ? normalizeContainerEngine(updates.containerEngine)
+      : current.containerEngine;
+  const shellCommandAllowlist =
+    updates.shellCommandAllowlist !== undefined
+      ? normalizeShellCommandAllowlist(updates.shellCommandAllowlist)
+      : current.shellCommandAllowlist;
+  const workflowMaxSelfFixRetries =
+    updates.workflowMaxSelfFixRetries !== undefined
+      ? normalizeWorkflowMaxSelfFixRetries(updates.workflowMaxSelfFixRetries)
+      : current.workflowMaxSelfFixRetries;
+  const webSearchProvider =
+    updates.webSearchProvider !== undefined
+      ? normalizeWebSearchProvider(updates.webSearchProvider)
+      : current.webSearchProvider;
+  const braveSearchApiKey =
+    updates.braveSearchApiKey !== undefined
+      ? normalizeOptionalString(updates.braveSearchApiKey)
+      : current.braveSearchApiKey;
+  const googleCseKey =
+    updates.googleCseKey !== undefined
+      ? normalizeOptionalString(updates.googleCseKey)
+      : current.googleCseKey;
+  const googleCseCx =
+    updates.googleCseCx !== undefined
+      ? normalizeOptionalString(updates.googleCseCx)
+      : current.googleCseCx;
+  const next: AppSettings = {
+    maxFileUploadBytes,
+    containerEngine,
+    shellCommandAllowlist,
+    workflowMaxSelfFixRetries,
+    webSearchProvider,
+    braveSearchApiKey,
+    googleCseKey,
+    googleCseCx,
+  };
   save(next);
   return next;
 }

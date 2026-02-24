@@ -1,10 +1,12 @@
-# AgentOS Studio Architecture
+# Agentron Architecture
 
 This repo provides a standalone, local-first Studio application:
 
 - Electron wrapper with a Next.js UI.
 - Local agent runtime and SQLite storage.
-- Optional connection to remote AgentOS Server instances.
+- Optional connection to remote Agentron Server instances.
+
+**Desktop installer (future):** The goal is for the desktop app to work **independently** after install—no separate Node/npm or “run the UI” step. See [desktop-standalone.md](desktop-standalone.md) for the design and implementation checklist.
 
 ## Boundaries
 
@@ -45,4 +47,8 @@ The Studio uses shared contract definitions for any Server-compatible API (wheth
 - `contracts/shared-types.md` for data models used in both.
 
 For **sandbox site hosting** (agents hosting websites in their container, with domain routing and Docker/K8s), see [sandbox-site-hosting.md](sandbox-site-hosting.md) and set **SANDBOX_BACKEND_HOST** when Studio runs in Docker or K8s.
+
+## Chat backend (heap, planning, context)
+
+When the chat uses heap mode (multi-specialist routing), the backend runs a planner, then executes specialists in a heap. For how the planner, heap, context, and message queue interact — and how to debug “wrong route” or “planner didn’t see previous message” — see [chat-backend-heap-planning-context.md](chat-backend-heap-planning-context.md).
 

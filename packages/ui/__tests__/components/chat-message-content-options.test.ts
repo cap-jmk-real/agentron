@@ -1,0 +1,181 @@
+import { describe, it, expect } from "vitest";
+import {
+  getSuggestedOptionsFromToolResults,
+  getSuggestedOptions,
+  getLoadingStatus,
+} from "../../app/components/chat-message-content";
+
+describe("options from ask_user only (LLM-formatted, no regex parsing)", () => {
+  describe("getSuggestedOptionsFromToolResults", () => {
+    it("returns options from ask_user result.options array", () => {
+      const toolResults = [
+        {
+          name: "ask_user",
+          args: {},
+          result: { question: "Which one?", options: ["Yes", "No", "Cancel"] },
+        },
+      ];
+      const opts = getSuggestedOptionsFromToolResults(toolResults, "fallback text");
+      expect(opts).toHaveLength(3);
+      expect(opts[0]).toEqual({ value: "Yes", label: "Yes" });
+      expect(opts[1]).toEqual({ value: "No", label: "No" });
+      expect(opts[2]).toEqual({ value: "Cancel", label: "Cancel" });
+    });
+
+    it("returns options from ask_credentials when present", () => {
+      const toolResults = [
+        {
+          name: "ask_credentials",
+          args: {},
+          result: { question: "API key?", options: ["Provide now", "Skip"] },
+        },
+      ];
+      const opts = getSuggestedOptionsFromToolResults(toolResults, "");
+      expect(opts).toHaveLength(2);
+      expect(opts.map((o) => o.label)).toEqual(["Provide now", "Skip"]);
+    });
+
+    it("returns empty when ask_user has no options array", () => {
+      const toolResults = [
+        { name: "ask_user", args: {}, result: { question: "Pick one: a) A b) B" } },
+      ];
+      const opts = getSuggestedOptionsFromToolResults(toolResults, "Pick one: a) A b) B");
+      expect(opts).toEqual([]);
+    });
+
+    it("returns empty when only format_response is present without options", () => {
+      const toolResults = [
+        {
+          name: "format_response",
+          args: {},
+          result: { formatted: true, summary: "Done.", needsInput: "What next?" },
+        },
+      ];
+      const opts = getSuggestedOptionsFromToolResults(toolResults, "Choose: a) Run b) Edit");
+      expect(opts).toEqual([]);
+    });
+
+    it("returns options from format_response when it has options", () => {
+      const toolResults = [
+        {
+          name: "format_response",
+          args: {},
+          result: {
+            formatted: true,
+            summary: "Done.",
+            needsInput: true,
+            options: ["Fix workflow and run now", "Modify agent before running", "Not now"],
+          },
+        },
+      ];
+      const opts = getSuggestedOptionsFromToolResults(toolResults, "");
+      expect(opts.map((o) => o.label)).toEqual([
+        "Fix workflow and run now",
+        "Modify agent before running",
+        "Not now",
+      ]);
+    });
+
+    it("when both ask_user and format_response have options, returns last (format_response) options", () => {
+      const toolResults = [
+        {
+          name: "ask_user",
+          args: {},
+          result: {
+            question: "Create workflow and run?",
+            options: [
+              "Yes — create the workflow and run it now",
+              "Yes — create but do not run",
+              "No",
+            ],
+          },
+        },
+        {
+          name: "format_response",
+          args: {},
+          result: {
+            formatted: true,
+            summary: "Run completed but agent asked for URL.",
+            needsInput: true,
+            options: ["Fix workflow and run now", "Modify agent before running", "Not now"],
+          },
+        },
+      ];
+      const opts = getSuggestedOptionsFromToolResults(toolResults, "");
+      expect(opts.map((o) => o.label)).toEqual([
+        "Fix workflow and run now",
+        "Modify agent before running",
+        "Not now",
+      ]);
+    });
+
+    it("returns empty for undefined or non-array toolResults", () => {
+      expect(getSuggestedOptionsFromToolResults(undefined, "a) One")).toEqual([]);
+      expect(getSuggestedOptionsFromToolResults(null as unknown as undefined, "a) One")).toEqual(
+        []
+      );
+    });
+
+    it("returns empty for empty or whitespace-only fallback", () => {
+      expect(getSuggestedOptionsFromToolResults([], "")).toEqual([]);
+      expect(getSuggestedOptionsFromToolResults([], "   ")).toEqual([]);
+    });
+  });
+
+  describe("getSuggestedOptions", () => {
+    it("returns options from ask_user result when present", () => {
+      const opts = getSuggestedOptions(
+        { result: { question: "Which?", options: ["A", "B", "C"] } },
+        "any text"
+      );
+      expect(opts).toHaveLength(3);
+      expect(opts.map((o) => o.label)).toEqual(["A", "B", "C"]);
+    });
+
+    it("returns empty when no result or no options array", () => {
+      expect(getSuggestedOptions(undefined, "Choose: a) One b) Two")).toEqual([]);
+      expect(getSuggestedOptions({ result: { question: "What?" } }, "a) One")).toEqual([]);
+    });
+  });
+
+  describe("getLoadingStatus", () => {
+    it("displays specialistId knowledge as Knowledge in loading status", () => {
+      const msg = {
+        traceSteps: [
+          { phase: "heap_tool", specialistId: "knowledge", toolName: "list_connectors" },
+        ],
+      };
+      expect(getLoadingStatus(msg)).toContain("Knowledge");
+      expect(getLoadingStatus(msg)).toContain("list_connectors");
+    });
+
+    it("displays Calling LLM… (Knowledge) when phase is llm_request and specialistId is knowledge", () => {
+      const msg = {
+        traceSteps: [{ phase: "llm_request", specialistId: "knowledge" }],
+      };
+      expect(getLoadingStatus(msg)).toBe("Calling LLM… (Knowledge)");
+    });
+
+    it("displays Response received (Knowledge) when phase is llm_response and specialistId is knowledge", () => {
+      const msg = {
+        traceSteps: [{ phase: "llm_response", specialistId: "knowledge" }],
+      };
+      expect(getLoadingStatus(msg)).toBe("Response received (Knowledge)");
+    });
+
+    it("displays raw specialistId when not in SPECIALIST_DISPLAY_NAMES (e.g. workflow)", () => {
+      const msg = {
+        traceSteps: [{ phase: "heap_tool", specialistId: "workflow", toolName: "create_workflow" }],
+      };
+      expect(getLoadingStatus(msg)).toContain("workflow");
+      expect(getLoadingStatus(msg)).toContain("create_workflow");
+    });
+
+    it("displays Specialist Knowledge… for heap_specialist phase with knowledge", () => {
+      const msg = {
+        traceSteps: [{ phase: "heap_specialist", specialistId: "knowledge" }],
+      };
+      expect(getLoadingStatus(msg)).toBe("Specialist Knowledge…");
+    });
+  });
+});

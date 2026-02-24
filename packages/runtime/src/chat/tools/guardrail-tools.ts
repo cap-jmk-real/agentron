@@ -7,12 +7,16 @@ import type { AssistantToolDef } from "./types";
 export const GUARDRAIL_TOOLS: AssistantToolDef[] = [
   {
     name: "create_guardrail",
-    description: "Create a guardrail to derisk prompt injection when the agent uses the internet. Config: allowedDomains (array), deniedDomains (array), sanitize (bool), segment (bool), maxRequests (number). Scope: deployment (scopeId empty), agent, or workflow.",
+    description:
+      "Create a guardrail to derisk prompt injection when the agent uses the internet. Config: allowedDomains (array), deniedDomains (array), sanitize (bool), segment (bool), maxRequests (number). Scope: deployment (scopeId empty), agent, or workflow.",
     parameters: {
       type: "object",
       properties: {
         scope: { type: "string", enum: ["deployment", "agent", "workflow"] },
-        scopeId: { type: "string", description: "Agent or workflow id when scope is agent/workflow" },
+        scopeId: {
+          type: "string",
+          description: "Agent or workflow id when scope is agent/workflow",
+        },
         config: {
           type: "object",
           description: "allowedDomains[], deniedDomains[], sanitize, segment, maxRequests",

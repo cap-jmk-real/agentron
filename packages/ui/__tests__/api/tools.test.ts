@@ -1,9 +1,30 @@
 import { describe, it, expect } from "vitest";
+import { eq } from "drizzle-orm";
 import { GET as listGet, POST as listPost } from "../../app/api/tools/route";
 import { GET as getOne, PUT as putOne, DELETE as deleteOne } from "../../app/api/tools/[id]/route";
+import { db, tools as toolsTable, ensureStandardTools } from "../../app/api/_lib/db";
 
 describe("Tools API", () => {
   let createdId: string;
+
+  it("ensureStandardTools updates existing tool when config is invalid JSON (catch branch)", async () => {
+    const id = "std-browser-automation";
+    await listGet();
+    await db
+      .update(toolsTable)
+      .set({ config: "not valid json" })
+      .where(eq(toolsTable.id, id))
+      .run();
+    await ensureStandardTools();
+    const rows = await db
+      .select({ config: toolsTable.config })
+      .from(toolsTable)
+      .where(eq(toolsTable.id, id));
+    expect(rows.length).toBe(1);
+    const config = JSON.parse(rows[0]!.config as string) as Record<string, unknown>;
+    expect(config.description).toBeDefined();
+    expect(typeof config.description).toBe("string");
+  });
 
   it("GET /api/tools returns array", async () => {
     const res = await listGet();
@@ -32,6 +53,27 @@ describe("Tools API", () => {
     createdId = data.id;
   });
 
+  it("POST /api/tools accepts optional id in body", async () => {
+    const customId = "custom-tool-id-12345";
+    const res = await listPost(
+      new Request("http://localhost/api/tools", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: customId,
+          name: "Custom Id Tool",
+          protocol: "native",
+          config: {},
+          inputSchema: { type: "object", properties: {}, required: [] },
+        }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.id).toBe(customId);
+    expect(data.name).toBe("Custom Id Tool");
+  });
+
   it("GET /api/tools/:id returns tool", async () => {
     if (!createdId) return;
     const res = await getOne(new Request("http://localhost/api/tools/x"), {
@@ -47,6 +89,23 @@ describe("Tools API", () => {
     const res = await getOne(new Request("http://localhost/api/tools/x"), {
       params: Promise.resolve({ id: "non-existent-tool-id" }),
     });
+    expect(res.status).toBe(404);
+  });
+
+  it("PUT /api/tools/:id returns 404 for unknown id", async () => {
+    const res = await putOne(
+      new Request("http://localhost/api/tools/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "No Such Tool",
+          protocol: "native",
+          config: {},
+          inputSchema: { type: "object", properties: {}, required: [] },
+        }),
+      }),
+      { params: Promise.resolve({ id: "non-existent-tool-id" }) }
+    );
     expect(res.status).toBe(404);
   });
 
@@ -68,6 +127,79 @@ describe("Tools API", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.name).toBe("Updated Tool");
+  });
+
+  it("PUT /api/tools/:id updates only inputSchema for standard tool", async () => {
+    const listRes = await listGet();
+    const list = await listRes.json();
+    const stdTool = list.find((t: { id: string }) => t.id.startsWith("std-"));
+    if (!stdTool) return;
+    const newSchema = { type: "object", properties: { x: { type: "string" } }, required: [] };
+    const res = await putOne(
+      new Request("http://localhost/api/tools/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inputSchema: newSchema }),
+      }),
+      { params: Promise.resolve({ id: stdTool.id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.inputSchema).toEqual(newSchema);
+    expect(data.id).toBe(stdTool.id);
+  });
+
+  it("PUT /api/tools/:id updates only outputSchema for standard tool", async () => {
+    const listRes = await listGet();
+    const list = await listRes.json();
+    const stdTool = list.find((t: { id: string }) => t.id.startsWith("std-"));
+    if (!stdTool) return;
+    const newOutputSchema = { type: "object", properties: { result: { type: "string" } } };
+    const res = await putOne(
+      new Request("http://localhost/api/tools/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outputSchema: newOutputSchema }),
+      }),
+      { params: Promise.resolve({ id: stdTool.id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.outputSchema).toEqual(newOutputSchema);
+    expect(data.id).toBe(stdTool.id);
+  });
+
+  it("PUT /api/tools/:id with empty body for standard tool keeps existing schemas", async () => {
+    const listRes = await listGet();
+    const list = await listRes.json();
+    const stdTool = list.find((t: { id: string }) => t.id.startsWith("std-"));
+    if (!stdTool) return;
+    const res = await putOne(
+      new Request("http://localhost/api/tools/x", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: stdTool.id }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBe(stdTool.id);
+    expect(data.inputSchema).toEqual(stdTool.inputSchema);
+    expect(data.outputSchema).toEqual(stdTool.outputSchema);
+  });
+
+  it("DELETE /api/tools/:id returns 400 for standard tool", async () => {
+    const listRes = await listGet();
+    const list = await listRes.json();
+    const stdTool = list.find((t: { id: string }) => t.id.startsWith("std-"));
+    if (!stdTool) return;
+    const res = await deleteOne(new Request("http://localhost/api/tools/x", { method: "DELETE" }), {
+      params: Promise.resolve({ id: stdTool.id }),
+    });
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("cannot be deleted");
   });
 
   it("DELETE /api/tools/:id removes tool", async () => {

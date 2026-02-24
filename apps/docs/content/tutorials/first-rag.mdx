@@ -1,0 +1,58 @@
+---
+title: Tutorial — First RAG (prompts)
+description: Use knowledge (RAG) in Agentron via the chat and UI.
+---
+
+# Tutorial: First RAG (prompts)
+
+Add a **knowledge collection**, ingest a document, and use it from the Agentron assistant or from an agent.
+
+---
+
+## Prerequisites
+
+- Agentron running
+- An **embedding provider** configured (e.g. **Settings → Embedding** — Ollama, OpenAI, or OpenRouter)
+- A small document (e.g. a text file or a URL the assistant can fetch)
+
+---
+
+## Prompts to try
+
+Open **Chat** and use the assistant where possible; some steps are easier in the **Knowledge** UI.
+
+### 1. Create a collection (often via UI)
+
+- In the app: go to **Knowledge**, create a new **collection** (e.g. "Docs"). Choose encoding and embedding provider.
+- Or ask in chat: **"How do I create a RAG collection?"** — The assistant can explain and point you to Knowledge.
+
+### 2. Add a document
+
+- In **Knowledge**: open your collection, add a document (upload a file or paste text / URL depending on your setup).
+- Or in chat: **"Add this to my Docs collection: [paste a short paragraph]."** — If the assistant has a tool or path to ingest text, it will use it.
+
+### 3. Use knowledge in chat
+
+- **"Using my Docs collection, what does it say about X?"** — The assistant can use RAG retrieval (if enabled for chat) and answer from the ingested content.
+- **"Search my knowledge for 'Y'."** — Same idea; the assistant retrieves and summarizes.
+
+### 4. Attach collection to an agent (via UI)
+
+- In **Agents**: edit an agent and set **RAG collection** to your collection. Runs of that agent can then use the collection for retrieval.
+
+---
+
+## What’s going on
+
+- **Collections** hold documents that are chunked and embedded.
+- **Embedding provider** (Settings → Embedding) turns text into vectors.
+- **Chat** and **agents** can query the collection so answers are grounded in your data.
+
+For full setup (encoding, vector store, document store), see the **Knowledge** section in the app and any **Guides** on RAG when added.
+
+---
+
+## Next
+
+- [Concepts: Agentron (Chat)](/concepts/assistant) — Context, tools, customization
+- [Capabilities](/capabilities) — Feature matrix including Knowledge / RAG

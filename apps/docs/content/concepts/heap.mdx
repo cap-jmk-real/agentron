@@ -1,0 +1,39 @@
+---
+title: Heap (specialists)
+description: How the Agentron chat routes to specialists and the production heap registry.
+---
+
+# Heap (specialists)
+
+When the chat uses **heap mode**, a **planner** chooses an ordered set of **specialists**. Each specialist has a limited set of tools (up to 10); the system runs them in order (or in parallel where allowed) and merges context. This keeps responses focused and within token limits.
+
+---
+
+## Production heap (interactive)
+
+The diagram below shows the **current production heap**: top-level specialists and their delegates. You can pan, zoom, and drag nodes. This snapshot is generated at docs build time from the same registry the app uses.
+
+<HeapViewer />
+
+---
+
+## Top-level specialists
+
+| Specialist | Purpose |
+| ---------- | ------- |
+| **general** | Conversation, ask user, format response, remember, list agents/tools |
+| **workflow** | Workflows: list, get, create, update, execute, runs, cancel, respond, versions, rollback |
+| **agent** | Agents: CRUD, versions, rollback, LLM providers; OpenClaw (send, history, abort) |
+| **tools** | Create and improve tools (HTTP, MCP, code); custom functions |
+| **improve_run** | Improve current run/session only (no DB); observe run/feedback, session overrides |
+| **improve_heap** | Improve the heap (registry, planner); register/update specialists |
+| **improve_agents_workflows** | Improve workflow agents and workflows (studio DB); observe runs/feedback, update agents/workflows, training pipeline |
+
+Some specialists **delegate** to sub-specialists (e.g. **agent** → agent_lifecycle, agent_openclaw) so that each node still has at most 10 tools.
+
+---
+
+## See also
+
+- [Agentron (Chat)](/concepts/assistant) — Where to find the chat and how it uses tools
+- [How Chat routes (heap)](/concepts/assistant#how-chat-routes-heap) — Planner and specialists in one sentence

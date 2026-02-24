@@ -12,7 +12,7 @@ export const azureProvider: LLMProviderAdapter = {
     }
 
     return openAICompatibleChat(config.endpoint, config, request, {
-      "api-key": config.apiKey
+      "api-key": config.apiKey,
     });
-  }
+  },
 };

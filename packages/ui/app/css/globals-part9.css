@@ -1,0 +1,43 @@
+.logo-loading-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 280px;
+}
+
+.logo-loading-stage .logo-loading-inner {
+  position: relative;
+}
+
+.logo-loading-stage .logo-loading-letters {
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* Circle is at 32,40.4 in 64x64 viewBox → rotate letters around it */
+  transform-origin: 50% 63.125%;
+  -webkit-transform-origin: 50% 63.125%;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+  animation: a-to-t-to-a 4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.logo-loading-stage .logo-loading-letters img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.logo-loading-stage .logo-loading-letters .logo-loading-back {
+  transform: rotateY(180deg);
+}
+
+.logo-loading-stage .logo-loading-circle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+

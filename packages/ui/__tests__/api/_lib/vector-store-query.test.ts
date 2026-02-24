@@ -24,12 +24,9 @@ describe("vector-store-query", () => {
           }),
       } as Response);
 
-      const result = await queryQdrant(
-        "coll-1",
-        [0.1, 0.2, 0.3],
-        5,
-        { endpoint: "http://qdrant:6333" }
-      );
+      const result = await queryQdrant("coll-1", [0.1, 0.2, 0.3], 5, {
+        endpoint: "http://qdrant:6333",
+      });
 
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual({ text: "chunk one", score: 0.9 });
@@ -78,6 +75,18 @@ describe("vector-store-query", () => {
       );
     });
 
+    it("returns empty array when response has no result key", async () => {
+      const mockFetch = vi.mocked(fetch);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as Response);
+
+      const result = await queryQdrant("c", [0], 1, {});
+
+      expect(result).toEqual([]);
+    });
+
     it("includes api-key header when apiKeyRef is set and env has value", async () => {
       const orig = process.env.TEST_API_KEY_REF;
       process.env.TEST_API_KEY_REF = "secret-key";
@@ -97,6 +106,23 @@ describe("vector-store-query", () => {
       );
       if (orig !== undefined) process.env.TEST_API_KEY_REF = orig;
       else delete process.env.TEST_API_KEY_REF;
+    });
+
+    it("does not include api-key header when apiKeyRef is empty", async () => {
+      const mockFetch = vi.mocked(fetch);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ result: [] }),
+      } as Response);
+
+      await queryQdrant("c", [0], 1, { apiKeyRef: "" });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.not.objectContaining({ "api-key": expect.anything() }),
+        })
+      );
     });
 
     it("filters out chunks with empty text", async () => {
@@ -127,9 +153,9 @@ describe("vector-store-query", () => {
         text: () => Promise.resolve("Internal Server Error"),
       } as Response);
 
-      await expect(
-        queryQdrant("c", [0], 1, {})
-      ).rejects.toThrow("Qdrant search failed: 500 Internal Server Error");
+      await expect(queryQdrant("c", [0], 1, {})).rejects.toThrow(
+        "Qdrant search failed: 500 Internal Server Error"
+      );
     });
   });
 
@@ -139,11 +165,47 @@ describe("vector-store-query", () => {
       const orig = process.env[ref];
       delete process.env[ref];
 
-      await expect(
-        queryPgvector("c", [0], 1, { connectionStringRef: ref })
-      ).rejects.toThrow("connectionStringRef env var not set");
+      await expect(queryPgvector("c", [0], 1, { connectionStringRef: ref })).rejects.toThrow(
+        "connectionStringRef env var not set"
+      );
 
       if (orig !== undefined) process.env[ref] = orig;
+    });
+
+    it("returns chunks when connectionStringRef is set and pg Client succeeds", async () => {
+      const ref = "PG_VEC_TEST_REF";
+      const orig = process.env[ref];
+      process.env[ref] = "postgres://localhost/test";
+
+      const mockQuery = vi.fn().mockResolvedValue({
+        rows: [
+          { text: "chunk a", score: 0.95 },
+          { text: "chunk b", score: 0.85 },
+        ],
+      });
+      vi.doMock("pg", () => ({
+        Client: class MockClient {
+          connect = vi.fn().mockResolvedValue(undefined);
+          query = mockQuery;
+          end = vi.fn().mockResolvedValue(undefined);
+        },
+      }));
+
+      const result = await queryPgvector("coll-1", [0.1, 0.2], 5, {
+        connectionStringRef: ref,
+        tableName: "custom_vectors",
+      });
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({ text: "chunk a", score: 0.95 });
+      expect(result[1]).toEqual({ text: "chunk b", score: 0.85 });
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining("custom_vectors"),
+        expect.any(Array)
+      );
+
+      if (orig !== undefined) process.env[ref] = orig;
+      else delete process.env[ref];
     });
   });
 });

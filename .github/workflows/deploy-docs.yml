@@ -3,8 +3,6 @@ name: Deploy Docs to GitHub Pages
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -22,38 +20,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm config set optional true && pnpm install --frozen-lockfile
 
-      - name: Install optional deps (for Vitest/coverage)
-        run: npm install --include=optional
-
-      - name: Run tests with coverage
-        run: npm run test:coverage --workspace packages/ui
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-docs
-          path: packages/ui/coverage/
-        if: always()
+      - name: Rebuild better-sqlite3 (for docs heap-snapshot export)
+        run: pnpm rebuild better-sqlite3
 
       - name: Build docs
-        run: npm run build:docs
+        run: pnpm run build:docs
         env:
-          BASE_URL: /${{ github.event.repository.name }}/
-          URL: https://${{ github.repository_owner }}.github.io
+          BASE_PATH: /${{ github.event.repository.name }}/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/docs/build
+          path: apps/docs/out
         if: github.event_name == 'push'
 
   deploy:

@@ -14,8 +14,12 @@ export async function GET(request: Request) {
   if (targetId) rows = rows.filter((r) => r.targetId === targetId);
   rows = rows.slice(0, limit);
   const runs = rows.map(fromExecutionRow);
-  const workflowIds = [...new Set(runs.filter((r) => r.targetType === "workflow").map((r) => r.targetId))];
-  const agentIds = [...new Set(runs.filter((r) => r.targetType === "agent").map((r) => r.targetId))];
+  const workflowIds = [
+    ...new Set(runs.filter((r) => r.targetType === "workflow").map((r) => r.targetId)),
+  ];
+  const agentIds = [
+    ...new Set(runs.filter((r) => r.targetType === "agent").map((r) => r.targetId)),
+  ];
   const workflowMap: Record<string, string> = {};
   const agentMap: Record<string, string> = {};
   if (workflowIds.length > 0) {
@@ -34,7 +38,12 @@ export async function GET(request: Request) {
   }
   const enriched = runs.map((r) => ({
     ...r,
-    targetName: r.targetType === "workflow" ? workflowMap[r.targetId] : r.targetType === "agent" ? agentMap[r.targetId] : undefined,
+    targetName:
+      r.targetType === "workflow"
+        ? workflowMap[r.targetId]
+        : r.targetType === "agent"
+          ? agentMap[r.targetId]
+          : undefined,
   }));
   return json(enriched);
 }

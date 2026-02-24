@@ -32,6 +32,8 @@ export interface ChatMessage {
   toolCalls?: ChatToolCall[];
   /** LLM request/response trace for this message (assistant only). */
   llmTrace?: LLMTraceCall[];
+  /** Rephrased user intent for this turn (assistant only; shown in UI and trace). */
+  rephrasedPrompt?: string | null;
   createdAt: number;
   conversationId?: string;
 }
@@ -61,6 +63,16 @@ export interface ChatAssistantSettings {
   historyCompressAfter: number | null;
   /** When compressing, keep this many most recent messages in full. Default 16. Must be less than historyCompressAfter. */
   historyKeepRecent: number | null;
+  /** Number of past messages to include in recent conversation for the planner (heap mode). Default 12. */
+  plannerRecentMessages: number | null;
+  /** Override for RAG retrieve limit (chunks) for studio chat. Null = use system default. */
+  ragRetrieveLimit: number | null;
+  /** Fallback: how many feedback items to use when not using similarity (last N by time). */
+  feedbackLastN: number | null;
+  /** When using similarity, max number of feedback items to retrieve. */
+  feedbackRetrieveCap: number | null;
+  /** Optional minimum similarity score (0–1) for retrieved feedback. */
+  feedbackMinScore: number | null;
   updatedAt: number;
 }
 

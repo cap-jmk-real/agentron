@@ -1,0 +1,146 @@
+---
+title: E2E tests (local LLM)
+description: Optional end-to-end test suite that runs against a real local LLM (Ollama). Single command; script auto-starts Ollama when not running.
+---
+
+# E2E tests with local LLM
+
+<Callout type="info">
+  **For contributors.** This page is for running optional E2E tests with a local LLM. You don't need it for normal use or to run the app.
+</Callout>
+
+Run end-to-end tests against a **real local LLM** (Ollama). One command starts the server if needed and runs the suite—web search, custom code, browser fetch, self-improvement, chat-driven design, and more. These tests are **not** run in CI.
+
+---
+
+## Run the tests
+
+<Callout type="important">
+  From the **repo root**, run:
+</Callout>
+
+```bash
+npm run test:e2e-llm
+```
+
+The script starts Ollama if it is not already running, then runs the E2E suite. No environment variable is required.
+
+---
+
+## Quick start
+
+<Steps>
+
+### 1. Install Ollama
+
+Install the Ollama runtime for your platform:
+
+<Tabs items={["Windows", "macOS", "Linux"]}>
+  <Tabs.Tab>
+
+**Windows:** Download the installer from [ollama.com](https://ollama.com) and run it. Ollama runs in the system tray and serves at `http://localhost:11434`.
+
+  </Tabs.Tab>
+  <Tabs.Tab>
+
+**macOS:** Install via Homebrew or download from [ollama.com](https://ollama.com):
+
+```bash
+brew install ollama
+```
+
+Then run `ollama serve` or start the Ollama app.
+
+  </Tabs.Tab>
+  <Tabs.Tab>
+
+**Linux:** Run the install script, then start the service:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama serve
+```
+
+  </Tabs.Tab>
+</Tabs>
+
+### 2. Pull a model
+
+Default model is **Qwen 2.5 3B**. Pull it (or another [suggested model](#default-and-suggested-models)):
+
+```bash
+ollama pull qwen2.5:3b
+```
+
+### 3. Run E2E
+
+From the Agentron repo root:
+
+```bash
+npm run test:e2e-llm
+```
+
+</Steps>
+
+**Optional:** Podman (or Docker) is needed for run-code and container scenarios; those tests are skipped if unavailable.
+
+---
+
+## Default and suggested models
+
+| Model | Env | Notes |
+| ----- | --- | ----- |
+| **Qwen 2.5 3B** (default) | *(none)* or `E2E_LLM_MODEL=qwen2.5:3b` | Good balance of quality and speed |
+| Llama 3.2 | `E2E_LLM_MODEL=llama3.2` | `ollama pull llama3.2` |
+| Phi-3 | `E2E_LLM_MODEL=phi3` | `ollama pull phi3` |
+
+Override when running: `E2E_LLM_MODEL=llama3.2 npm run test:e2e-llm`
+
+---
+
+## E2E test files
+
+Tests live under `packages/ui/__tests__/e2e/`:
+
+| File | Scenario |
+| ---- | -------- |
+| `web-search.e2e.ts` | Web search (`std-web-search`) |
+| `custom-code.e2e.ts` | Custom code (`create_code_tool`, `std-run-code`) |
+| `browser-fetch.e2e.ts` | Browser fetch (`std-browser` / `std-fetch-url`) |
+| `self-improvement.e2e.ts` | Self-improvement (`get_run_for_improvement`) |
+| `chat-driven-design.e2e.ts` | Chat-driven design (one turn → create workflow, agent, execute) |
+
+---
+
+## Environment variables
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API base URL |
+| `E2E_LLM_MODEL` | `qwen2.5:3b` | Model name (must be pulled in Ollama) |
+| `E2E_SAVE_ARTIFACTS` | *(unset)* | Set to `1` to write run output/trail for debugging |
+| `E2E_LOG_DIR` | `packages/ui/__tests__/e2e/artifacts` | Artifact directory when `E2E_SAVE_ARTIFACTS=1` |
+
+---
+
+## Covered areas
+
+- **Web search** — `std-web-search`
+- **Custom code** — `create_code_tool`, `std-run-code`
+- **Browser fetch** — `std-browser` / `std-fetch-url`
+- **Self-improvement** — `get_run_for_improvement`
+- **Chat-driven design** — One turn → create workflow, agent, execute
+- **Multi-agent workflow** — Fetch → summarize (planned)
+- **Containers** — `std-container-run` (skip if Podman unavailable)
+- **Request user help** — `std-request-user-help`, `respond_to_run`
+
+---
+
+## Logging and artifacts
+
+- **Stdout:** Tests log with an `[e2e]` prefix (scenario, runId, tool calls, outcome, duration).
+- **Artifacts:** Set `E2E_SAVE_ARTIFACTS=1` to write run output and execution trail to the artifacts directory for failed runs or for improving Agentron.
+
+<Callout type="info">
+  Use `E2E_SAVE_ARTIFACTS=1 npm run test:e2e-llm` to capture run output and trails under `packages/ui/__tests__/e2e/artifacts/` (or `E2E_LOG_DIR`).
+</Callout>

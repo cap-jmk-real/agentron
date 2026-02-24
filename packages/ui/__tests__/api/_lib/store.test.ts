@@ -1,7 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { store, json } from "../../../app/api/_lib/store";
+import { store, json, getGlobalStore } from "../../../app/api/_lib/store";
 
 describe("store", () => {
+  it("getGlobalStore returns same instance on subsequent calls", () => {
+    const a = getGlobalStore();
+    const b = getGlobalStore();
+    expect(a).toBe(b);
+    expect(a.agents).toBe(b.agents);
+  });
+
   it("exposes agents, workflows, llmProviders, tools, runs as Maps", () => {
     expect(store.agents).toBeInstanceOf(Map);
     expect(store.workflows).toBeInstanceOf(Map);

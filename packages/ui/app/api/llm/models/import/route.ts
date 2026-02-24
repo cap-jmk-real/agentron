@@ -31,9 +31,12 @@ export async function POST(request: Request) {
       return json({ message: `Model ${model} imported from HuggingFace`, model });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      return json({
-        error: `Failed to import from HuggingFace: ${msg}. The model may not have GGUF files available. Try using the HuggingFace Inference API instead.`,
-      }, { status: 400 });
+      return json(
+        {
+          error: `Failed to import from HuggingFace: ${msg}. The model may not have GGUF files available. Try using the HuggingFace Inference API instead.`,
+        },
+        { status: 400 }
+      );
     }
   }
 

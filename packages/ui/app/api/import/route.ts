@@ -14,9 +14,24 @@ export const runtime = "nodejs";
 
 type ImportPayload = {
   version?: string;
-  tools?: Array<{ id: string; name: string; protocol: string; config?: Record<string, unknown>; inputSchema?: unknown; outputSchema?: unknown }>;
+  tools?: Array<{
+    id: string;
+    name: string;
+    protocol: string;
+    config?: Record<string, unknown>;
+    inputSchema?: unknown;
+    outputSchema?: unknown;
+  }>;
   agents?: Array<Record<string, unknown> & { id: string; name: string }>;
-  workflows?: Array<Record<string, unknown> & { id: string; name: string; nodes?: unknown[]; edges?: unknown[]; executionMode?: string }>;
+  workflows?: Array<
+    Record<string, unknown> & {
+      id: string;
+      name: string;
+      nodes?: unknown[];
+      edges?: unknown[];
+      executionMode?: string;
+    }
+  >;
   options?: { skipExisting?: boolean };
 };
 
@@ -66,7 +81,11 @@ export async function POST(request: Request) {
         inputSchema: t.inputSchema,
         outputSchema: t.outputSchema,
       };
-      const existing = await db.select().from(toolsTable).where(eq(toolsTable.id, tool.id)).limit(1);
+      const existing = await db
+        .select()
+        .from(toolsTable)
+        .where(eq(toolsTable.id, tool.id))
+        .limit(1);
       if (existing.length > 0) {
         if (skipExisting) {
           counts.tools.skipped++;
@@ -102,16 +121,27 @@ export async function POST(request: Request) {
         llmConfig: a.llmConfig as Record<string, unknown> | undefined,
         definition: a.definition,
       };
-      const existing = await db.select().from(agentsTable).where(eq(agentsTable.id, agent.id)).limit(1);
+      const existing = await db
+        .select()
+        .from(agentsTable)
+        .where(eq(agentsTable.id, agent.id))
+        .limit(1);
       if (existing.length > 0) {
         if (skipExisting) {
           counts.agents.skipped++;
         } else {
-          await db.update(agentsTable).set(toAgentRow(agent as Parameters<typeof toAgentRow>[0])).where(eq(agentsTable.id, agent.id)).run();
+          await db
+            .update(agentsTable)
+            .set(toAgentRow(agent as Parameters<typeof toAgentRow>[0]))
+            .where(eq(agentsTable.id, agent.id))
+            .run();
           counts.agents.updated++;
         }
       } else {
-        await db.insert(agentsTable).values(toAgentRow(agent as Parameters<typeof toAgentRow>[0])).run();
+        await db
+          .insert(agentsTable)
+          .values(toAgentRow(agent as Parameters<typeof toAgentRow>[0]))
+          .run();
         counts.agents.created++;
       }
     }
@@ -133,16 +163,27 @@ export async function POST(request: Request) {
         executionMode: (w.executionMode as string) ?? "one_time",
         schedule: w.schedule as string | undefined,
       };
-      const existing = await db.select().from(workflowsTable).where(eq(workflowsTable.id, workflow.id)).limit(1);
+      const existing = await db
+        .select()
+        .from(workflowsTable)
+        .where(eq(workflowsTable.id, workflow.id))
+        .limit(1);
       if (existing.length > 0) {
         if (skipExisting) {
           counts.workflows.skipped++;
         } else {
-          await db.update(workflowsTable).set(toWorkflowRow(workflow as import("@agentron-studio/core").Workflow)).where(eq(workflowsTable.id, workflow.id)).run();
+          await db
+            .update(workflowsTable)
+            .set(toWorkflowRow(workflow as import("@agentron-studio/core").Workflow))
+            .where(eq(workflowsTable.id, workflow.id))
+            .run();
           counts.workflows.updated++;
         }
       } else {
-        await db.insert(workflowsTable).values(toWorkflowRow(workflow as import("@agentron-studio/core").Workflow)).run();
+        await db
+          .insert(workflowsTable)
+          .values(toWorkflowRow(workflow as import("@agentron-studio/core").Workflow))
+          .run();
         counts.workflows.created++;
       }
     }

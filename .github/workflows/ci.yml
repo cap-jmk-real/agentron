@@ -12,23 +12,99 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
-          cache: "npm"
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm config set optional true && pnpm install --frozen-lockfile
 
-      - name: Install optional deps (Vitest/coverage)
-        run: npm install --include=optional
+      - name: Print Node and TypeScript versions
+        run: |
+          echo "Node version: $(node -v)"
+          echo "TypeScript version: $(pnpm -F @agentron-studio/ui exec tsc --version)"
+
+      - name: Rebuild better-sqlite3
+        run: pnpm rebuild better-sqlite3
+
+      - name: Security audit (fail on critical)
+        run: pnpm audit --audit-level=critical
+        continue-on-error: true
+
+      - name: Check formatting
+        run: pnpm run format:check
 
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: Lint UI
-        run: npm run lint:ui
+        run: pnpm run lint:ui
 
       - name: Test (UI) with coverage
-        run: npm run test:coverage --workspace packages/ui
+        run: pnpm run test:coverage
+
+      - name: Check file lengths (max 1000 lines)
+        run: pnpm run check:file-lengths
+        continue-on-error: true
+
+      - name: Build docs
+        run: pnpm run build:docs
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: packages/ui/coverage/lcov.info
+          fail_ci_if_error: false
+
+      - name: Upload coverage summary for badge
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary
+          path: packages/ui/coverage/coverage-summary.json
+
+  update-badges:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download coverage summary
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-summary
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Write coverage badge
+        run: node scripts/write-coverage-badge.js
+        env:
+          COVERAGE_SUMMARY_PATH: ${{ github.workspace }}/coverage-summary/packages/ui/coverage/coverage-summary.json
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Count LOC and write badge
+        run: node scripts/count-loc.js --write-badge
+
+      - name: Commit and push if badges changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add badges/loc.json badges/coverage.json
+          git diff --staged --quiet || (git commit -m "chore: update badges (LOC, coverage)" && git push)

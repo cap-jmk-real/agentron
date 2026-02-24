@@ -1,0 +1,51 @@
+---
+title: Quick start
+description: Get Agentron running in a few minutes and try your first prompt in the chat.
+---
+
+# Quick start
+
+Get the app running and try the Agentron assistant with prompts that work out of the box.
+
+---
+
+## 1. Install and run
+
+**Prerequisites:** Node.js (see `.nvmrc` in the repo, e.g. 22.x). Optional: [Podman](https://podman.io/) for code agents and sandboxes.
+
+From the project root:
+
+```bash
+npm run install:ui
+npm run dev:ui
+```
+
+Open **http://localhost:3000**. You should see the Agentron UI.
+
+<Callout type="info">
+  For full install (including desktop app): `npm install`. Desktop installers: [Download](/download).
+</Callout>
+
+---
+
+## 2. Try the Agentron assistant
+
+Go to **Chat** in the sidebar (or `/chat`). The assistant can create agents, workflows, and tools via natural language. Try these prompts:
+
+| You say | What happens |
+| -------- | ------------- |
+| **What tools do I have?** | The assistant lists your tools (e.g. `list_tools`). |
+| **List my agents.** | The assistant lists agents (empty at first). |
+| **Create a simple agent that says hello.** | The assistant uses `create_agent` with a minimal graph. |
+| **Create a workflow with two agents that talk about the weather.** | The assistant creates agents and a workflow connecting them. |
+
+No need to click through the UI—just type what you want. See [Tutorials](/tutorials/first-agent) for more prompt-based walkthroughs.
+
+---
+
+## 3. Next steps
+
+- [Concepts: Tools](/concepts/tools) — What tools are and how agents use them
+- [Concepts: Agents](/concepts/agents) — Node and code agents
+- [Concepts: Agentron (Chat)](/concepts/assistant) — Chat behavior, heap routing, customization
+- [Capabilities](/capabilities) — Full feature matrix

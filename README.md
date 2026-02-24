@@ -1,27 +1,32 @@
 # Agentron — Enterprise-Ready Local AI Agent Orchestration & Automation
 
-[![CI](https://github.com/agentron-studio/agentron/actions/workflows/ci.yml/badge.svg)](https://github.com/agentron-studio/agentron/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-50%25%2B-brightgreen)](packages/ui/__tests__/README.md)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)](https://www.typescriptlang.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-15-black)](https://nextjs.org/)
-[![Local-first](https://img.shields.io/badge/local--first-sqlite%20%2B%20Electron-8B5CF6)](INSTALL.md)
+[![CI](https://img.shields.io/github/actions/workflow/status/cap-jmk-real/agentron/ci.yml?style=flat-square&label=CI)](https://github.com/cap-jmk-real/agentron/actions/workflows/ci.yml)
+[![coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cap-jmk-real/agentron/main/badges/coverage.json&style=flat-square)](https://codecov.io/gh/cap-jmk-real/agentron)
+[![lines of code](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cap-jmk-real/agentron/main/badges/loc.json&style=flat-square)](https://github.com/cap-jmk-real/agentron)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Local-first](https://img.shields.io/badge/local--first-SQLite%20%2B%20Electron-8B5CF6?style=flat-square)](INSTALL.md)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-0ea5e9?style=flat-square&logo=readthedocs&logoColor=white)](https://cap-jmk-real.github.io/agentron/)
+
 
 **Agentron** is an **enterprise-ready, local-first** platform for **AI agent orchestration** and **workflow automation**. Design and run multi-agent systems entirely on your own infrastructure—no cloud lock-in, full data privacy, and optional desktop deployment.
 
 - **Local-first & self-hosted** — SQLite storage, optional Electron desktop app; run on-premise or air-gapped.
 - **Visual agent builder** — Node-based graphs (LLM, tools, decision nodes) plus code agents (JavaScript/Python/TypeScript) in sandboxes.
 - **Multi-agent workflows** — Orchestrate agents in graphs with configurable rounds; built-in chat assistant that creates and edits agents, workflows, and tools via natural language.
-- **Tools & integrations** — Native, HTTP, and MCP tools; RAG/knowledge; Podman sandboxes; OpenAI, Anthropic, Ollama, and remote LLM support.
+- **Tools & integrations** — Native, HTTP, and MCP tools; **RAG/knowledge connectors** for **Notion, Google Drive, Dropbox, OneDrive, Confluence, GitBook**, and local folders; Podman sandboxes; OpenAI, Anthropic, Ollama, and remote LLM support; OpenClaw gateway integration (send commands, history, abort) for steering a local OpenClaw instance from chat.
 
 Ideal for teams that need **local AI automation**, **privacy-first agent orchestration**, and **multi-agent workflow** control without depending on cloud-only platforms.
 
 ## How to install Agentron
 
-**Prerequisites:** Node.js 18+ and npm.
+**Prerequisites:** Node.js version in `.nvmrc` (e.g. 22.x) and npm or pnpm.
 
 1. Clone the repo and enter the project: `git clone <repo-url> && cd agentron`
-2. Install dependencies: `npm run install:ui` (UI only) or `npm install` (full, including desktop)
-3. Run the app: `npm run dev:ui` then open http://localhost:3000
+2. Install dependencies: `npm run install:ui` or `pnpm install` (UI only) or `npm install` (full, including desktop)
+3. Run the app: `npm run dev:ui` or `pnpm run dev:ui` then open http://localhost:3000
+
+**Desktop app:** You can install Agentron as a standalone **Electron app** (no Node.js required on your machine). Download the installer from the [Docs → Download](https://cap-jmk-real.github.io/agentron/docs/download) page or [GitHub Releases](https://github.com/cap-jmk-real/agentron/releases); the app starts the UI automatically and stores data locally.
 
 Full step-by-step instructions, troubleshooting, and desktop build details: **[INSTALL.md](INSTALL.md)**.
 
@@ -48,4 +53,41 @@ When you need desktop packaging dependencies:
 npm run install:desktop
 ```
 
-**Optional dependencies:** We omit optional deps by default (see `.npmrc`). The desktop app needs optional deps (e.g. `sharp`) for icon export. CI and local desktop builds use `npm install --include=optional sharp --workspace apps/desktop` so that workspace gets them; no need to change the default for the rest of the repo.
+## Match CI locally
+
+To get the **same typecheck and checks as CI** (and avoid "passes locally, fails in CI"):
+
+1. **Node:** Use the version in `.nvmrc` (e.g. `nvm use` or `fnm use`).
+2. **pnpm:** The repo pins `packageManager` in `package.json`; with Corepack enabled (`corepack enable`) you get the same pnpm version as CI.
+3. **Install:** Run `pnpm install --frozen-lockfile` (or at least `pnpm install`) so dependencies match the lockfile.
+4. **Run CI checks:** `pnpm run ci:local` — runs CI steps (format:check, typecheck, lint, test:coverage, file-lengths, build:docs) plus build:ui and desktop dist so you verify the full pipeline locally before pushing.
+
+## E2E tests with local LLMs (optional)
+
+Run end-to-end tests against a real local LLM (Ollama). **Single command** (from repo root):
+
+```bash
+npm run test:e2e-llm
+```
+
+The script starts Ollama if needed, **pulls the default E2E model if missing**, then runs the E2E suite. No manual `ollama pull` required.
+
+**Prerequisites:** [Ollama](https://ollama.com) installed. Optional: Podman for run-code and container scenarios. (In the app we plan to offer one-click model pull from the UI so users do not need to run `ollama pull` manually.)
+
+**Default model:** Qwen 3 8B (`qwen3:8b`) for better instruction-following in chat/heap tests. Override with `E2E_LLM_MODEL` (e.g. `E2E_LLM_MODEL=qwen2.5:3b npm run test:e2e-llm`); the script will pull that model if missing.
+
+**Example configs (suggested models):**
+
+| Model                 | Env                                    | Notes                                |
+| --------------------- | -------------------------------------- | ------------------------------------ |
+| Qwen 3 8B (default)   | *(none)* or `E2E_LLM_MODEL=qwen3:8b`   | More parameters, better for heap e2e |
+| Qwen 3 14B            | `E2E_LLM_MODEL=qwen3:14b`              | Larger, higher quality               |
+| Qwen 2.5 3B           | `E2E_LLM_MODEL=qwen2.5:3b`             | Faster, smaller                      |
+| Llama 3.2             | `E2E_LLM_MODEL=llama3.2`               | Meta's versatile model; script auto-pulls if missing |
+| Phi-3                 | `E2E_LLM_MODEL=phi3`                   | Microsoft small, fast model; script auto-pulls if missing |
+
+**Optional env:** `OLLAMA_BASE_URL` (default `http://localhost:11434`), `E2E_SAVE_ARTIFACTS=1`, `E2E_LOG_DIR`.
+
+These tests are **not** run in CI.
+
+**Optional dependencies:** A plain `npm install` works on all platforms (Windows, Linux, macOS). We omit optional deps by default (see `.npmrc`). To **build the UI** (e.g. `npm run build:ui`) or run tests with coverage, optional deps must be installed (Next.js SWC and tooling). Set `optional=true` in `.npmrc`, or run `npm install --include=optional` after your first install. The desktop app also needs optional deps (e.g. `sharp`) for icon export; CI uses `npm install --include=optional` (and for desktop: `npm install --include=optional sharp --workspace apps/desktop`).

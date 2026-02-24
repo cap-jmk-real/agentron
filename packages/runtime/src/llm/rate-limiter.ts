@@ -56,6 +56,13 @@ export class RateLimiter {
     state.tokenEntries = state.tokenEntries.filter((e) => e.ts > cutoff);
   }
 
+  /** Remove key from state if both arrays are empty so the Map does not grow unbounded. */
+  private pruneIfEmpty(key: string, state: KeyState): void {
+    if (state.requestTs.length === 0 && state.tokenEntries.length === 0) {
+      this.state.delete(key);
+    }
+  }
+
   /**
    * Wait until a request is allowed under the limits. Optional context is used for queue visibility (pending/delayed).
    */
@@ -66,11 +73,13 @@ export class RateLimiter {
     this.pending.set(id, { id, key, context: ctx, addedAt });
     try {
       const { requestsPerMinute: rpm, tokensPerMinute: tpm } = limits;
-      const state = this.getState(key);
+      let state = this.getState(key);
 
       while (true) {
         const now = Date.now();
         this.trim(state, now);
+        this.pruneIfEmpty(key, state);
+        state = this.getState(key);
 
         const atRpmLimit = state.requestTs.length >= rpm;
         const tokenSum = state.tokenEntries.reduce((s, e) => s + e.tokens, 0);
@@ -108,7 +117,9 @@ export class RateLimiter {
     if (tokens <= 0) return;
     const state = this.getState(key);
     state.tokenEntries.push({ ts: Date.now(), tokens });
-    this.trim(state, Date.now());
+    const now = Date.now();
+    this.trim(state, now);
+    this.pruneIfEmpty(key, state);
   }
 
   getPending(): PendingEntry[] {

@@ -19,6 +19,7 @@ export interface StudioContext {
   agents?: { id: string; name: string; kind: string }[];
   workflows?: { id: string; name: string; executionMode: string }[];
   llmProviders?: { id: string; provider: string; model: string }[];
+  connectors?: { id: string; type: string }[];
 }
 
 export interface AssistantOptions {
@@ -35,6 +36,8 @@ export interface AssistantOptions {
   studioContext?: StudioContext;
   /** Optional cross-chat context: stored preferences + recent conversation summaries (injected after studio context) */
   crossChatContext?: string;
+  /** Optional: when a workflow run is waiting for user input, inject this context so the assistant can decide to call respond_to_run or take another action */
+  runWaitingContext?: string;
   /** Optional: LLM currently selected in the chat UI. When user says "use this one", "same as chat", or doesn't specify, use this as llmConfigId for new agents. */
   chatSelectedLlm?: { id: string; provider: string; model: string };
   /** Optional custom system prompt override (replaces default; rag/feedback/ui/attached/studio context still appended) */
@@ -43,6 +46,10 @@ export interface AssistantOptions {
   onProgress?: AssistantProgress;
   /** LLM temperature (0–2). If set, used for all callLLM requests in this turn. Defaults: 0.4 main, 0.2 nudge. */
   temperature?: number;
+  /** Max completion tokens for LLM responses. Use a generous value (e.g. 16384) so long tool calls (e.g. execute_code with large commands) are not truncated. */
+  maxTokens?: number;
+  /** Max follow-up rounds when there are tool results (default 2). Use 0 for "continue from shell approval" to save LLM calls. */
+  maxFollowUpRounds?: number;
 }
 
 export interface AssistantResponse {
@@ -78,12 +85,18 @@ export async function runAssistant(
   if (options.attachedContext) {
     systemPrompt += `\n\n## User-shared context (e.g. run output)\nThe user opened the chat with the following content attached so you can help directly. Use it to answer their question or debug.\n\n${options.attachedContext}`;
   }
-  if (options.studioContext != null && typeof options.studioContext === "object" && !Array.isArray(options.studioContext)) {
+  if (
+    options.studioContext != null &&
+    typeof options.studioContext === "object" &&
+    !Array.isArray(options.studioContext)
+  ) {
     const ctx = options.studioContext;
     const parts: string[] = [];
     const tools = Array.isArray(ctx.tools) ? ctx.tools : [];
     if (tools.length > 0) {
-      parts.push(`Tools available (use these IDs in toolIds when creating/updating agents):\n${tools.map((t) => `- ${t.id}: ${t.name} (${t.protocol})`).join("\n")}`);
+      parts.push(
+        `Tools available (use these IDs in toolIds when creating/updating agents):\n${tools.map((t) => `- ${t.id}: ${t.name} (${t.protocol})`).join("\n")}`
+      );
     }
     const agents = Array.isArray(ctx.agents) ? ctx.agents : [];
     if (agents.length > 0) {
@@ -95,7 +108,15 @@ export async function runAssistant(
     }
     const llmProviders = Array.isArray(ctx.llmProviders) ? ctx.llmProviders : [];
     if (llmProviders.length > 0) {
-      parts.push(`LLM providers (use these IDs as llmConfigId when creating/updating agents):\n${llmProviders.map((p) => `- ${p.id}: ${p.provider} / ${p.model}`).join("\n")}`);
+      parts.push(
+        `LLM providers (use these IDs as llmConfigId when creating/updating agents):\n${llmProviders.map((p) => `- ${p.id}: ${p.provider} / ${p.model}`).join("\n")}`
+      );
+    }
+    const connectors = Array.isArray(ctx.connectors) ? ctx.connectors : [];
+    if (connectors.length > 0) {
+      parts.push(
+        `Knowledge connectors (use these IDs with list_connector_items, connector_read_item, connector_update_item):\n${connectors.map((c) => `- ${c.id}: ${c.type}`).join("\n")}`
+      );
     }
     if (parts.length > 0) {
       systemPrompt += `\n\n## Studio resources (current state)\n${parts.join("\n\n")}`;
@@ -108,6 +129,13 @@ export async function runAssistant(
   if (options.crossChatContext && options.crossChatContext.trim().length > 0) {
     systemPrompt += `\n\n## Cross-chat context (preferences and recent conversation summaries)\n${options.crossChatContext.trim()}`;
   }
+  if (options.runWaitingContext && options.runWaitingContext.trim().length > 0) {
+    systemPrompt += `\n\n## Workflow run(s) context\n${options.runWaitingContext.trim()}\n\n**CRITICAL:** Do NOT output a generic "The agent is waiting for your input. Reply above to continue." message. Instead:
+1. Always know which run you are referring to (runId). When multiple runs are listed (e.g. one waiting for input, one executing), if the user's message does not clearly refer to one run, ask: "Do you mean the run waiting for your input, or the one that's still executing?" — then use the correct runId for get_run, respond_to_run, or cancel_run.
+2. First, surface the run's question to the user when relevant (from runWaitingContext above) so they know what to reply.
+3. Then process their message: (a) If they are directly answering a run's question (e.g. selecting an option, providing data), call respond_to_run with that run's runId and response. (b) If they want to stop or cancel a run, call cancel_run with that run's runId. (c) If they want something else (modify the agent, ask a different question), do that instead. Always take action — never just tell them to reply.
+4. For respond_to_run: set **response** to the **exact** text the user sent (the full option label if they clicked one, or their typed reply). Never use a number, index, or abbreviation (e.g. never "1" or "option 2" — use the full option text like "Wait for saved searches (do nothing)").`;
+  }
 
   const messages: LLMMessage[] = [
     { role: "system", content: systemPrompt },
@@ -118,10 +146,11 @@ export async function runAssistant(
   const mainTemp = options.temperature ?? 0.4;
   const nudgeTemp = options.temperature ?? 0.2;
 
-  // First LLM call
+  // First LLM call (use generous maxTokens so long tool calls are not truncated)
   const response = await options.callLLM({
     messages,
     temperature: mainTemp,
+    ...(options.maxTokens != null ? { maxTokens: options.maxTokens } : {}),
   });
 
   const rawContent = response.content;
@@ -138,7 +167,12 @@ export async function runAssistant(
     const block = todosMatch[1].trim();
     todos = block
       .split(/\n/)
-      .map((line) => line.replace(/^\s*[-*•]\s*/, "").replace(/^\s*\d+\.\s*/, "").trim())
+      .map((line) =>
+        line
+          .replace(/^\s*[-*•]\s*/, "")
+          .replace(/^\s*\d+\.\s*/, "")
+          .trim()
+      )
       .filter((line) => line.length > 0);
   }
 
@@ -196,7 +230,9 @@ export async function runAssistant(
         const name = call.name || call.tool;
         if (!name) continue;
         const rawArgs = call.arguments ?? call.args;
-        const args = (rawArgs != null && typeof rawArgs === "object" && !Array.isArray(rawArgs) ? rawArgs : {}) as Record<string, unknown>;
+        const args = (
+          rawArgs != null && typeof rawArgs === "object" && !Array.isArray(rawArgs) ? rawArgs : {}
+        ) as Record<string, unknown>;
         // Resolve todo index: from args when in todo-index mode, else position-based
         let stepIndex: number;
         let completeTodo = false;
@@ -208,7 +244,8 @@ export async function runAssistant(
               ? Math.min(rawTodoIndex, todosForSteps.length - 1)
               : startIndex + index;
           completeTodo = args.completeTodo === true;
-          if (typeof args.subStepLabel === "string" && args.subStepLabel.trim()) subStepLabel = args.subStepLabel.trim();
+          if (typeof args.subStepLabel === "string" && args.subStepLabel.trim())
+            subStepLabel = args.subStepLabel.trim();
         } else {
           stepIndex = startIndex + index;
           if (typeof maxSteps === "number" && maxSteps >= 0 && stepIndex >= maxSteps) break;
@@ -227,10 +264,16 @@ export async function runAssistant(
           }
         } else {
           options.onProgress?.onToolDone?.(stepIndex, name, result);
-          if (stepIndex >= 0 && stepIndex < todosForSteps.length) completedTodoIndices.add(stepIndex);
+          if (stepIndex >= 0 && stepIndex < todosForSteps.length)
+            completedTodoIndices.add(stepIndex);
         }
         index++;
-        if (name === "ask_user" && result != null && typeof result === "object" && (result as { waitingForUser?: boolean }).waitingForUser === true) {
+        if (
+          (name === "ask_user" || name === "ask_credentials") &&
+          result != null &&
+          typeof result === "object" &&
+          (result as { waitingForUser?: boolean }).waitingForUser === true
+        ) {
           break;
         }
       } catch (err) {
@@ -245,26 +288,34 @@ export async function runAssistant(
     return results;
   }
 
-  let toolResults = await extractAndRunToolCalls(rawContent, { todos: todos ?? [], maxSteps: todos?.length });
+  // Only cap by todo count when we have at least one todo; otherwise run all tool calls from the first message
+  const initialMaxSteps = (todos?.length ?? 0) > 0 ? todos!.length : undefined;
+  let toolResults = await extractAndRunToolCalls(rawContent, {
+    todos: todos ?? [],
+    maxSteps: initialMaxSteps,
+  });
 
   // If the model gave no tool calls but the user asked for action, nudge to output tool calls
   let effectiveAssistantContent = rawContent;
   const userLower = userMessage.trim().toLowerCase();
-  const actionKeywords = /\b(create|add|fix|configure|set up|update|make|build|workflow|workflows|agents?|tools?|llm|graph|outputs?|produce)\b/;
+  const actionKeywords =
+    /\b(create|add|fix|configure|set up|update|make|build|workflow|workflows|agents?|tools?|llm|graph|outputs?|produce)\b/;
   const looksLikeActionRequest = actionKeywords.test(userLower);
   if (toolResults.length === 0 && looksLikeActionRequest) {
+    const possibleTruncation =
+      /<tool_call>\s*\{/i.test(rawContent) && rawContent.trim().length > 500;
+    const nudgeContent = possibleTruncation
+      ? 'Your previous response may have been cut off before the tool_call JSON was complete. Output the required <tool_call> block(s) again. For execute_code: use SHORT commands — split long sequences into multiple execute_code calls (e.g. one for clone, one for apt-get install, one for make) so each call stays under ~1500 characters and is not truncated. Use this exact format: <tool_call>{"name": "tool_name", "arguments": {...}}</tool_call>. Output only the tool_call blocks.'
+      : 'You responded with text but did not output any <tool_call> blocks. The user asked you to perform actions (create/configure/fix agents, workflows, or tools). You MUST output the required <tool_call> blocks now so the system can execute them. Start by listing or getting current state if needed (e.g. list_workflows, get_workflow, list_agents, list_llm_providers, list_tools), then create or update as needed. Use this exact format for each call: <tool_call>{"name": "tool_name", "arguments": {...}}</tool_call>. When you have <todos>, include "todoIndex" and "completeTodo": true in each tool\'s arguments. Output only the tool_call blocks, one after another.';
     const nudgeMessages: LLMMessage[] = [
       ...messages,
       { role: "assistant", content: rawContent },
-      {
-        role: "user",
-        content:
-          "You responded with text but did not output any <tool_call> blocks. The user asked you to perform actions (create/configure/fix agents, workflows, or tools). You MUST output the required <tool_call> blocks now so the system can execute them. Start by listing or getting current state if needed (e.g. list_workflows, get_workflow, list_agents, list_llm_providers, list_tools), then create or update as needed. Use this exact format for each call: <tool_call>{\"name\": \"tool_name\", \"arguments\": {...}}</tool_call>. When you have <todos>, include \"todoIndex\" and \"completeTodo\": true in each tool's arguments. Output only the tool_call blocks, one after another.",
-      },
+      { role: "user", content: nudgeContent },
     ];
     const nudgeResponse = await options.callLLM({
       messages: nudgeMessages,
       temperature: nudgeTemp,
+      ...(options.maxTokens != null ? { maxTokens: options.maxTokens } : {}),
     });
     const nudgeResults = await extractAndRunToolCalls(nudgeResponse.content, {
       todos: todos ?? [],
@@ -276,9 +327,13 @@ export async function runAssistant(
     }
   }
 
-  // If the model asked the user for input (ask_user with waitingForUser), do not nudge for more tool calls this turn
+  // If the model asked the user for input (ask_user or ask_credentials with waitingForUser), do not nudge for more tool calls this turn
   const waitingForUser = toolResults.some(
-    (r) => r.name === "ask_user" && r.result != null && typeof r.result === "object" && (r.result as { waitingForUser?: boolean }).waitingForUser === true
+    (r) =>
+      (r.name === "ask_user" || r.name === "ask_credentials") &&
+      r.result != null &&
+      typeof r.result === "object" &&
+      (r.result as { waitingForUser?: boolean }).waitingForUser === true
   );
 
   // If the model output a plan but not all todos are complete, nudge (unless waiting for user input)
@@ -298,7 +353,7 @@ export async function runAssistant(
         role: "user",
         content:
           (toolResults.length === 0
-            ? "You listed steps but did not output any <tool_call> blocks. Output them now. For each step include \"todoIndex\" (0-based) and set \"completeTodo\": true on the last tool call for that step. Use the exact format: <tool_call>{\"name\": \"create_agent\", \"arguments\": {\"todoIndex\": 0, \"completeTodo\": true, ...}}</tool_call>. Do not add explanation, only the tool_call blocks."
+            ? 'You listed steps but did not output any <tool_call> blocks. Output them now. For each step include "todoIndex" (0-based) and set "completeTodo": true on the last tool call for that step. Use the exact format: <tool_call>{"name": "create_agent", "arguments": {"todoIndex": 0, "completeTodo": true, ...}}</tool_call>. Do not add explanation, only the tool_call blocks.'
             : `You listed ${expectedSteps} steps but ${completedTodoIndices.size} are marked complete (completeTodo: true). Output <tool_call> blocks for the remaining step(s). Each call must include \"todoIndex\" and set \"completeTodo\": true on the last tool for that todo. Only the missing tool_call blocks.`) +
           toolsSummary,
       },
@@ -306,6 +361,7 @@ export async function runAssistant(
     const nudgeResponse = await options.callLLM({
       messages: nudgeMessages,
       temperature: nudgeTemp,
+      ...(options.maxTokens != null ? { maxTokens: options.maxTokens } : {}),
     });
     const moreResults = await extractAndRunToolCalls(nudgeResponse.content, {
       startIndex: toolResults.length,
@@ -321,13 +377,13 @@ export async function runAssistant(
 
   // Multi-round: if we got tool results, do one follow-up to allow e.g. update_workflow after create_agent; avoid re-running creation.
   let content = effectiveAssistantContent;
-  const maxRounds = 2;
+  const maxRounds = options.maxFollowUpRounds ?? 2;
   let round = 0;
   let lastAssistantContent = effectiveAssistantContent;
   let allToolResults = [...toolResults];
 
   const followUpReminderText =
-    "[System reminder: You already ran tool calls this turn. If your results above include create_workflow and create_agent ids, you MUST call update_workflow now for each such workflow: pass id (workflow id from results), nodes (one per agent with parameters.agentId = exact agent id from results), edges (e.g. n1→n2 and n2→n1 for a chat loop), and maxRounds. maxRounds = number of full cycles (one cycle = each agent speaks once): for a 2-agent chat, '3 rounds each' means maxRounds: 3 (6 steps total), NOT 6. Do NOT run create_agent or create_workflow again. After update_workflow you may call execute_workflow if the user wanted to run. If an execute_workflow result is in the results above, inspect its output.trail: if the agents' conversation does not match the user's goal (e.g. should discuss weather but did not), call update_agent (e.g. add toolIds like std-weather, tighten systemPrompt) and execute_workflow again — at most 2–3 improvement rounds total. You MUST also respond to the user in this message: briefly summarize what was done and either ask for their input or state what they can do next.]";
+    "[System reminder: You already ran tool calls this turn. If your results above include create_workflow and create_agent ids, you MUST call update_workflow now for each such workflow: pass id (workflow id from results), nodes (one per agent with parameters.agentId = exact agent id from results), edges (e.g. n1→n2 and n2→n1 for a chat loop), and maxRounds. maxRounds = number of full cycles (one cycle = each agent speaks once): for a 2-agent chat, '3 rounds each' means maxRounds: 3 (6 steps total), NOT 6. Do NOT run create_agent or create_workflow again. After update_workflow you may call execute_workflow if the user wanted to run. You MUST also call format_response with summary, needsInput, and options (e.g. ['Run it now', 'Modify agent', 'Not now']) so the user gets clickable choices — do not end with prose only. If an execute_workflow result is in the results above, inspect its output.trail: if the agents' conversation does not match the user's goal (e.g. should discuss weather but did not), call update_agent (e.g. add toolIds like std-weather, tighten systemPrompt) and execute_workflow again — at most 2–3 improvement rounds total. You MUST respond to the user in this message.]";
 
   const followUpSummaryInstruction =
     "You MUST respond to the user in this turn: give a short summary of what was done and either (a) ask for their input (e.g. run the workflow now? need more information?) or (b) state what they can do next. Do not end the turn without a clear message to the user.";
@@ -338,20 +394,28 @@ export async function runAssistant(
     const toolsSummary = toolResults
       .map((r, i) => {
         const argsText = typeof r.args === "string" ? r.args : JSON.stringify(r.args ?? {});
-        const resultText = typeof r.result === "string" ? r.result : JSON.stringify(r.result ?? null);
+        const resultText =
+          typeof r.result === "string" ? r.result : JSON.stringify(r.result ?? null);
         return `Tool ${i + 1}: ${r.name}\n  arguments: ${argsText}\n  result: ${resultText}`;
       })
       .join("\n\n");
 
     const isFirstFollowUp = round === 0;
+    const hasToolCapExceeded = toolResults.some(
+      (r) =>
+        r.result != null &&
+        typeof r.result === "object" &&
+        (r.result as { code?: string }).code === "TOOL_CAP_EXCEEDED"
+    );
+    const firstFollowUpLead = hasToolCapExceeded
+      ? "One or more create_agent calls failed with TOOL_CAP_EXCEEDED (max 10 tools per agent). You MUST design and create a multi-agent system using an agentic pattern (pipeline A→B→C, evaluator-optimizer A↔B with maxRounds, role-based assembly line, or orchestrator-workers): create multiple agents (each with at most 10 tools and a clear role in that pattern) and report each with [Created agent id: ...]. If you have create_workflow and update_workflow, also create the workflow and wire these agents (nodes with parameters.agentId, edges, maxRounds) according to the pattern. If not (e.g. you are the agent specialist), respond with the agent ids and the chosen pattern so the workflow specialist can wire them. Then respond with a summary and options for the user."
+      : "Now, based on these tool results and the user's goal, continue. " +
+        "If you created workflow(s) and agent(s) above, you MUST call update_workflow for each workflow with the exact ids from the results (nodes with agentId, edges, maxRounds). Do NOT re-run create_agent or create_workflow. ";
     const followUpUserContent =
       "Earlier in this turn you already ran these tool calls:\n\n" +
       toolsSummary +
       "\n\n" +
-      (isFirstFollowUp
-        ? "Now, based on these tool results and the user's goal, continue. " +
-          "If you created workflow(s) and agent(s) above, you MUST call update_workflow for each workflow with the exact ids from the results (nodes with agentId, edges, maxRounds). Do NOT re-run create_agent or create_workflow. "
-        : "No further tool calls are needed. ") +
+      (isFirstFollowUp ? firstFollowUpLead : "No further tool calls are needed. ") +
       followUpSummaryInstruction +
       "\n\n" +
       followUpReminderText;
@@ -370,11 +434,12 @@ export async function runAssistant(
     lastAssistantContent = followUp.content;
     content = followUp.content;
 
-    // Parse and execute any tool calls in the follow-up (e.g. update_agent with data from prior tool results)
+    // Parse and execute any tool calls in the follow-up (e.g. update_agent, create_agent with data from prior tool results).
+    // Do not pass maxSteps here: we want to run ALL tool calls in the follow-up. (maxSteps on the first message limits
+    // initial batch; follow-ups can add more tools without being capped by the original todo count.)
     toolResults = await extractAndRunToolCalls(followUp.content, {
       startIndex: allToolResults.length,
       todos: todos ?? [],
-      maxSteps: todos?.length,
     });
     for (let i = 0; i < toolResults.length; i++) {
       allToolResults.push(toolResults[i]);

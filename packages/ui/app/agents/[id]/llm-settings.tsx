@@ -80,7 +80,9 @@ export default function LlmSettings({ agentId, agent, onUpdate }: Props) {
         provider: preset.provider,
         model: preset.model,
         apiKeyRef: preset.apiKeyRef,
-        endpoint: PROVIDERS_WITHOUT_ENDPOINT.includes(preset.provider) ? undefined : preset.endpoint,
+        endpoint: PROVIDERS_WITHOUT_ENDPOINT.includes(preset.provider)
+          ? undefined
+          : preset.endpoint,
       },
     });
   };
@@ -93,7 +95,14 @@ export default function LlmSettings({ agentId, agent, onUpdate }: Props) {
 
   return (
     <div className="card">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "1rem",
+        }}
+      >
         <div>
           <h3 style={{ margin: 0 }}>LLM Configuration</h3>
           <p style={{ margin: "0.15rem 0 0", fontSize: "0.82rem", color: "var(--text-muted)" }}>
@@ -113,8 +122,7 @@ export default function LlmSettings({ agentId, agent, onUpdate }: Props) {
           <div className="section-label">Saved Providers</div>
           <div className="llm-presets">
             {presets.map((preset) => {
-              const isActive =
-                config.provider === preset.provider && config.model === preset.model;
+              const isActive = config.provider === preset.provider && config.model === preset.model;
               return (
                 <div
                   key={preset.id}
@@ -124,7 +132,13 @@ export default function LlmSettings({ agentId, agent, onUpdate }: Props) {
                   <div className="llm-preset-provider">{preset.provider}</div>
                   <div className="llm-preset-model">{preset.model}</div>
                   {!PROVIDERS_WITHOUT_ENDPOINT.includes(preset.provider) && preset.endpoint && (
-                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.15rem" }}>
+                    <div
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "var(--text-muted)",
+                        marginTop: "0.15rem",
+                      }}
+                    >
                       {preset.endpoint}
                     </div>
                   )}
@@ -164,10 +178,10 @@ export default function LlmSettings({ agentId, agent, onUpdate }: Props) {
                 config.provider === "openai"
                   ? "gpt-4o"
                   : config.provider === "anthropic"
-                  ? "claude-sonnet-4-20250514"
-                  : config.provider === "local"
-                  ? "llama3"
-                  : "model-name"
+                    ? "claude-sonnet-4-20250514"
+                    : config.provider === "local"
+                      ? "llama3"
+                      : "model-name"
               }
             />
           </div>
@@ -212,10 +226,23 @@ export default function LlmSettings({ agentId, agent, onUpdate }: Props) {
       {agent.llmConfig && agent.llmConfig.model && (
         <>
           <hr className="divider" />
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              fontSize: "0.85rem",
+              color: "var(--text-muted)",
+            }}
+          >
             <Zap size={14} style={{ color: "var(--primary)" }} />
-            Active: <strong style={{ color: "var(--text)" }}>{config.provider} / {config.model}</strong>
-            {!PROVIDERS_WITHOUT_ENDPOINT.includes(config.provider) && config.endpoint && <span>&middot; {config.endpoint}</span>}
+            Active:{" "}
+            <strong style={{ color: "var(--text)" }}>
+              {config.provider} / {config.model}
+            </strong>
+            {!PROVIDERS_WITHOUT_ENDPOINT.includes(config.provider) && config.endpoint && (
+              <span>&middot; {config.endpoint}</span>
+            )}
           </div>
         </>
       )}
