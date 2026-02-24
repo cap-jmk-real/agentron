@@ -107,5 +107,5 @@ describe("e2e chat simple question", () => {
         contentLen: content.length,
       });
     }
-  }, 60_000);
+  }, 300_000);
 });

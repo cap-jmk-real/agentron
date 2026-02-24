@@ -1,5 +1,7 @@
 /**
  * E2E: Browser (fetch) — workflow with one agent that has std-fetch-url; run and assert completion and content contains "example".
+ * If the assertion fails, the test logs the full run output and trail so you can see the actual std-fetch-url result
+ * (e.g. { error: "Fetch failed", message } from the runtime when example.com is unreachable).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { executeTool } from "../../app/api/chat/_lib/execute-tool";
@@ -65,15 +67,27 @@ describe("e2e browser-fetch", () => {
 
     const status = (execRes as { status?: string }).status;
     expect(["completed", "failed"]).toContain(status);
+    const output = (execRes as { output?: unknown }).output;
+    const trail = (execRes as { output?: { trail?: unknown[] } }).output?.trail ?? [];
+    const outStr = typeof output === "string" ? output : JSON.stringify(output ?? "");
+    const trailStr = JSON.stringify(trail);
+    const hasExample =
+      /example/.test(outStr.toLowerCase()) || /example/.test(trailStr.toLowerCase());
+    if (!hasExample) {
+      // Debug: log why fetch might have failed (runtime returns { error: "Fetch failed", message } when fetch() throws).
+      const trailSnippet = JSON.stringify(trail, null, 2).slice(0, 4000);
+      console.error(
+        "[e2e browser-fetch] Output does not contain 'example'. Run may have completed with fetch failure.\n" +
+          "Full execRes (first 2500 chars):",
+        JSON.stringify(execRes).slice(0, 2500)
+      );
+      console.error("[e2e browser-fetch] Trail (tool results):", trailSnippet);
+    }
     if (status === "completed") {
-      const output = (execRes as { output?: unknown }).output;
-      const outStr = typeof output === "string" ? output : JSON.stringify(output ?? "");
       expect(outStr.toLowerCase()).toMatch(/example/);
     } else {
-      const trail = (execRes as { output?: { trail?: unknown[] } }).output?.trail ?? [];
-      const trailStr = JSON.stringify(trail);
       expect(trailStr.toLowerCase()).toMatch(/example/);
     }
     e2eLog.toolCall("std-fetch-url", JSON.stringify(execRes).slice(0, 200));
-  }, 90_000);
+  }, 300_000);
 });

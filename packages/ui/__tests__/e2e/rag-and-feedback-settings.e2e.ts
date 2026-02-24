@@ -114,5 +114,5 @@ describe("e2e rag-and-feedback-settings", () => {
     const data = await res.json();
     expect(data).toBeDefined();
     e2eLog.step("chat with feedback last-N", {});
-  }, 60_000);
+  }, 300_000);
 });

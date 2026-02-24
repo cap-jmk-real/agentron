@@ -41,6 +41,7 @@ export async function fetchUrl(input: unknown): Promise<unknown> {
     return { status: res.status, url, content: text.slice(0, 100_000) };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    // E2E: when example.com is unreachable (network, DNS, firewall), this message is in the tool result; agent may reply with "fetch failed" and the test logs execRes/trail for debugging.
     return { error: "Fetch failed", message };
   }
 }
