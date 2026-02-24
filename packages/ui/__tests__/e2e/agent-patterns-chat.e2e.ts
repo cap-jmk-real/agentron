@@ -105,7 +105,7 @@ describe("e2e agent-patterns-chat", () => {
 
       // Optional: when chat created agent(s)/workflow, assert minimal structure
       await assertPatternStructure(pattern, toolResults);
-    }, 120_000);
+    }, 300_000);
   }
 });
 

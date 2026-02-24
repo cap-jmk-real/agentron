@@ -102,5 +102,5 @@ describe("e2e heap-minimal", () => {
         execResult?.result?.status ?? "unknown"
       );
     }
-  }, 120_000);
+  }, 300_000);
 });

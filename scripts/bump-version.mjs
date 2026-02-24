@@ -14,6 +14,8 @@ const root = join(__dirname, "..");
 
 const PACKAGES = [
   "package.json",
+  "packages/core/package.json",
+  "packages/runtime/package.json",
   "packages/ui/package.json",
   "apps/desktop/package.json",
   "apps/docs/package.json",

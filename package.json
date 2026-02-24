@@ -2,7 +2,7 @@
   "name": "agentron-studio",
   "description": "Enterprise-ready local AI agent orchestration and workflow automation",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "engines": {
     "node": ">=24.11.1"
   },

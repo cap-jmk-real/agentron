@@ -1,5 +1,7 @@
 # Agentron Architecture
 
+For a **comparison of agent architectures** (ReAct + tools, multi-agent static/dynamic, recursive) and where Agentron sits, see the published docs: [Agent architectures (comparison)](https://cap-jmk-real.github.io/agentron/concepts/agent-architectures).
+
 This repo provides a standalone, local-first Studio application:
 
 - Electron wrapper with a Next.js UI.

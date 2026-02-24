@@ -83,6 +83,19 @@ jobs:
         with:
           name: coverage-summary
 
+      - name: Place coverage summary for badge script
+        run: |
+          mkdir -p packages/ui/coverage
+          if [ ! -f packages/ui/coverage/coverage-summary.json ]; then
+            if [ -f coverage-summary.json ]; then
+              mv coverage-summary.json packages/ui/coverage/
+            else
+              echo "No coverage-summary.json found after download"
+              find . -name "coverage-summary.json" -not -path "./node_modules/*"
+              exit 1
+            fi
+          fi
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:

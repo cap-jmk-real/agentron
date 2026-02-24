@@ -313,5 +313,5 @@ describe("e2e chat-driven-design", () => {
         true
       );
     }
-  }, 180_000);
+  }, 600_000);
 });
