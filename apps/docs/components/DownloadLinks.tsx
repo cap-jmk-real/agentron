@@ -25,13 +25,23 @@ function mapAssetToPlatform(
   return null;
 }
 
-const PLATFORMS: { id: string; label: string; logoSrc: string }[] = [
-  { id: "windows", label: "Windows", logoSrc: "/img/windows.svg" },
-  { id: "macos", label: "macOS", logoSrc: "/img/apple.svg" },
-  { id: "linux", label: "Linux", logoSrc: "/img/linux.svg" },
+const PLATFORMS: { id: string; label: string; logoFile: string }[] = [
+  { id: "windows", label: "Windows", logoFile: "windows.svg" },
+  { id: "macos", label: "macOS", logoFile: "apple.svg" },
+  { id: "linux", label: "Linux", logoFile: "linux.svg" },
 ];
 
+function useBasePath() {
+  const [basePath, setBasePath] = useState("");
+  useEffect(() => {
+    const p = document.body?.getAttribute?.("data-base-path") || "";
+    setBasePath(p);
+  }, []);
+  return basePath;
+}
+
 export function DownloadLinks({ repo = "cap-jmk-real/agentron" }: { repo?: string }) {
+  const basePath = useBasePath();
   const [release, setRelease] = useState<{
     tag: string;
     byPlatform: Record<string, { name: string; url: string } | null>;
@@ -108,7 +118,7 @@ export function DownloadLinks({ repo = "cap-jmk-real/agentron" }: { repo?: strin
             href={releasesPageUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="btn btn-primary"
+            className="download-cta-btn"
           >
             View releases on GitHub
           </a>{" "}
@@ -140,7 +150,7 @@ export function DownloadLinks({ repo = "cap-jmk-real/agentron" }: { repo?: strin
             >
               <span className="download-platform-card-icon">
                 <img
-                  src={p.logoSrc}
+                  src={`${basePath}/img/${p.logoFile}`}
                   alt=""
                   width={20}
                   height={20}
@@ -158,7 +168,7 @@ export function DownloadLinks({ repo = "cap-jmk-real/agentron" }: { repo?: strin
               href={current.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn btn-primary btn-lg"
+              className="download-cta-btn"
             >
               Download for {platformLabel}
             </a>
@@ -178,7 +188,7 @@ export function DownloadLinks({ repo = "cap-jmk-real/agentron" }: { repo?: strin
             href={releasesPageUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="btn btn-secondary"
+            className="download-all-link"
           >
             All releases
           </a>

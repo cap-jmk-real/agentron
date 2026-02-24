@@ -242,7 +242,6 @@ export function HeapViewer() {
         id: `e-${i}-${e.source}-${e.target}`,
         source: e.source,
         target: e.target,
-        style: { stroke: "#94a3b8", strokeWidth: 2 },
       })),
     [edges]
   );
@@ -294,7 +293,12 @@ export function HeapViewer() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes}
-          defaultEdgeOptions={{ style: { stroke: "#94a3b8", strokeWidth: 2 } }}
+          defaultEdgeOptions={{
+            style: {
+              stroke: "var(--xy-edge-stroke-default, #94a3b8)",
+              strokeWidth: 2,
+            },
+          }}
           minZoom={0.15}
           maxZoom={1.5}
           fitView

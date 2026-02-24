@@ -699,6 +699,68 @@ nav.nextra-toc {
   text-align: center;
   margin-bottom: 1rem;
 }
+/* Minimal download CTA: outline style, no loud primary color.
+   Override main a[href] { border-bottom: 1px solid transparent } so the bottom border is visible in light mode. */
+.download-cta-btn,
+main a.download-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.4;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(148 163 184);
+  border-bottom-color: rgb(148 163 184);
+  background: rgb(255 255 255);
+  color: rgb(51 65 85);
+  text-decoration: none;
+  cursor: pointer;
+  margin-bottom: 0.25rem;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s,
+    color 0.15s;
+}
+.download-cta-btn:hover,
+main a.download-cta-btn:hover {
+  border-color: rgb(100 116 139);
+  border-bottom-color: rgb(100 116 139);
+  background: rgb(248 250 252);
+  color: rgb(30 41 59);
+}
+.dark .download-cta-btn,
+.dark main a.download-cta-btn {
+  border-color: rgb(100 116 139);
+  border-bottom-color: rgb(100 116 139);
+  background: rgb(30 41 59);
+  color: rgb(226 232 240);
+}
+.dark .download-cta-btn:hover,
+.dark main a.download-cta-btn:hover {
+  border-color: rgb(148 163 184);
+  border-bottom-color: rgb(148 163 184);
+  background: rgb(51 65 85);
+  color: rgb(248 250 252);
+}
+.download-all-link {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: rgb(100 116 139);
+  text-decoration: none;
+}
+.download-all-link:hover {
+  color: rgb(71 85 105);
+  text-decoration: underline;
+}
+.dark .download-all-link {
+  color: rgb(148 163 184);
+}
+.dark .download-all-link:hover {
+  color: rgb(203 213 225);
+}
 .download-cta-filename,
 .download-unavailable {
   font-size: 0.8125rem;
