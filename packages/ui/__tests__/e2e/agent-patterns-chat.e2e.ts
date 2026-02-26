@@ -120,16 +120,17 @@ async function assertPatternStructure(
     const id = r.result?.id;
     if (typeof id !== "string") continue;
     const agent = (await executeTool("get_agent", { id }, undefined)) as {
-      graphNodes?: unknown[];
-      toolIds?: string[];
+      definition?: { graph?: { nodes?: unknown[] } };
+      error?: string;
     };
     if (agent && !("error" in agent)) {
-      expect(Array.isArray(agent.graphNodes)).toBe(true);
+      const graphNodes = agent.definition?.graph?.nodes;
+      expect(Array.isArray(graphNodes)).toBe(true);
       if (pattern.level === "intra" && pattern.patternId === "prompt-chaining") {
-        expect((agent.graphNodes?.length ?? 0) >= 2).toBe(true);
+        expect((graphNodes?.length ?? 0) >= 2).toBe(true);
       }
       if (pattern.patternId === "sequential-llm-tool-llm") {
-        expect((agent.graphNodes?.length ?? 0) >= 3).toBe(true);
+        expect((graphNodes?.length ?? 0) >= 3).toBe(true);
       }
     }
   }

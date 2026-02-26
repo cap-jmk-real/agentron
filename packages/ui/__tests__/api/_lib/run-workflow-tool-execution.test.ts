@@ -3,6 +3,7 @@ import {
   STD_IDS,
   FIRST_TURN_DEFAULT,
   buildFirstTurnPartnerMessageFromConfig,
+  buildWorkflowMemoryBlock,
 } from "../../../app/api/_lib/run-workflow-tool-execution";
 import { getAppSettings } from "../../../app/api/_lib/app-settings";
 import { searchWeb } from "@agentron-studio/runtime";
@@ -173,5 +174,42 @@ describe("buildFirstTurnPartnerMessageFromConfig", () => {
     expect(out).toContain("query:");
     expect(out).toContain("limit:");
     expect(out).not.toMatch(/\bagentId\b/);
+  });
+
+  it("adds targetUrl hint and few-shot example when config.targetUrl is set", () => {
+    const out = buildFirstTurnPartnerMessageFromConfig({
+      targetUrl: "http://127.0.0.1:18200",
+      targetSandboxId: "sandbox-uuid",
+    });
+    expect(out).toContain(
+      "For every HTTP request (std-fetch-url, std-http-request), use the targetUrl value below as the url"
+    );
+    expect(out).toContain('Do not use "http://target"');
+    expect(out).toContain("http://127.0.0.1:18200");
+    expect(out).toContain("sandbox-uuid");
+  });
+});
+
+describe("buildWorkflowMemoryBlock", () => {
+  it("returns minimal prompt when no context and empty partner message (e.g. noSharedOutput)", () => {
+    const out = buildWorkflowMemoryBlock({
+      summary: "",
+      recentTurns: [],
+      partnerMessage: "",
+    });
+    expect(out).toBe("Execute your task.");
+  });
+
+  it("includes recent turns and partner message when provided", () => {
+    const out = buildWorkflowMemoryBlock({
+      summary: "",
+      recentTurns: [{ speaker: "A", text: "hello" }],
+      partnerMessage: "reply",
+      precedingAgentName: "Agent B",
+    });
+    expect(out).toContain("Recent turns:");
+    expect(out).toContain("A: hello");
+    expect(out).toContain("Output from Agent B:");
+    expect(out).toContain("reply");
   });
 });

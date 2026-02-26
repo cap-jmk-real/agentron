@@ -239,20 +239,26 @@ export async function processOneWorkflowJob(options?: {
 }
 
 const POLL_INTERVAL_MS = 300;
-const MAX_POLL_MS = 600_000; // 10 min
 
-/** Wait for a job to complete by polling and processing the queue. Pass vaultKey when waiting for a workflow_start job. */
+/**
+ * Wait for a job to complete by polling and processing the queue. Pass vaultKey when waiting for a workflow_start job.
+ * No timeout by default (workflows may run a long time). Pass options.timeoutMs to limit how long to wait.
+ */
 export async function waitForJob(
   jobId: string,
   options?: { vaultKey?: Buffer | null; timeoutMs?: number }
 ): Promise<WorkflowQueueJobRow> {
-  const deadline = Date.now() + (options?.timeoutMs ?? MAX_POLL_MS);
-  while (Date.now() < deadline) {
+  const timeoutMs = options?.timeoutMs;
+  const deadline =
+    typeof timeoutMs === "number" && timeoutMs > 0 ? Date.now() + timeoutMs : undefined;
+  for (;;) {
+    if (deadline !== undefined && Date.now() >= deadline) {
+      throw new Error("Timeout waiting for job");
+    }
     const job = await getWorkflowQueueJob(jobId);
     if (!job) throw new Error("Job not found");
     if (job.status === "completed" || job.status === "failed") return job;
     await processOneWorkflowJob({ waitingJobId: jobId, vaultKey: options?.vaultKey });
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
-  throw new Error("Timeout waiting for job");
 }

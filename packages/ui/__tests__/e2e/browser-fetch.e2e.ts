@@ -2,6 +2,10 @@
  * E2E: Browser (fetch) — workflow with one agent that has std-fetch-url; run and assert completion and content contains "example".
  * If the assertion fails, the test logs the full run output and trail so you can see the actual std-fetch-url result
  * (e.g. { error: "Fetch failed", message } from the runtime when example.com is unreachable).
+ *
+ * This test can fail for two reasons:
+ * 1. LLM refuses to call the tool (e.g. "i cannot access external websites or fetch urls") — use an LLM that invokes tools.
+ * 2. Fetch fails (e.g. no network, or runtime fetch error) — ensure example.com is reachable from the test environment.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { executeTool } from "../../app/api/chat/_lib/execute-tool";

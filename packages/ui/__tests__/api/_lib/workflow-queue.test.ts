@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   enqueueWorkflowStart,
   enqueueWorkflowResume,
@@ -6,7 +6,10 @@ import {
   getWorkflowQueueJob,
   getWorkflowQueueStatus,
   listWorkflowQueueJobs,
+  waitForJob,
 } from "../../../app/api/_lib/workflow-queue";
+import { db, workflowQueue } from "../../../app/api/_lib/db";
+import { eq } from "drizzle-orm";
 
 describe("workflow-queue", () => {
   it("enqueueWorkflowStart returns job id and job is readable", async () => {
@@ -71,5 +74,33 @@ describe("workflow-queue", () => {
   it("getWorkflowQueueJob returns null for unknown job id", async () => {
     const job = await getWorkflowQueueJob("non-existent-job-id-12345");
     expect(job).toBeNull();
+  });
+
+  describe("waitForJob", () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("resolves with job when job completes (no timeout)", async () => {
+      const runId = crypto.randomUUID();
+      const jobId = await enqueueWorkflowStart({ runId, workflowId: "wf-wait" });
+      await db
+        .update(workflowQueue)
+        .set({ status: "completed", finishedAt: Date.now() })
+        .where(eq(workflowQueue.id, jobId))
+        .run();
+      const job = await waitForJob(jobId);
+      expect(job).not.toBeNull();
+      expect(job!.id).toBe(jobId);
+      expect(job!.status).toBe("completed");
+    });
+
+    it("throws 'Timeout waiting for job' when timeoutMs is set and job does not complete in time", async () => {
+      const runId = crypto.randomUUID();
+      const jobId = await enqueueWorkflowStart({ runId, workflowId: "wf-wait" });
+      const workflowQueueModule = await import("../../../app/api/_lib/workflow-queue");
+      vi.spyOn(workflowQueueModule, "processOneWorkflowJob").mockResolvedValue(undefined);
+      await expect(waitForJob(jobId, { timeoutMs: 1 })).rejects.toThrow("Timeout waiting for job");
+    });
   });
 });

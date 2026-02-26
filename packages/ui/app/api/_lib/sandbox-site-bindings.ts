@@ -1,6 +1,6 @@
 /**
  * Shared logic for adding a sandbox site binding (expose container port to host).
- * Used by POST /api/sandbox/[id]/site-bindings and by the bind_sandbox_port tool handler.
+ * Used by POST /api/sandbox/[id]/site-bindings. allocateHostPort is also used by create_sandbox when containerPort is set.
  */
 import {
   db,

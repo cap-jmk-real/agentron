@@ -44,9 +44,11 @@ The workflow engine follows edges from node to node.
 
 Each agent node runs with the previous output as input.
 
-### 3. Pass output
+### 3. Pass output (edge-scoped; optional shared context)
 
-Agent output is passed to the next node.
+By default, a node only sees output from nodes that have an **incoming edge** to it (its predecessors). Nodes with no edge between them do not see each other's output.
+
+To share output beyond the graph, set **`includeMyOutputInSharedContext: true`** on a node's parameters: that node's output is then visible to **all** nodes in the workflow as shared context (in addition to whatever they see via edges). This must be set explicitly; without it, visibility is edge-only.
 
 ### 4. Loops
 

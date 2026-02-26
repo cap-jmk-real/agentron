@@ -56,6 +56,37 @@ async function stdWebSearchWithSettings(input: unknown): Promise<unknown> {
   }
 }
 
+/** Tool contract for std-http-request so the LLM always sees GET/HEAD no-body and headers usage. */
+const STD_HTTP_REQUEST_CONTRACT = {
+  description: `Send an HTTP request. Required: url. Optional: method (default GET), headers, body. GET and HEAD must not have a body; use headers (e.g. User-Agent) for custom headers or payloads that must be sent with GET.
+
+Examples (correct usage):
+1. Simple GET, no body: { "url": "https://api.example.com/data" }
+2. GET with custom header (e.g. User-Agent): { "url": "http://target/cgi-bin/script", "method": "GET", "headers": { "User-Agent": "CustomValue" } }
+3. POST with body: { "url": "https://api.example.com/submit", "method": "POST", "headers": { "Content-Type": "application/json" }, "body": "{\\"key\\":\\"value\\"}" }`,
+  parameters: {
+    type: "object",
+    properties: {
+      url: { type: "string", description: "Full URL to request (required)" },
+      method: {
+        type: "string",
+        description: "HTTP method (default GET). GET and HEAD must not have a body.",
+      },
+      headers: {
+        type: "object",
+        description:
+          "Optional request headers (e.g. User-Agent, Authorization). Use headers for custom values with GET.",
+      },
+      body: {
+        type: "string",
+        description:
+          "Request body. Only use with POST, PUT, or PATCH. Do not send body with GET or HEAD.",
+      },
+    },
+    required: ["url"],
+  } as Record<string, unknown>,
+};
+
 /** Standard tool IDs that map to runtime implementations. Exported for workflow engine buildToolInstructionsBlock. */
 export const STD_IDS: Record<string, (input: unknown) => Promise<unknown>> = {
   "std-fetch-url": fetchUrl,
@@ -160,13 +191,18 @@ export async function buildAvailableTools(toolIds: string[]): Promise<LLMToolDef
           : { type: "object", properties: {}, required: [] };
       const schema = inputSchema as Record<string, unknown>;
       const cfg = (tool as { config?: { description?: string } }).config;
-      const description = typeof cfg?.description === "string" ? cfg.description : tool.name;
+      let description = typeof cfg?.description === "string" ? cfg.description : tool.name;
+      let parameters = schema;
+      if (tool.id === "std-http-request") {
+        description = STD_HTTP_REQUEST_CONTRACT.description;
+        parameters = STD_HTTP_REQUEST_CONTRACT.parameters;
+      }
       out.push({
         type: "function",
         function: {
           name: tool.id,
           description,
-          parameters: schema,
+          parameters,
         },
       });
       continue;
@@ -252,6 +288,21 @@ export async function executeStudioTool(
     const { executeTool } = await import("../chat/_lib/execute-tool");
     return executeTool(
       toolId,
+      (typeof input === "object" && input !== null ? input : {}) as Record<string, unknown>,
+      { conversationId: undefined, vaultKey: vaultKey ?? null }
+    );
+  }
+  const sandboxToolNames: Record<string, string> = {
+    "std-execute-code": "execute_code",
+    "std-list-sandboxes": "list_sandboxes",
+    "std-create-sandbox": "create_sandbox",
+    "std-get-sandbox": "get_sandbox",
+  };
+  const sandboxToolName = sandboxToolNames[toolId];
+  if (sandboxToolName) {
+    const { executeTool } = await import("../chat/_lib/execute-tool");
+    return executeTool(
+      sandboxToolName,
       (typeof input === "object" && input !== null ? input : {}) as Record<string, unknown>,
       { conversationId: undefined, vaultKey: vaultKey ?? null }
     );
@@ -381,6 +432,10 @@ export function getLogSourceTag(toolId: string): string {
       return "[Container]";
     case "std-web-search":
       return "[Web search]";
+    case "std-execute-code":
+    case "std-list-sandboxes":
+    case "std-create-sandbox":
+      return "[Sandbox]";
     default:
       return "[Tool]";
   }
@@ -417,6 +472,12 @@ export function buildFirstTurnPartnerMessageFromConfig(
   if (config.url != null && String(config.url).trim()) {
     parts.push(
       `Use the following URL (provided by the workflow; do not ask the user for it): ${String(config.url).trim()}`
+    );
+  }
+  if (config.targetUrl != null && String(config.targetUrl).trim()) {
+    const tv = String(config.targetUrl).trim();
+    parts.push(
+      `For every HTTP request (std-fetch-url, std-http-request), use the targetUrl value below as the url (e.g. {"url": "${tv}"} or {"url": "${tv}/cgi-bin/", "method": "GET"}). Do not use "http://target".`
     );
   }
   const otherParams = Object.entries(config).filter(

@@ -43,7 +43,7 @@ export const MISC_TOOLS: AssistantToolDef[] = [
   {
     name: "create_sandbox",
     description:
-      "Create a new Podman/Docker sandbox for code execution (persistent container). Use when the user wants a long-lived environment for multiple commands. For a single command, use run_container_command instead.",
+      "Create a new Podman/Docker sandbox for code execution (persistent container). Use when the user wants a long-lived environment for multiple commands. Optionally expose a container port at create time (containerPort); response includes hostPort. For a single command, use run_container_command instead.",
     parameters: {
       type: "object",
       properties: {
@@ -61,6 +61,15 @@ export const MISC_TOOLS: AssistantToolDef[] = [
           type: "string",
           description:
             "Optional Podman/Docker network name to attach the container to (e.g. for connecting to an Ollama sidecar).",
+        },
+        containerPort: {
+          type: "number",
+          description:
+            "Optional. Expose this container port at create time; a free host port is allocated. Response includes hostPort.",
+        },
+        host: {
+          type: "string",
+          description: "Optional host to bind to when containerPort is set (default 127.0.0.1).",
         },
       },
       required: ["image"],
@@ -80,9 +89,9 @@ export const MISC_TOOLS: AssistantToolDef[] = [
     },
   },
   {
-    name: "bind_sandbox_port",
+    name: "get_sandbox",
     description:
-      "Expose a container port from a sandbox to the host. Allocates a free host port and returns it (and optional WebSocket URL). Use when you need to reach a service inside the sandbox (e.g. OpenClaw gateway on port 18789). Call once per sandbox per container port; each sandbox gets a distinct host port.",
+      "Inspect a sandbox by id: returns current container state (running or exited). Use to check if a sandbox is still running without running a command. When the container has exited, returns exitCode, oomKilled, logs tail, and hint. Use sandboxId from create_sandbox or list_sandboxes.",
     parameters: {
       type: "object",
       properties: {
@@ -90,16 +99,8 @@ export const MISC_TOOLS: AssistantToolDef[] = [
           type: "string",
           description: "Sandbox id from create_sandbox or list_sandboxes",
         },
-        containerPort: {
-          type: "number",
-          description: "Port inside the container to expose (e.g. 18789 for OpenClaw gateway)",
-        },
-        host: {
-          type: "string",
-          description: "Host to bind to (default 127.0.0.1)",
-        },
       },
-      required: ["sandboxId", "containerPort"],
+      required: ["sandboxId"],
     },
   },
   {

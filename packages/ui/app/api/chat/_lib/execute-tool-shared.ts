@@ -25,6 +25,12 @@ export type ExecuteToolContext = {
   registry?: ReturnType<typeof getRegistry>;
 };
 
+export type ExecuteToolFn = (
+  name: string,
+  args: Record<string, unknown>,
+  ctx?: ExecuteToolContext
+) => Promise<unknown>;
+
 /** Resolve workflow id from args: workflowId, id, or workflowIdentifierField "id" + workflowIdentifierValue. No name-based resolution. */
 export function resolveWorkflowIdFromArgs(
   a: Record<string, unknown>

@@ -310,7 +310,16 @@ export const STANDARD_TOOLS: { id: string; name: string; description?: string }[
       "Navigate, snapshot, click, fill. Use first to get lists from web pages; then request_user_help to ask the user to choose.",
   },
   { id: "std-run-code", name: "Run Code" },
-  { id: "std-http-request", name: "HTTP Request" },
+  {
+    id: "std-http-request",
+    name: "HTTP Request",
+    description:
+      "Send an HTTP request. Required: url. Optional: method (default GET), headers, body. " +
+      "GET and HEAD must not have a body; use headers (e.g. User-Agent) for custom headers or payloads with GET. " +
+      'Examples: 1) GET, no body: { "url": "https://api.example.com/data" }. ' +
+      '2) GET with header: { "url": "...", "method": "GET", "headers": { "User-Agent": "CustomValue" } }. ' +
+      '3) POST with body: { "url": "...", "method": "POST", "body": "{\\"key\\":\\"value\\"}" }.',
+  },
   { id: "std-webhook", name: "Webhook" },
   { id: "std-weather", name: "Weather" },
   { id: "std-web-search", name: "Web Search" },
@@ -321,6 +330,29 @@ export const STANDARD_TOOLS: { id: string; name: string; description?: string }[
     description: "Create once, exec many. Actions: ensure, exec, destroy.",
   },
   { id: "std-container-build", name: "Build image from Containerfile" },
+  {
+    id: "std-execute-code",
+    name: "Execute code in sandbox",
+    description:
+      "Run a shell command in an existing sandbox (sandboxId from create_sandbox or list_sandboxes). Use for running commands inside a container.",
+  },
+  {
+    id: "std-list-sandboxes",
+    name: "List sandboxes",
+    description: "List all Podman/Docker sandboxes (name, id, image, status, containerId).",
+  },
+  {
+    id: "std-get-sandbox",
+    name: "Get sandbox",
+    description:
+      "Inspect a sandbox by id: returns current container state (running or exited). When exited, returns exitCode, oomKilled, logs tail. Use sandboxId from create_sandbox or list_sandboxes.",
+  },
+  {
+    id: "std-create-sandbox",
+    name: "Create sandbox",
+    description:
+      "Create a new Podman/Docker sandbox (persistent container). Requires image; optional name, env, network, containerPort (expose port at create time; returns hostPort).",
+  },
   { id: "std-write-file", name: "Write file" },
   { id: "std-request-user-help", name: "Request user input (workflow pause)" },
   {
@@ -795,6 +827,78 @@ export async function ensureStandardTools(): Promise<void> {
     },
     required: [],
   };
+  const stdHttpRequestInputSchema = {
+    type: "object",
+    properties: {
+      url: { type: "string", description: "Full URL to request (required)" },
+      method: {
+        type: "string",
+        description: "HTTP method (default GET). GET and HEAD must not have a body.",
+      },
+      headers: {
+        type: "object",
+        description:
+          "Optional request headers (e.g. User-Agent, Authorization). Use headers for custom values with GET.",
+      },
+      body: {
+        type: "string",
+        description:
+          "Request body. Only use with POST, PUT, or PATCH. Do not send body with GET or HEAD.",
+      },
+    },
+    required: ["url"],
+  };
+  const stdExecuteCodeInputSchema = {
+    type: "object",
+    properties: {
+      sandboxId: {
+        type: "string",
+        description: "Sandbox id from create_sandbox or list_sandboxes",
+      },
+      command: { type: "string", description: "Shell command to run in the sandbox" },
+    },
+    required: ["sandboxId", "command"],
+  };
+  const stdListSandboxesInputSchema = { type: "object", properties: {}, required: [] };
+  const stdCreateSandboxInputSchema = {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+      image: { type: "string", description: "Container image (e.g. node:22-slim, alpine)" },
+      env: { type: "object", description: "Optional env vars" },
+      network: { type: "string", description: "Optional network name" },
+      useImageCmd: {
+        type: "boolean",
+        description:
+          "If true, run the image default CMD (e.g. start a server). Use for service images like vulnerables/cve-2014-6271.",
+      },
+      cmd: {
+        type: "array",
+        items: { type: "string" },
+        description: "Optional command and args (used with useImageCmd to override image CMD).",
+      },
+      containerPort: {
+        type: "number",
+        description:
+          "Optional. Expose this container port at create time; a free host port is allocated. Response includes hostPort.",
+      },
+      host: {
+        type: "string",
+        description: "Optional host to bind to when containerPort is set (default 127.0.0.1).",
+      },
+    },
+    required: ["image"],
+  };
+  const stdGetSandboxInputSchema = {
+    type: "object",
+    properties: {
+      sandboxId: {
+        type: "string",
+        description: "Sandbox id from create_sandbox or list_sandboxes",
+      },
+    },
+    required: ["sandboxId"],
+  };
 
   const genericImprovementInputSchema = {
     type: "object" as const,
@@ -817,6 +921,11 @@ export async function ensureStandardTools(): Promise<void> {
     const isSendToOpenclaw = t.id === "send_to_openclaw";
     const isOpenclawHistory = t.id === "openclaw_history";
     const isOpenclawAbort = t.id === "openclaw_abort";
+    const isStdExecuteCode = t.id === "std-execute-code";
+    const isStdListSandboxes = t.id === "std-list-sandboxes";
+    const isStdGetSandbox = t.id === "std-get-sandbox";
+    const isStdCreateSandbox = t.id === "std-create-sandbox";
+    const isStdHttpRequest = t.id === "std-http-request";
     const isOtherImprovementTool =
       TOOL_CATEGORIES[t.id] === "improvement" && !isGetRunForImprovement && !isGetFeedbackForScope;
     const configJson = t.description ? JSON.stringify({ description: t.description }) : "{}";
@@ -856,9 +965,19 @@ export async function ensureStandardTools(): Promise<void> {
                                     ? JSON.stringify(openclawHistoryInputSchema)
                                     : isOpenclawAbort
                                       ? JSON.stringify(openclawAbortInputSchema)
-                                      : isOtherImprovementTool
-                                        ? JSON.stringify(genericImprovementInputSchema)
-                                        : null,
+                                      : isStdExecuteCode
+                                        ? JSON.stringify(stdExecuteCodeInputSchema)
+                                        : isStdListSandboxes
+                                          ? JSON.stringify(stdListSandboxesInputSchema)
+                                          : isStdGetSandbox
+                                            ? JSON.stringify(stdGetSandboxInputSchema)
+                                            : isStdCreateSandbox
+                                              ? JSON.stringify(stdCreateSandboxInputSchema)
+                                              : isStdHttpRequest
+                                                ? JSON.stringify(stdHttpRequestInputSchema)
+                                                : isOtherImprovementTool
+                                                  ? JSON.stringify(genericImprovementInputSchema)
+                                                  : null,
           outputSchema: null,
         })
         .run();

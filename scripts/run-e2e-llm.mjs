@@ -91,7 +91,11 @@ if (!(await hasModel(E2E_LLM_MODEL.split(":")[0] || E2E_LLM_MODEL))) {
   console.log("[e2e] Model", E2E_LLM_MODEL, "already present.");
 }
 
-execSync("npm run test:e2e-llm --workspace packages/ui", {
+const extraArgs = process.argv.slice(2).filter((a) => a.length > 0);
+const argsStr = extraArgs.length
+  ? " -- " + extraArgs.map((a) => (a.includes(" ") ? `"${a}"` : a)).join(" ")
+  : "";
+execSync("npm run test:e2e-llm --workspace packages/ui" + argsStr, {
   stdio: "inherit",
   cwd: root,
   env: process.env,
