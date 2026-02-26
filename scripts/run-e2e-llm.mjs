@@ -91,7 +91,8 @@ if (!(await hasModel(E2E_LLM_MODEL.split(":")[0] || E2E_LLM_MODEL))) {
   console.log("[e2e] Model", E2E_LLM_MODEL, "already present.");
 }
 
-const extraArgs = process.argv.slice(2).filter((a) => a.length > 0);
+// Forward only test file paths and vitest options; drop --workspace so it is not passed to vitest
+const extraArgs = process.argv.slice(2).filter((a) => a.length > 0 && !a.startsWith("--workspace"));
 const argsStr = extraArgs.length
   ? " -- " + extraArgs.map((a) => (a.includes(" ") ? `"${a}"` : a)).join(" ")
   : "";

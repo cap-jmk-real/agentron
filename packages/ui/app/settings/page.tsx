@@ -412,8 +412,8 @@ export default function SettingsPage() {
           }}
         >
           Search provider used by the chat and workflows for web search. DuckDuckGo works without a
-          key. For Brave or Google, set the provider and optional API keys. For SearXNG (self-hosted),
-          set the base URL and see the setup guide.
+          key. For Brave or Google, set the provider and optional API keys. For SearXNG
+          (self-hosted), set the base URL and see the setup guide.
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -432,9 +432,7 @@ export default function SettingsPage() {
           </div>
           {webSearchProvider === "searxng" && (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-              <label style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                SearXNG base URL
-              </label>
+              <label style={{ fontSize: "0.85rem", fontWeight: 500 }}>SearXNG base URL</label>
               <input
                 type="url"
                 className="input"

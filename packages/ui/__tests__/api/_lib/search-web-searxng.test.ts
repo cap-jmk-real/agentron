@@ -25,7 +25,11 @@ describe("searchWeb SearXNG provider", () => {
               }),
           } as Response);
         }
-        return Promise.resolve({ ok: false, status: 404, text: () => Promise.resolve("Not found") } as Response);
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          text: () => Promise.resolve("Not found"),
+        } as Response);
       })
     );
   });
