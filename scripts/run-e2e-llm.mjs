@@ -91,10 +91,19 @@ if (!(await hasModel(E2E_LLM_MODEL.split(":")[0] || E2E_LLM_MODEL))) {
   console.log("[e2e] Model", E2E_LLM_MODEL, "already present.");
 }
 
-// Forward only test file paths and vitest options; drop --workspace so it is not passed to vitest.
-// Use spawn with explicit args to avoid shell metacharacter injection.
-const extraArgs = process.argv.slice(2).filter((a) => a.length > 0 && !a.startsWith("--workspace"));
-const npmArgs = ["run", "test:e2e-llm", "--workspace", "packages/ui", ...extraArgs];
+// Forward only test file paths and vitest options. Strip --workspace and its value so they are not passed to vitest.
+// Use spawn with explicit args and -- so npm forwards extra args to the script (per npm run-script docs).
+const rawArgs = process.argv.slice(2).filter((a) => a.length > 0);
+const extraArgs = [];
+for (let i = 0; i < rawArgs.length; i++) {
+  if (rawArgs[i] === "--workspace") {
+    i++;
+    continue;
+  }
+  if (rawArgs[i].startsWith("--workspace=")) continue;
+  extraArgs.push(rawArgs[i]);
+}
+const npmArgs = ["run", "test:e2e-llm", "--workspace", "packages/ui", "--", ...extraArgs];
 const child = spawn("npm", npmArgs, {
   stdio: "inherit",
   cwd: root,

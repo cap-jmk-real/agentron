@@ -25,7 +25,7 @@ import { getRunForImprovement } from "../../_lib/run-for-improvement";
 import { createRunNotification } from "../../_lib/notifications-store";
 import { ensureRunFailureSideEffects } from "../../_lib/run-failure-side-effects";
 import { withContainerInstallHint } from "../../_lib/container-manager";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 export const RUNS_TOOL_NAMES = [
   "list_runs",
@@ -38,6 +38,14 @@ export const RUNS_TOOL_NAMES = [
   "execute_workflow",
 ] as const;
 
+/** When conversationId is set, restrict run access to that conversation to prevent cross-conversation access. */
+function runWhereRunId(runId: string, conversationId: string | undefined) {
+  if (conversationId != null && conversationId !== "") {
+    return and(eq(executions.id, runId), eq(executions.conversationId, conversationId));
+  }
+  return eq(executions.id, runId);
+}
+
 export async function handleRunTools(
   name: string,
   a: Record<string, unknown>,
@@ -48,7 +56,15 @@ export async function handleRunTools(
 
   switch (name) {
     case "list_runs": {
-      const rows = await db.select().from(executions).orderBy(desc(executions.startedAt)).limit(20);
+      const rows =
+        conversationId != null && conversationId !== ""
+          ? await db
+              .select()
+              .from(executions)
+              .where(eq(executions.conversationId, conversationId))
+              .orderBy(desc(executions.startedAt))
+              .limit(20)
+          : await db.select().from(executions).orderBy(desc(executions.startedAt)).limit(20);
       return rows.map((r) => ({
         id: r.id,
         targetType: r.targetType,
@@ -59,7 +75,10 @@ export async function handleRunTools(
     case "cancel_run": {
       const runId = typeof a.runId === "string" ? (a.runId as string).trim() : "";
       if (!runId) return { error: "runId is required" };
-      const runRows = await db.select().from(executions).where(eq(executions.id, runId));
+      const runRows = await db
+        .select()
+        .from(executions)
+        .where(runWhereRunId(runId, conversationId));
       if (runRows.length === 0) return { error: "Run not found" };
       const run = runRows[0];
       if (run.status !== "waiting_for_user" && run.status !== "running") {
@@ -76,7 +95,10 @@ export async function handleRunTools(
       const runId = typeof a.runId === "string" ? (a.runId as string).trim() : "";
       const response = typeof a.response === "string" ? (a.response as string).trim() : "(no text)";
       if (!runId) return { error: "runId is required" };
-      const runRows = await db.select().from(executions).where(eq(executions.id, runId));
+      const runRows = await db
+        .select()
+        .from(executions)
+        .where(runWhereRunId(runId, conversationId));
       if (runRows.length === 0) return { error: "Run not found" };
       const run = runRows[0];
       if (run.status !== "waiting_for_user") {
@@ -109,12 +131,12 @@ export async function handleRunTools(
         mergedOutput,
         existingTrail.length > 0 ? existingTrail : undefined
       );
+      await enqueueWorkflowResume({ runId, resumeUserResponse: response });
       await db
         .update(executions)
         .set({ status: "running", finishedAt: null, output: JSON.stringify(outPayload) })
-        .where(eq(executions.id, runId))
+        .where(runWhereRunId(runId, conversationId))
         .run();
-      await enqueueWorkflowResume({ runId, resumeUserResponse: response });
       return {
         id: runId,
         status: "running",
@@ -125,8 +147,12 @@ export async function handleRunTools(
       };
     }
     case "get_run": {
-      const runId = a.id as string;
-      const runRows = await db.select().from(executions).where(eq(executions.id, runId));
+      const runId = typeof a.id === "string" ? (a.id as string).trim() : "";
+      if (!runId) return { error: "id is required" };
+      const runRows = await db
+        .select()
+        .from(executions)
+        .where(runWhereRunId(runId, conversationId));
       if (runRows.length === 0) return { error: "Run not found" };
       const run = runRows[0] as {
         id: string;
@@ -169,7 +195,7 @@ export async function handleRunTools(
       const runRows = await db
         .select({ id: executions.id })
         .from(executions)
-        .where(eq(executions.id, runIdArg));
+        .where(runWhereRunId(runIdArg, conversationId));
       if (runRows.length === 0) return { error: "Run not found" };
       const messages = await getWorkflowMessages(runIdArg, limit);
       return { runId: runIdArg, messages };
@@ -399,6 +425,11 @@ export async function handleRunTools(
           } catch {
             // ignore
           }
+          await db
+            .update(executions)
+            .set({ status: "waiting_for_user" })
+            .where(eq(executions.id, runId))
+            .run();
           return {
             id: runId,
             workflowId,

@@ -71,7 +71,8 @@ try {
     foreach ($c in $counters) {
         $val = (Get-Counter -Counter $c -ErrorAction SilentlyContinue).CounterSamples.CookedValue
         if ($null -ne $val) {
-            $valMB = [math]::Round($val / 1MB, 2)
+            # \Memory\Available MBytes is already in MB; others are in bytes
+            $valMB = if ($c -eq "\Memory\Available MBytes") { [math]::Round($val, 2) } else { [math]::Round($val / 1MB, 2) }
             $out += "  $c : $valMB MB"
         }
     }

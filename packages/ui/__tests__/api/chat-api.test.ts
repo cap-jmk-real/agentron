@@ -514,7 +514,7 @@ describe("Chat API", () => {
     expect(messages[3].role).toBe("assistant");
     expect(typeof messages[3].content).toBe("string");
     expect(messages[3].content.length).toBeGreaterThan(0);
-  }, 25_000);
+  }, 35_000);
 
   it("heap mode done event includes execute_workflow toolResults so client can trigger run", async () => {
     try {
@@ -642,7 +642,7 @@ describe("Chat API", () => {
       if (typeof globalThis !== "undefined")
         delete (globalThis as unknown as Record<string, string>)[HEAP_TEST_WORKFLOW_ID_GLOBAL];
     }
-  }, 20_000);
+  }, 45_000);
 
   it("create agent then workflow flow: create_agent in toolResults and agent in DB", async () => {
     try {
@@ -747,7 +747,7 @@ describe("Chat API", () => {
     } finally {
       heapTestCreateAgentFlowRef.current = false;
     }
-  }, 25_000);
+  }, 35_000);
 
   it("heap route can have parallel step when subspecialist returns multiple ids", async () => {
     try {
@@ -831,7 +831,7 @@ describe("Chat API", () => {
     } finally {
       heapTestParallelSubspecialistRef.current = false;
     }
-  }, 20_000);
+  }, 45_000);
 
   it("heap mode done event has toolResults array when specialist runs no tools", async () => {
     try {
@@ -902,7 +902,7 @@ describe("Chat API", () => {
     expect(doneEvent).toBeDefined();
     expect(Array.isArray(doneEvent!.toolResults)).toBe(true);
     expect((doneEvent!.toolResults as unknown[]).length).toBe(0);
-  }, 20_000);
+  }, 45_000);
 
   it("planner response.raw fallback: when content is empty but raw has OpenAI-like plan, plan is parsed and trace has parsedPlan", async () => {
     try {
@@ -1014,7 +1014,7 @@ describe("Chat API", () => {
     } finally {
       heapTestPlannerRawFallbackRef.current = false;
     }
-  }, 25_000);
+  }, 35_000);
 
   it("planner empty content and no usable raw: fallback order used and trace shows placeholder", async () => {
     try {

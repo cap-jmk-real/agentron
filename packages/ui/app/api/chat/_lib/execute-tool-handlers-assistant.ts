@@ -31,7 +31,16 @@ export async function handleAssistantTools(
 ): Promise<unknown> {
   switch (name) {
     case "answer_question": {
-      return { message: "Answering general question", question: a.question as string };
+      const question =
+        typeof a.question === "string"
+          ? a.question.trim()
+          : a.question != null
+            ? String(a.question).trim()
+            : "";
+      return {
+        message: "Answering general question",
+        question: question || "(no question provided)",
+      };
     }
     case "explain_software": {
       const topic = ((a.topic as string) || "general").toLowerCase();

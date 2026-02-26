@@ -272,7 +272,7 @@ Use the web search tool multiple times with different queries. Then summarize th
     e2eLog.runId(runId ?? "");
 
     const status = (execRes as { status?: string }).status;
-    expect(["completed", "failed"]).toContain(status);
+    expect(status).toBe("completed");
 
     const output = (execRes as { output?: unknown }).output;
     const { trail, hasWebSearchCall, lastOutput } = parseExecutionTrail(output);
