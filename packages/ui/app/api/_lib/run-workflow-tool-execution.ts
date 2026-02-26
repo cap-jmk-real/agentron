@@ -49,6 +49,7 @@ async function stdWebSearchWithSettings(input: unknown): Promise<unknown> {
       braveApiKey: appSettings.braveSearchApiKey,
       googleCseKey: appSettings.googleCseKey,
       googleCseCx: appSettings.googleCseCx,
+      searxngBaseUrl: appSettings.searxngBaseUrl,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

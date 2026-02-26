@@ -27,6 +27,7 @@ export async function handleWebTools(
         braveApiKey: appSettings.braveSearchApiKey,
         googleCseKey: appSettings.googleCseKey,
         googleCseCx: appSettings.googleCseCx,
+        searxngBaseUrl: appSettings.searxngBaseUrl,
       };
       try {
         const out = await searchWeb(query, searchOptions);

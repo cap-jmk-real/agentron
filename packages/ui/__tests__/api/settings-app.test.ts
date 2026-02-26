@@ -30,8 +30,9 @@ describe("Settings app API", () => {
     const res = await GET();
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(["duckduckgo", "brave", "google"]).toContain(data.webSearchProvider);
+    expect(["duckduckgo", "brave", "google", "searxng"]).toContain(data.webSearchProvider);
     expect(data).toHaveProperty("webSearchProvider");
+    // searxngBaseUrl may be omitted when undefined (JSON.stringify drops undefined)
   });
 
   it("PATCH /api/settings/app updates maxFileUploadBytes", async () => {
@@ -367,6 +368,36 @@ describe("Settings app API", () => {
           braveSearchApiKey: before.braveSearchApiKey,
           googleCseKey: before.googleCseKey,
           googleCseCx: before.googleCseCx,
+          searxngBaseUrl: before.searxngBaseUrl,
+        }),
+      })
+    );
+  });
+
+  it("PATCH /api/settings/app updates web search provider to searxng and searxngBaseUrl", async () => {
+    const getRes = await GET();
+    const before = await getRes.json();
+    const patchRes = await PATCH(
+      new Request("http://localhost/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          webSearchProvider: "searxng",
+          searxngBaseUrl: "http://localhost:8888",
+        }),
+      })
+    );
+    expect(patchRes.status).toBe(200);
+    const data = await patchRes.json();
+    expect(data.webSearchProvider).toBe("searxng");
+    expect(data.searxngBaseUrl).toBe("http://localhost:8888");
+    await PATCH(
+      new Request("http://localhost/api/settings/app", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          webSearchProvider: before.webSearchProvider,
+          searxngBaseUrl: before.searxngBaseUrl,
         }),
       })
     );

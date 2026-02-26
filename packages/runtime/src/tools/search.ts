@@ -11,13 +11,15 @@ export type SearchResult = {
 
 export type SearchWebOptions = {
   maxResults?: number;
-  provider?: "duckduckgo" | "brave" | "google";
+  provider?: "duckduckgo" | "brave" | "google" | "searxng";
   /** When set, used for Brave Search instead of BRAVE_SEARCH_API_KEY env. */
   braveApiKey?: string;
   /** When set, used for Google CSE instead of GOOGLE_CSE_KEY env. */
   googleCseKey?: string;
   /** When set, used for Google CSE instead of GOOGLE_CSE_CX env. */
   googleCseCx?: string;
+  /** Base URL of SearXNG instance when provider is searxng (e.g. http://localhost:8888). */
+  searxngBaseUrl?: string;
 };
 
 export type SearchWebResponse = {
@@ -160,7 +162,44 @@ async function searchGoogle(
 }
 
 /**
- * Shared web search. Uses DuckDuckGo when no keys are set; Brave or Google when env vars are set.
+ * SearXNG self-hosted metasearch. No API key. Requires JSON format enabled in instance settings.
+ * https://docs.searxng.org/dev/search_api.html
+ */
+async function searchSearXNG(
+  query: string,
+  maxResults: number,
+  baseUrl: string
+): Promise<SearchWebResponse> {
+  const base = baseUrl.replace(/\/+$/, "");
+  const url = `${base}/search?q=${encodeURIComponent(query)}&format=json`;
+  const res = await fetch(url, {
+    headers: { "User-Agent": "AgentOS-Tool/1.0" },
+    signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    return {
+      results: [],
+      error: `SearXNG request failed: ${res.status} ${text.slice(0, 200)}`,
+    };
+  }
+  let data: { results?: Array<{ url?: string; title?: string; content?: string }> };
+  try {
+    data = (await res.json()) as typeof data;
+  } catch {
+    return { results: [], error: "SearXNG returned invalid JSON" };
+  }
+  const raw = data.results ?? [];
+  const results: SearchResult[] = raw.slice(0, maxResults).map((r) => ({
+    title: (r.title || r.url || "").trim(),
+    url: (r.url || "").trim(),
+    snippet: r.content?.trim().slice(0, 500),
+  }));
+  return { results };
+}
+
+/**
+ * Shared web search. Uses DuckDuckGo when no keys are set; Brave, Google, or SearXNG when configured.
  */
 export async function searchWeb(
   query: string,
@@ -182,12 +221,18 @@ export async function searchWeb(
   const googleCx =
     (typeof options?.googleCseCx === "string" && options.googleCseCx.trim()) ||
     getEnv("GOOGLE_CSE_CX");
+  const searxngBaseUrl =
+    (typeof options?.searxngBaseUrl === "string" && options.searxngBaseUrl.trim()) ||
+    getEnv("SEARXNG_BASE_URL");
 
   if (provider === "brave" && braveKey) {
     return searchBrave(q, maxResults, braveKey);
   }
   if (provider === "google" && googleKey && googleCx) {
     return searchGoogle(q, maxResults, googleKey, googleCx);
+  }
+  if (provider === "searxng" && searxngBaseUrl) {
+    return searchSearXNG(q, maxResults, searxngBaseUrl);
   }
   if (provider && provider !== "duckduckgo") {
     if (provider === "brave" && !braveKey) {
@@ -200,6 +245,13 @@ export async function searchWeb(
       return {
         results: [],
         error: "Google CSE key and CX not set (configure in Settings or GOOGLE_CSE_KEY/CX)",
+      };
+    }
+    if (provider === "searxng" && !searxngBaseUrl) {
+      return {
+        results: [],
+        error:
+          "SearXNG base URL not set (configure in Settings or SEARXNG_BASE_URL). See docs for setup.",
       };
     }
   }

@@ -21,6 +21,7 @@ vi.mock("../../../app/api/_lib/app-settings", async (importOriginal) => {
       braveSearchApiKey: undefined,
       googleCseKey: undefined,
       googleCseCx: undefined,
+      searxngBaseUrl: undefined,
     }),
   };
 });
@@ -49,6 +50,7 @@ describe("run-workflow-tool-execution std-web-search", () => {
       braveSearchApiKey: undefined,
       googleCseKey: undefined,
       googleCseCx: undefined,
+      searxngBaseUrl: undefined,
     });
   });
 
@@ -84,6 +86,7 @@ describe("run-workflow-tool-execution std-web-search", () => {
       braveApiKey: undefined,
       googleCseKey: undefined,
       googleCseCx: undefined,
+      searxngBaseUrl: undefined,
     });
     expect(result).toEqual({
       results: [{ title: "T", url: "https://u", snippet: "S" }],
@@ -104,6 +107,7 @@ describe("run-workflow-tool-execution std-web-search", () => {
       braveSearchApiKey: "brave-key",
       googleCseKey: undefined,
       googleCseCx: undefined,
+      searxngBaseUrl: undefined,
     } as ReturnType<typeof getAppSettings>);
     await stdWebSearch({ query: "q" });
     expect(searchWeb).toHaveBeenCalledWith("q", {
@@ -112,6 +116,26 @@ describe("run-workflow-tool-execution std-web-search", () => {
       braveApiKey: "brave-key",
       googleCseKey: undefined,
       googleCseCx: undefined,
+      searxngBaseUrl: undefined,
+    });
+  });
+
+  it("passes searxngBaseUrl when provider is searxng", async () => {
+    vi.mocked(getAppSettings).mockReturnValue({
+      webSearchProvider: "searxng",
+      braveSearchApiKey: undefined,
+      googleCseKey: undefined,
+      googleCseCx: undefined,
+      searxngBaseUrl: "http://localhost:8888",
+    } as ReturnType<typeof getAppSettings>);
+    await stdWebSearch({ query: "q" });
+    expect(searchWeb).toHaveBeenCalledWith("q", {
+      maxResults: undefined,
+      provider: "searxng",
+      braveApiKey: undefined,
+      googleCseKey: undefined,
+      googleCseCx: undefined,
+      searxngBaseUrl: "http://localhost:8888",
     });
   });
 

@@ -397,6 +397,23 @@ describe("execute-tool helpers", () => {
       expect(result).toEqual({ results: [] });
     });
 
+    it("web_search calls searchWeb with searxngBaseUrl when provider is searxng", async () => {
+      vi.mocked(getAppSettings).mockReturnValueOnce({
+        webSearchProvider: "searxng",
+        searxngBaseUrl: "http://localhost:8888",
+      } as ReturnType<typeof getAppSettings>);
+      vi.mocked(searchWeb).mockClear();
+      const result = await executeTool("web_search", { query: "test" }, undefined);
+      expect(searchWeb).toHaveBeenCalledWith(
+        "test",
+        expect.objectContaining({
+          provider: "searxng",
+          searxngBaseUrl: "http://localhost:8888",
+        })
+      );
+      expect(result).toEqual({ results: [] });
+    });
+
     it("update_workflow accepts workflowId when id missing (returns Workflow not found for fake id)", async () => {
       const result = await executeTool(
         "update_workflow",

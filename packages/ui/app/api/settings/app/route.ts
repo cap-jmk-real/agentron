@@ -74,6 +74,7 @@ export async function PATCH(request: Request) {
       braveSearchApiKey?: string;
       googleCseKey?: string;
       googleCseCx?: string;
+      searxngBaseUrl?: string;
     } = {};
     if (payload.maxFileUploadBytes !== undefined) {
       const v = Number(payload.maxFileUploadBytes);
@@ -101,7 +102,8 @@ export async function PATCH(request: Request) {
       payload.webSearchProvider !== undefined &&
       (payload.webSearchProvider === "duckduckgo" ||
         payload.webSearchProvider === "brave" ||
-        payload.webSearchProvider === "google")
+        payload.webSearchProvider === "google" ||
+        payload.webSearchProvider === "searxng")
     ) {
       updates.webSearchProvider = payload.webSearchProvider as WebSearchProvider;
     }
@@ -121,6 +123,12 @@ export async function PATCH(request: Request) {
       updates.googleCseCx =
         typeof payload.googleCseCx === "string"
           ? payload.googleCseCx.trim() || undefined
+          : undefined;
+    }
+    if (payload.searxngBaseUrl !== undefined) {
+      updates.searxngBaseUrl =
+        typeof payload.searxngBaseUrl === "string"
+          ? payload.searxngBaseUrl.trim() || undefined
           : undefined;
     }
     const addedCommands: string[] = [];
