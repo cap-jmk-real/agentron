@@ -1,6 +1,6 @@
-# Shellshock (CVE-2014-6271) demo for red-vs-blue e2e. Modern base + vulnerable Bash 4.3 so it runs on WSL2/current kernels.
-# Build: podman build -t agentron/red-vs-blue-shellshock:latest .
-# Run:  podman run -d -p 8080:80 --name red-blue agentron/red-vs-blue-shellshock:latest
+# Red-vs-blue e2e target image (vulnerable service; image name is neutral so Defender cannot infer vuln from std-list-sandboxes). Modern base + vulnerable Bash 4.3 so it runs on WSL2/current kernels.
+# Build: podman build -t agentron/red-vs-blue-target:latest .
+# Run:  podman run -d -p 8080:80 --name red-blue-target agentron/red-vs-blue-target:latest
 
 # --- Stage 1: build Bash 4.3 (pre-patch 25, vulnerable) ---
 FROM debian:bookworm-slim AS bashbuilder

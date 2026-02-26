@@ -99,7 +99,7 @@ describe("workflow-queue", () => {
       const runId = crypto.randomUUID();
       const jobId = await enqueueWorkflowStart({ runId, workflowId: "wf-wait" });
       const workflowQueueModule = await import("../../../app/api/_lib/workflow-queue");
-      vi.spyOn(workflowQueueModule, "processOneWorkflowJob").mockResolvedValue(undefined);
+      vi.spyOn(workflowQueueModule, "processOneWorkflowJob").mockResolvedValue(false);
       await expect(waitForJob(jobId, { timeoutMs: 1 })).rejects.toThrow("Timeout waiting for job");
     });
   });

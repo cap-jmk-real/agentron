@@ -557,7 +557,11 @@ describe("execute-tool helpers", () => {
         "execute_workflow",
         {
           workflowId: wfId,
-          inputs: { targetUrl: "http://127.0.0.1:18200", targetSandboxId: "sb-1", noSharedOutput: true },
+          inputs: {
+            targetUrl: "http://127.0.0.1:18200",
+            targetSandboxId: "sb-1",
+            noSharedOutput: true,
+          },
         },
         undefined
       );
@@ -3918,16 +3922,19 @@ describe("execute-tool helpers", () => {
           createdAt: Date.now(),
         })
         .run();
-      vi.mocked(getContainerManager).mockImplementationOnce(() => ({
-        create: mockContainerCreate,
-        destroy: mockContainerDestroy,
-        exec: mockContainerExec,
-        pull: mockContainerPull,
-        getContainerState: vi.fn().mockResolvedValue("exited"),
-        getContainerExitInfo: vi.fn().mockResolvedValue({ exitCode: 139, oomKilled: false }),
-        logs: vi.fn().mockResolvedValue("segfault at 0x0\n"),
-        start: vi.fn().mockResolvedValue(undefined),
-      }));
+      vi.mocked(getContainerManager).mockImplementationOnce(
+        () =>
+          ({
+            create: mockContainerCreate,
+            destroy: mockContainerDestroy,
+            exec: mockContainerExec,
+            pull: mockContainerPull,
+            getContainerState: vi.fn().mockResolvedValue("exited"),
+            getContainerExitInfo: vi.fn().mockResolvedValue({ exitCode: 139, oomKilled: false }),
+            logs: vi.fn().mockResolvedValue("segfault at 0x0\n"),
+            start: vi.fn().mockResolvedValue(undefined),
+          }) as unknown as ReturnType<typeof getContainerManager>
+      );
       try {
         const result = await executeTool(
           "execute_code",
@@ -4022,16 +4029,19 @@ describe("execute-tool helpers", () => {
           createdAt: Date.now(),
         })
         .run();
-      vi.mocked(getContainerManager).mockImplementationOnce(() => ({
-        create: mockContainerCreate,
-        destroy: mockContainerDestroy,
-        exec: mockContainerExec,
-        pull: mockContainerPull,
-        getContainerState: vi.fn().mockResolvedValue("exited"),
-        getContainerExitInfo: vi.fn().mockResolvedValue({ exitCode: 137, oomKilled: true }),
-        logs: vi.fn().mockResolvedValue("OOMKilled\n"),
-        start: vi.fn().mockResolvedValue(undefined),
-      }));
+      vi.mocked(getContainerManager).mockImplementationOnce(
+        () =>
+          ({
+            create: mockContainerCreate,
+            destroy: mockContainerDestroy,
+            exec: mockContainerExec,
+            pull: mockContainerPull,
+            getContainerState: vi.fn().mockResolvedValue("exited"),
+            getContainerExitInfo: vi.fn().mockResolvedValue({ exitCode: 137, oomKilled: true }),
+            logs: vi.fn().mockResolvedValue("OOMKilled\n"),
+            start: vi.fn().mockResolvedValue(undefined),
+          }) as unknown as ReturnType<typeof getContainerManager>
+      );
       try {
         const result = await executeTool("get_sandbox", { sandboxId }, undefined);
         expect(result).toEqual(

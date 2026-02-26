@@ -454,6 +454,8 @@ const FIRST_TURN_RESERVED_KEYS = new Set([
 
 /**
  * Builds the partner message for the first turn when the workflow node provides parameters (e.g. url).
+ * Injects targetUrl and any other config keys (e.g. openCveBaseUrl, openCveUser, openCvePassword) as
+ * "Parameters provided by the workflow (use these)" so the LLM sees actual values, not placeholders.
  * Returns FIRST_TURN_DEFAULT unchanged if config is empty or has no injectable params.
  */
 export function buildFirstTurnPartnerMessageFromConfig(

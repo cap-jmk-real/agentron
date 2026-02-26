@@ -43,6 +43,19 @@ A **tool** is a callable capability that agents use to perform actions. Tools ar
 
 ---
 
+## Tool classes
+
+Tools fall into two classes by when and how the agent sees them:
+
+| Class | When it applies | How the agent gets it | Example |
+| ----- | ----------------- | ---------------------- | ------- |
+| **Callable tools** | Every request | The LLM receives tool definitions and **decides** whether to call one; when called, the tool runs and returns a result the LLM then sees. | `std-fetch-url`, `std-execute-code`, `get_workflow_context` (when shared context is on) |
+| **Context (prompt-injection)** | Workflow runs | Context is **injected into the prompt** (e.g. recent turns, summary, round) **before** the LLM chooses any tool. The agent does not "call" this; it is part of the input. | In workflows: "Recent turns" and partner output in the turn input. When a run uses **no shared output** (e.g. red-vs-blue), each agent's **own** prior turns are injected this way, and the callable `get_workflow_context` is not offered — context is prompt-only. |
+
+Use **callable tools** for actions (fetch, run code, ask the user). Use **context** when the agent should have information (e.g. its own history) in scope before deciding what to do, without spending a tool call.
+
+---
+
 ## How agents use tools
 
 - **Node agents** reference tools in two ways:

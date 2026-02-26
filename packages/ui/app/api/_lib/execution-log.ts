@@ -1,11 +1,13 @@
 /**
  * Execution log: per-run step history for workflow debugging (same detail level as message queue log for chat).
  * Phases: llm_request, llm_response, tool_call, tool_result, node_start, node_done.
+ * We log tool input and LLM request/response in full (high cap) so runs can be inspected for placeholders and actual values.
  */
 import { eq, desc, asc } from "drizzle-orm";
 import { db, executionLog } from "./db";
 
-const EXECUTION_LOG_PAYLOAD_MAX = 8000;
+/** Cap for payload size; high so we keep full LLM messages and tool input for debugging (e.g. red-vs-blue CVE URL/params). */
+const EXECUTION_LOG_PAYLOAD_MAX = 500_000;
 
 function capPayload(v: unknown): unknown {
   if (v == null) return v;

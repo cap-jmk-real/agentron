@@ -1,8 +1,8 @@
 /**
  * E2E: Red vs Blue — workflow with Attacker (fetch + HTTP) and Defender (execute_code in target sandbox).
- * Target: in-repo Shellshock image (agentron/red-vs-blue-shellshock:latest). Build with:
- *   podman build -t agentron/red-vs-blue-shellshock:latest packages/ui/__tests__/e2e/red-vs-blue-image
- * Attacker must discover and try to exploit; Defender can read logs and harden.
+ * Target: in-repo image (agentron/red-vs-blue-target:latest). Build with:
+ *   podman build -t agentron/red-vs-blue-target:latest packages/ui/__tests__/e2e/red-vs-blue-image
+ * Image and container names are neutral so Defender cannot infer the vulnerability from std-list-sandboxes. Attacker must discover and try to exploit; Defender can read logs and harden.
  *
  * Run (repo root): npm run test:e2e-llm -- red-vs-blue
  * Log artifact (PowerShell): $env:E2E_SAVE_ARTIFACTS="1"; npm run test:e2e-llm -- red-vs-blue
@@ -12,9 +12,11 @@
  *
  * Progress: Set E2E_LOG_PROGRESS=1 or E2E_SAVE_ARTIFACTS=1 to log live workflow progress (trail, message) inferred from the DB while the run executes.
  *
- * Attacker uses std-fetch-url and std-http-request only (no web search); the prompt hints at Shellshock so the agent can probe and try the exploit without external search.
+ * Attacker uses std-fetch-url and std-http-request only (no web search). The agent does recon, then uses the CVE API (when openCveBaseUrl is in params) or knowledge to find and try relevant exploits — not limited to a single CVE.
  *
- * CVE lookup: When OpenCVE is deployed (npm run opencve-deploy), set OPENCVE_URL (e.g. http://localhost:52054) and optionally OPENCVE_USER/OPENCVE_PASSWORD; the test passes openCveBaseUrl, openCveUser, openCvePassword in workflow inputs and the attacker prompt tells the agent to use std-http-request to query the CVE API (GET {openCveBaseUrl}/api/cve?search=... or GET {openCveBaseUrl}/api/cve/CVE-2014-6271 with Basic Auth).
+ * CVE lookup (required): The test expects the CVE database and API user to be set up before the test runs. From repo root run: npm run opencve-deploy (see scripts/README-OPENCVE.md). The deploy script starts OpenCVE, creates the API user, and prints the base URL and port. Then set OPENCVE_URL to that base URL (e.g. http://localhost:52054) and optionally OPENCVE_USER / OPENCVE_PASSWORD (default opencve / opencve). The test fails at start if OPENCVE_URL is not set.
+ *
+ * Context: noSharedOutput is true so agents do not see each other's output. Each agent knows its own context only: the engine injects that agent's previous turns into the prompt ("Recent turns:") before the LLM decides tools, so attacker sees only attacker turns and defender only defender turns.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { executeTool } from "../../app/api/chat/_lib/execute-tool";
@@ -22,7 +24,7 @@ import { getExecutionLogForRun } from "../../app/api/_lib/execution-log";
 import { E2E_LLM_CONFIG_ID } from "./e2e-setup";
 import { e2eLog, startWorkflowProgressLogger } from "./e2e-logger";
 
-const TARGET_IMAGE = "agentron/red-vs-blue-shellshock:latest";
+const TARGET_IMAGE = "agentron/red-vs-blue-target:latest";
 const TARGET_PORT = 80;
 /** 5 rounds = 5 attacker + 5 defender = 10 total turns. */
 const RED_VS_BLUE_MAX_ROUNDS = 5;
@@ -72,7 +74,7 @@ describe("e2e red-vs-blue", () => {
     e2eLog.startTest("red-vs-blue");
     e2eLog.scenario(
       "red-vs-blue",
-      "Attacker (fetch + HTTP; CVE via std-http-request when openCveBaseUrl in params) vs Defender (execute_code in target); target = Shellshock container"
+      "Attacker (fetch + HTTP; CVE via std-http-request when openCveBaseUrl in params) vs Defender (execute_code in target); target container"
     );
   });
 
@@ -85,6 +87,14 @@ describe("e2e red-vs-blue", () => {
   });
 
   it("creates target sandbox, attacker and defender agents, workflow; runs with runInputs and asserts trail", async () => {
+    // OpenCVE must be set up before the test (npm run opencve-deploy, then set OPENCVE_URL and optionally OPENCVE_USER/OPENCVE_PASSWORD)
+    const openCveUrl = process.env.OPENCVE_URL?.trim();
+    if (!openCveUrl) {
+      throw new Error(
+        "Red-vs-blue e2e requires OpenCVE. Set up the CVE database and API user first: run 'npm run opencve-deploy' from repo root (see scripts/README-OPENCVE.md). Then set OPENCVE_URL to the OpenCVE base URL (e.g. http://localhost:52054 — the deploy script prints the port) and optionally OPENCVE_USER and OPENCVE_PASSWORD (default opencve/opencve)."
+      );
+    }
+
     // Tear down any existing red-blue-target sandbox so port is free (e.g. from a previous failed run)
     const listRes = await executeTool("list_sandboxes", {}, undefined);
     const list = Array.isArray(listRes) ? listRes : [];
@@ -122,14 +132,10 @@ describe("e2e red-vs-blue", () => {
       {
         name: "E2E Red Team Attacker",
         description:
-          "Probes target URL, uses CVE API or prompt hints (e.g. Shellshock) to research vulnerabilities, attempts to exploit",
-        systemPrompt: `You are a red-team agent. Your target is at the URL provided in the workflow parameters (targetUrl). Use that value literally in every std-fetch-url and std-http-request call.
+          "Probes target URL, uses recon and CVE API to discover and research vulnerabilities, attempts to exploit",
+        systemPrompt: `You are a red-team agent. Your target is at the URL provided in the workflow parameters (targetUrl). Use that value literally in every std-fetch-url and std-http-request call. Do not use "http://target" — use the exact targetUrl string from the parameters. You do not see the other side's output; use your tools to observe state.
 
-Example: if the workflow gives targetUrl: http://127.0.0.1:18200, then call std-fetch-url with {"url": "http://127.0.0.1:18200"} or std-http-request with {"url": "http://127.0.0.1:18200/cgi-bin/vulnerable", "method": "GET", "headers": {"User-Agent": "() { :; }; echo vulnerable"}}. Do not use "http://target" — use the exact targetUrl string from the parameters. You do not see the other side's output; use your tools to observe state (e.g. probe the target or read logs).
-
-OpenCVE: Base URL and Basic Auth come from workflow parameters (openCveBaseUrl, openCveUser, openCvePassword). When present, use std-http-request to query the CVE API: to search use GET {openCveBaseUrl}/api/cve?search=Shellshock (or another keyword); to get one CVE use GET {openCveBaseUrl}/api/cve/CVE-2014-6271. Use Basic Auth with openCveUser and openCvePassword via std-http-request headers (Authorization: Basic <base64(user:password)>). If those parameters are not provided, use your knowledge of common vulnerabilities (e.g. Shellshock CVE-2014-6271 for bash CGI).
-
-(1) Probe: fetch the root and common paths (e.g. /cgi-bin/) using the exact targetUrl. (2) Research: use std-http-request to the CVE API when openCveBaseUrl is in params; otherwise rely on known vulnerabilities such as Shellshock for bash CGI. (3) If the server has /cgi-bin/, try the Shellshock User-Agent payload and request /cgi-bin/vulnerable or similar. Report briefly what you did and whether you got code execution or an interesting response. Tools: std-fetch-url, std-http-request.`,
+(1) Recon: probe the target — fetch root and common paths, inspect responses and headers to infer what is running (server, versions, tech, endpoints). (2) Research: when workflow parameters include openCveBaseUrl (and openCveUser, openCvePassword), use std-http-request to query the CVE API — search by keywords that match what you found in recon (e.g. server name, component, or CVE id if you suspect one); GET {openCveBaseUrl}/api/cve?search=<keyword> or GET {openCveBaseUrl}/api/cve/<CVE-ID>. Use Basic Auth with openCveUser and openCvePassword in the Authorization header. Use the CVE database and your knowledge to identify relevant vulnerabilities. (3) Exploit: try exploits that match your recon and research; if a prior attempt failed, try other paths or CVEs. Your own previous turns appear above (Recent turns). Report briefly what you did and whether you got code execution or an interesting response. Tools: std-fetch-url, std-http-request.`,
         toolIds: ["std-fetch-url", "std-http-request"],
         llmConfigId: E2E_LLM_CONFIG_ID,
       },
@@ -145,8 +151,8 @@ OpenCVE: Base URL and Basic Auth come from workflow parameters (openCveBaseUrl, 
       "create_agent",
       {
         name: "E2E Blue Team Defender",
-        description: "Defends the target sandbox; reads logs and hardens via execute_code",
-        systemPrompt: `You defend the target server. You have execute_code in the target sandbox. You do not see the other side's output; use your tools to observe state (e.g. probe the target or read logs). Always use the exact targetSandboxId from the workflow parameters for std-execute-code; do not substitute a different sandbox ID from std-list-sandboxes. Inside the sandbox, the web server is at 127.0.0.1 (use 127.0.0.1 in curl/wget, not the hostname "target"). (1) Inspect: run commands to read logs (e.g. tail -50 /var/log/apache2/access.log) or list processes. (2) If you see suspicious requests or want to harden, run commands to patch (e.g. upgrade bash, disable the vulnerable CGI, or restart the service). (3) After any upgrade or config change, verify it worked: e.g. run bash --version to confirm the new version, or re-check the vulnerable path; if the upgrade command failed (non-zero exit), say so and try an alternative (e.g. disable the CGI, restart Apache). Reply briefly with what you did and whether the verification succeeded.`,
+        description: "Defends the target sandbox; observes and hardens via execute_code",
+        systemPrompt: `You defend the target server. You have execute_code in the target sandbox. You do not see the other side's output; use your tools to observe state. Always use the exact targetSandboxId from the workflow parameters for std-execute-code; do not substitute a different sandbox ID from std-list-sandboxes. Inside the sandbox, the web server is at 127.0.0.1 (use 127.0.0.1 in curl/wget, not the hostname "target"). Observe the system with commands (e.g. list or read files, check processes, inspect logs); harden or remediate based on what you find; when you make changes, verify they worked. Example of running a command: std-execute-code with sandboxId from parameters and command (e.g. "ls -la /var/log" or "cat /etc/os-release"). Your own previous turns appear above (Recent turns). Reply briefly with what you did and whether verification succeeded.`,
         toolIds: ["std-execute-code", "std-list-sandboxes"],
         llmConfigId: E2E_LLM_CONFIG_ID,
       },
@@ -198,15 +204,12 @@ OpenCVE: Base URL and Basic Auth come from workflow parameters (openCveBaseUrl, 
     e2eLog.step("update_workflow done");
 
     const runInputs: Record<string, string> = { targetUrl, targetSandboxId };
-    const openCveUrl = process.env.OPENCVE_URL;
-    if (openCveUrl) {
-      runInputs.openCveBaseUrl = openCveUrl.replace(/\/$/, "");
-      runInputs.openCveUser = process.env.OPENCVE_USER ?? "opencve";
-      runInputs.openCvePassword = process.env.OPENCVE_PASSWORD ?? "opencve";
-      e2eLog.step("runInputs include OpenCVE for red agent", {
-        openCveBaseUrl: runInputs.openCveBaseUrl,
-      });
-    }
+    runInputs.openCveBaseUrl = openCveUrl.replace(/\/$/, "");
+    runInputs.openCveUser = process.env.OPENCVE_USER ?? "opencve";
+    runInputs.openCvePassword = process.env.OPENCVE_PASSWORD ?? "opencve";
+    e2eLog.step("runInputs include OpenCVE for red agent", {
+      openCveBaseUrl: runInputs.openCveBaseUrl,
+    });
 
     const getWfRes = await executeTool("get_workflow", { id: workflowId }, undefined);
     if (

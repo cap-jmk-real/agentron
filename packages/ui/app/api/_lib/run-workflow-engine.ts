@@ -80,8 +80,6 @@ export type RunWorkflowOptions = {
   runInputs?: Record<string, unknown>;
   resumeUserResponse?: string;
   vaultKey?: Buffer | null;
-  /** When true, agents do not see the other node's output or recent turns; they only get a generic "other party has acted" and must use their own tools to observe state (e.g. red vs blue). */
-  noSharedOutput?: boolean;
   onStepComplete?: (trail: ExecutionTraceStep[], lastOutput: unknown) => void | Promise<void>;
   onProgress?: (
     state: { message: string; toolId?: string },
@@ -90,6 +88,8 @@ export type RunWorkflowOptions = {
   isCancelled?: () => Promise<boolean>;
   onContainerStream?: (runId: string, chunk: ContainerStreamChunk) => void;
   maxSelfFixRetries?: number;
+  /** When true, each node only sees its own prior turns (no shared context from other nodes). Used e.g. for red-vs-blue. */
+  noSharedOutput?: boolean;
 };
 
 /** Merges run-level inputs into node parameters so the agent handler receives them (e.g. url for first turn). Exported for unit tests. */
@@ -102,103 +102,6 @@ export function mergeNodeConfigWithRunInputs(
   return { ...base, ...runInputs };
 }
 
-/** Full-value placeholder pattern for targetUrl (e.g. "${targetUrl}", "targetUrl", "{targetUrl}"). */
-const TARGET_URL_PLACEHOLDER = /^(\$\{|\{)?targetUrl(\})?$/i;
-
-/**
- * Replaces targetUrl placeholders inside a url string (substring interpolation).
- * Replaces "${targetUrl}" and "{targetUrl}" with the actual value; leaves other text unchanged.
- */
-function interpolateTargetUrlInString(url: string, targetUrl: string): string {
-  return url.split("${targetUrl}").join(targetUrl).split("{targetUrl}").join(targetUrl);
-}
-
-/**
- * Replaces workflow parameter placeholders in tool input with actual run values.
- * - std-execute-code: sandboxId "targetSandboxId" or missing → runInputs.targetSandboxId
- * - std-fetch-url / std-http-request: url with targetUrl placeholder (full or substring) → runInputs.targetUrl
- * Exported for unit tests.
- */
-export function applyWorkflowParamOverwrites(
-  toolId: string,
-  input: unknown,
-  runInputs?: Record<string, unknown>
-): unknown {
-  if (!runInputs || typeof input !== "object" || input === null) return input;
-  const obj = { ...(input as Record<string, unknown>) };
-
-  if (toolId === "std-execute-code") {
-    const targetSandboxId = runInputs.targetSandboxId;
-    if (targetSandboxId != null && typeof targetSandboxId === "string") {
-      const current = obj.sandboxId;
-      if (
-        current === undefined ||
-        current === null ||
-        (typeof current === "string" && (current === "targetSandboxId" || current.trim() === ""))
-      ) {
-        obj.sandboxId = targetSandboxId;
-      }
-    }
-  }
-
-  if (toolId === "std-fetch-url" || toolId === "std-http-request") {
-    const targetUrl = runInputs.targetUrl;
-    if (targetUrl != null && typeof targetUrl === "string") {
-      const current = obj.url;
-      if (typeof current === "string") {
-        const trimmed = current.trim();
-        if (TARGET_URL_PLACEHOLDER.test(trimmed)) {
-          obj.url = targetUrl;
-        } else if (trimmed.includes("${targetUrl}") || trimmed.includes("{targetUrl}")) {
-          obj.url = interpolateTargetUrlInString(current, targetUrl);
-        }
-      }
-    }
-  }
-
-  return obj;
-}
-
-type NodeForVisibility = {
-  id: string;
-  parameters?: Record<string, unknown>;
-  config?: Record<string, unknown>;
-};
-type EdgeForVisibility = { from: string; to: string };
-
-/**
- * Returns the set of node IDs whose outputs are visible to the given node: predecessors (by edge)
- * plus nodes that set includeMyOutputInSharedContext. Used for edge-scoped visibility and explicit shared context.
- * Exported for unit tests.
- */
-export function getVisibleTurnNodeIds(
-  nodeId: string,
-  nodes: NodeForVisibility[],
-  edges: EdgeForVisibility[]
-): string[] {
-  const incoming = edges.filter((e) => e.to === nodeId);
-  const predecessorNodeIds =
-    incoming.length > 0
-      ? [...new Set(incoming.map((e) => e.from))]
-      : edges.length === 0
-        ? (() => {
-            const prevIndex = nodes.findIndex((n) => n.id === nodeId) - 1;
-            const prev = prevIndex >= 0 ? nodes[prevIndex] : undefined;
-            return prev ? [prev.id] : [];
-          })()
-        : [];
-  const sharedContextNodeIds = nodes
-    .filter((n) => {
-      const params = n.parameters ?? n.config;
-      return (
-        params?.["includeMyOutputInSharedContext"] === true ||
-        params?.["includeMyOutputInSharedContext"] === "true"
-      );
-    })
-    .map((n) => n.id);
-  return [...new Set([...predecessorNodeIds, ...sharedContextNodeIds])];
-}
-
 export async function runWorkflow(options: RunWorkflowOptions): Promise<{
   output: unknown;
   context: Record<string, unknown>;
@@ -209,7 +112,6 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
     runId,
     branchId,
     runInputs,
-    noSharedOutput = false,
     maxSelfFixRetries: maxSelfFixRetriesOption = 0,
   } = options;
   const trail: ExecutionTraceStep[] = [];
@@ -424,11 +326,6 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
       partnerOutput = prevNode ? sharedContext.get(`__output_${prevNode.id}`) : undefined;
       sourceNodeId = prevNode?.id;
     }
-    const nodeIdsVisibleToCurrent = getVisibleTurnNodeIds(
-      nodeId,
-      (workflowForEngine.nodes ?? []) as NodeForVisibility[],
-      edges
-    );
     // Prefer partner message from persisted workflow_messages when available (message-based communication)
     const runMsgs = await getWorkflowMessages(runId, 500);
     if (runMsgs.length > 0 && fromId) {
@@ -474,32 +371,18 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
       ? (sharedContext.get(`__agentName_${sourceNodeId}`) as string | undefined)
       : undefined;
 
-    const allTurns =
+    const recentTurns =
       (sharedContext.get("__recent_turns") as
-        | Array<{ nodeId?: string; speaker: string; text: string }>
+        | Array<{ speaker: string; text: string }>
         | undefined) ?? [];
-    let recentTurns =
-      nodeIdsVisibleToCurrent.length > 0
-        ? allTurns
-            .filter((t) => t.nodeId != null && nodeIdsVisibleToCurrent.includes(t.nodeId))
-            .slice(-WORKFLOW_MEMORY_MAX_RECENT_TURNS)
-            .map((t) => ({ speaker: t.speaker, text: t.text }))
-        : [];
-    let effectivePartnerMessage = partnerMessage;
-    let effectivePrecedingName: string | undefined =
-      precedingAgentName && String(precedingAgentName).trim() ? precedingAgentName : undefined;
-    if (noSharedOutput) {
-      recentTurns = [];
-      if (resumeText === "") effectivePartnerMessage = "";
-      effectivePrecedingName = undefined;
-    }
     const summary = (sharedContext.get("__summary") as string | undefined) ?? "";
     let input = buildWorkflowMemoryBlock({
       turnInstruction: effectiveTurnInstruction ?? undefined,
       summary,
       recentTurns,
-      partnerMessage: effectivePartnerMessage,
-      precedingAgentName: effectivePrecedingName,
+      partnerMessage,
+      precedingAgentName:
+        precedingAgentName && String(precedingAgentName).trim() ? precedingAgentName : undefined,
     });
     currentAgentId = agentId;
 
@@ -763,12 +646,8 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
             round: sharedContext.get("__round"),
           };
         }
-        const effectiveInput = applyWorkflowParamOverwrites(toolId, input, options.runInputs);
-        toolCallsForStep.push({
-          name: toolId,
-          argsSummary: toolArgsSummary(toolId, effectiveInput),
-        });
-        await appendExecutionLogStep(runId, "tool_call", toolId, { toolId, input: effectiveInput });
+        toolCallsForStep.push({ name: toolId, argsSummary: toolArgsSummary(toolId, input) });
+        await appendExecutionLogStep(runId, "tool_call", toolId, { toolId, input });
         // Emit progress so the run page shows "Executing: <toolId>" while waiting (avoids appearing stuck)
         await options.onProgress?.({ message: `Executing: ${toolId}`, toolId }, trail);
         if (toolId === "request_user_help") {
@@ -870,9 +749,9 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
           round: sharedContext.get("__round"),
         };
         const merged =
-          effectiveInput !== null && typeof effectiveInput === "object"
-            ? { ...(effectiveInput as Record<string, unknown>), _workflowContext: toolContext }
-            : { _workflowContext: toolContext, message: effectiveInput };
+          input !== null && typeof input === "object"
+            ? { ...(input as Record<string, unknown>), _workflowContext: toolContext }
+            : { _workflowContext: toolContext, message: input };
         let result: unknown;
         if (toolId === "std-container-session") {
           const onChunk = options.onContainerStream
@@ -1115,9 +994,9 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
       }
       const turns =
         (sharedContext.get("__recent_turns") as
-          | Array<{ nodeId: string; speaker: string; text: string }>
+          | Array<{ speaker: string; text: string }>
           | undefined) ?? [];
-      turns.push({ nodeId, speaker: agent.name, text: String(output ?? "") });
+      turns.push({ speaker: agent.name, text: String(output ?? "") });
       if (turns.length > WORKFLOW_MEMORY_MAX_RECENT_TURNS)
         turns.splice(0, turns.length - WORKFLOW_MEMORY_MAX_RECENT_TURNS);
       sharedContext.set("__recent_turns", turns);
