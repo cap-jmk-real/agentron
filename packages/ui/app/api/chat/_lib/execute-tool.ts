@@ -106,6 +106,7 @@ import { loadSpecialistOverrides, saveSpecialistOverrides } from "../../_lib/spe
 
 import {
   type ExecuteToolContext,
+  logToolPhase,
   sessionOverridesStore,
   MAX_TOOLS_PER_CREATED_AGENT,
   ensureRunnerSandboxId,
@@ -1516,6 +1517,7 @@ export async function executeTool(
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    logToolPhase(ctx, "error", name, `error=${msg}`);
     throw new Error(`${name}: ${msg}`);
   }
 }

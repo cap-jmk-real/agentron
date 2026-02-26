@@ -3684,6 +3684,15 @@ describe("execute-tool helpers", () => {
       expect(result).toEqual(expect.objectContaining({ error: "runId is required" }));
     });
 
+    it("respond_to_run returns error when response is required", async () => {
+      const result = await executeTool(
+        "respond_to_run",
+        { runId: "00000000-0000-0000-0000-000000000001", response: "" },
+        undefined
+      );
+      expect(result).toEqual(expect.objectContaining({ error: "response is required" }));
+    });
+
     it("respond_to_run returns Run not found for non-existent run", async () => {
       const result = await executeTool(
         "respond_to_run",
@@ -4583,9 +4592,18 @@ describe("execute-tool helpers", () => {
       );
     });
 
-    it("test_remote_connection returns error when host and user required", async () => {
+    it("test_remote_connection returns error when host missing", async () => {
       const result = await executeTool("test_remote_connection", {}, undefined);
-      expect(result).toEqual(expect.objectContaining({ error: "host and user are required" }));
+      expect(result).toEqual(expect.objectContaining({ error: "host is required" }));
+    });
+
+    it("test_remote_connection returns error when user missing", async () => {
+      const result = await executeTool(
+        "test_remote_connection",
+        { host: "192.168.1.1" },
+        undefined
+      );
+      expect(result).toEqual(expect.objectContaining({ error: "user is required" }));
     });
 
     it("test_remote_connection returns result when host and user provided", async () => {
@@ -4607,6 +4625,15 @@ describe("execute-tool helpers", () => {
           authType: "key",
           keyPath: "/home/user/.ssh/id_rsa",
         },
+        undefined
+      );
+      expect(result).toEqual(expect.objectContaining({ ok: true, message: expect.any(String) }));
+    });
+
+    it("test_remote_connection trims host and user and normalizes invalid port", async () => {
+      const result = await executeTool(
+        "test_remote_connection",
+        { host: "  192.168.1.1  ", user: "  deploy  ", port: 99999 },
         undefined
       );
       expect(result).toEqual(expect.objectContaining({ ok: true, message: expect.any(String) }));

@@ -31,9 +31,11 @@ export async function handleStoreTools(
     }
     case "put_store": {
       const scope = (a.scope as string) || "agent";
-      const scopeId = (a.scopeId as string) || "";
-      const storeName = (a.storeName as string) || "";
-      const key = (a.key as string) || "";
+      const scopeId = typeof a.scopeId === "string" ? a.scopeId.trim() : "";
+      const storeName = typeof a.storeName === "string" ? a.storeName.trim() : "";
+      const key = typeof a.key === "string" ? a.key.trim() : "";
+      if (!storeName) return { error: "Missing required field: storeName" };
+      if (!key) return { error: "Missing required field: key" };
       const value = typeof a.value === "string" ? a.value : JSON.stringify(a.value ?? "");
       const id = crypto.randomUUID();
       const existing = await db
@@ -50,7 +52,7 @@ export async function handleStoreTools(
       if (existing.length > 0) {
         await db
           .update(agentStoreEntries)
-          .set({ value, createdAt: Date.now() })
+          .set({ value })
           .where(eq(agentStoreEntries.id, existing[0].id))
           .run();
         return { message: "Updated." };

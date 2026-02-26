@@ -346,10 +346,11 @@ registerScheduledTurnRunner(async (conversationId, userMessageContent) => {
       return response;
     };
 
+    const turnTraceId = crypto.randomUUID();
     const result = await runAssistant(history, userMessageContent.trim().slice(0, 2000), {
       callLLM: trackingCallLLM,
       executeTool: (name: string, args: Record<string, unknown>) =>
-        executeTool(name, args, { conversationId, vaultKey: null }),
+        executeTool(name, args, { conversationId, vaultKey: null, traceId: turnTraceId }),
       feedbackInjection: feedbackInjection || undefined,
       ragContext,
       uiContext: getSystemContext(),

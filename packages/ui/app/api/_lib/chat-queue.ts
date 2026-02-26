@@ -10,8 +10,8 @@ const LOCK_POLL_MS = 20;
 const STALE_LOCK_MS = 5 * 60 * 1000;
 
 async function acquireLock(conversationId: string): Promise<void> {
-  // #region agent log
-  if (typeof fetch !== "undefined")
+  // #region agent log (debug only; set DEBUG_AGENT_LOGGING=true to enable)
+  if (process.env.DEBUG_AGENT_LOGGING === "true" && typeof fetch !== "undefined") {
     fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e0760a" },
@@ -24,6 +24,7 @@ async function acquireLock(conversationId: string): Promise<void> {
         timestamp: Date.now(),
       }),
     }).catch(() => {});
+  }
   // #endregion
   const deadline = Date.now() + LOCK_WAIT_MS;
   while (Date.now() < deadline) {
@@ -45,8 +46,8 @@ async function acquireLock(conversationId: string): Promise<void> {
     }
     const now = Date.now();
     try {
-      // #region agent log
-      if (typeof fetch !== "undefined")
+      // #region agent log (debug only; set DEBUG_AGENT_LOGGING=true to enable)
+      if (process.env.DEBUG_AGENT_LOGGING === "true" && typeof fetch !== "undefined") {
         fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e0760a" },
@@ -59,6 +60,7 @@ async function acquireLock(conversationId: string): Promise<void> {
             timestamp: Date.now(),
           }),
         }).catch(() => {});
+      }
       // #endregion
       await db
         .insert(conversationLocks)
@@ -67,8 +69,8 @@ async function acquireLock(conversationId: string): Promise<void> {
       return;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      // #region agent log
-      if (typeof fetch !== "undefined")
+      // #region agent log (debug only; set DEBUG_AGENT_LOGGING=true to enable)
+      if (process.env.DEBUG_AGENT_LOGGING === "true" && typeof fetch !== "undefined") {
         fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e0760a" },
@@ -81,6 +83,7 @@ async function acquireLock(conversationId: string): Promise<void> {
             timestamp: Date.now(),
           }),
         }).catch(() => {});
+      }
       // #endregion
       if (!/UNIQUE|unique|SqliteError.*primary/i.test(msg)) throw e;
       await new Promise((r) => setTimeout(r, LOCK_POLL_MS));

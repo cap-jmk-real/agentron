@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockContainerCreate = vi.fn().mockResolvedValue("mock-container-id");
+const mockAppendLogLine = vi.fn();
 vi.mock("../../../../app/api/_lib/container-manager", () => ({
   getContainerManager: () => ({ create: mockContainerCreate }),
+}));
+vi.mock("../../../../app/api/_lib/api-logger", () => ({
+  appendLogLine: (...args: unknown[]) => mockAppendLogLine(...args),
 }));
 
 import {
@@ -16,6 +20,8 @@ import {
   enrichAgentToolResult,
   ensureRunnerSandboxId,
   deriveFeedbackFromExecutionHistory,
+  logToolPhase,
+  logToolSuccessAndReturn,
 } from "../../../../app/api/chat/_lib/execute-tool-shared";
 import {
   db,
@@ -718,6 +724,61 @@ describe("execute-tool-shared", () => {
       } finally {
         await db.delete(tools).where(eq(tools.id, id)).run();
       }
+    });
+  });
+
+  describe("logToolPhase and logToolSuccessAndReturn", () => {
+    beforeEach(() => {
+      mockAppendLogLine.mockClear();
+    });
+
+    it("logToolPhase does not call appendLogLine when ctx is undefined", () => {
+      logToolPhase(undefined, "start", "my_tool");
+      expect(mockAppendLogLine).not.toHaveBeenCalled();
+    });
+
+    it("logToolPhase does not call appendLogLine when ctx.traceId is missing", () => {
+      logToolPhase({ conversationId: "c1" }, "start", "my_tool");
+      expect(mockAppendLogLine).not.toHaveBeenCalled();
+    });
+
+    it("logToolPhase calls appendLogLine with route, method, and message when ctx.traceId is set", () => {
+      const ctx = { traceId: "trace-123" };
+      logToolPhase(ctx, "start", "my_tool");
+      expect(mockAppendLogLine).toHaveBeenCalledTimes(1);
+      expect(mockAppendLogLine).toHaveBeenCalledWith(
+        "chat/execute-tool",
+        "tool",
+        "traceId=trace-123 phase=tool toolName=my_tool status=start"
+      );
+    });
+
+    it("logToolPhase includes detail in message when provided", () => {
+      logToolPhase({ traceId: "t1" }, "error", "tool_x", "error=Something failed");
+      expect(mockAppendLogLine).toHaveBeenCalledWith(
+        "chat/execute-tool",
+        "tool",
+        "traceId=t1 phase=tool toolName=tool_x status=error error=Something failed"
+      );
+    });
+
+    it("logToolSuccessAndReturn returns result and does not log when ctx has no traceId", () => {
+      const result = { id: "r1" };
+      const out = logToolSuccessAndReturn(undefined, "get_run", result);
+      expect(out).toBe(result);
+      expect(mockAppendLogLine).not.toHaveBeenCalled();
+    });
+
+    it("logToolSuccessAndReturn returns result and logs success with resultHint when ctx.traceId set", () => {
+      const result = { id: "r1", status: "completed" };
+      const out = logToolSuccessAndReturn({ traceId: "t2" }, "get_run", result);
+      expect(out).toBe(result);
+      expect(mockAppendLogLine).toHaveBeenCalledTimes(1);
+      expect(mockAppendLogLine).toHaveBeenCalledWith(
+        "chat/execute-tool",
+        "tool",
+        expect.stringMatching(/^traceId=t2 phase=tool toolName=get_run status=success resultHint=/)
+      );
     });
   });
 });

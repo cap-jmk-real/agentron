@@ -317,9 +317,14 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
 
     const incoming = edges.filter((e) => e.to === nodeId);
     const fromId = incoming[0]?.from;
-    let partnerOutput: unknown = fromId ? sharedContext.get(`__output_${fromId}`) : undefined;
+    const skipSharedOutput = options?.noSharedOutput === true;
+    let partnerOutput: unknown = skipSharedOutput
+      ? undefined
+      : fromId
+        ? sharedContext.get(`__output_${fromId}`)
+        : undefined;
     let sourceNodeId: string | undefined = fromId;
-    if (partnerOutput === undefined && !fromId) {
+    if (!skipSharedOutput && partnerOutput === undefined && !fromId) {
       const prevNodeIndex = (workflowForEngine.nodes ?? []).findIndex((n) => n.id === nodeId) - 1;
       const prevNode =
         prevNodeIndex >= 0 ? (workflowForEngine.nodes ?? [])[prevNodeIndex] : undefined;
@@ -351,21 +356,24 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
     if (partnerMessage === FIRST_TURN_DEFAULT) {
       partnerMessage = buildFirstTurnPartnerMessageFromConfig(config);
     }
-    // #region agent log
-    fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        location: "run-workflow.ts:partnerMessage",
-        message: "agent step partnerMessage",
-        data: {
-          fromResume: partnerOutput === undefined && (options.resumeUserResponse?.length ?? 0) > 0,
-          partnerMessageLen: typeof partnerMessage === "string" ? partnerMessage.length : 0,
-        },
-        hypothesisId: "H4_H5",
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
+    // #region agent log (debug only; set DEBUG_AGENT_LOGGING=true to enable)
+    if (process.env.DEBUG_AGENT_LOGGING === "true") {
+      fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          location: "run-workflow.ts:partnerMessage",
+          message: "agent step partnerMessage",
+          data: {
+            fromResume:
+              partnerOutput === undefined && (options.resumeUserResponse?.length ?? 0) > 0,
+            partnerMessageLen: typeof partnerMessage === "string" ? partnerMessage.length : 0,
+          },
+          hypothesisId: "H4_H5",
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
     // #endregion
     const precedingAgentName = sourceNodeId
       ? (sharedContext.get(`__agentName_${sourceNodeId}`) as string | undefined)
@@ -582,22 +590,24 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
       toolInstructionsBlock = toolInstructionsBlock
         ? `${toolInstructionsBlock}\n${vaultFillNote}`
         : vaultFillNote;
-      // #region agent log
-      fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          location: "run-workflow.ts:vaultFillNote",
-          message: "vault fill note injected",
-          data: {
-            runId,
-            toolIds: toolIds.filter((t) => t.includes("vault") || t.includes("browser")),
-            noteLen: vaultFillNote.length,
-          },
-          hypothesisId: "H1",
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
+      // #region agent log (debug only; set DEBUG_AGENT_LOGGING=true to enable)
+      if (process.env.DEBUG_AGENT_LOGGING === "true") {
+        fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            location: "run-workflow.ts:vaultFillNote",
+            message: "vault fill note injected",
+            data: {
+              runId,
+              toolIds: toolIds.filter((t) => t.includes("vault") || t.includes("browser")),
+              noteLen: vaultFillNote.length,
+            },
+            hypothesisId: "H1",
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+      }
       // #endregion
     }
 
@@ -708,18 +718,20 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<{
             const last = toolCallsForStep[toolCallsForStep.length - 1];
             last.resultSummary = "waiting for user";
           }
-          // #region agent log
-          fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              location: "run-workflow.ts:request_user_help",
-              message: "writing waiting_for_user payload",
-              data: { runId, questionLen: question?.length ?? 0, optionsLen: combined.length },
-              hypothesisId: "H5",
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {});
+          // #region agent log (debug only; set DEBUG_AGENT_LOGGING=true to enable)
+          if (process.env.DEBUG_AGENT_LOGGING === "true") {
+            fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                location: "run-workflow.ts:request_user_help",
+                message: "writing waiting_for_user payload",
+                data: { runId, questionLen: question?.length ?? 0, optionsLen: combined.length },
+                hypothesisId: "H5",
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
+          }
           // #endregion
           await db
             .update(executions)

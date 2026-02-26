@@ -52,7 +52,7 @@ try {
 # 5. Node / Electron (often many processes)
 $out += "`n--- Node / Electron processes (count + total MB) ---"
 $nodeProcs = Get-Process -Name node -ErrorAction SilentlyContinue
-$electronProcs = Get-Process | Where-Object { $_.ProcessName -match "electron|Code|Cursor" } -ErrorAction SilentlyContinue
+$electronProcs = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match "electron|Code|Cursor" }
 $nodeMB = ($nodeProcs | Measure-Object -Property WorkingSet64 -Sum).Sum / 1MB
 $electronMB = ($electronProcs | Measure-Object -Property WorkingSet64 -Sum).Sum / 1MB
 $out += "  node: $($nodeProcs.Count) process(es), total Working Set: $([math]::Round($nodeMB, 2)) MB"
@@ -91,6 +91,6 @@ if ($docker) {
 
 $reportPath = Join-Path $PSScriptRoot "ram-diagnostic-report.txt"
 $out | Out-File -FilePath $reportPath -Encoding utf8
-Write-Host "Report written to: $reportPath"
-Write-Host "`n--- Preview ---"
-$out | ForEach-Object { Write-Host $_ }
+Write-Information "Report written to: $reportPath" -InformationAction Continue
+Write-Information "`n--- Preview ---" -InformationAction Continue
+$out | ForEach-Object { Write-Output $_ }

@@ -76,7 +76,8 @@ export async function handleGuardrailTools(
       };
     }
     case "update_guardrail": {
-      const gid = a.id as string;
+      const gid = typeof a.id === "string" ? (a.id as string).trim() : "";
+      if (!gid) return { error: "id required" };
       const config =
         a.config != null && typeof a.config === "object" ? JSON.stringify(a.config) : undefined;
       if (!config) return { error: "config required" };
@@ -84,7 +85,8 @@ export async function handleGuardrailTools(
       return { id: gid, message: "Guardrail updated." };
     }
     case "delete_guardrail": {
-      const gid = a.id as string;
+      const gid = typeof a.id === "string" ? (a.id as string).trim() : "";
+      if (!gid) return { error: "id required" };
       await db.delete(guardrails).where(eq(guardrails.id, gid)).run();
       return { message: "Guardrail deleted." };
     }

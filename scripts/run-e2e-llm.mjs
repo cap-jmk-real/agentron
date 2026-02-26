@@ -4,8 +4,7 @@
  * Usage: npm run test:e2e-llm (from repo root)
  */
 
-import { spawn } from "child_process";
-import { execSync } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -82,11 +81,15 @@ await ensureOllama();
 
 if (!(await hasModel(E2E_LLM_MODEL.split(":")[0] || E2E_LLM_MODEL))) {
   console.log("[e2e] Pulling E2E model", E2E_LLM_MODEL, "...");
-  execSync(`ollama pull ${E2E_LLM_MODEL}`, {
+  const pull = spawnSync("ollama", ["pull", E2E_LLM_MODEL], {
     stdio: "inherit",
     cwd: root,
     env: process.env,
   });
+  if (pull.status !== 0) {
+    console.error("[e2e] ollama pull failed with status", pull.status);
+    process.exit(pull.status ?? 1);
+  }
 } else {
   console.log("[e2e] Model", E2E_LLM_MODEL, "already present.");
 }
@@ -96,11 +99,11 @@ if (!(await hasModel(E2E_LLM_MODEL.split(":")[0] || E2E_LLM_MODEL))) {
 const rawArgs = process.argv.slice(2).filter((a) => a.length > 0);
 const extraArgs = [];
 for (let i = 0; i < rawArgs.length; i++) {
-  if (rawArgs[i] === "--workspace") {
+  if (rawArgs[i] === "--workspace" || rawArgs[i] === "-w") {
     i++;
     continue;
   }
-  if (rawArgs[i].startsWith("--workspace=")) continue;
+  if (rawArgs[i].startsWith("--workspace=") || rawArgs[i].startsWith("-w=")) continue;
   extraArgs.push(rawArgs[i]);
 }
 const npmArgs = ["run", "test:e2e-llm", "--workspace", "packages/ui", "--", ...extraArgs];

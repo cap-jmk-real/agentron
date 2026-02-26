@@ -33,12 +33,16 @@ export async function handleRemoteServerTools(
       };
     }
     case "test_remote_connection": {
-      const host = a.host as string;
-      const user = a.user as string;
-      if (!host || !user) return { error: "host and user are required" };
+      const host = typeof a.host === "string" ? a.host.trim() : "";
+      const user = typeof a.user === "string" ? a.user.trim() : "";
+      if (!host) return { error: "host is required" };
+      if (!user) return { error: "user is required" };
+      const rawPort = Number(a.port);
+      const port =
+        Number.isNaN(rawPort) || rawPort < 1 || rawPort > 65535 ? undefined : Math.floor(rawPort);
       return testRemoteConnection({
         host,
-        port: a.port as number | undefined,
+        port,
         user,
         authType: (a.authType as string) || "key",
         keyPath: a.keyPath as string | undefined,

@@ -114,6 +114,77 @@ function waitForSearXNG(): Promise<boolean> {
   });
 }
 
+/** Create config/data dirs, write patched settings.yml, run container (with retry on port conflict), wait for readiness. */
+async function startSearxngContainer(): Promise<void> {
+  searxngConfigDir = path.join(
+    os.tmpdir(),
+    `searxng-e2e-config-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+  searxngDataDir = path.join(
+    os.tmpdir(),
+    `searxng-e2e-data-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+  fs.mkdirSync(searxngConfigDir, { recursive: true });
+  fs.mkdirSync(searxngDataDir, { recursive: true });
+
+  // Use the image's default settings so the full schema is satisfied (avoids "Expected
+  // 'object', got 'null'" from apply_schema). Then patch formats to include json and
+  // server to listen on 8080 / 0.0.0.0 for the container.
+  const defaultSettings = runContainer(
+    `run --rm --entrypoint cat ${SEARXNG_IMAGE} /usr/local/searxng/searx/settings.yml`,
+    60_000
+  );
+  const settingsYml = defaultSettings
+    .replace(/  formats:\s*\n(\s+-\s+html)\s*\n/, "  formats:\n$1\n    - json\n")
+    .replace(/  port: 8888\s*\n/, "  port: 8080\n")
+    .replace(/  bind_address: "127\.0\.0\.1"\s*\n/, '  bind_address: "0.0.0.0"\n')
+    .replace(/  secret_key: "ultrasecretkey"/, '  secret_key: "e2e-secret-key"');
+  fs.writeFileSync(path.join(searxngConfigDir, "settings.yml"), settingsYml, "utf8");
+
+  const configMount = `${mountPath(searxngConfigDir)}:/etc/searxng`;
+  const dataMount = `${mountPath(searxngDataDir)}:/var/cache/searxng`;
+  const runArgs = `run -d --name ${SEARXNG_CONTAINER_NAME} -p ${SEARXNG_PORT}:8080 -e SEARXNG_SECRET=e2e-secret-key -v "${configMount}" -v "${dataMount}" ${SEARXNG_IMAGE}`;
+  try {
+    runContainer(runArgs, 120_000);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("already in use") || msg.includes("port is already allocated")) {
+      try {
+        runContainer(`rm -f ${SEARXNG_CONTAINER_NAME}`);
+        runContainer(runArgs, 120_000);
+      } catch (e2) {
+        e2eLog.step("searxng start failed", { error: (e2 as Error).message });
+        throw e2;
+      }
+    } else {
+      throw e;
+    }
+  }
+
+  const ready = await waitForSearXNG();
+  if (!ready) {
+    try {
+      const logs = runContainer(`logs --tail 80 ${SEARXNG_CONTAINER_NAME}`);
+      e2eLog.step("searxng container logs", { logs });
+    } catch {
+      // ignore
+    }
+    throw new Error(
+      `SearXNG did not become ready at ${SEARXNG_BASE_URL} within ${SEARXNG_READY_TIMEOUT_MS}ms`
+    );
+  }
+  e2eLog.step("SearXNG ready", { baseUrl: SEARXNG_BASE_URL });
+}
+
+/** Store current web search settings and set provider to searxng with SEARXNG_BASE_URL. */
+function configureWebSearchProvider(): void {
+  const current = getAppSettings();
+  previousWebSearchProvider = current.webSearchProvider;
+  previousSearxngBaseUrl = current.searxngBaseUrl;
+  updateAppSettings({ webSearchProvider: "searxng", searxngBaseUrl: SEARXNG_BASE_URL });
+  e2eLog.step("app settings", { webSearchProvider: "searxng", searxngBaseUrl: SEARXNG_BASE_URL });
+}
+
 describe("e2e searxng-keyword-research", () => {
   const start = Date.now();
 
@@ -123,71 +194,8 @@ describe("e2e searxng-keyword-research", () => {
       "searxng-keyword-research",
       "Start SearXNG, research keywords for business consulting for consultants (consultants who consult consultants)"
     );
-
-    searxngConfigDir = path.join(
-      os.tmpdir(),
-      `searxng-e2e-config-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    );
-    searxngDataDir = path.join(
-      os.tmpdir(),
-      `searxng-e2e-data-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    );
-    fs.mkdirSync(searxngConfigDir, { recursive: true });
-    fs.mkdirSync(searxngDataDir, { recursive: true });
-
-    // Use the image's default settings so the full schema is satisfied (avoids "Expected
-    // 'object', got 'null'" from apply_schema). Then patch formats to include json and
-    // server to listen on 8080 / 0.0.0.0 for the container.
-    const defaultSettings = runContainer(
-      `run --rm --entrypoint cat ${SEARXNG_IMAGE} /usr/local/searxng/searx/settings.yml`,
-      60_000
-    );
-    const settingsYml = defaultSettings
-      .replace(/  formats:\s*\n(\s+-\s+html)\s*\n/, "  formats:\n$1\n    - json\n")
-      .replace(/  port: 8888\s*\n/, "  port: 8080\n")
-      .replace(/  bind_address: "127\.0\.0\.1"\s*\n/, '  bind_address: "0.0.0.0"\n')
-      .replace(/  secret_key: "ultrasecretkey"/, '  secret_key: "e2e-secret-key"');
-    fs.writeFileSync(path.join(searxngConfigDir, "settings.yml"), settingsYml, "utf8");
-
-    const configMount = `${mountPath(searxngConfigDir)}:/etc/searxng`;
-    const dataMount = `${mountPath(searxngDataDir)}:/var/cache/searxng`;
-    const runArgs = `run -d --name ${SEARXNG_CONTAINER_NAME} -p ${SEARXNG_PORT}:8080 -e SEARXNG_SECRET=e2e-secret-key -v "${configMount}" -v "${dataMount}" ${SEARXNG_IMAGE}`;
-    try {
-      runContainer(runArgs, 120_000);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("already in use") || msg.includes("port is already allocated")) {
-        try {
-          runContainer(`rm -f ${SEARXNG_CONTAINER_NAME}`);
-          runContainer(runArgs, 120_000);
-        } catch (e2) {
-          e2eLog.step("searxng start failed", { error: (e2 as Error).message });
-          throw e2;
-        }
-      } else {
-        throw e;
-      }
-    }
-
-    const ready = await waitForSearXNG();
-    if (!ready) {
-      try {
-        const logs = runContainer(`logs --tail 80 ${SEARXNG_CONTAINER_NAME}`);
-        e2eLog.step("searxng container logs", { logs });
-      } catch {
-        // ignore
-      }
-      throw new Error(
-        `SearXNG did not become ready at ${SEARXNG_BASE_URL} within ${SEARXNG_READY_TIMEOUT_MS}ms`
-      );
-    }
-    e2eLog.step("SearXNG ready", { baseUrl: SEARXNG_BASE_URL });
-
-    const current = getAppSettings();
-    previousWebSearchProvider = current.webSearchProvider;
-    previousSearxngBaseUrl = current.searxngBaseUrl;
-    updateAppSettings({ webSearchProvider: "searxng", searxngBaseUrl: SEARXNG_BASE_URL });
-    e2eLog.step("app settings", { webSearchProvider: "searxng", searxngBaseUrl: SEARXNG_BASE_URL });
+    await startSearxngContainer();
+    configureWebSearchProvider();
   }, 120_000);
 
   afterAll(() => {
@@ -269,10 +277,12 @@ Use the web search tool multiple times with different queries. Then summarize th
     expect(execRes).not.toEqual(expect.objectContaining({ error: "Workflow not found" }));
     const runId = (execRes as { id?: string }).id;
     expect(typeof runId).toBe("string");
+    expect(runId).toBeTruthy();
     e2eLog.runId(runId ?? "");
 
     const status = (execRes as { status?: string }).status;
     expect(status).toBe("completed");
+    expect((execRes as { error?: string }).error).toBeUndefined();
 
     const output = (execRes as { output?: unknown }).output;
     const { trail, hasWebSearchCall, lastOutput } = parseExecutionTrail(output);

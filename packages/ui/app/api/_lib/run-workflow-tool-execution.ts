@@ -489,7 +489,8 @@ export function buildFirstTurnPartnerMessageFromConfig(
       !FIRST_TURN_RESERVED_KEYS.has(k) &&
       v != null &&
       (typeof v !== "string" || v.trim() !== "") &&
-      k !== "url"
+      k !== "url" &&
+      k !== "targetUrl"
   );
   if (otherParams.length > 0) {
     const lines = otherParams.map(
