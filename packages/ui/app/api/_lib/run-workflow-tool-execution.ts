@@ -436,6 +436,7 @@ export function getLogSourceTag(toolId: string): string {
     case "std-execute-code":
     case "std-list-sandboxes":
     case "std-create-sandbox":
+    case "std-get-sandbox":
       return "[Sandbox]";
     default:
       return "[Tool]";

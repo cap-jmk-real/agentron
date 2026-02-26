@@ -25,7 +25,7 @@ import { getRunForImprovement } from "../../_lib/run-for-improvement";
 import { createRunNotification } from "../../_lib/notifications-store";
 import { ensureRunFailureSideEffects } from "../../_lib/run-failure-side-effects";
 import { withContainerInstallHint } from "../../_lib/container-manager";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 export const RUNS_TOOL_NAMES = [
   "list_runs",
@@ -48,8 +48,8 @@ export async function handleRunTools(
 
   switch (name) {
     case "list_runs": {
-      const rows = await db.select().from(executions);
-      return rows.slice(-20).map((r) => ({
+      const rows = await db.select().from(executions).orderBy(desc(executions.startedAt)).limit(20);
+      return rows.map((r) => ({
         id: r.id,
         targetType: r.targetType,
         targetId: r.targetId,
@@ -114,7 +114,7 @@ export async function handleRunTools(
         .set({ status: "running", finishedAt: null, output: JSON.stringify(outPayload) })
         .where(eq(executions.id, runId))
         .run();
-      enqueueWorkflowResume({ runId, resumeUserResponse: response });
+      await enqueueWorkflowResume({ runId, resumeUserResponse: response });
       return {
         id: runId,
         status: "running",

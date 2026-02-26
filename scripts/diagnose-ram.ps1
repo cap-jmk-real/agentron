@@ -7,10 +7,11 @@ $out += "=== RAM diagnostic @ $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===`n"
 # 1. System memory summary (WMI)
 try {
     $cs = Get-CimInstance Win32_OperatingSystem
-    $totalGB = [math]::Round($cs.TotalVisibleMemorySize / 1MB, 2)
-    $freeGB = [math]::Round($cs.FreePhysicalMemory / 1MB, 2)
-    $usedGB = [math]::Round($totalGB - $freeGB, 2)
-    $out += "Physical memory: Total ${totalGB} GB, Free ${freeGB} GB, Used ~${usedGB} GB"
+    # WMI TotalVisibleMemorySize and FreePhysicalMemory are in kilobytes
+    $totalMB = [math]::Round($cs.TotalVisibleMemorySize / 1KB, 2)
+    $freeMB = [math]::Round($cs.FreePhysicalMemory / 1KB, 2)
+    $usedMB = [math]::Round($totalMB - $freeMB, 2)
+    $out += "Physical memory: Total ${totalMB} MB, Free ${freeMB} MB, Used ~${usedMB} MB"
 } catch {
     $out += "WMI memory: $($_.Exception.Message)"
 }

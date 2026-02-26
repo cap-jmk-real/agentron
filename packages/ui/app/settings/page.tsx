@@ -25,6 +25,7 @@ import {
   formatSystemStatsInterval,
   SYSTEM_STATS_INTERVAL_CHANGED_EVENT,
 } from "../lib/system-stats-interval";
+import type { WebSearchProvider } from "../api/_lib/app-settings";
 
 export default function SettingsPage() {
   const [intervalMs, setIntervalMs] = useState(SYSTEM_STATS_INTERVAL_DEFAULT_MS);
@@ -46,7 +47,6 @@ export default function SettingsPage() {
   const [shellAllowlistSaving, setShellAllowlistSaving] = useState(false);
   const [workflowMaxSelfFixRetries, setWorkflowMaxSelfFixRetries] = useState<number>(3);
   const [workflowMaxSelfFixSaving, setWorkflowMaxSelfFixSaving] = useState(false);
-  type WebSearchProvider = "duckduckgo" | "brave" | "google" | "searxng";
   const [webSearchProvider, setWebSearchProvider] = useState<WebSearchProvider>("duckduckgo");
   const [braveSearchApiKey, setBraveSearchApiKey] = useState("");
   const [googleCseKey, setGoogleCseKey] = useState("");

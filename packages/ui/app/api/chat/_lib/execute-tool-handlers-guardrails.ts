@@ -5,6 +5,18 @@ import type { ExecuteToolContext } from "./execute-tool-shared";
 import { db, guardrails } from "../../_lib/db";
 import { eq } from "drizzle-orm";
 
+function parseGuardrailConfig(
+  config: string | Record<string, unknown> | null
+): Record<string, unknown> {
+  if (config == null) return {};
+  if (typeof config === "object") return config;
+  try {
+    return (JSON.parse(config || "{}") as Record<string, unknown>) ?? {};
+  } catch {
+    return {};
+  }
+}
+
 export const GUARDRAILS_TOOL_NAMES = [
   "create_guardrail",
   "list_guardrails",
@@ -47,7 +59,7 @@ export async function handleGuardrailTools(
           id: r.id,
           scope: r.scope,
           scopeId: r.scopeId,
-          config: r.config,
+          config: parseGuardrailConfig(r.config),
         })),
       };
     }
@@ -60,7 +72,7 @@ export async function handleGuardrailTools(
         id: r.id,
         scope: r.scope,
         scopeId: r.scopeId,
-        config: typeof r.config === "string" ? JSON.parse(r.config) : r.config,
+        config: parseGuardrailConfig(r.config),
       };
     }
     case "update_guardrail": {

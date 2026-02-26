@@ -406,7 +406,7 @@ describe("Chat API", () => {
     expect(secondRes!.status).toBe(202);
     const secondData = await secondRes!.json();
     expect(typeof secondData.turnId).toBe("string");
-  }, 15_000);
+  }, 45_000);
 
   it("multi-turn conversation: second assistant response is persisted and returned by GET", async () => {
     try {

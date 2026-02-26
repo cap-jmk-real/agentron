@@ -91,13 +91,17 @@ if (!(await hasModel(E2E_LLM_MODEL.split(":")[0] || E2E_LLM_MODEL))) {
   console.log("[e2e] Model", E2E_LLM_MODEL, "already present.");
 }
 
-// Forward only test file paths and vitest options; drop --workspace so it is not passed to vitest
+// Forward only test file paths and vitest options; drop --workspace so it is not passed to vitest.
+// Use spawn with explicit args to avoid shell metacharacter injection.
 const extraArgs = process.argv.slice(2).filter((a) => a.length > 0 && !a.startsWith("--workspace"));
-const argsStr = extraArgs.length
-  ? " -- " + extraArgs.map((a) => (a.includes(" ") ? `"${a}"` : a)).join(" ")
-  : "";
-execSync("npm run test:e2e-llm --workspace packages/ui" + argsStr, {
+const npmArgs = ["run", "test:e2e-llm", "--workspace", "packages/ui", ...extraArgs];
+const child = spawn("npm", npmArgs, {
   stdio: "inherit",
   cwd: root,
   env: process.env,
+  shell: false,
 });
+const code = await new Promise((resolve) => {
+  child.on("close", resolve);
+});
+process.exit(code ?? 1);

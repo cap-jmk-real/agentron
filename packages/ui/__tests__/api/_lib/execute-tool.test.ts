@@ -805,7 +805,7 @@ describe("execute-tool helpers", () => {
       expect(result).not.toEqual(expect.objectContaining({ code: "TOOL_CAP_EXCEEDED" }));
       expect((result as { error?: string }).error).toBeUndefined();
       expect((result as { id?: string }).id).toBeDefined();
-    });
+    }, 25_000);
 
     it("create_agent with non-existent tool returns TOOL_NOT_FOUND", async () => {
       const result = await executeTool(

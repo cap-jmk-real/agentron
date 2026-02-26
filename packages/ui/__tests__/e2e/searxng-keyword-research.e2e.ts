@@ -28,6 +28,33 @@ let searxngDataDir: string;
 let previousWebSearchProvider: "duckduckgo" | "brave" | "google" | "searxng" | undefined;
 let previousSearxngBaseUrl: string | undefined;
 
+interface TrailStep {
+  toolCalls?: { name?: string }[];
+  output?: string;
+}
+
+function parseExecutionTrail(output: unknown): {
+  trail: unknown[];
+  hasWebSearchCall: boolean;
+  lastOutput: string;
+} {
+  const trail: unknown[] = Array.isArray(
+    output && typeof output === "object" && (output as { trail?: unknown }).trail
+  )
+    ? (output as { trail: unknown[] }).trail
+    : [];
+  const hasWebSearchCall = trail.some(
+    (s: unknown) =>
+      typeof s === "object" &&
+      s !== null &&
+      Array.isArray((s as TrailStep).toolCalls) &&
+      (s as TrailStep).toolCalls!.some((t) => t.name === "std-web-search")
+  );
+  const lastStep = trail[trail.length - 1] as TrailStep | undefined;
+  const lastOutput = typeof lastStep?.output === "string" ? lastStep.output : "";
+  return { trail, hasWebSearchCall, lastOutput };
+}
+
 function runContainer(cmd: string, timeoutMs = 30_000): string {
   const engine = getContainerEngine();
   const full = `${engine} ${cmd}`;
@@ -248,22 +275,9 @@ Use the web search tool multiple times with different queries. Then summarize th
     expect(["completed", "failed"]).toContain(status);
 
     const output = (execRes as { output?: unknown }).output;
-    const trail = Array.isArray(
-      output && typeof output === "object" && (output as { trail?: unknown }).trail
-    )
-      ? (output as { trail: unknown[] }).trail
-      : [];
-    const hasWebSearchCall = trail.some(
-      (s: unknown) =>
-        typeof s === "object" &&
-        s !== null &&
-        Array.isArray((s as { toolCalls?: { name?: string }[] }).toolCalls) &&
-        (s as { toolCalls: { name?: string }[] }).toolCalls.some((t) => t.name === "std-web-search")
-    );
+    const { trail, hasWebSearchCall, lastOutput } = parseExecutionTrail(output);
     expect(hasWebSearchCall).toBe(true);
 
-    const lastStep = trail[trail.length - 1] as { output?: string } | undefined;
-    const lastOutput = typeof lastStep?.output === "string" ? lastStep.output : "";
     const outputLower = lastOutput.toLowerCase();
     const hasKeywordLikeContent =
       outputLower.includes("keyword") ||
@@ -271,8 +285,7 @@ Use the web search tool multiple times with different queries. Then summarize th
       outputLower.includes("consulting") ||
       outputLower.includes("advisory") ||
       outputLower.includes("b2b") ||
-      /\b(coach|practice|market|target|firm|advisor)\b/.test(outputLower) ||
-      lastOutput.length > 100;
+      /\b(coach|practice|market|target|firm|advisor)\b/.test(outputLower);
     expect(hasKeywordLikeContent).toBe(true);
 
     e2eLog.step("keywords_output", { keywords: lastOutput });

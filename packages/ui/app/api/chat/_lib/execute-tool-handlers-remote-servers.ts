@@ -45,13 +45,20 @@ export async function handleRemoteServerTools(
       });
     }
     case "save_remote_server": {
+      const host = typeof a.host === "string" ? a.host.trim() : "";
+      const user = typeof a.user === "string" ? a.user.trim() : "";
+      if (!host) return { error: "host is required" };
+      if (!user) return { error: "user is required" };
+      const rawPort = Number(a.port);
+      const port =
+        Number.isNaN(rawPort) || rawPort < 1 || rawPort > 65535 ? 22 : Math.floor(rawPort);
       const id = crypto.randomUUID();
       const server: RemoteServer = {
         id,
         label: (a.label as string) || "Remote server",
-        host: a.host as string,
-        port: Number(a.port) || 22,
-        user: a.user as string,
+        host,
+        port,
+        user,
         authType: a.authType === "password" ? "password" : "key",
         keyPath: (a.keyPath as string) || undefined,
         modelBaseUrl: (a.modelBaseUrl as string) || undefined,

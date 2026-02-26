@@ -89,9 +89,11 @@ export async function handleAssistantTools(
       let value = Number(a.value);
       if (Number.isNaN(value) || value < MIN_SUMMARIES || value > MAX_SUMMARIES) {
         value = Math.max(MIN_SUMMARIES, Math.min(MAX_SUMMARIES, Math.round(value)));
+        if (Number.isNaN(value)) value = DEFAULT_RECENT_SUMMARIES_COUNT;
       } else {
         value = Math.round(value);
       }
+      if (Number.isNaN(value)) value = DEFAULT_RECENT_SUMMARIES_COUNT;
       const rows = await db
         .select()
         .from(chatAssistantSettings)

@@ -95,7 +95,7 @@ Response has a top-level `results` array; each result has `url`, `title`, `conte
 
 ```
 
-```
+```text
 3. Run the container (replace `docker` with `podman` if you use Podman):
    
 ```
@@ -109,7 +109,7 @@ Response has a top-level `results` array; each result has `url`, `title`, `conte
 
 ```
 
-```
+```text
 4. Verify: `curl 'http://localhost:8888/search?q=test&format=json'`.
 5. In Studio: Settings → Web search → Provider: SearXNG (self-hosted), Base URL: `http://localhost:8888`, Save.
 ```

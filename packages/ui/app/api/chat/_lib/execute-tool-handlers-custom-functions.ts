@@ -60,7 +60,6 @@ export async function handleCustomFunctionTools(
         sandboxId,
         createdAt: Date.now(),
       };
-      await db.insert(customFunctions).values(toCustomFunctionRow(fn)).run();
       const toolId = `fn-${fnId}`;
       const tool = {
         id: toolId,
@@ -73,7 +72,13 @@ export async function handleCustomFunctionTools(
             : undefined,
         outputSchema: undefined,
       };
-      await db.insert(tools).values(toToolRow(tool)).run();
+      try {
+        await db.insert(customFunctions).values(toCustomFunctionRow(fn)).run();
+        await db.insert(tools).values(toToolRow(tool)).run();
+      } catch (err) {
+        await db.delete(customFunctions).where(eq(customFunctions.id, fnId)).run();
+        throw err;
+      }
       return {
         id: fnId,
         toolId,
@@ -85,11 +90,19 @@ export async function handleCustomFunctionTools(
       const fnRows = await db.select().from(customFunctions);
       const toolRows = await db.select({ id: tools.id, config: tools.config }).from(tools);
       const functionIdToToolId = new Map<string, string>();
+      function parseToolConfig(row: {
+        config: string | Record<string, unknown> | null;
+      }): Record<string, unknown> {
+        if (row.config == null) return {};
+        if (typeof row.config === "object") return row.config as Record<string, unknown>;
+        try {
+          return (JSON.parse(row.config || "{}") as Record<string, unknown>) ?? {};
+        } catch {
+          return {};
+        }
+      }
       for (const row of toolRows) {
-        const config =
-          typeof row.config === "string"
-            ? (JSON.parse(row.config || "{}") as Record<string, unknown>)
-            : (row.config as Record<string, unknown>);
+        const config = parseToolConfig(row);
         const fid = config?.functionId as string | undefined;
         if (typeof fid === "string") functionIdToToolId.set(fid, row.id);
       }
@@ -145,13 +158,26 @@ export async function handleCustomFunctionTools(
       return { id: fid, message: `Custom function "${updated.name}" updated` };
     }
     case "create_custom_function": {
+      const nameStr = a.name != null && String(a.name).trim() ? String(a.name).trim() : "";
+      const lang =
+        a.language != null && String(a.language).trim()
+          ? String(a.language).trim().toLowerCase()
+          : "";
+      const sourceStr = typeof a.source === "string" ? a.source : "";
+      if (!nameStr) return { error: "name is required" };
+      if (!["javascript", "python", "typescript"].includes(lang))
+        return { error: "language must be javascript, python, or typescript" };
+      if (!sourceStr) return { error: "source is required" };
       const id = crypto.randomUUID();
       const fn = {
         id,
-        name: a.name as string,
-        language: a.language as string,
-        source: a.source as string,
-        description: (a.description as string) || undefined,
+        name: nameStr,
+        language: lang as "javascript" | "python" | "typescript",
+        source: sourceStr,
+        description:
+          a.description != null && String(a.description).trim()
+            ? String(a.description).trim()
+            : undefined,
         createdAt: Date.now(),
       };
       await db.insert(customFunctions).values(toCustomFunctionRow(fn)).run();
