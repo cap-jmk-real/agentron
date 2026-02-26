@@ -93,7 +93,8 @@
     "ci:local": "pnpm run format && pnpm run format:check && node scripts/run-workspace.mjs all typecheck && node scripts/run-workspace.mjs packages/ui lint && node scripts/run-workspace.mjs packages/ui test:coverage && node scripts/check-file-lengths.mjs --optional && pnpm run build:docs && pnpm run dist:desktop",
     "build:desktop": "npm run build:ui && node scripts/run-workspace.mjs apps/desktop build",
     "start:desktop": "node scripts/run-workspace.mjs apps/desktop build && npx electron apps/desktop",
-    "dist:desktop": "npm run build:desktop && node scripts/run-workspace.mjs apps/desktop dist"
+    "dist:desktop": "npm run build:desktop && node scripts/run-workspace.mjs apps/desktop dist",
+    "opencve-deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/opencve-deploy.ps1"
   },
   "devDependencies": {
     "@rollup/rollup-win32-x64-msvc": "^4.57.1",

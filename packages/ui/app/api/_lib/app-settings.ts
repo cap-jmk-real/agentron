@@ -12,7 +12,7 @@ const MAX_SELF_FIX_RETRIES = 10;
 
 export type ContainerEngine = "podman" | "docker";
 
-export type WebSearchProvider = "duckduckgo" | "brave" | "google";
+export type WebSearchProvider = "duckduckgo" | "brave" | "google" | "searxng";
 
 export type AppSettings = {
   maxFileUploadBytes: number;
@@ -29,6 +29,8 @@ export type AppSettings = {
   googleCseKey?: string;
   /** Google CSE CX (search engine ID) when webSearchProvider is google. */
   googleCseCx?: string;
+  /** SearXNG instance base URL when webSearchProvider is searxng (e.g. http://localhost:8888). */
+  searxngBaseUrl?: string;
 };
 
 function getSettingsPath(): string {
@@ -102,7 +104,7 @@ export function getWorkflowMaxSelfFixRetries(): number {
 }
 
 function normalizeWebSearchProvider(v: unknown): WebSearchProvider {
-  if (v === "brave" || v === "google") return v;
+  if (v === "brave" || v === "google" || v === "searxng") return v;
   return "duckduckgo";
 }
 
@@ -128,6 +130,7 @@ export function getAppSettings(): AppSettings {
   const braveSearchApiKey = normalizeOptionalString(raw.braveSearchApiKey);
   const googleCseKey = normalizeOptionalString(raw.googleCseKey);
   const googleCseCx = normalizeOptionalString(raw.googleCseCx);
+  const searxngBaseUrl = normalizeOptionalString(raw.searxngBaseUrl);
   return {
     maxFileUploadBytes,
     containerEngine,
@@ -137,6 +140,7 @@ export function getAppSettings(): AppSettings {
     braveSearchApiKey,
     googleCseKey,
     googleCseCx,
+    searxngBaseUrl,
   };
 }
 
@@ -181,6 +185,10 @@ export function updateAppSettings(updates: Partial<AppSettings>): AppSettings {
     updates.googleCseCx !== undefined
       ? normalizeOptionalString(updates.googleCseCx)
       : current.googleCseCx;
+  const searxngBaseUrl =
+    updates.searxngBaseUrl !== undefined
+      ? normalizeOptionalString(updates.searxngBaseUrl)
+      : current.searxngBaseUrl;
   const next: AppSettings = {
     maxFileUploadBytes,
     containerEngine,
@@ -190,6 +198,7 @@ export function updateAppSettings(updates: Partial<AppSettings>): AppSettings {
     braveSearchApiKey,
     googleCseKey,
     googleCseCx,
+    searxngBaseUrl,
   };
   save(next);
   return next;

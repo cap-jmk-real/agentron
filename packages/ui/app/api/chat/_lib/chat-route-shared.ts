@@ -100,6 +100,8 @@ export function sanitizeDonePayload(payload: {
   rephrasedPrompt?: string;
   planSummary?: { refinedTask: string; route: (string | { parallel: string[] })[] };
 }): Record<string, unknown> {
+  /** When truncating large tool results, preserve these scalar fields so e2e and UI can still read status/id (e2e expects execute_workflow.result.status and create_* .result.id). */
+  const CRITICAL_TOOL_RESULT_KEYS = ["status", "id", "workflowId"] as const;
   const safeResult = (v: unknown): unknown => {
     if (v == null || typeof v === "boolean" || typeof v === "number") return v;
     if (typeof v === "string")
@@ -109,7 +111,17 @@ export function sanitizeDonePayload(payload: {
       try {
         const s = JSON.stringify(v);
         if (s.length <= DONE_TOOL_RESULT_MAX) return JSON.parse(s) as unknown;
-        return { _truncated: true, preview: s.slice(0, 200) + "…" };
+        const o = v as Record<string, unknown>;
+        const preserved: Record<string, unknown> = {
+          _truncated: true,
+          preview: s.slice(0, 200) + "…",
+        };
+        for (const key of CRITICAL_TOOL_RESULT_KEYS) {
+          const val = o[key];
+          if (typeof val === "string" || typeof val === "number" || typeof val === "boolean")
+            preserved[key] = val;
+        }
+        return preserved;
       } catch {
         return { _truncated: true, _reason: "non-serializable" };
       }

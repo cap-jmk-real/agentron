@@ -41,14 +41,15 @@ describe("execution-log", () => {
 
   it("appendExecutionLogStep caps large payload", async () => {
     const id4 = crypto.randomUUID();
-    const bigPayload = { data: "x".repeat(10000) };
+    const CAP = 500_000;
+    const bigPayload = { data: "x".repeat(CAP + 10_000) };
     await appendExecutionLogStep(id4, "tool_result", "tool1", bigPayload);
     const log = await getExecutionLogForRun(id4);
     expect(log).toHaveLength(1);
     const payloadStr = log[0].payload as string;
     const parsed = JSON.parse(payloadStr);
     expect(typeof parsed).toBe("string");
-    expect(parsed.length).toBeLessThanOrEqual(8001);
+    expect(parsed.length).toBeLessThanOrEqual(CAP + 1);
     expect(parsed.endsWith("…")).toBe(true);
   });
 
@@ -65,7 +66,7 @@ describe("execution-log", () => {
     expect(log[0].payload).toBe('"short string"');
   });
 
-  it("appendExecutionLogStep stores object payload under 8000 chars as-is (capPayload return v branch)", async () => {
+  it("appendExecutionLogStep stores object payload under cap as-is (capPayload return v branch)", async () => {
     const idUnder = crypto.randomUUID();
     const payload = { data: "x".repeat(100) };
     await appendExecutionLogStep(idUnder, "tool_result", "t", payload);
@@ -73,12 +74,13 @@ describe("execution-log", () => {
     expect(log).toHaveLength(1);
     const parsed = JSON.parse(log[0].payload as string) as Record<string, string>;
     expect(parsed.data).toBe("x".repeat(100));
-    expect((log[0].payload as string).length).toBeLessThanOrEqual(8000);
+    expect((log[0].payload as string).length).toBeLessThanOrEqual(500_000);
   });
 
   it("appendExecutionLogStep caps long string payload", async () => {
     const id6 = crypto.randomUUID();
-    const longString = "x".repeat(10000);
+    const CAP = 500_000;
+    const longString = "x".repeat(CAP + 10_000);
     await appendExecutionLogStep(
       id6,
       "tool_result",
@@ -90,11 +92,11 @@ describe("execution-log", () => {
     const payloadStr = log[0].payload as string;
     expect(payloadStr).toMatch(/^".*"$/);
     const parsed = JSON.parse(payloadStr) as string;
-    expect(parsed.length).toBeLessThanOrEqual(8001);
+    expect(parsed.length).toBeLessThanOrEqual(CAP + 1);
     expect(parsed.endsWith("…")).toBe(true);
   });
 
-  it("capPayload returns value when string length exactly at limit (8000)", async () => {
+  it("capPayload returns value when string length under limit", async () => {
     const idAt = crypto.randomUUID();
     const exact = "x".repeat(8000);
     await appendExecutionLogStep(

@@ -4,6 +4,7 @@
  */
 import type { getRegistry } from "@agentron-studio/runtime";
 import { eq, desc, and, inArray } from "drizzle-orm";
+import { appendLogLine } from "../../_lib/api-logger";
 import {
   db,
   tools,
@@ -23,7 +24,58 @@ export type ExecuteToolContext = {
   conversationId?: string;
   vaultKey?: Buffer | null;
   registry?: ReturnType<typeof getRegistry>;
+  /** Optional trace id for structured logging (router → specialist → tool). */
+  traceId?: string;
 };
+
+export type ExecuteToolFn = (
+  name: string,
+  args: Record<string, unknown>,
+  ctx?: ExecuteToolContext
+) => Promise<unknown>;
+
+const TOOL_LOG_ROUTE = "chat/execute-tool";
+const RESULT_HINT_MAX = 80;
+
+function shortResultHint(result: unknown): string {
+  if (result == null) return "null";
+  if (typeof result === "object" && "error" in result) return "error";
+  try {
+    const s = JSON.stringify(result);
+    return s.length <= RESULT_HINT_MAX ? s : s.slice(0, RESULT_HINT_MAX) + "...";
+  } catch {
+    return String(result).slice(0, RESULT_HINT_MAX);
+  }
+}
+
+/** Emit structured tool-phase log when ctx.traceId is set (for router→specialist→tool tracing). */
+export function logToolPhase(
+  ctx: ExecuteToolContext | undefined,
+  phase: "start" | "success" | "error",
+  name: string,
+  detail?: string
+): void {
+  if (!ctx?.traceId) return;
+  const msg = `traceId=${ctx.traceId} phase=tool toolName=${name} status=${phase}${detail ? ` ${detail}` : ""}`;
+  appendLogLine(TOOL_LOG_ROUTE, "tool", msg);
+}
+
+/** Log success with a short result hint and return the result (for use before return). */
+export function logToolSuccessAndReturn<T>(
+  ctx: ExecuteToolContext | undefined,
+  name: string,
+  result: T
+): T {
+  if (ctx?.traceId) {
+    const hint = shortResultHint(result);
+    appendLogLine(
+      TOOL_LOG_ROUTE,
+      "tool",
+      `traceId=${ctx.traceId} phase=tool toolName=${name} status=success resultHint=${hint}`
+    );
+  }
+  return result;
+}
 
 /** Resolve workflow id from args: workflowId, id, or workflowIdentifierField "id" + workflowIdentifierValue. No name-based resolution. */
 export function resolveWorkflowIdFromArgs(

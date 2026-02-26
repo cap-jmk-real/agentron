@@ -25,6 +25,7 @@ import {
   formatSystemStatsInterval,
   SYSTEM_STATS_INTERVAL_CHANGED_EVENT,
 } from "../lib/system-stats-interval";
+import type { WebSearchProvider } from "../api/_lib/app-settings";
 
 export default function SettingsPage() {
   const [intervalMs, setIntervalMs] = useState(SYSTEM_STATS_INTERVAL_DEFAULT_MS);
@@ -46,11 +47,11 @@ export default function SettingsPage() {
   const [shellAllowlistSaving, setShellAllowlistSaving] = useState(false);
   const [workflowMaxSelfFixRetries, setWorkflowMaxSelfFixRetries] = useState<number>(3);
   const [workflowMaxSelfFixSaving, setWorkflowMaxSelfFixSaving] = useState(false);
-  type WebSearchProvider = "duckduckgo" | "brave" | "google";
   const [webSearchProvider, setWebSearchProvider] = useState<WebSearchProvider>("duckduckgo");
   const [braveSearchApiKey, setBraveSearchApiKey] = useState("");
   const [googleCseKey, setGoogleCseKey] = useState("");
   const [googleCseCx, setGoogleCseCx] = useState("");
+  const [searxngBaseUrl, setSearxngBaseUrl] = useState("");
   const [webSearchSaving, setWebSearchSaving] = useState(false);
 
   useEffect(() => {
@@ -66,6 +67,7 @@ export default function SettingsPage() {
             braveSearchApiKey?: string;
             googleCseKey?: string;
             googleCseCx?: string;
+            searxngBaseUrl?: string;
           } | null
         ) => {
           if (!data) return;
@@ -78,13 +80,15 @@ export default function SettingsPage() {
           if (
             data.webSearchProvider === "duckduckgo" ||
             data.webSearchProvider === "brave" ||
-            data.webSearchProvider === "google"
+            data.webSearchProvider === "google" ||
+            data.webSearchProvider === "searxng"
           )
             setWebSearchProvider(data.webSearchProvider);
           if (typeof data.braveSearchApiKey === "string")
             setBraveSearchApiKey(data.braveSearchApiKey);
           if (typeof data.googleCseKey === "string") setGoogleCseKey(data.googleCseKey);
           if (typeof data.googleCseCx === "string") setGoogleCseCx(data.googleCseCx);
+          if (typeof data.searxngBaseUrl === "string") setSearxngBaseUrl(data.searxngBaseUrl);
         }
       )
       .catch(() => {});
@@ -408,7 +412,8 @@ export default function SettingsPage() {
           }}
         >
           Search provider used by the chat and workflows for web search. DuckDuckGo works without a
-          key. For Brave or Google, set the provider and optional API keys below.
+          key. For Brave or Google, set the provider and optional API keys. For SearXNG
+          (self-hosted), set the base URL and see the setup guide.
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -422,8 +427,32 @@ export default function SettingsPage() {
               <option value="duckduckgo">DuckDuckGo</option>
               <option value="brave">Brave</option>
               <option value="google">Google</option>
+              <option value="searxng">SearXNG (self-hosted)</option>
             </select>
           </div>
+          {webSearchProvider === "searxng" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              <label style={{ fontSize: "0.85rem", fontWeight: 500 }}>SearXNG base URL</label>
+              <input
+                type="url"
+                className="input"
+                value={searxngBaseUrl}
+                onChange={(e) => setSearxngBaseUrl(e.target.value)}
+                placeholder="e.g. http://localhost:8888"
+                style={{ maxWidth: 360 }}
+                autoComplete="off"
+              />
+              <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", margin: 0 }}>
+                <a
+                  href="https://github.com/cap-jmk-real/agentron/blob/main/docs/searxng-self-hosted-web-search.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  How to set up SearXNG
+                </a>
+              </p>
+            </div>
+          )}
           {webSearchProvider === "brave" && (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
               <label style={{ fontSize: "0.85rem", fontWeight: 500 }}>
@@ -484,6 +513,7 @@ export default function SettingsPage() {
                   braveSearchApiKey: braveSearchApiKey.trim() || undefined,
                   googleCseKey: googleCseKey.trim() || undefined,
                   googleCseCx: googleCseCx.trim() || undefined,
+                  searxngBaseUrl: searxngBaseUrl.trim() || undefined,
                 };
                 const res = await fetch("/api/settings/app", {
                   method: "PATCH",
@@ -495,13 +525,16 @@ export default function SettingsPage() {
                   if (
                     data.webSearchProvider === "duckduckgo" ||
                     data.webSearchProvider === "brave" ||
-                    data.webSearchProvider === "google"
+                    data.webSearchProvider === "google" ||
+                    data.webSearchProvider === "searxng"
                   )
                     setWebSearchProvider(data.webSearchProvider);
                   if (typeof data.braveSearchApiKey === "string")
                     setBraveSearchApiKey(data.braveSearchApiKey);
                   if (typeof data.googleCseKey === "string") setGoogleCseKey(data.googleCseKey);
                   if (typeof data.googleCseCx === "string") setGoogleCseCx(data.googleCseCx);
+                  if (typeof data.searxngBaseUrl === "string")
+                    setSearxngBaseUrl(data.searxngBaseUrl);
                 }
               } finally {
                 setWebSearchSaving(false);

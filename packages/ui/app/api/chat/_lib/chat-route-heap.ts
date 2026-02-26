@@ -58,6 +58,7 @@ export async function runHeapModeTurn(opts: {
     conversationId: string | undefined;
     vaultKey: Buffer | null | undefined;
     registry?: ReturnType<typeof getRegistry>;
+    traceId?: string;
   };
   registry: ReturnType<typeof getRegistry>;
   manager: ReturnType<typeof createDefaultLLMManager>;
@@ -122,7 +123,8 @@ export async function runHeapModeTurn(opts: {
     enqueueTrace,
     currentSpecialistIdRef,
   } = opts;
-  const traceId = crypto.randomUUID();
+  const traceId = executeToolCtx.traceId ?? crypto.randomUUID();
+  const executeToolCtxWithTrace = { ...executeToolCtx, traceId };
   enqueueTrace?.({ phase: "router", label: "Planning…" });
 
   const useContinuationPrompt = opts.pendingPlan != null;
@@ -423,7 +425,7 @@ Reply with one or more ids to run in parallel (comma or newline separated): ${op
         toolName: name,
         toolInput: capForTrace(resolved, TRACE_TOOL_PAYLOAD_MAX),
       });
-      const result = await executeTool(name, resolved, executeToolCtx);
+      const result = await executeTool(name, resolved, executeToolCtxWithTrace);
       priorResults.push({ name, result });
       enqueueTrace?.({
         phase: "heap_tool_done",

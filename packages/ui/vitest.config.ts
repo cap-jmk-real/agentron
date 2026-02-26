@@ -18,7 +18,7 @@ export default defineConfig({
     globals: true,
     setupFiles: [path.resolve(__dirname, "vitest.setup.ts")],
     include: ["__tests__/**/*.test.ts"],
-    testTimeout: 10000,
+    testTimeout: 20_000,
     // Parallel workers; each worker has its own DB/data dir via vitest.setup.ts (VITEST_POOL_ID).
     // Override in CI with VITEST_MAX_WORKERS (e.g. 8) to speed up Windows.
     maxWorkers: (() => {

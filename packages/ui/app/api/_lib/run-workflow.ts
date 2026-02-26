@@ -42,22 +42,24 @@ export async function runWorkflowForRun(
   runId: string,
   opts?: { resumeUserResponse?: string; vaultKey?: Buffer | null }
 ): Promise<void> {
-  // #region agent log
-  fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      location: "run-workflow.ts:runWorkflowForRun",
-      message: "resume workflow invoked",
-      data: {
-        runId,
-        resumeUserResponseLen: opts?.resumeUserResponse?.length ?? 0,
-        hasVaultKey: !!opts?.vaultKey,
-      },
-      hypothesisId: "vault_access",
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
+  // #region agent log (debug only; set DEBUG_AGENT_LOGGING=true to enable)
+  if (process.env.DEBUG_AGENT_LOGGING === "true") {
+    fetch("http://127.0.0.1:7242/ingest/3176dc2d-c7b9-4633-bc70-1216077b8573", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "run-workflow.ts:runWorkflowForRun",
+        message: "resume workflow invoked",
+        data: {
+          runId,
+          resumeUserResponseLen: opts?.resumeUserResponse?.length ?? 0,
+          hasVaultKey: !!opts?.vaultKey,
+        },
+        hypothesisId: "vault_access",
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }
   // #endregion
   const rows = await db
     .select({ targetId: executions.targetId, targetBranchId: executions.targetBranchId })

@@ -103,23 +103,27 @@ describe("app-settings", () => {
     expect(getAppSettings().webSearchProvider).toBe("duckduckgo");
   });
 
-  it("getAppSettings returns webSearchProvider brave or google when set", () => {
+  it("getAppSettings returns webSearchProvider brave, google, or searxng when set", () => {
     writeSettings({ webSearchProvider: "brave" });
     expect(getAppSettings().webSearchProvider).toBe("brave");
     writeSettings({ webSearchProvider: "google" });
     expect(getAppSettings().webSearchProvider).toBe("google");
+    writeSettings({ webSearchProvider: "searxng" });
+    expect(getAppSettings().webSearchProvider).toBe("searxng");
   });
 
-  it("getAppSettings returns braveSearchApiKey and google keys when set", () => {
+  it("getAppSettings returns braveSearchApiKey, google keys, and searxngBaseUrl when set", () => {
     writeSettings({
       braveSearchApiKey: " key1 ",
       googleCseKey: "gk",
       googleCseCx: "gcx",
+      searxngBaseUrl: " http://localhost:8888 ",
     });
     const s = getAppSettings();
     expect(s.braveSearchApiKey).toBe("key1");
     expect(s.googleCseKey).toBe("gk");
     expect(s.googleCseCx).toBe("gcx");
+    expect(s.searxngBaseUrl).toBe("http://localhost:8888");
   });
 
   it("getAppSettings returns undefined for empty or non-string web search keys", () => {
@@ -127,11 +131,13 @@ describe("app-settings", () => {
       braveSearchApiKey: "",
       googleCseKey: "  ",
       googleCseCx: 123,
+      searxngBaseUrl: "",
     });
     const s = getAppSettings();
     expect(s.braveSearchApiKey).toBeUndefined();
     expect(s.googleCseKey).toBeUndefined();
     expect(s.googleCseCx).toBeUndefined();
+    expect(s.searxngBaseUrl).toBeUndefined();
   });
 
   it("updateAppSettings updates web search provider and keys", () => {
@@ -144,6 +150,10 @@ describe("app-settings", () => {
     expect(s.webSearchProvider).toBe("google");
     expect(s.googleCseKey).toBe("gkey");
     expect(s.googleCseCx).toBe("gcx");
+    updateAppSettings({ webSearchProvider: "searxng", searxngBaseUrl: "http://localhost:8888" });
+    s = getAppSettings();
+    expect(s.webSearchProvider).toBe("searxng");
+    expect(s.searxngBaseUrl).toBe("http://localhost:8888");
   });
 
   it("updateAppSettings normalizes invalid webSearchProvider to duckduckgo", () => {

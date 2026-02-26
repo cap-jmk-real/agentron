@@ -3,6 +3,7 @@ import {
   STD_IDS,
   FIRST_TURN_DEFAULT,
   buildFirstTurnPartnerMessageFromConfig,
+  buildWorkflowMemoryBlock,
 } from "../../../app/api/_lib/run-workflow-tool-execution";
 import { getAppSettings } from "../../../app/api/_lib/app-settings";
 import { searchWeb } from "@agentron-studio/runtime";
@@ -20,6 +21,7 @@ vi.mock("../../../app/api/_lib/app-settings", async (importOriginal) => {
       braveSearchApiKey: undefined,
       googleCseKey: undefined,
       googleCseCx: undefined,
+      searxngBaseUrl: undefined,
     }),
   };
 });
@@ -48,6 +50,7 @@ describe("run-workflow-tool-execution std-web-search", () => {
       braveSearchApiKey: undefined,
       googleCseKey: undefined,
       googleCseCx: undefined,
+      searxngBaseUrl: undefined,
     });
   });
 
@@ -83,6 +86,7 @@ describe("run-workflow-tool-execution std-web-search", () => {
       braveApiKey: undefined,
       googleCseKey: undefined,
       googleCseCx: undefined,
+      searxngBaseUrl: undefined,
     });
     expect(result).toEqual({
       results: [{ title: "T", url: "https://u", snippet: "S" }],
@@ -103,6 +107,7 @@ describe("run-workflow-tool-execution std-web-search", () => {
       braveSearchApiKey: "brave-key",
       googleCseKey: undefined,
       googleCseCx: undefined,
+      searxngBaseUrl: undefined,
     } as ReturnType<typeof getAppSettings>);
     await stdWebSearch({ query: "q" });
     expect(searchWeb).toHaveBeenCalledWith("q", {
@@ -111,6 +116,26 @@ describe("run-workflow-tool-execution std-web-search", () => {
       braveApiKey: "brave-key",
       googleCseKey: undefined,
       googleCseCx: undefined,
+      searxngBaseUrl: undefined,
+    });
+  });
+
+  it("passes searxngBaseUrl when provider is searxng", async () => {
+    vi.mocked(getAppSettings).mockReturnValue({
+      webSearchProvider: "searxng",
+      braveSearchApiKey: undefined,
+      googleCseKey: undefined,
+      googleCseCx: undefined,
+      searxngBaseUrl: "http://localhost:8888",
+    } as ReturnType<typeof getAppSettings>);
+    await stdWebSearch({ query: "q" });
+    expect(searchWeb).toHaveBeenCalledWith("q", {
+      maxResults: undefined,
+      provider: "searxng",
+      braveApiKey: undefined,
+      googleCseKey: undefined,
+      googleCseCx: undefined,
+      searxngBaseUrl: "http://localhost:8888",
     });
   });
 
@@ -173,5 +198,42 @@ describe("buildFirstTurnPartnerMessageFromConfig", () => {
     expect(out).toContain("query:");
     expect(out).toContain("limit:");
     expect(out).not.toMatch(/\bagentId\b/);
+  });
+
+  it("adds targetUrl hint and few-shot example when config.targetUrl is set", () => {
+    const out = buildFirstTurnPartnerMessageFromConfig({
+      targetUrl: "http://127.0.0.1:18200",
+      targetSandboxId: "sandbox-uuid",
+    });
+    expect(out).toContain(
+      "For every HTTP request (std-fetch-url, std-http-request), use the targetUrl value below as the url"
+    );
+    expect(out).toContain('Do not use "http://target"');
+    expect(out).toContain("http://127.0.0.1:18200");
+    expect(out).toContain("sandbox-uuid");
+  });
+});
+
+describe("buildWorkflowMemoryBlock", () => {
+  it("returns minimal prompt when no context and empty partner message (e.g. noSharedOutput)", () => {
+    const out = buildWorkflowMemoryBlock({
+      summary: "",
+      recentTurns: [],
+      partnerMessage: "",
+    });
+    expect(out).toBe("Execute your task.");
+  });
+
+  it("includes recent turns and partner message when provided", () => {
+    const out = buildWorkflowMemoryBlock({
+      summary: "",
+      recentTurns: [{ speaker: "A", text: "hello" }],
+      partnerMessage: "reply",
+      precedingAgentName: "Agent B",
+    });
+    expect(out).toContain("Recent turns:");
+    expect(out).toContain("A: hello");
+    expect(out).toContain("Output from Agent B:");
+    expect(out).toContain("reply");
   });
 });

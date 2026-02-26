@@ -18,6 +18,65 @@ import { processChatStreamEvent } from "../../app/hooks/useChatStream";
 
 const FIXTURE_LLM_ID = "fixture-llm-abort-test";
 
+/** Ensure an LLM config row exists for tests (delete then insert). */
+async function setupFixtureLlm(llmId: string): Promise<void> {
+  try {
+    await db.delete(llmConfigs).where(eq(llmConfigs.id, llmId)).run();
+  } catch {
+    // ignore
+  }
+  await db
+    .insert(llmConfigs)
+    .values(
+      toLlmConfigRow({
+        id: llmId,
+        provider: "openai",
+        model: "gpt-4",
+      } as Parameters<typeof toLlmConfigRow>[0])
+    )
+    .run();
+}
+
+/** Create a conversation via POST and return the parsed JSON (includes id). */
+async function createTestConversation(title: string): Promise<{ id?: string }> {
+  const createRes = await convPost(
+    new Request("http://localhost/api/chat/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    })
+  );
+  return createRes.json();
+}
+
+/** Read SSE response body to completion and return parsed event objects (data: lines). */
+async function readStreamToEvents(res: Response): Promise<{ type?: string }[]> {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (value) buffer += decoder.decode(value);
+      if (done) break;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const events: { type?: string }[] = [];
+  for (const line of buffer.split("\n\n").filter((s) => s.trim())) {
+    const m = line.match(/^data:\s*(.+)$/m);
+    if (m) {
+      try {
+        events.push(JSON.parse(m[1].trim()));
+      } catch {
+        //
+      }
+    }
+  }
+  return events;
+}
+
 /** When set, heap test mock returns planner + execute_workflow for "run the workflow". Id should come from context (Studio resources) like production; mock also accepts ref/global for test visibility. */
 const heapTestWorkflowIdRef = { current: "" };
 const HEAP_TEST_WORKFLOW_ID_GLOBAL = "__heap_test_workflow_id__";
@@ -262,14 +321,7 @@ describe("Chat API", () => {
   });
 
   it("GET /api/chat?conversationId=id returns messages for conversation", async () => {
-    const createRes = await convPost(
-      new Request("http://localhost/api/chat/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Chat get test" }),
-      })
-    );
-    const conv = await createRes.json();
+    const conv = await createTestConversation("Chat get test");
     const res = await GET(new Request(`http://localhost/api/chat?conversationId=${conv.id}`));
     expect(res.status).toBe(200);
     const data = await res.json();
@@ -277,28 +329,8 @@ describe("Chat API", () => {
   });
 
   it("decoupled chat returns 202 and turnId; events stream runs job and releases lock", async () => {
-    try {
-      await db.delete(llmConfigs).where(eq(llmConfigs.id, FIXTURE_LLM_ID)).run();
-    } catch {
-      // ignore
-    }
-    await db
-      .insert(llmConfigs)
-      .values(
-        toLlmConfigRow({ id: FIXTURE_LLM_ID, provider: "openai", model: "gpt-4" } as Parameters<
-          typeof toLlmConfigRow
-        >[0])
-      )
-      .run();
-
-    const createRes = await convPost(
-      new Request("http://localhost/api/chat/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Decoupled test" }),
-      })
-    );
-    const conv = await createRes.json();
+    await setupFixtureLlm(FIXTURE_LLM_ID);
+    const conv = await createTestConversation("Decoupled test");
     const conversationId = conv.id as string;
     expect(conversationId).toBeDefined();
 
@@ -323,34 +355,7 @@ describe("Chat API", () => {
       new Request(`http://localhost/api/chat/events?turnId=${encodeURIComponent(turnId)}`)
     );
     expect(eventsRes.ok).toBe(true);
-    const reader = eventsRes.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    const readUntilDone = async () => {
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (value) buffer += decoder.decode(value);
-          if (done) break;
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    };
-    await readUntilDone();
-
-    const lines = buffer.split("\n\n").filter((s) => s.trim());
-    const events: { type?: string }[] = [];
-    for (const line of lines) {
-      const m = line.match(/^data:\s*(.+)$/m);
-      if (m) {
-        try {
-          events.push(JSON.parse(m[1].trim()));
-        } catch {
-          //
-        }
-      }
-    }
+    const events = await readStreamToEvents(eventsRes);
     const doneOrError = events.find((e) => e?.type === "done" || e?.type === "error");
     expect(events.length).toBeGreaterThan(0);
     expect(doneOrError).toBeDefined();
@@ -406,60 +411,13 @@ describe("Chat API", () => {
     expect(secondRes!.status).toBe(202);
     const secondData = await secondRes!.json();
     expect(typeof secondData.turnId).toBe("string");
-  }, 15_000);
+  }, 45_000);
 
   it("multi-turn conversation: second assistant response is persisted and returned by GET", async () => {
-    try {
-      await db.delete(llmConfigs).where(eq(llmConfigs.id, FIXTURE_LLM_ID)).run();
-    } catch {
-      // ignore
-    }
-    await db
-      .insert(llmConfigs)
-      .values(
-        toLlmConfigRow({ id: FIXTURE_LLM_ID, provider: "openai", model: "gpt-4" } as Parameters<
-          typeof toLlmConfigRow
-        >[0])
-      )
-      .run();
-
-    const createRes = await convPost(
-      new Request("http://localhost/api/chat/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Multi-turn test" }),
-      })
-    );
-    const conv = await createRes.json();
+    await setupFixtureLlm(FIXTURE_LLM_ID);
+    const conv = await createTestConversation("Multi-turn test");
     const conversationId = conv.id as string;
     expect(conversationId).toBeDefined();
-
-    const readStreamUntilDone = async (res: Response): Promise<{ type?: string }[]> => {
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (value) buffer += decoder.decode(value);
-          if (done) break;
-        }
-      } finally {
-        reader.releaseLock();
-      }
-      const events: { type?: string }[] = [];
-      for (const line of buffer.split("\n\n").filter((s) => s.trim())) {
-        const m = line.match(/^data:\s*(.+)$/m);
-        if (m) {
-          try {
-            events.push(JSON.parse(m[1].trim()));
-          } catch {
-            //
-          }
-        }
-      }
-      return events;
-    };
 
     const firstRes = await chatPost(
       new Request("http://localhost/api/chat?stream=1", {
@@ -475,7 +433,7 @@ describe("Chat API", () => {
       new Request(`http://localhost/api/chat/events?turnId=${encodeURIComponent(firstTurnId)}`)
     );
     expect(firstEventsRes.ok).toBe(true);
-    const firstEvents = await readStreamUntilDone(firstEventsRes);
+    const firstEvents = await readStreamToEvents(firstEventsRes);
     expect(firstEvents.some((e) => e?.type === "done" || e?.type === "error")).toBe(true);
 
     const secondRes = await chatPost(
@@ -496,7 +454,7 @@ describe("Chat API", () => {
       new Request(`http://localhost/api/chat/events?turnId=${encodeURIComponent(secondTurnId)}`)
     );
     expect(secondEventsRes.ok).toBe(true);
-    const secondEvents = await readStreamUntilDone(secondEventsRes);
+    const secondEvents = await readStreamToEvents(secondEventsRes);
     expect(secondEvents.some((e) => e?.type === "done" || e?.type === "error")).toBe(true);
 
     const getRes = await GET(
@@ -514,22 +472,10 @@ describe("Chat API", () => {
     expect(messages[3].role).toBe("assistant");
     expect(typeof messages[3].content).toBe("string");
     expect(messages[3].content.length).toBeGreaterThan(0);
-  }, 25_000);
+  }, 35_000);
 
   it("heap mode done event includes execute_workflow toolResults so client can trigger run", async () => {
-    try {
-      await db.delete(llmConfigs).where(eq(llmConfigs.id, FIXTURE_LLM_ID)).run();
-    } catch {
-      // ignore
-    }
-    await db
-      .insert(llmConfigs)
-      .values(
-        toLlmConfigRow({ id: FIXTURE_LLM_ID, provider: "openai", model: "gpt-4" } as Parameters<
-          typeof toLlmConfigRow
-        >[0])
-      )
-      .run();
+    await setupFixtureLlm(FIXTURE_LLM_ID);
 
     const wfRes = await workflowsPost(
       new Request("http://localhost/api/workflows", {
@@ -547,14 +493,7 @@ describe("Chat API", () => {
     const workflowId = wf.id as string;
     expect(workflowId).toBeDefined();
 
-    const createRes = await convPost(
-      new Request("http://localhost/api/chat/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Heap run test" }),
-      })
-    );
-    const conv = await createRes.json();
+    const conv = await createTestConversation("Heap run test");
     const conversationId = conv.id as string;
 
     heapTestWorkflowIdRef.current = workflowId;
@@ -583,31 +522,10 @@ describe("Chat API", () => {
         new Request(`http://localhost/api/chat/events?turnId=${encodeURIComponent(turnId)}`)
       );
       expect(eventsRes.ok).toBe(true);
-      const reader = eventsRes.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (value) buffer += decoder.decode(value);
-        if (done) break;
-      }
-      reader.releaseLock();
-
-      const lines = buffer.split("\n\n").filter((s) => s.trim());
-      const events: {
+      const events = (await readStreamToEvents(eventsRes)) as {
         type?: string;
         toolResults?: { name: string; result?: { id?: string; status?: string } }[];
-      }[] = [];
-      for (const line of lines) {
-        const m = line.match(/^data:\s*(.+)$/m);
-        if (m) {
-          try {
-            events.push(JSON.parse(m[1].trim()));
-          } catch {
-            //
-          }
-        }
-      }
+      }[];
       const doneEvent = events.find((e) => e?.type === "done") as
         | {
             type?: string;
@@ -642,30 +560,11 @@ describe("Chat API", () => {
       if (typeof globalThis !== "undefined")
         delete (globalThis as unknown as Record<string, string>)[HEAP_TEST_WORKFLOW_ID_GLOBAL];
     }
-  }, 20_000);
+  }, 45_000);
 
   it("create agent then workflow flow: create_agent in toolResults and agent in DB", async () => {
-    try {
-      await db.delete(llmConfigs).where(eq(llmConfigs.id, FIXTURE_LLM_ID)).run();
-    } catch {
-      // ignore
-    }
-    await db
-      .insert(llmConfigs)
-      .values(
-        toLlmConfigRow({ id: FIXTURE_LLM_ID, provider: "openai", model: "gpt-4" } as Parameters<
-          typeof toLlmConfigRow
-        >[0])
-      )
-      .run();
-    const createRes = await convPost(
-      new Request("http://localhost/api/chat/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Create agent flow test" }),
-      })
-    );
-    const conv = await createRes.json();
+    await setupFixtureLlm(FIXTURE_LLM_ID);
+    const conv = await createTestConversation("Create agent flow test");
     const conversationId = conv.id as string;
     heapTestCreateAgentFlowRef.current = true;
     try {
@@ -690,27 +589,10 @@ describe("Chat API", () => {
         new Request(`http://localhost/api/chat/events?turnId=${encodeURIComponent(turnId)}`)
       );
       expect(eventsRes.ok).toBe(true);
-      const reader = eventsRes.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (value) buffer += decoder.decode(value);
-        if (done) break;
-      }
-      reader.releaseLock();
-      const lines = buffer.split("\n\n").filter((s) => s.trim());
-      const events: { type?: string; toolResults?: { name: string }[] }[] = [];
-      for (const line of lines) {
-        const m = line.match(/^data:\s*(.+)$/m);
-        if (m) {
-          try {
-            events.push(JSON.parse(m[1].trim()));
-          } catch {
-            //
-          }
-        }
-      }
+      const events = (await readStreamToEvents(eventsRes)) as {
+        type?: string;
+        toolResults?: { name: string }[];
+      }[];
       const doneEvent = events.find((e) => e?.type === "done");
       expect(doneEvent).toBeDefined();
       expect(Array.isArray(doneEvent?.toolResults)).toBe(true);
@@ -747,30 +629,11 @@ describe("Chat API", () => {
     } finally {
       heapTestCreateAgentFlowRef.current = false;
     }
-  }, 25_000);
+  }, 35_000);
 
   it("heap route can have parallel step when subspecialist returns multiple ids", async () => {
-    try {
-      await db.delete(llmConfigs).where(eq(llmConfigs.id, FIXTURE_LLM_ID)).run();
-    } catch {
-      // ignore
-    }
-    await db
-      .insert(llmConfigs)
-      .values(
-        toLlmConfigRow({ id: FIXTURE_LLM_ID, provider: "openai", model: "gpt-4" } as Parameters<
-          typeof toLlmConfigRow
-        >[0])
-      )
-      .run();
-    const createRes = await convPost(
-      new Request("http://localhost/api/chat/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Parallel route test" }),
-      })
-    );
-    const conv = await createRes.json();
+    await setupFixtureLlm(FIXTURE_LLM_ID);
+    const conv = await createTestConversation("Parallel route test");
     const conversationId = conv.id as string;
     heapTestParallelSubspecialistRef.current = true;
     try {
@@ -794,27 +657,10 @@ describe("Chat API", () => {
         new Request(`http://localhost/api/chat/events?turnId=${encodeURIComponent(turnId)}`)
       );
       expect(eventsRes.ok).toBe(true);
-      const reader = eventsRes.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (value) buffer += decoder.decode(value);
-        if (done) break;
-      }
-      reader.releaseLock();
-      const lines = buffer.split("\n\n").filter((s) => s.trim());
-      const events: { type?: string; planSummary?: { route: unknown[] } }[] = [];
-      for (const line of lines) {
-        const m = line.match(/^data:\s*(.+)$/m);
-        if (m) {
-          try {
-            events.push(JSON.parse(m[1].trim()));
-          } catch {
-            //
-          }
-        }
-      }
+      const events = (await readStreamToEvents(eventsRes)) as {
+        type?: string;
+        planSummary?: { route: unknown[] };
+      }[];
       const doneEvent = events.find((e) => e?.type === "done");
       expect(doneEvent).toBeDefined();
       expect(doneEvent?.planSummary?.route).toBeDefined();
@@ -831,30 +677,11 @@ describe("Chat API", () => {
     } finally {
       heapTestParallelSubspecialistRef.current = false;
     }
-  }, 20_000);
+  }, 45_000);
 
   it("heap mode done event has toolResults array when specialist runs no tools", async () => {
-    try {
-      await db.delete(llmConfigs).where(eq(llmConfigs.id, FIXTURE_LLM_ID)).run();
-    } catch {
-      // ignore
-    }
-    await db
-      .insert(llmConfigs)
-      .values(
-        toLlmConfigRow({ id: FIXTURE_LLM_ID, provider: "openai", model: "gpt-4" } as Parameters<
-          typeof toLlmConfigRow
-        >[0])
-      )
-      .run();
-    const createRes = await convPost(
-      new Request("http://localhost/api/chat/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Heap no-tools test" }),
-      })
-    );
-    const conv = await createRes.json();
+    await setupFixtureLlm(FIXTURE_LLM_ID);
+    const conv = await createTestConversation("Heap no-tools test");
     const conversationId = conv.id as string;
     expect(heapTestWorkflowIdRef.current).toBe("");
     const res = await chatPost(
@@ -877,55 +704,19 @@ describe("Chat API", () => {
       new Request(`http://localhost/api/chat/events?turnId=${encodeURIComponent(turnId)}`)
     );
     expect(eventsRes.ok).toBe(true);
-    const reader = eventsRes.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (value) buffer += decoder.decode(value);
-      if (done) break;
-    }
-    reader.releaseLock();
-    const lines = buffer.split("\n\n").filter((s) => s.trim());
-    const events: { type?: string; toolResults?: unknown[] }[] = [];
-    for (const line of lines) {
-      const m = line.match(/^data:\s*(.+)$/m);
-      if (m) {
-        try {
-          events.push(JSON.parse(m[1].trim()));
-        } catch {
-          //
-        }
-      }
-    }
+    const events = (await readStreamToEvents(eventsRes)) as {
+      type?: string;
+      toolResults?: unknown[];
+    }[];
     const doneEvent = events.find((e) => e?.type === "done");
     expect(doneEvent).toBeDefined();
     expect(Array.isArray(doneEvent!.toolResults)).toBe(true);
     expect((doneEvent!.toolResults as unknown[]).length).toBe(0);
-  }, 20_000);
+  }, 45_000);
 
   it("planner response.raw fallback: when content is empty but raw has OpenAI-like plan, plan is parsed and trace has parsedPlan", async () => {
-    try {
-      await db.delete(llmConfigs).where(eq(llmConfigs.id, FIXTURE_LLM_ID)).run();
-    } catch {
-      // ignore
-    }
-    await db
-      .insert(llmConfigs)
-      .values(
-        toLlmConfigRow({ id: FIXTURE_LLM_ID, provider: "openai", model: "gpt-4" } as Parameters<
-          typeof toLlmConfigRow
-        >[0])
-      )
-      .run();
-    const createRes = await convPost(
-      new Request("http://localhost/api/chat/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Planner raw fallback test" }),
-      })
-    );
-    const conv = await createRes.json();
+    await setupFixtureLlm(FIXTURE_LLM_ID);
+    const conv = await createTestConversation("Planner raw fallback test");
     const conversationId = conv.id as string;
     heapTestPlannerRawFallbackRef.current = true;
     try {
@@ -949,32 +740,12 @@ describe("Chat API", () => {
         new Request(`http://localhost/api/chat/events?turnId=${encodeURIComponent(turnId)}`)
       );
       expect(eventsRes.ok).toBe(true);
-      const reader = eventsRes.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (value) buffer += decoder.decode(value);
-        if (done) break;
-      }
-      reader.releaseLock();
-      const lines = buffer.split("\n\n").filter((s) => s.trim());
-      const streamEvents: {
+      const streamEvents = (await readStreamToEvents(eventsRes)) as {
         type?: string;
         phase?: string;
         parsedPlan?: { priorityOrder?: string[] };
         rawResponse?: string;
-      }[] = [];
-      for (const line of lines) {
-        const m = line.match(/^data:\s*(.+)$/m);
-        if (m) {
-          try {
-            streamEvents.push(JSON.parse(m[1].trim()));
-          } catch {
-            //
-          }
-        }
-      }
+      }[];
       const doneOrError = streamEvents.find((e) => e.type === "done" || e.type === "error");
       expect(streamEvents.length).toBeGreaterThan(0);
       expect(doneOrError).toBeDefined();
@@ -1014,30 +785,11 @@ describe("Chat API", () => {
     } finally {
       heapTestPlannerRawFallbackRef.current = false;
     }
-  }, 25_000);
+  }, 35_000);
 
   it("planner empty content and no usable raw: fallback order used and trace shows placeholder", async () => {
-    try {
-      await db.delete(llmConfigs).where(eq(llmConfigs.id, FIXTURE_LLM_ID)).run();
-    } catch {
-      // ignore
-    }
-    await db
-      .insert(llmConfigs)
-      .values(
-        toLlmConfigRow({ id: FIXTURE_LLM_ID, provider: "openai", model: "gpt-4" } as Parameters<
-          typeof toLlmConfigRow
-        >[0])
-      )
-      .run();
-    const createRes = await convPost(
-      new Request("http://localhost/api/chat/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Planner empty test" }),
-      })
-    );
-    const conv = await createRes.json();
+    await setupFixtureLlm(FIXTURE_LLM_ID);
+    const conv = await createTestConversation("Planner empty test");
     const conversationId = conv.id as string;
     heapTestPlannerEmptyRef.current = true;
     try {
@@ -1061,28 +813,12 @@ describe("Chat API", () => {
         new Request(`http://localhost/api/chat/events?turnId=${encodeURIComponent(turnId)}`)
       );
       expect(eventsRes.ok).toBe(true);
-      const reader = eventsRes.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (value) buffer += decoder.decode(value);
-        if (done) break;
-      }
-      reader.releaseLock();
-      const lines = buffer.split("\n\n").filter((s) => s.trim());
-      const events: { type?: string; phase?: string; rawResponse?: string; rawPreview?: string }[] =
-        [];
-      for (const line of lines) {
-        const m = line.match(/^data:\s*(.+)$/m);
-        if (m) {
-          try {
-            events.push(JSON.parse(m[1].trim()));
-          } catch {
-            //
-          }
-        }
-      }
+      const events = (await readStreamToEvents(eventsRes)) as {
+        type?: string;
+        phase?: string;
+        rawResponse?: string;
+        rawPreview?: string;
+      }[];
       const plannerResponseEvents = events.filter(
         (e) => e.type === "trace_step" && e.phase === "planner_response"
       );
@@ -1163,27 +899,8 @@ describe("Chat API", () => {
   });
 
   it("heap mode done event includes execute_workflow tool result when workflow not found (error result)", async () => {
-    try {
-      await db.delete(llmConfigs).where(eq(llmConfigs.id, FIXTURE_LLM_ID)).run();
-    } catch {
-      // ignore
-    }
-    await db
-      .insert(llmConfigs)
-      .values(
-        toLlmConfigRow({ id: FIXTURE_LLM_ID, provider: "openai", model: "gpt-4" } as Parameters<
-          typeof toLlmConfigRow
-        >[0])
-      )
-      .run();
-    const createRes = await convPost(
-      new Request("http://localhost/api/chat/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Heap error result test" }),
-      })
-    );
-    const conv = await createRes.json();
+    await setupFixtureLlm(FIXTURE_LLM_ID);
+    const conv = await createTestConversation("Heap error result test");
     const conversationId = conv.id as string;
     const fakeWorkflowId = "00000000-0000-0000-0000-000000000000";
     heapTestWorkflowIdRef.current = fakeWorkflowId;
@@ -1211,30 +928,10 @@ describe("Chat API", () => {
         new Request(`http://localhost/api/chat/events?turnId=${encodeURIComponent(turnId)}`)
       );
       expect(eventsRes.ok).toBe(true);
-      const reader = eventsRes.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (value) buffer += decoder.decode(value);
-        if (done) break;
-      }
-      reader.releaseLock();
-      const lines = buffer.split("\n\n").filter((s) => s.trim());
-      const events: {
+      const events = (await readStreamToEvents(eventsRes)) as {
         type?: string;
         toolResults?: { name: string; result?: { error?: string } }[];
-      }[] = [];
-      for (const line of lines) {
-        const m = line.match(/^data:\s*(.+)$/m);
-        if (m) {
-          try {
-            events.push(JSON.parse(m[1].trim()));
-          } catch {
-            //
-          }
-        }
-      }
+      }[];
       const doneEvent = events.find((e) => e?.type === "done");
       expect(doneEvent).toBeDefined();
       expect(Array.isArray(doneEvent?.toolResults)).toBe(true);

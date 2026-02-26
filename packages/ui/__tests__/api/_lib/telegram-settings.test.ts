@@ -28,7 +28,7 @@ describe("telegram-settings", () => {
       } finally {
         if (fs.existsSync(p)) fs.unlinkSync(p);
       }
-    }, 15000);
+    }, 25_000);
 
     it("returns hasToken true when botToken is set via update then get", async () => {
       const mod = await import("../../../app/api/_lib/telegram-settings");

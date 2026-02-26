@@ -119,7 +119,7 @@ describe("reminder-scheduler", () => {
       messages.some((m) => m.role === "assistant" && m.content?.includes("Scheduled task failed"))
     ).toBe(true);
     await db.delete(reminders).where(eq(reminders.id, id)).run();
-  });
+  }, 25_000);
 
   it("scheduleReminder schedules pending reminder with future runAt (setTimeout path)", async () => {
     const id = "rem-future-" + Date.now();

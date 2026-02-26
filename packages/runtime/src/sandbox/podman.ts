@@ -73,6 +73,30 @@ export class PodmanManager {
     return run(this.bin, args, { timeout: DEFAULT_TIMEOUT, shell: true });
   }
 
+  /**
+   * Return the image's entrypoint (Config.Entrypoint) or null if none.
+   * Used to decide whether to override entrypoint when running "sleep infinity" so we don't
+   * pass wrong args to an entrypoint (e.g. /main.sh) that would crash (exit 139).
+   */
+  private async getImageEntrypoint(image: string): Promise<string[] | null> {
+    try {
+      const { stdout } = await this.podman(
+        "inspect",
+        "--format",
+        "{{json .Config.Entrypoint}}",
+        image
+      );
+      const trimmed = stdout.trim();
+      if (!trimmed || trimmed === "null" || trimmed === "[]") return null;
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (!Array.isArray(parsed)) return null;
+      const arr = parsed.filter((x): x is string => typeof x === "string");
+      return arr.length > 0 ? arr : null;
+    } catch {
+      return null;
+    }
+  }
+
   async create(image: string, name: string, config?: SandboxConfig): Promise<string> {
     const args = ["run", "-d", "--label", LABEL, "--name", name];
 
@@ -103,7 +127,16 @@ export class PodmanManager {
       args.push(image);
       if (config.cmd?.length) args.push(...config.cmd);
     } else {
-      args.push(image, "sleep", "infinity");
+      // Run sleep infinity so the container stays alive for exec. Only override entrypoint
+      // when the image has one, so "sleep"/"infinity" aren't passed to it (can crash, e.g. exit 139).
+      const hasEntrypoint = (await this.getImageEntrypoint(image)) !== null;
+      if (hasEntrypoint) {
+        args.push("--entrypoint", "/bin/sh");
+        args.push(image);
+        args.push("-c", "sleep infinity");
+      } else {
+        args.push(image, "sleep", "infinity");
+      }
     }
 
     const { stdout } = await this.podman(...args);
@@ -193,6 +226,45 @@ export class PodmanManager {
   /** Start an existing stopped container. */
   async start(containerId: string): Promise<void> {
     await this.podman("start", containerId);
+  }
+
+  /**
+   * Return container state: "running", "exited", "dead", "paused", etc.
+   * Use to detect exited containers before exec (Podman/Docker exec fails if container not running).
+   */
+  async getContainerState(containerId: string): Promise<string> {
+    try {
+      const { stdout } = await this.podman("inspect", "--format", "{{.State.Status}}", containerId);
+      return stdout.trim().toLowerCase();
+    } catch {
+      return "unknown";
+    }
+  }
+
+  /**
+   * Return exit code and OOM flag for a container (running or not).
+   * Use when container state is not "running" to surface diagnostics.
+   */
+  async getContainerExitInfo(
+    containerId: string
+  ): Promise<{ exitCode: number; oomKilled: boolean }> {
+    try {
+      const { stdout } = await this.podman(
+        "inspect",
+        "--format",
+        "{{.State.ExitCode}} {{.State.OOMKilled}}",
+        containerId
+      );
+      const parts = stdout.trim().split(/\s+/);
+      const exitCode = parseInt(parts[0], 10);
+      const oomKilled = parts[1]?.toLowerCase() === "true";
+      return {
+        exitCode: Number.isInteger(exitCode) ? exitCode : -1,
+        oomKilled,
+      };
+    } catch {
+      return { exitCode: -1, oomKilled: false };
+    }
   }
 
   /** Stop a running container (without removing it). */

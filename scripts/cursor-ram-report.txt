@@ -1,0 +1,79 @@
+﻿=== Cursor RAM diagnostic @ 2026-02-25 12:39:39 ===
+
+--- Cursor process tree + related (by name) + Node with Cursor parent ---
+  Total processes: 47
+  Total Working Set: 7657.5 MB
+  Total Private (committed): 5962.18 MB
+
+--- Per-process (Cursor tree + related), sorted by memory ---
+  PID 1269748 Cursor.exe: WorkingSet=955.8 MB, Private=918.07 MB
+  PID 1349100 Cursor.exe: WorkingSet=780.8 MB, Private=734.91 MB
+  PID 1393104 Cursor.exe: WorkingSet=758.64 MB, Private=591.72 MB
+  PID 1397728 node.exe: WorkingSet=508.02 MB, Private=503.12 MB
+  PID 554840 Cursor.exe: WorkingSet=444.35 MB, Private=426.16 MB
+  PID 362232 Cursor.exe: WorkingSet=396.84 MB, Private=362.51 MB
+  PID 551220 Cursor.exe: WorkingSet=355.29 MB, Private=340.4 MB
+  PID 1270124 Cursor.exe: WorkingSet=186.81 MB, Private=281.46 MB
+  PID 1367672 Cursor.exe: WorkingSet=201.91 MB, Private=156.91 MB
+  PID 1398052 powershell.exe: WorkingSet=168.15 MB, Private=173.29 MB
+  PID 1359428 Cursor.exe: WorkingSet=151.25 MB, Private=129.51 MB
+  PID 1394616 Cursor.exe: WorkingSet=132.46 MB, Private=98.91 MB
+  PID 359136 Cursor.exe: WorkingSet=119.19 MB, Private=84.36 MB
+  PID 575548 Cursor.exe: WorkingSet=118.87 MB, Private=82.76 MB
+  PID 555392 Cursor.exe: WorkingSet=117.38 MB, Private=80.25 MB
+  PID 1397624 node.exe: WorkingSet=102.46 MB, Private=84.28 MB
+  PID 1407848 powershell.exe: WorkingSet=79.12 MB, Private=105.05 MB
+  PID 1336344 powershell.exe: WorkingSet=95.04 MB, Private=77.04 MB
+  PID 1392352 powershell.exe: WorkingSet=94.84 MB, Private=76.96 MB
+  PID 1271752 powershell.exe: WorkingSet=94.86 MB, Private=76.73 MB
+  PID 1398068 Cursor.exe: WorkingSet=124.59 MB, Private=37.31 MB
+  PID 1331144 Cursor.exe: WorkingSet=102.32 MB, Private=55.05 MB
+  PID 1408920 powershell.exe: WorkingSet=83.98 MB, Private=68.55 MB
+  PID 1355564 Cursor.exe: WorkingSet=113.62 MB, Private=37.39 MB
+  PID 1286980 Cursor.exe: WorkingSet=113.62 MB, Private=36.38 MB
+  PID 1332232 Cursor.exe: WorkingSet=108.36 MB, Private=31.34 MB
+  PID 1333752 Cursor.exe: WorkingSet=105.85 MB, Private=30.38 MB
+  PID 1331768 Cursor.exe: WorkingSet=106.29 MB, Private=29.81 MB
+  PID 1331628 Cursor.exe: WorkingSet=104.36 MB, Private=29.27 MB
+  PID 1391736 Cursor.exe: WorkingSet=104.82 MB, Private=28.27 MB
+  PID 1360848 Cursor.exe: WorkingSet=105.88 MB, Private=26.84 MB
+  PID 1390096 Cursor.exe: WorkingSet=103.74 MB, Private=27.74 MB
+  PID 1279188 Cursor.exe: WorkingSet=103.16 MB, Private=26.81 MB
+  PID 1366660 Cursor.exe: WorkingSet=101.48 MB, Private=22.66 MB
+  PID 1393832 Cursor.exe: WorkingSet=101.14 MB, Private=21.85 MB
+  PID 1397440 node.exe: WorkingSet=52.61 MB, Private=34.05 MB
+  PID 146640 Cursor.exe: WorkingSet=58.03 MB, Private=14.18 MB
+  PID 1367988 Cursor.exe: WorkingSet=39.2 MB, Private=10.65 MB
+  PID 1361440 conhost.exe: WorkingSet=8.54 MB, Private=1.38 MB
+  PID 281016 conhost.exe: WorkingSet=8.53 MB, Private=1.38 MB
+  PID 1365996 conhost.exe: WorkingSet=8.52 MB, Private=1.38 MB
+  PID 1398980 conhost.exe: WorkingSet=8.43 MB, Private=1.38 MB
+  PID 1396960 conhost.exe: WorkingSet=7.68 MB, Private=1.24 MB
+  PID 1397260 conhost.exe: WorkingSet=7.66 MB, Private=1.23 MB
+  PID 1409000 conhost.exe: WorkingSet=7.57 MB, Private=1.22 MB
+  PID 1408800 conhost.exe: WorkingSet=2.96 MB, Private=0 MB
+  PID 1408524 git.exe: WorkingSet=2.48 MB, Private=0 MB
+
+--- All processes with Private > 400 MB (.NET PrivateMemorySize64) ---
+  PID 1369644 ollama: WS=892.61 MB, Private=11074.88 MB
+  PID 32384 vmmemWSL: WS=863.45 MB, Private=2230.98 MB
+  PID 1269748 Cursor: WS=977.32 MB, Private=938.25 MB [CURSOR TREE]
+  PID 277680 chrome: WS=705.34 MB, Private=836.57 MB
+  PID 1377628 chrome: WS=863.2 MB, Private=800.06 MB
+  PID 1370988 chrome: WS=339.49 MB, Private=767.48 MB
+  PID 395020 chrome: WS=477.2 MB, Private=677.88 MB
+  PID 1349100 Cursor: WS=702.43 MB, Private=657.95 MB [CURSOR TREE]
+  PID 2768 chrome: WS=652.38 MB, Private=594.62 MB
+  PID 576008 chrome: WS=415.95 MB, Private=587.79 MB
+  PID 1393104 Cursor: WS=639.11 MB, Private=583.22 MB [CURSOR TREE]
+  PID 5348 MsMpEng: WS=442.32 MB, Private=524.06 MB
+  PID 1397728 node: WS=508.02 MB, Private=503.12 MB [CURSOR TREE]
+  PID 600016 chrome: WS=442.37 MB, Private=491.95 MB
+  PID 25020 Podman Desktop: WS=148.94 MB, Private=459.39 MB
+  PID 1832 dwm: WS=117.65 MB, Private=446.37 MB
+  PID 597480 chrome: WS=386.17 MB, Private=445.12 MB
+  PID 554840 Cursor: WS=444.72 MB, Private=426.84 MB [CURSOR TREE]
+  PID 59224 chrome: WS=382.07 MB, Private=424.8 MB
+  PID 596252 chrome: WS=370.41 MB, Private=418.72 MB
+  PID 585972 Figma: WS=124.95 MB, Private=415.06 MB
+  PID 586000 Figma: WS=110.32 MB, Private=400.1 MB

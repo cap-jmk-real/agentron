@@ -355,6 +355,7 @@ export async function executeTurnImpl(
       const pendingPlan = state.conversationId
         ? pendingPlanByConversation.get(state.conversationId)
         : undefined;
+      const turnTraceId = crypto.randomUUID();
       const result = state.useHeapMode
         ? await runHeapModeTurn({
             effectiveMessage,
@@ -363,6 +364,7 @@ export async function executeTurnImpl(
               conversationId: state.conversationId,
               vaultKey: state.vaultKey,
               registry: getRegistry(loadSpecialistOverrides()),
+              traceId: turnTraceId,
             },
             registry: getRegistry(loadSpecialistOverrides()),
             manager: state.manager,
@@ -393,6 +395,7 @@ export async function executeTurnImpl(
               executeTool(toolName, toolArgs, {
                 conversationId: state.conversationId,
                 vaultKey: state.vaultKey,
+                traceId: turnTraceId,
               }),
             feedbackInjection: state.feedbackInjection || undefined,
             ragContext: state.ragContext,
@@ -840,6 +843,7 @@ export async function executeTurnImpl(
     const pendingPlanNonStream = state.conversationId
       ? pendingPlanByConversation.get(state.conversationId)
       : undefined;
+    const turnTraceIdNonStream = crypto.randomUUID();
     const result = state.useHeapMode
       ? await runHeapModeTurn({
           effectiveMessage,
@@ -848,6 +852,7 @@ export async function executeTurnImpl(
             conversationId: state.conversationId,
             vaultKey: state.vaultKey,
             registry: getRegistry(loadSpecialistOverrides()),
+            traceId: turnTraceIdNonStream,
           },
           registry: getRegistry(loadSpecialistOverrides()),
           manager: state.manager,
@@ -876,6 +881,7 @@ export async function executeTurnImpl(
             executeTool(toolName, toolArgs, {
               conversationId: state.conversationId,
               vaultKey: state.vaultKey,
+              traceId: turnTraceIdNonStream,
             }),
           feedbackInjection: state.feedbackInjection || undefined,
           ragContext: state.ragContext,

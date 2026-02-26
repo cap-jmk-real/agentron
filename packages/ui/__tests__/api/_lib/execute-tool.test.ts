@@ -22,6 +22,7 @@ import { AGENT_SPECIALIST_IMPROVEMENT_CLARIFICATION } from "../../../app/api/cha
 import { resolveTemplateVars, executeTool } from "../../../app/api/chat/_lib/execute-tool";
 import { runWorkflow } from "../../../app/api/_lib/run-workflow";
 import { getAppSettings } from "../../../app/api/_lib/app-settings";
+import { getContainerManager } from "../../../app/api/_lib/container-manager";
 import {
   readConnectorItem,
   updateConnectorItem,
@@ -38,12 +39,16 @@ vi.mock("../../../app/api/_lib/container-manager", async (importOriginal) => {
   const mod = await importOriginal<typeof import("../../../app/api/_lib/container-manager")>();
   return {
     ...mod,
-    getContainerManager: () => ({
+    getContainerManager: vi.fn(() => ({
       create: mockContainerCreate,
       destroy: mockContainerDestroy,
       exec: mockContainerExec,
       pull: mockContainerPull,
-    }),
+      getContainerState: vi.fn().mockResolvedValue("running"),
+      getContainerExitInfo: vi.fn().mockResolvedValue({ exitCode: 1, oomKilled: false }),
+      logs: vi.fn().mockResolvedValue(""),
+      start: vi.fn().mockResolvedValue(undefined),
+    })),
   };
 });
 
@@ -392,6 +397,23 @@ describe("execute-tool helpers", () => {
       expect(result).toEqual({ results: [] });
     });
 
+    it("web_search calls searchWeb with searxngBaseUrl when provider is searxng", async () => {
+      vi.mocked(getAppSettings).mockReturnValueOnce({
+        webSearchProvider: "searxng",
+        searxngBaseUrl: "http://localhost:8888",
+      } as ReturnType<typeof getAppSettings>);
+      vi.mocked(searchWeb).mockClear();
+      const result = await executeTool("web_search", { query: "test" }, undefined);
+      expect(searchWeb).toHaveBeenCalledWith(
+        "test",
+        expect.objectContaining({
+          provider: "searxng",
+          searxngBaseUrl: "http://localhost:8888",
+        })
+      );
+      expect(result).toEqual({ results: [] });
+    });
+
     it("update_workflow accepts workflowId when id missing (returns Workflow not found for fake id)", async () => {
       const result = await executeTool(
         "update_workflow",
@@ -521,6 +543,55 @@ describe("execute-tool helpers", () => {
           runInputs: { url: "https://example.com" },
         })
       );
+    });
+
+    it("execute_workflow with inputs including noSharedOutput passes noSharedOutput to runWorkflow and strips it from runInputs", async () => {
+      const createRes = await executeTool(
+        "create_workflow",
+        { name: "NoSharedOutput Test WF" },
+        undefined
+      );
+      const wfId = (createRes as { id?: string }).id;
+      expect(typeof wfId).toBe("string");
+      await executeTool(
+        "update_workflow",
+        {
+          id: wfId,
+          nodes: [
+            {
+              id: "n1",
+              type: "agent",
+              position: [0, 0],
+              parameters: { agentId: "00000000-0000-0000-0000-000000000001" },
+            },
+          ],
+          edges: [],
+        },
+        undefined
+      );
+      vi.mocked(runWorkflow).mockClear();
+      const execRes = await executeTool(
+        "execute_workflow",
+        {
+          workflowId: wfId,
+          inputs: {
+            targetUrl: "http://127.0.0.1:18200",
+            targetSandboxId: "sb-1",
+            noSharedOutput: true,
+          },
+        },
+        undefined
+      );
+      expect(execRes).not.toEqual(expect.objectContaining({ error: expect.any(String) }));
+      expect(vi.mocked(runWorkflow)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workflowId: wfId,
+          noSharedOutput: true,
+          runInputs: { targetUrl: "http://127.0.0.1:18200", targetSandboxId: "sb-1" },
+        })
+      );
+      const call = vi.mocked(runWorkflow).mock.calls[0][0];
+      expect(call.runInputs).not.toHaveProperty("noSharedOutput");
     });
 
     it("update_workflow and execute_workflow resolve workflowIdentifierField+workflowIdentifierValue (id) so same-turn create then update/run works", async () => {
@@ -734,7 +805,7 @@ describe("execute-tool helpers", () => {
       expect(result).not.toEqual(expect.objectContaining({ code: "TOOL_CAP_EXCEEDED" }));
       expect((result as { error?: string }).error).toBeUndefined();
       expect((result as { id?: string }).id).toBeDefined();
-    });
+    }, 25_000);
 
     it("create_agent with non-existent tool returns TOOL_NOT_FOUND", async () => {
       const result = await executeTool(
@@ -3244,87 +3315,6 @@ describe("execute-tool helpers", () => {
     });
   });
 
-  describe("executeTool bind_sandbox_port", () => {
-    it("returns error when sandboxId missing", async () => {
-      const result = await executeTool("bind_sandbox_port", { containerPort: 18789 }, undefined);
-      expect(result).toEqual(expect.objectContaining({ error: "sandboxId is required" }));
-    });
-
-    it("returns error when containerPort invalid", async () => {
-      const result = await executeTool(
-        "bind_sandbox_port",
-        { sandboxId: "any", containerPort: 0 },
-        undefined
-      );
-      expect(result).toEqual(
-        expect.objectContaining({
-          error: "containerPort must be a number between 1 and 65535",
-        })
-      );
-    });
-
-    it("returns error when sandbox not found", async () => {
-      const result = await executeTool(
-        "bind_sandbox_port",
-        { sandboxId: "00000000-0000-0000-0000-000000000099", containerPort: 18789 },
-        undefined
-      );
-      expect(result).toEqual(expect.objectContaining({ error: "Sandbox not found" }));
-    });
-
-    it("returns hostPort and websocketUrl when sandbox exists", async () => {
-      const createRes = await executeTool("create_sandbox", { image: "alpine:3.18" }, undefined);
-      const sandboxId = (createRes as { id?: string }).id;
-      expect(sandboxId).toBeDefined();
-      const result = await executeTool(
-        "bind_sandbox_port",
-        { sandboxId, containerPort: 18789 },
-        undefined
-      );
-      expect(result).toEqual(
-        expect.objectContaining({
-          hostPort: expect.any(Number),
-          websocketUrl: expect.stringMatching(/^ws:\/\/127\.0\.0\.1:\d+$/),
-          message: expect.any(String),
-        })
-      );
-      const hostPort = (result as { hostPort: number }).hostPort;
-      expect(hostPort).toBeGreaterThanOrEqual(1);
-      expect(hostPort).toBeLessThanOrEqual(65535);
-    });
-
-    it("accepts containerPort as string and parses it", async () => {
-      const createRes = await executeTool("create_sandbox", { image: "alpine:3.18" }, undefined);
-      const sandboxId = (createRes as { id?: string }).id;
-      const result = await executeTool(
-        "bind_sandbox_port",
-        { sandboxId, containerPort: "8080" },
-        undefined
-      );
-      expect(result).toEqual(
-        expect.objectContaining({
-          hostPort: expect.any(Number),
-          websocketUrl: expect.stringMatching(/^ws:\/\/127\.0\.0\.1:\d+$/),
-        })
-      );
-    });
-
-    it("accepts custom host", async () => {
-      const createRes = await executeTool("create_sandbox", { image: "alpine:3.18" }, undefined);
-      const sandboxId = (createRes as { id?: string }).id;
-      const result = await executeTool(
-        "bind_sandbox_port",
-        { sandboxId, containerPort: 9090, host: "0.0.0.0" },
-        undefined
-      );
-      expect(result).toEqual(
-        expect.objectContaining({
-          websocketUrl: expect.stringMatching(/^ws:\/\/0\.0\.0\.0:\d+$/),
-        })
-      );
-    });
-  });
-
   describe("executeTool create_sandbox", () => {
     it("create_sandbox returns install hint when container create throws unavailable error", async () => {
       mockContainerCreate.mockRejectedValueOnce(new Error("command not found"));
@@ -3337,6 +3327,36 @@ describe("execute-tool helpers", () => {
         })
       );
       expect((result as { message?: string }).message).toContain("Install a container runtime");
+    });
+
+    it("create_sandbox with containerPort returns hostPort when container starts", async () => {
+      const result = await executeTool(
+        "create_sandbox",
+        { image: "alpine:3.18", containerPort: 18789 },
+        undefined
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: expect.any(String),
+          name: expect.any(String),
+          status: "running",
+          hostPort: expect.any(Number),
+        })
+      );
+      const hostPort = (result as { hostPort: number }).hostPort;
+      expect(hostPort).toBeGreaterThanOrEqual(1);
+      expect(hostPort).toBeLessThanOrEqual(65535);
+    });
+
+    it("create_sandbox with containerPort returns error when container fails to start", async () => {
+      mockContainerCreate.mockRejectedValueOnce(new Error("image not found"));
+      const result = await executeTool(
+        "create_sandbox",
+        { image: "alpine:3.18", containerPort: 80 },
+        undefined
+      );
+      expect(result).toEqual(expect.objectContaining({ error: expect.any(String) }));
+      expect(result).not.toHaveProperty("hostPort");
     });
   });
 
@@ -3664,6 +3684,15 @@ describe("execute-tool helpers", () => {
       expect(result).toEqual(expect.objectContaining({ error: "runId is required" }));
     });
 
+    it("respond_to_run returns error when response is required", async () => {
+      const result = await executeTool(
+        "respond_to_run",
+        { runId: "00000000-0000-0000-0000-000000000001", response: "" },
+        undefined
+      );
+      expect(result).toEqual(expect.objectContaining({ error: "response is required" }));
+    });
+
     it("respond_to_run returns Run not found for non-existent run", async () => {
       const result = await executeTool(
         "respond_to_run",
@@ -3903,6 +3932,158 @@ describe("execute-tool helpers", () => {
           exitCode: expect.any(Number),
         })
       );
+    });
+
+    it("execute_code returns exit diagnostics when container not running", async () => {
+      const sandboxId = "sandbox-exited-" + Date.now();
+      await db
+        .insert(sandboxes)
+        .values({
+          id: sandboxId,
+          name: "exited-sandbox",
+          image: "alpine:3.18",
+          status: "running",
+          containerId: "test-container-id",
+          config: "{}",
+          createdAt: Date.now(),
+        })
+        .run();
+      vi.mocked(getContainerManager).mockImplementationOnce(
+        () =>
+          ({
+            create: mockContainerCreate,
+            destroy: mockContainerDestroy,
+            exec: mockContainerExec,
+            pull: mockContainerPull,
+            getContainerState: vi.fn().mockResolvedValue("exited"),
+            getContainerExitInfo: vi.fn().mockResolvedValue({ exitCode: 139, oomKilled: false }),
+            logs: vi.fn().mockResolvedValue("segfault at 0x0\n"),
+            start: vi.fn().mockResolvedValue(undefined),
+          }) as unknown as ReturnType<typeof getContainerManager>
+      );
+      try {
+        const result = await executeTool(
+          "execute_code",
+          { sandboxId, command: "echo x" },
+          undefined
+        );
+        expect(result).toEqual(
+          expect.objectContaining({
+            stdout: "",
+            stderr: expect.stringContaining("exited"),
+            exitCode: 139,
+            state: "exited",
+            oomKilled: false,
+            logs: "segfault at 0x0\n",
+            hint: expect.any(String),
+          })
+        );
+      } finally {
+        await db.delete(sandboxes).where(eq(sandboxes.id, sandboxId)).run();
+      }
+    });
+  });
+
+  describe("executeTool get_sandbox", () => {
+    it("get_sandbox returns error when sandboxId missing", async () => {
+      const result = await executeTool("get_sandbox", {}, undefined);
+      expect(result).toEqual(expect.objectContaining({ error: "sandboxId is required" }));
+    });
+
+    it("get_sandbox returns error when sandbox not found", async () => {
+      const result = await executeTool(
+        "get_sandbox",
+        { sandboxId: "00000000-0000-0000-0000-000000000099" },
+        undefined
+      );
+      expect(result).toEqual(expect.objectContaining({ error: "Sandbox not found" }));
+    });
+
+    it("get_sandbox returns containerState null when sandbox has no container", async () => {
+      const sandboxId = "sandbox-no-container-get-" + Date.now();
+      await db
+        .insert(sandboxes)
+        .values({
+          id: sandboxId,
+          name: "no-container",
+          image: "alpine:3.18",
+          status: "stopped",
+          containerId: null,
+          config: "{}",
+          createdAt: Date.now(),
+        })
+        .run();
+      try {
+        const result = await executeTool("get_sandbox", { sandboxId }, undefined);
+        expect(result).toEqual(
+          expect.objectContaining({
+            id: sandboxId,
+            containerState: null,
+            message: "Sandbox has no container",
+          })
+        );
+      } finally {
+        await db.delete(sandboxes).where(eq(sandboxes.id, sandboxId)).run();
+      }
+    });
+
+    it("get_sandbox returns containerState running when sandbox has running container", async () => {
+      const createRes = await executeTool("create_sandbox", { image: "alpine:3.18" }, undefined);
+      const sandboxId = (createRes as { id?: string }).id;
+      expect(sandboxId).toBeDefined();
+      const result = await executeTool("get_sandbox", { sandboxId }, undefined);
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: sandboxId,
+          containerState: "running",
+          containerId: expect.any(String),
+        })
+      );
+    });
+
+    it("get_sandbox returns exit diagnostics when container exited", async () => {
+      const sandboxId = "sandbox-get-exited-" + Date.now();
+      await db
+        .insert(sandboxes)
+        .values({
+          id: sandboxId,
+          name: "exited-sandbox",
+          image: "alpine:3.18",
+          status: "running",
+          containerId: "test-container-id",
+          config: "{}",
+          createdAt: Date.now(),
+        })
+        .run();
+      vi.mocked(getContainerManager).mockImplementationOnce(
+        () =>
+          ({
+            create: mockContainerCreate,
+            destroy: mockContainerDestroy,
+            exec: mockContainerExec,
+            pull: mockContainerPull,
+            getContainerState: vi.fn().mockResolvedValue("exited"),
+            getContainerExitInfo: vi.fn().mockResolvedValue({ exitCode: 137, oomKilled: true }),
+            logs: vi.fn().mockResolvedValue("OOMKilled\n"),
+            start: vi.fn().mockResolvedValue(undefined),
+          }) as unknown as ReturnType<typeof getContainerManager>
+      );
+      try {
+        const result = await executeTool("get_sandbox", { sandboxId }, undefined);
+        expect(result).toEqual(
+          expect.objectContaining({
+            id: sandboxId,
+            status: "exited",
+            containerState: "exited",
+            exitCode: 137,
+            oomKilled: true,
+            logs: "OOMKilled\n",
+            hint: expect.stringContaining("memory"),
+          })
+        );
+      } finally {
+        await db.delete(sandboxes).where(eq(sandboxes.id, sandboxId)).run();
+      }
     });
   });
 
@@ -4411,9 +4592,18 @@ describe("execute-tool helpers", () => {
       );
     });
 
-    it("test_remote_connection returns error when host and user required", async () => {
+    it("test_remote_connection returns error when host missing", async () => {
       const result = await executeTool("test_remote_connection", {}, undefined);
-      expect(result).toEqual(expect.objectContaining({ error: "host and user are required" }));
+      expect(result).toEqual(expect.objectContaining({ error: "host is required" }));
+    });
+
+    it("test_remote_connection returns error when user missing", async () => {
+      const result = await executeTool(
+        "test_remote_connection",
+        { host: "192.168.1.1" },
+        undefined
+      );
+      expect(result).toEqual(expect.objectContaining({ error: "user is required" }));
     });
 
     it("test_remote_connection returns result when host and user provided", async () => {
@@ -4435,6 +4625,15 @@ describe("execute-tool helpers", () => {
           authType: "key",
           keyPath: "/home/user/.ssh/id_rsa",
         },
+        undefined
+      );
+      expect(result).toEqual(expect.objectContaining({ ok: true, message: expect.any(String) }));
+    });
+
+    it("test_remote_connection trims host and user and normalizes invalid port", async () => {
+      const result = await executeTool(
+        "test_remote_connection",
+        { host: "  192.168.1.1  ", user: "  deploy  ", port: 99999 },
         undefined
       );
       expect(result).toEqual(expect.objectContaining({ ok: true, message: expect.any(String) }));

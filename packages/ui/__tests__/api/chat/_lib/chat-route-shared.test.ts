@@ -186,6 +186,25 @@ describe("chat-route-shared", () => {
       expect(typeof r.preview).toBe("string");
     });
 
+    it("safeResult preserves status, id, workflowId when truncating large object (e2e execute_workflow / create_* contract)", () => {
+      const big = {
+        id: "run-uuid-123",
+        workflowId: "wf-uuid-456",
+        status: "completed",
+        message: "Workflow run completed.",
+        output: { trail: [{ nodeId: "n1", output: "x".repeat(10000) }] },
+      };
+      const out = sanitizeDonePayload({
+        type: "done",
+        toolResults: [{ name: "execute_workflow", args: {}, result: big }],
+      });
+      const r = (out.toolResults as { result: unknown }[])[0].result as Record<string, unknown>;
+      expect(r._truncated).toBe(true);
+      expect(r.status).toBe("completed");
+      expect(r.id).toBe("run-uuid-123");
+      expect(r.workflowId).toBe("wf-uuid-456");
+    });
+
     it("safeResult returns _truncated _reason non-serializable when JSON.stringify throws", () => {
       const circular: Record<string, unknown> = {};
       circular.self = circular;
