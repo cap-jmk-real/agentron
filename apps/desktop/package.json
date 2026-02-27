@@ -19,7 +19,7 @@
     "clean:release": "node scripts/clean-release.cjs",
     "prepare:standalone": "node scripts/prepare-standalone.cjs",
     "rebuild:standalone-native": "node scripts/rebuild-standalone-native.cjs",
-    "dist": "npm run clean:release && npm run prepare-icon && npm run prepare:standalone && npm run rebuild:standalone-native && electron-builder --publish never",
+    "dist": "pnpm run clean:release && pnpm run prepare-icon && pnpm run prepare:standalone && pnpm run rebuild:standalone-native && pnpm exec electron-builder --publish never",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
