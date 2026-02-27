@@ -7,7 +7,29 @@ on:
     branches: [main]
 
 jobs:
+  version_guard:
+    runs-on: ubuntu-latest
+    if: >
+      (github.event_name == 'pull_request' && github.base_ref == 'main') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Fetch tags
+        run: git fetch --tags --force --prune
+
+      - name: Ensure version is bumped vs last tagged release
+        run: node scripts/check-version-bumped.mjs
+
   test:
+    needs: version_guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
