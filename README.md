@@ -6,7 +6,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![Local-first](https://img.shields.io/badge/local--first-SQLite%20%2B%20Electron-8B5CF6?style=flat-square)](INSTALL.md)
-[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-0ea5e9?style=flat-square&logo=readthedocs&logoColor=white)](https://cap-jmk-real.github.io/agentron/)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-0ea5e9?style=flat-square&logo=readthedocs&logoColor=white)](https://docs.agentron.rocks/)
 
 Agentron is a local-first, open-source platform for AI agent orchestration and workflow automation. With **heap mode** (**Level 4** — recursive/self-building), the planner assembles a DAG of agents per request and can create new tools and agents on the fly; each turn uses a model-chosen specialist graph. Without heap, chat uses **Level 1** (ReAct + tools). Workflows use **Level 2** (static multi-agent). You run everything on your own infrastructure: no cloud lock-in, full data privacy, optional desktop app.
 
@@ -43,11 +43,11 @@ Agentron lets you design, run, and manage AI agents and multi-agent workflows lo
 
 **ReAct** (Reasoning + Acting) is the pattern used by most production assistants: one LLM, one context, a fixed set of tools; the model loops over thought, choose tool, act, observe. Used by ChatGPT (function calling), Claude (tools), and the OpenAI Assistants API: single orchestrator, fixed tool set, dynamic tool selection only.
 
-**Why Agentron is cutting edge:** With heap on, Agentron runs at **Level 4** (recursive/self-building): the planner assembles a DAG of specialists per request and can create new tools and agents on the fly. Specialists are real roles in the app (e.g. workflow, agent); the model picks which run and in what order each turn. Without heap, chat uses **Level 1** (ReAct + tools). Workflows use **Level 2** (static topology, human-designed graphs). Max steps, loop detection, and tool-call budgets are enforced. For the full taxonomy (Levels 1–4), see [Agent architectures (comparison)](https://cap-jmk-real.github.io/agentron/concepts/agent-architectures) in the docs.
+**Why Agentron is cutting edge:** With heap on, Agentron runs at **Level 4** (recursive/self-building): the planner assembles a DAG of specialists per request and can create new tools and agents on the fly. Specialists are real roles in the app (e.g. workflow, agent); the model picks which run and in what order each turn. Without heap, chat uses **Level 1** (ReAct + tools). Workflows use **Level 2** (static topology, human-designed graphs). Max steps, loop detection, and tool-call budgets are enforced. For the full taxonomy (Levels 1–4), see [Agent architectures (comparison)](https://docs.agentron.rocks/concepts/agent-architectures) in the docs.
 
 ## Event-driven architecture
 
-Agentron uses **event-driven** patterns under the hood for execution and delivery: **workflow runs** are driven by a DB-backed **event queue** (RunStarted, NodeRequested, NodeCompleted, UserResponded) with persisted run state for pause/resume and user-in-the-loop; **chat turns** can be consumed via a **pub/sub event channel** (SSE) so clients subscribe by `turnId` and receive the same stream as streaming POST; and **workflow execution** is **queued** (DB-backed job queue with bounded concurrency) so start/resume/scheduled runs are serialized and observable. For details, see [Event-driven architecture](https://cap-jmk-real.github.io/agentron/concepts/event-driven-architecture) in the docs.
+Agentron uses **event-driven** patterns under the hood for execution and delivery: **workflow runs** are driven by a DB-backed **event queue** (RunStarted, NodeRequested, NodeCompleted, UserResponded) with persisted run state for pause/resume and user-in-the-loop; **chat turns** can be consumed via a **pub/sub event channel** (SSE) so clients subscribe by `turnId` and receive the same stream as streaming POST; and **workflow execution** is **queued** (DB-backed job queue with bounded concurrency) so start/resume/scheduled runs are serialized and observable. For details, see [Event-driven architecture](https://docs.agentron.rocks/concepts/event-driven-architecture) in the docs.
 
 ## Getting started
 
@@ -62,13 +62,13 @@ Agentron uses **event-driven** patterns under the hood for execution and deliver
 2. Install dependencies: `npm run install:ui` or `pnpm install` (UI only) or `npm install` (full, including desktop)
 3. Run the app: `npm run dev:ui` or `pnpm run dev:ui`, then open http://localhost:3000
 
-**Desktop app:** Install Agentron as a standalone Electron app (no Node.js required). Download installers from the [Download](https://cap-jmk-real.github.io/agentron/download) page or [GitHub Releases](https://github.com/cap-jmk-real/agentron/releases). The app starts the UI and stores data locally.
+**Desktop app:** Install Agentron as a standalone Electron app (no Node.js required). Download installers from the [Download](https://docs.agentron.rocks/download) page or [GitHub Releases](https://github.com/cap-jmk-real/agentron/releases). The app starts the UI and stores data locally.
 
 Full steps, troubleshooting, and desktop build: [INSTALL.md](INSTALL.md).
 
 ### Usage
 
-After starting the app, open **Chat** and try: *"What tools do I have?"* or *"Create a simple agent that says hello."* The assistant uses tools to create and edit agents, workflows, and tools. See [Quick start](https://cap-jmk-real.github.io/agentron/quick-start) in the docs for more prompts.
+After starting the app, open **Chat** and try: *"What tools do I have?"* or *"Create a simple agent that says hello."* The assistant uses tools to create and edit agents, workflows, and tools. See [Quick start](https://docs.agentron.rocks/quick-start) in the docs for more prompts.
 
 ## Project structure
 
@@ -130,10 +130,10 @@ Optional env: `OLLAMA_BASE_URL` (default `http://localhost:11434`), `E2E_SAVE_AR
 
 ## Documentation
 
-- [Documentation site](https://cap-jmk-real.github.io/agentron/) (concepts, quick start, tutorials, capabilities)
-- [Agent architectures (comparison)](https://cap-jmk-real.github.io/agentron/concepts/agent-architectures) (Level 1–4 taxonomy; where Agentron fits)
+- [Documentation site](https://docs.agentron.rocks/) (concepts, quick start, tutorials, capabilities)
+- [Agent architectures (comparison)](https://docs.agentron.rocks/concepts/agent-architectures) (Level 1–4 taxonomy; where Agentron fits)
 - [INSTALL.md](INSTALL.md) (install, troubleshoot, desktop build)
-- [Download](https://cap-jmk-real.github.io/agentron/download) (desktop installers)
+- [Download](https://docs.agentron.rocks/download) (desktop installers)
 
 ## License
 
