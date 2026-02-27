@@ -11,9 +11,9 @@ import { getGitHubSettings, getGitHubAccessToken } from "./github-settings";
 import { wasRunAlreadyReported, markRunAsReported } from "./github-reported-runs";
 import { createIssue } from "./github-api";
 import { logApiError } from "./api-logger";
-import { DOCS_URL } from "../../lib/docs-url";
 
-const BRANDING_FOOTER = `\n\n---\n*Reported by [Agentron](${DOCS_URL}) · [Assisted coding](${DOCS_URL}/assisted-coding).*`;
+const BRANDING_FOOTER =
+  "\n\n---\n*Reported by [Agentron](https://agentron.dev) · [Assisted coding](https://agentron.dev/docs/assisted-coding).*";
 
 /** Escape for use in markdown list item (avoid [ ] interpreted as link). */
 function escapeInline(s: string): string {

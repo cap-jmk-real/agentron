@@ -38,10 +38,7 @@ jobs:
       - name: Build docs
         run: pnpm run build:docs
         env:
-          BASE_PATH: ""
-
-      - name: Add .nojekyll for GitHub Pages
-        run: touch apps/docs/out/.nojekyll
+          BASE_PATH: /${{ github.event.repository.name }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

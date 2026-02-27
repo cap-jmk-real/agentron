@@ -68,7 +68,7 @@ npm run build:ui && node scripts/run-workspace.mjs packages/ui start
 
 **Option A – Download a pre-built installer (recommended)**
 
-- Use the **Download** page in the [documentation site](https://docs.agentron.rocks/) (or the project’s GitHub Releases). Installers are built automatically by CI when changes are merged into `main`. Pick your platform and run the installer. When you launch the desktop app, it **starts the UI server automatically** (no need to run `npm run dev:ui`). Data (SQLite, uploads) is stored in the app’s user data directory. **Node.js is bundled in the installer**, so users do not need to install Node separately.
+- Use the **Download** page in the documentation site (or the project’s GitHub Releases). Installers are built automatically by CI when changes are merged into `main`. Pick your platform and run the installer. When you launch the desktop app, it **starts the UI server automatically** (no need to run `npm run dev:ui`). Data (SQLite, uploads) is stored in the app’s user data directory. **Node.js is bundled in the installer**, so users do not need to install Node separately.
 
 **Option B – Build from source**
 
