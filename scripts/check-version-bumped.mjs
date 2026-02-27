@@ -22,10 +22,34 @@ if (!inCi) {
   process.exit(0);
 }
 
-function getCurrentVersion() {
-  const pkgPath = join(root, "package.json");
+const VERSION_PACKAGES = ["package.json", "apps/desktop/package.json", "apps/docs/package.json"];
+
+function getPackageVersion(relPath) {
+  const pkgPath = join(root, relPath);
   const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
   return String(pkg.version);
+}
+
+function assertAlignedVersions() {
+  const versions = VERSION_PACKAGES.map((rel) => ({
+    path: rel,
+    version: getPackageVersion(rel),
+  }));
+
+  const uniqueVersions = Array.from(new Set(versions.map((v) => v.version)));
+
+  if (uniqueVersions.length > 1) {
+    console.error(
+      [
+        "Version guard: detected mismatched versions across release-relevant package.json files.",
+        ...versions.map((v) => `  - ${v.path}: ${v.version}`),
+        "Ensure these versions are aligned (e.g. via npm run release:bump) before merging to main.",
+      ].join("\n")
+    );
+    process.exit(1);
+  }
+
+  return versions[0].version;
 }
 
 async function getLatestReleaseVersionFromGithub() {
@@ -54,10 +78,10 @@ async function getLatestReleaseVersionFromGithub() {
     });
 
     if (!res.ok) {
-      console.warn(
-        `Version guard: GitHub Releases API returned ${res.status}. Allowing CI to continue.`
+      console.error(
+        `Version guard: GitHub Releases API returned ${res.status}. Failing CI to avoid unsafe merge without version check.`
       );
-      return null;
+      process.exit(1);
     }
 
     const data = await res.json();
@@ -66,14 +90,18 @@ async function getLatestReleaseVersionFromGithub() {
 
     return tag.startsWith("v") ? tag.slice(1) : String(tag);
   } catch (err) {
-    console.warn(
-      `Version guard: failed to read latest GitHub release (${String(err)}). Allowing CI to continue.`
+    console.error(
+      [
+        "Version guard: failed to read latest GitHub release.",
+        `Error: ${String(err)}`,
+        "Failing CI to avoid unsafe merge without version check.",
+      ].join("\n")
     );
-    return null;
+    process.exit(1);
   }
 }
 
-const current = getCurrentVersion();
+const current = assertAlignedVersions();
 const latest = await getLatestReleaseVersionFromGithub();
 
 if (!latest) {
