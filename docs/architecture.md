@@ -1,6 +1,6 @@
 # Agentron Architecture
 
-For a **comparison of agent architectures** (Level 1–4: ReAct + tools, multi-agent static/dynamic, recursive/self-building) and where Agentron sits—**Level 1** chat/RAG, **Level 2** workflows, **Level 4** heap—see the published docs: [Agent architectures (comparison)](https://cap-jmk-real.github.io/agentron/concepts/agent-architectures).
+For a **comparison of agent architectures** (Level 1–4: ReAct + tools, multi-agent static/dynamic, recursive/self-building) and where Agentron sits—**Level 1** chat/RAG, **Level 2** workflows, **Level 4** heap—see the published docs: [Agent architectures (comparison)](https://docs.agentron.rocks/concepts/agent-architectures).
 
 This repo provides a standalone, local-first Studio application:
 

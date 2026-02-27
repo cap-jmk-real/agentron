@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { ResourceUsage } from "./resource-usage";
 import BrandIcon from "./brand-icon";
 import { NOTIFICATIONS_UPDATED_EVENT } from "../lib/notifications-events";
+import { DOCS_URL } from "../lib/docs-url";
 
 type NavItem = {
   label: string;
@@ -536,7 +537,7 @@ export default function Sidebar() {
             <span className="nav-label">GitHub</span>
           </a>
           <a
-            href="https://cap-jmk-real.github.io/agentron/"
+            href={DOCS_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="nav-link"
