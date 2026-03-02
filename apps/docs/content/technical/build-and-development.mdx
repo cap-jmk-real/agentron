@@ -1,0 +1,52 @@
+---
+title: Build & development
+description: Workspace layout, commands, and environment for developing Agentron.
+---
+
+# Build & development
+
+## Project structure
+
+| Path | Description |
+| ---- | ----------- |
+| `packages/ui` | Next.js UI and API routes |
+| `packages/runtime` | Local runtime (agent execution, tools, workflow, chat) |
+| `packages/core` | Shared types and DB (Drizzle, SQLite, RAG) |
+| `apps/desktop` | Electron wrapper |
+| `apps/docs` | This docs site (Nextra) |
+| `installers` | Local LLM installer scripts |
+
+## Commands (from repo root)
+
+| Command | Purpose |
+| ------- | ------- |
+| `npm run dev:ui` / `pnpm run dev:ui` | Run Next.js UI (default http://localhost:3000) |
+| `npm run dev:docs` / `pnpm run dev:docs` | Run docs site locally |
+| `npm run build:ui` | Build Next.js UI |
+| `npm run build:docs` | Build docs site (heap snapshot, Prettier, Next.js) |
+| `npm run build:desktop` / `npm run dist:desktop` | Build Electron desktop app (requires UI built first) |
+| `npm run typecheck` | TypeScript check across workspaces |
+| `npm run lint:ui` | Lint UI package |
+| `npm test` / `npm run test:coverage` | Run Vitest tests (UI); coverage report in `packages/ui/coverage/` |
+| `npm run format` / `pnpm run format:check` | Format with Prettier / check only |
+| `pnpm run ci:local` | Full CI: format check, typecheck, lint, test:coverage, build:docs, desktop dist |
+
+## Dependency isolation
+
+- **UI only** (no Electron): `npm run install:ui` then `npm run dev:ui`.
+- **Full** (including desktop): `npm install` (or `pnpm install`). Use when you need to build or run the desktop app.
+
+## Environment
+
+- **Node**: Use the version in `.nvmrc` (e.g. 22.x). `nvm use` or `fnm use` to match.
+- **Package manager**: Repo pins `packageManager` in root `package.json`; with Corepack enabled (`corepack enable`) you get the same pnpm version as CI.
+
+Important env vars for features (see repo `docs/` for details):
+
+- Sandbox / site hosting: `SANDBOX_BACKEND_HOST` when Studio runs in Docker/K8s.
+- OpenClaw: see `docs/openclaw-integration.md`.
+- RAG / connectors: configured via app settings and API.
+
+## Before pushing
+
+Run `pnpm run ci:local` to verify format, typecheck, lint, tests, coverage, docs build, and desktop packaging. Fix any failures before considering the change complete.

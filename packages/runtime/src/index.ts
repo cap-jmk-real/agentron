@@ -1,3 +1,8 @@
+/**
+ * @packageDocumentation
+ * Local runtime: LLM providers, tool registry and adapters, agents (node/code), workflow engine, MCP, sandbox, chat (assistant, heap).
+ * Consumed by packages/ui. Subpath export: ./browser-automation for browser automation tools.
+ */
 export * from "./llm";
 export * from "./tools";
 export * from "./prompts";

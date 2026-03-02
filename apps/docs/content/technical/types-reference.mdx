@@ -1,0 +1,26 @@
+---
+title: Types reference
+description: Shared types and DTOs used across Studio, API, and runtime.
+---
+
+# Types reference
+
+Agentron uses shared TypeScript types for agents, workflows, tools, chat, LLM, and RAG. They live in `packages/core/src/types/` and are re-exported from `@agentron-studio/core`.
+
+## Where to find types
+
+- **Source**: `packages/core/src/types/` (agent, workflow, tool, chat, llm, canvas, etc.) and `packages/core/src/db/` for schema-related types.
+- **Contract summary**: Repo `contracts/shared-types.md` lists a subset of shared types (e.g. `Agent`, `NodeAgentDefinition`, `CodeAgent`, `LLMConfig`).
+
+## Key type areas
+
+| Area | Types (examples) |
+| ---- | ----------------- |
+| **Agents** | `Agent`, `AgentKind`, `NodeAgentDefinition`, `CodeAgent`, `AgentExecutionContext`, `ToolOverride` |
+| **Workflows** | `Workflow`, workflow nodes and edges, execution order |
+| **Tools** | `ToolDefinition`, `ToolProtocol` |
+| **Chat** | Conversation, message, and chat API types |
+| **LLM** | `LLMConfig`, `LLMProvider`, request/response types |
+| **RAG** | Encoding config, document store, collection types |
+
+For full field-level documentation, see the TSDoc comments in `packages/core/src/types/` and [Code API / Modules & functions](/technical/code-api).

@@ -1,0 +1,29 @@
+---
+title: Extension points
+description: "How to extend Agentron: tool adapters, registry, and package consumption."
+---
+
+# Extension points
+
+Agentron is extended primarily through the **tool system** and by **consuming the core and runtime packages** in your own code.
+
+## Tool system
+
+The runtime executes tools via a **registry** of **adapters** per protocol.
+
+- **ToolRegistry** (`packages/runtime/src/tools/registry.ts`): Register protocol-specific adapters; call `execute(tool, input, context)` to run a tool.
+- **ToolAdapter** (`packages/runtime/src/tools/types.ts`): Interface with `protocol: ToolProtocol` and `execute(tool, input, context)`. Implement this to add a new protocol or execution backend.
+- **ToolProtocol**: `"mcp" | "http" | "native"`. Built-in adapters: native (`NativeToolAdapter`), HTTP (`httpToolAdapter`), MCP (`mcpToolAdapter`) in `packages/runtime/src/tools/adapters/`.
+
+To add a new tool protocol: implement a `ToolAdapter` and register it on the registry (e.g. at app startup) so that tools with that protocol are executed through your adapter.
+
+## Package consumption
+
+- **@agentron-studio/core**: Types and `ragVectorStores`; use when you need shared DTOs or DB/RAG types.
+- **@agentron-studio/runtime**: LLM, tools, prompts, agent, workflow, mcp, sandbox, chat, and prompt blocks. Use when you need to run workflows, the assistant, or the tool registry outside the UI (e.g. in a script or server).
+
+There is no plugin config file; extension is by **code**: import the packages, register adapters, and call the exported APIs.
+
+## MCP
+
+Studio can act as an MCP server so external clients (IDEs, other agents) connect to it. MCP tools are executed via the runtime's MCP tool adapter through the same tool registry.

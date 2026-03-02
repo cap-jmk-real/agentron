@@ -1,8 +1,12 @@
 /**
  * n8n-style unified canvas format.
  * Single JSON structure for nodes (with position at top level) and edges.
+ * Used for agent graphs and workflow graphs.
+ *
+ * @packageDocumentation
  */
 
+/** [x, y] position of a node on the canvas. */
 export type CanvasPosition = [x: number, y: number];
 
 /** Transform configuration for input/output nodes. Supports {{ $input }} template. */
@@ -12,6 +16,7 @@ export type NodeTransform = {
   expression?: string;
 };
 
+/** A single node in a canvas graph: id, type, position, optional name and parameters. */
 export type CanvasNode = {
   id: string;
   type: string;
@@ -34,6 +39,7 @@ export type EdgeCondition =
       value: string;
     };
 
+/** Directed edge between two nodes; optional condition for conditional branching. */
 export type CanvasEdge = {
   id: string;
   source: string;
@@ -45,7 +51,7 @@ export type CanvasEdge = {
   condition?: EdgeCondition;
 };
 
-/** Unified canvas structure - single source of truth for agent/workflow graphs. */
+/** Unified canvas structure: nodes and edges. Single source of truth for agent/workflow graphs. */
 export interface Canvas {
   nodes: CanvasNode[];
   edges: CanvasEdge[];

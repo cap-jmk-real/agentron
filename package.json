@@ -82,7 +82,9 @@
     "dev:docs": "node scripts/run-workspace.mjs apps/docs dev",
     "docs:heap-snapshot": "node scripts/run-workspace.mjs packages/ui export-heap-snapshot",
     "generate-favicons": "node apps/desktop/scripts/generate-favicons.cjs",
-    "build:docs": "(npm run docs:heap-snapshot || true) && (pnpm exec prettier --write apps/docs/public/heap-snapshot.json || true) && node scripts/run-workspace.mjs apps/docs build",
+    "docs:api": "typedoc",
+    "docs:openapi": "node scripts/generate-openapi.mjs",
+    "build:docs": "(npm run docs:heap-snapshot || true) && (pnpm exec prettier --write apps/docs/public/heap-snapshot.json || true) && npm run docs:api && npm run docs:openapi && node scripts/run-workspace.mjs apps/docs build",
     "serve:docs": "node scripts/run-workspace.mjs apps/docs serve",
     "count-loc": "node scripts/count-loc.js",
     "check:file-lengths": "node scripts/check-file-lengths.mjs",
@@ -99,6 +101,8 @@
   "devDependencies": {
     "@rollup/rollup-win32-x64-msvc": "^4.57.1",
     "patch-package": "^8.0.1",
-    "prettier": "^3.4.2"
+    "prettier": "^3.4.2",
+    "ts-json-schema-generator": "^2.5.0",
+    "typedoc": "^0.27.9"
   }
 }

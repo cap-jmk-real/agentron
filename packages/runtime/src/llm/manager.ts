@@ -1,3 +1,8 @@
+/**
+ * LLM manager: registry of provider adapters and chat() with rate limiting and secret resolution.
+ *
+ * @packageDocumentation
+ */
 import type { LLMConfig } from "@agentron-studio/core";
 import type { LLMProvider } from "@agentron-studio/core";
 import type { LLMProviderAdapter, LLMRequest, LLMRequestContext, LLMResponse } from "./types";
@@ -12,20 +17,27 @@ import { huggingfaceProvider } from "./providers/huggingface";
 import { getRateLimitForConfig, type LLMConfigWithId } from "./rate-limits";
 import { getDefaultRateLimiter } from "./rate-limiter";
 
+/** Resolves a secret reference (e.g. vault id) to the actual API key. */
 export type SecretResolver = (ref?: string) => Promise<string | undefined>;
 
+/**
+ * Registry of LLM provider adapters. Resolves secrets, applies rate limits, and delegates chat to the right provider.
+ */
 export class LLMManager {
   private providers = new Map<LLMProvider, LLMProviderAdapter>();
   private resolveSecret?: SecretResolver;
 
+  /** @param resolveSecret - Optional resolver for apiKeyRef (e.g. vault lookup) */
   constructor(resolveSecret?: SecretResolver) {
     this.resolveSecret = resolveSecret;
   }
 
+  /** Register an adapter for a provider; replaces any existing adapter for that provider. */
   register(provider: LLMProviderAdapter) {
     this.providers.set(provider.provider, provider);
   }
 
+  /** Register all built-in providers (local, openai, anthropic, azure, gcp, openrouter, huggingface, custom_http). */
   registerDefaults() {
     this.register(localProvider);
     this.register(openaiProvider);
@@ -37,6 +49,14 @@ export class LLMManager {
     this.register(customHttpProvider);
   }
 
+  /**
+   * Send a chat request to the provider for the given config. Applies rate limiting and resolves API key.
+   * @param config - LLM config (provider, model, etc.) with optional id for rate-limit key
+   * @param request - Messages, temperature, maxTokens, optional tools
+   * @param context - Optional context for rate-limit queue (source, workflowId, etc.)
+   * @returns Promise resolving to LLMResponse (content, toolCalls, usage)
+   * @throws Error if no adapter is registered for config.provider
+   */
   async chat(
     config: LLMConfig & { id?: string },
     request: LLMRequest,
@@ -79,6 +99,11 @@ export class LLMManager {
   }
 }
 
+/**
+ * Create an LLMManager with all built-in providers registered.
+ * @param resolveSecret - Optional resolver for apiKeyRef
+ * @returns LLMManager ready for chat()
+ */
 export const createDefaultLLMManager = (resolveSecret?: SecretResolver) => {
   const manager = new LLMManager(resolveSecret);
   manager.registerDefaults();

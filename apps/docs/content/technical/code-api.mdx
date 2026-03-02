@@ -1,0 +1,31 @@
+---
+title: Code API / Modules & functions
+description: Function- and module-level documentation for core and runtime packages.
+---
+
+# Code API / Modules & functions
+
+This section documents the **public API** of the packages you build on: `@agentron-studio/core` and `@agentron-studio/runtime`. Documentation is generated from TSDoc in the source and (when available) linked from here.
+
+## Packages
+
+| Package | Purpose | Entry |
+| ------- | ------- | ----- |
+| **@agentron-studio/core** | Shared types (agents, workflows, tools, chat, LLM, etc.) and DB layer (Drizzle, SQLite, RAG vector stores). | `packages/core/src/index.ts` |
+| **@agentron-studio/runtime** | Execution: LLM providers, tool registry and adapters, agents (node/code), workflow engine, MCP, sandbox, chat (assistant, heap). | `packages/runtime/src/index.ts`, subpath `./browser-automation` |
+
+## Main modules (runtime)
+
+- **LLM** (`packages/runtime/src/llm/`) — Providers, types, rate limiting, pricing, model catalog.
+- **Tools** (`packages/runtime/src/tools/`) — `ToolRegistry`, `ToolAdapter`, protocols (native, HTTP, MCP), builtins, execution flow.
+- **Agent** (`packages/runtime/src/agent/`) — Node agent, context, feedback injector, prompt refiner.
+- **Workflow** (`packages/runtime/src/workflow/`) — Engine, DAG helpers (`runWorkflowDAGLevels`, `buildWorkflowDAGFromNodes`), node handlers.
+- **Chat** (`packages/runtime/src/chat/`) — Assistant, heap (planner, router, registry, runner), store and prompt tools.
+- **MCP** (`packages/runtime/src/mcp/`) — Client, server, SDK usage.
+- **Sandbox** (`packages/runtime/src/sandbox/`) — Podman, run-code contract.
+
+The **API reference** (modules, classes, functions, signatures, and parameters) is part of this docs site. It is generated from TSDoc when the docs are built (including the published site).
+
+- **[Open the Generated API reference →](/technical/code-api/)** — browsable index of `@agentron-studio/core` and `@agentron-studio/runtime`.
+
+To regenerate it locally, run `pnpm run docs:api`. For the raw comments, see the TSDoc in the repo source.

@@ -1,5 +1,14 @@
+/**
+ * Chat types: roles, messages, conversations, and LLM trace.
+ * Used by the chat API, assistant, and UI for conversation state and streaming.
+ *
+ * @packageDocumentation
+ */
+
+/** Role of a chat message: user, assistant, or tool (tool result). */
 export type ChatRole = "user" | "assistant" | "tool";
 
+/** A single tool call in a message: id, name, arguments, optional result. */
 export interface ChatToolCall {
   id: string;
   name: string;
@@ -25,6 +34,7 @@ export interface LLMTraceCall {
   usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
 }
 
+/** A single chat message: role, content, optional tool calls and LLM trace. */
 export interface ChatMessage {
   id: string;
   role: ChatRole;
@@ -38,6 +48,7 @@ export interface ChatMessage {
   conversationId?: string;
 }
 
+/** Conversation metadata: id, title, rating, summary, and last-used LLM. */
 export interface Conversation {
   id: string;
   title: string | null;

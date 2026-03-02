@@ -1,13 +1,27 @@
+/**
+ * Workflow engine: leveled DAG execution and edge-based execution.
+ * Entry points: buildWorkflowDAGFromNodes + runWorkflowDAGLevels, or WorkflowEngine.execute().
+ *
+ * @packageDocumentation
+ */
+
 import type { Workflow, WorkflowExecutionStep } from "@agentron-studio/core";
 import { SharedContextManager } from "../agent/context";
 
+/**
+ * Handler for a single workflow node. Invoked by the engine with node id, config, and shared context.
+ * @param nodeId - Id of the node
+ * @param config - Node parameters/config (from parameters or config)
+ * @param sharedContext - Shared context manager for this run; use to read/write values across nodes
+ * @returns Promise resolving to the node output (stored in shared context as __output_&lt;nodeId&gt;)
+ */
 export type WorkflowNodeHandler = (
   nodeId: string,
   config: Record<string, unknown> | undefined,
   sharedContext: SharedContextManager
 ) => Promise<unknown>;
 
-/** Simple leveled DAG representation for workflows: each inner array is one level. */
+/** Leveled DAG representation: each inner array is one level; nodes in a level run in parallel. */
 export type WorkflowDAGLevels = string[][];
 
 function isParallelStep(step: WorkflowExecutionStep): step is { parallel: string[] } {
@@ -24,8 +38,11 @@ function getStepNodeIds(step: WorkflowExecutionStep): string[] {
 }
 
 /**
- * Converts an explicit execution order (mirroring heap's priorityOrder) into
- * leveled DAG form. Validates node ids against workflow.nodes and strips unknowns.
+ * Converts an explicit execution order (mirroring heap's priorityOrder) into leveled DAG form.
+ * Validates node ids against workflow.nodes and strips unknowns.
+ * @param executionOrder - Steps: single node id or { parallel: nodeIds[] }
+ * @param workflow - Workflow whose nodes are used to validate ids
+ * @returns Leveled DAG (array of levels, each level is array of node ids)
  */
 export function executionOrderToLevels(
   executionOrder: WorkflowExecutionStep[],
@@ -44,6 +61,8 @@ export function executionOrderToLevels(
 /**
  * Builds a leveled DAG from the workflow. When executionOrder is present and non-empty,
  * uses it (with parallel groupings); otherwise falls back to node array order (one node per level).
+ * @param workflow - Workflow with nodes and optional executionOrder
+ * @returns Leveled DAG suitable for runWorkflowDAGLevels
  */
 export function buildWorkflowDAGFromNodes(workflow: Workflow): WorkflowDAGLevels {
   const order = workflow.executionOrder;
@@ -55,9 +74,12 @@ export function buildWorkflowDAGFromNodes(workflow: Workflow): WorkflowDAGLevels
 }
 
 /**
- * Runs workflow nodes in leveled DAG form: all nodes in a level run in parallel,
- * levels run sequentially. For now buildWorkflowDAGFromNodes produces one node
- * per level, so behavior matches the previous linear execution.
+ * Runs workflow nodes in leveled DAG form: all nodes in a level run in parallel, levels run sequentially.
+ * @param levels - Leveled DAG from buildWorkflowDAGFromNodes
+ * @param workflow - Workflow (nodes used to resolve node ids to config)
+ * @param handlers - Map of node type to WorkflowNodeHandler
+ * @param initialContext - Optional initial shared context
+ * @returns Promise resolving to { output: last non-undefined node output, context: final shared context }
  */
 export async function runWorkflowDAGLevels(
   levels: WorkflowDAGLevels,
@@ -100,7 +122,18 @@ export async function runWorkflowDAGLevels(
   return { output: lastOutput, context: sharedContext.snapshot() };
 }
 
+/**
+ * Workflow engine: executes a workflow using either edge-based cycles (when edges + maxRounds) or leveled DAG.
+ * Use execute() as the main entry when running a workflow from the API or scheduler.
+ */
 export class WorkflowEngine {
+  /**
+   * Execute a workflow: edge-based (follow edges for maxRounds) or linear DAG.
+   * @param workflow - Workflow with nodes, optional edges and maxRounds
+   * @param handlers - Map of node type to WorkflowNodeHandler
+   * @param initialContext - Optional initial shared context
+   * @returns Promise resolving to { output, context }
+   */
   async execute(
     workflow: Workflow,
     handlers: Record<string, WorkflowNodeHandler>,

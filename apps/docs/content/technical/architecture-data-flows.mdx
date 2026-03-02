@@ -1,0 +1,27 @@
+---
+title: Architecture & data flows
+description: System boundaries and how chat, workflow, and tool execution flow.
+---
+
+# Architecture & data flows
+
+## Boundaries
+
+- **Studio** owns: UI (Next.js), local runtime, local data (SQLite), local LLM setup, and (when deployed) can expose an MCP server. The full HTTP API is implemented in Studio's Next.js API routes.
+- **Separate Server**: Only needed for multi-tenant hosting or scaling the backend independently. For most deployments, run Studio as a single unit.
+
+See the repo [docs/architecture.md](https://github.com/cap-jmk-real/agentron/blob/main/docs/architecture.md) for deployment and sandbox hosting.
+
+## Key data flows
+
+### Chat
+
+Request → API route (`/api/chat`) → runtime (heap or single assistant) → planner (if heap) / assistant → LLM and tools → response or stream. Context (RAG, feedback, studio context) is injected into the system prompt. See [Chat (concepts)](/concepts/assistant) and [Heap](/concepts/heap); design details in repo `docs/chat-backend-heap-planning-context.md`.
+
+### Workflow run
+
+Execute request → workflow queue → workflow engine → DAG of nodes (LLM, tools, code) → run state and events (RunStarted, NodeCompleted, etc.). Events are persisted for pause/resume and user-in-the-loop. See [Event-driven architecture](/concepts/event-driven-architecture) and repo `docs/queues-and-diagnosis.md`.
+
+### Tool execution
+
+Tool call from chat or workflow → ToolRegistry → adapter for the tool's protocol (native, HTTP, MCP) → execute → result returned to caller. See [Extension points](/technical/extension-points).

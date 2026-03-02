@@ -22,6 +22,8 @@ const meta: MetaRecord = {
   "embedding-models": "Embedding models (dimensions)",
   "e2e-local-llm": "E2E tests (local LLM)",
   reminders: "Reminders",
+  "sep-technical": { type: "separator", title: "Technical" },
+  technical: "Technical",
 };
 
 export default meta;

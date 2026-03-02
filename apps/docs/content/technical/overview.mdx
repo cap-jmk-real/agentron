@@ -1,0 +1,27 @@
+---
+title: Technical overview
+description: Deep technical documentation for developers and coding agents building on Agentron.
+---
+
+# Technical overview
+
+This section is for **developers and coding agents** who need to build on Agentron: extend the runtime, integrate with the API, or understand functions and modules in the codebase.
+
+## What you'll find here
+
+| Subsection | Contents |
+| ---------- | --------- |
+| [HTTP API reference](/technical/http-api) | Studio HTTP endpoints: methods, paths, request/response shapes. |
+| [Code API / Modules & functions](/technical/code-api) | Function- and module-level docs for `@agentron-studio/core` and `@agentron-studio/runtime` (from TSDoc). |
+| [Types reference](/technical/types-reference) | Shared types, DTOs, and the core/runtime type vocabulary. |
+| [Extension points](/technical/extension-points) | How to add tool adapters, use the registry, and consume packages. |
+| [Architecture & data flows](/technical/architecture-data-flows) | Boundaries, chat/workflow/tool execution flow. |
+| [Build & development](/technical/build-and-development) | Workspace layout, commands, env vars, dependency isolation. |
+| [Testing](/technical/testing) | How to run tests, coverage, and add tests. |
+
+## Source of truth
+
+- **Code**: [GitHub repository](https://github.com/cap-jmk-real/agentron). Types and runtime live in `packages/core` and `packages/runtime`.
+- **Contracts**: Repo `contracts/` (e.g. `server-api.md`, `shared-types.md`) and `docs/` for design and integration notes.
+
+When integrating with external APIs or protocols, check the repo and official docs rather than assuming request/response shapes.

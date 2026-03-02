@@ -1,3 +1,9 @@
+/**
+ * LLM runtime: types, manager (provider registry + chat), installer, pricing, rate limits, model catalog.
+ * Consumed by chat assistant, workflow node handlers, and API routes.
+ *
+ * @packageDocumentation
+ */
 export * from "./types";
 export * from "./manager";
 export * from "./installer";

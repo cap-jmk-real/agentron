@@ -1,5 +1,13 @@
+/**
+ * Workflow types: execution mode, execution order, branches, and workflow entity.
+ * Used by the workflow engine and API for running and persisting workflows.
+ *
+ * @packageDocumentation
+ */
+
 import type { Canvas } from "./canvas";
 
+/** When and how the workflow runs: one-time, continuous, or on an interval. */
 export type ExecutionMode = "one_time" | "continuous" | "interval";
 
 /**
@@ -23,6 +31,10 @@ export interface WorkflowBranch {
   turnInstruction?: string | null;
 }
 
+/**
+ * Workflow entity: graph (nodes/edges), execution mode, schedule, optional branches and explicit execution order.
+ * Stored in DB and consumed by the workflow engine.
+ */
 export interface Workflow {
   id: string;
   name: string;

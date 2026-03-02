@@ -1,0 +1,36 @@
+---
+title: Testing
+description: How to run tests, coverage expectations, and adding tests.
+---
+
+# Testing
+
+## Running tests
+
+| Command | What it does |
+| ------- | -------------- |
+| `npm test` / `pnpm test` | Run all Vitest tests (from repo root or `packages/ui`) |
+| `npm run test:coverage` / `pnpm run test:coverage` | Run tests with coverage; report in `packages/ui/coverage/index.html` |
+| `npm run test:e2e-llm` | E2E tests with local LLM (starts Ollama if needed; not run in CI) |
+| `npm run test:e2e-browser` | Playwright browser E2E (from `packages/ui`) |
+
+Tests run in parallel with separate SQLite DBs per Vitest worker (`VITEST_POOL_ID`).
+
+## Test layout (`packages/ui/__tests__/`)
+
+- **`api/_lib/*.test.ts`** — Unit tests for shared API helpers (RAG, embeddings, chat-helpers). Mocks for DB and `fetch`.
+- **`api/*.test.ts`** — API route integration tests; real route handlers and test SQLite DB.
+- **`lib/*.test.ts`** — Unit tests for app lib (e.g. naming).
+- **`e2e/*.e2e.ts`** — End-to-end tests (LLM or browser).
+
+## Coverage
+
+- **Target**: 70% branch coverage (and line/statement/function thresholds) per `packages/ui/vitest.config.ts`. Improve by adding tests, not by excluding code.
+- **Critical paths**: RAG, vault, credential store, execute-tool helpers, and API routes that encode business logic are in scope. External I/O (Ollama, OpenClaw, sandbox, S3) and heavy chat/workflow handlers are integration or E2E only; see `packages/ui/__tests__/README.md` for intentional gaps.
+
+## Adding tests
+
+- **Bug fixes**: Add or update a test that would have failed before the fix and passes after. Place it next to the code or in the existing test file for that module.
+- **New behavior**: Add unit or API tests that assert the contract (inputs, outputs, errors). Prefer testing the boundary, not implementation details.
+
+Full details, troubleshooting, and E2E options (red-vs-blue, artifacts, Playwright): [packages/ui/__tests__/README.md](https://github.com/cap-jmk-real/agentron/blob/main/packages/ui/__tests__/README.md) in the repo.

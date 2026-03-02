@@ -1,11 +1,20 @@
+/**
+ * Chat assistant: one-turn conversation with tool execution and optional progress callbacks.
+ * Use runAssistant() for a single user message; the function handles LLM calls and tool loops.
+ *
+ * @packageDocumentation
+ */
+
 import type { LLMRequest, LLMResponse, LLMMessage } from "../llm/types";
 import { ASSISTANT_TOOLS, SYSTEM_PROMPT, type AssistantToolDef } from "./tools";
 
+/** Executes a tool by name with the given arguments; used by the assistant to run tool calls. */
 export type ToolExecutor = (name: string, args: Record<string, unknown>) => Promise<unknown>;
 
 /** Tracking fields in tool arguments; stripped before calling the tool. */
 const TRACKING_KEYS = ["todoIndex", "subStepIndex", "subStepLabel", "completeTodo"] as const;
 
+/** Optional progress callbacks: onPlan (before tools), onStepStart (before each tool), onToolDone (after each tool). */
 export interface AssistantProgress {
   onPlan?(reasoning: string, todos: string[]): void;
   /** Called before executing each tool (todoIndex when plan present, else step index; optional subStepLabel for multi-step todos) */
@@ -14,6 +23,7 @@ export interface AssistantProgress {
   onToolDone?(index: number, name: string, result: unknown): void;
 }
 
+/** Snapshot of studio resources (tools, agents, workflows, LLM providers, connectors) injected into the system prompt. */
 export interface StudioContext {
   tools?: { id: string; name: string; protocol: string }[];
   agents?: { id: string; name: string; kind: string }[];
@@ -22,6 +32,7 @@ export interface StudioContext {
   connectors?: { id: string; type: string }[];
 }
 
+/** Options for runAssistant: callLLM, executeTool, and optional context (RAG, UI, studio, progress, temperature, etc.). */
 export interface AssistantOptions {
   callLLM: (request: LLMRequest) => Promise<LLMResponse>;
   executeTool: ToolExecutor;
@@ -52,6 +63,7 @@ export interface AssistantOptions {
   maxFollowUpRounds?: number;
 }
 
+/** Result of one assistant turn: final content, tool results, and optional reasoning/todos. */
 export interface AssistantResponse {
   content: string;
   toolResults: { name: string; args: Record<string, unknown>; result: unknown }[];
@@ -64,8 +76,11 @@ export interface AssistantResponse {
 }
 
 /**
- * Runs one turn of the assistant conversation.
- * Handles tool calls by executing them and feeding results back to the LLM.
+ * Runs one turn of the assistant: builds system prompt from options, calls LLM, executes tools, repeats until done.
+ * @param history - Previous conversation messages (for context)
+ * @param userMessage - New user message for this turn
+ * @param options - callLLM, executeTool, and optional context (RAG, studio, progress, temperature, etc.)
+ * @returns Promise resolving to AssistantResponse (content, toolResults, optional reasoning/todos)
  */
 export async function runAssistant(
   history: LLMMessage[],
