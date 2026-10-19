@@ -163,7 +163,7 @@ sudo usermod -aG docker $USER
 | **Debian** (12+) | [Install Docker Engine on Debian](https://docs.docker.com/engine/install/debian/): add repo then `sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin` |
 | **Fedora** | `sudo dnf -y install dnf-plugins-core`<br/>`sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo`<br/>`sudo dnf -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin` |
 | **Arch / Manjaro** | `sudo pacman -S docker` then `sudo systemctl enable --now docker` |
-| **openSUSE** | [Install Docker Engine on openSUSE](https://docs.docker.com/engine/install/open-suse/) |
+| **openSUSE** | [Docker on openSUSE](https://en.opensuse.org/SDB:Docker) (distribution packages). For upstream Docker Engine on unsupported distros, use [static binaries](https://docs.docker.com/engine/install/binaries/) — Docker removed the old openSUSE-specific install page. |
 
 **Verify:** `docker run --rm hello-world`
 

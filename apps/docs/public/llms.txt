@@ -1,0 +1,24 @@
+# Agentron Documentation
+
+> Local-first AI agent orchestration and workflow automation by Julian M. Kleber.
+> Site: https://docs.agentron.rocks/
+
+## Get started
+
+- [Introduction](https://docs.agentron.rocks/)
+- [Quick start](https://docs.agentron.rocks/quick-start/)
+- [Download](https://docs.agentron.rocks/download/)
+
+## Concepts
+
+- [Tools](https://docs.agentron.rocks/concepts/tools/)
+- [Agents](https://docs.agentron.rocks/concepts/agents/)
+- [Workflows](https://docs.agentron.rocks/concepts/workflows/)
+- [Heap (specialists)](https://docs.agentron.rocks/concepts/heap/)
+- [OpenClaw integration](https://docs.agentron.rocks/openclaw-integration/)
+
+## Guides & reference
+
+- [Container engine (Podman & Docker)](https://docs.agentron.rocks/podman-install/)
+- [Capabilities](https://docs.agentron.rocks/capabilities/)
+- [Repository (source)](https://github.com/cap-jmk-real/agentron)

@@ -76,3 +76,7 @@ apps/docs/public/font-samples.html
 .cache/
 .data/
 *.png
+!packages/ui/public/icon-*.png
+!packages/ui/public/apple-touch-icon.png
+!apps/docs/public/icon-*.png
+!apps/docs/public/apple-touch-icon.png

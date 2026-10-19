@@ -1,0 +1,55 @@
+---
+title: OpenClaw integration
+description: Connect Agentron Studio to a local OpenClaw gateway — host install, environment variables, chat tools, and the alpine/openclaw container image.
+---
+
+# OpenClaw integration
+
+Agentron can steer a running [OpenClaw](https://openclaw.ai) personal AI assistant gateway from Studio chat. The Studio uses the [OpenClaw Gateway WebSocket protocol](https://docs.clawd.bot/gateway/protocol) (`chat.send`, `chat.history`, `chat.abort`).
+
+## Prerequisites
+
+- OpenClaw installed and the **gateway** running (default port **18789**), e.g. `openclaw gateway`.
+- Optional: `openclaw onboard` once for config and token.
+
+## Environment variables
+
+| Variable | Description | Default |
+| -------- | ----------- | ------- |
+| `OPENCLAW_GATEWAY_URL` | WebSocket URL of the gateway | `ws://127.0.0.1:18789` |
+| `OPENCLAW_GATEWAY_TOKEN` | Gateway auth token (if required) | — |
+
+You can store `openclaw_gateway_url` and `openclaw_gateway_token` in **Settings → Vault** when the vault is unlocked.
+
+For **multiple containers**, set `OPENCLAW_GATEWAY_URL` to the target gateway or pass optional **gatewayUrl** on each tool call (see [Tools](/concepts/tools/) → OpenClaw gateway).
+
+## Chat tools
+
+When the gateway is reachable, the assistant can use:
+
+- **send_to_openclaw** — Send a message or command.
+- **openclaw_history** — Read recent chat history.
+- **openclaw_abort** — Abort the current run.
+
+## Host gateway (recommended for full E2E)
+
+1. Install OpenClaw ([install docs](https://docs.openclaw.ai/install)).
+2. Run `openclaw onboard` and start `openclaw gateway`.
+3. Set `OPENCLAW_GATEWAY_URL` and `OPENCLAW_GATEWAY_TOKEN` for the Studio (token from onboarding or `~/.openclaw/openclaw.json`).
+
+## Running OpenClaw in a container
+
+Container flow works with **Docker or Podman** (Settings → Container engine).
+
+**Image:** `alpine/openclaw:latest` or `alpine/openclaw:main` ([Docker Hub](https://hub.docker.com/r/alpine/openclaw), [OpenClaw Docker docs](https://docs.openclaw.ai/install/docker)).
+
+1. **create_sandbox** with `alpine/openclaw:latest` (gateway listens on **18789** inside the container).
+2. **bind_sandbox_port(sandboxId, 18789)** — use the returned WebSocket URL as `OPENCLAW_GATEWAY_URL` or **gatewayUrl** on tool calls.
+
+## Heap mode
+
+In heap mode, OpenClaw tools live under the **agent** specialist (`agent_openclaw`: send, history, abort). See [Heap (specialists)](/concepts/heap/).
+
+## More detail
+
+Extended troubleshooting, API routes, and e2e notes live in the repository: [docs/openclaw-integration.md](https://github.com/cap-jmk-real/agentron/blob/main/docs/openclaw-integration.md).

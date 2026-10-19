@@ -18,11 +18,36 @@ const spaceMono = Space_Mono({
 });
 
 const basePath = (process.env.BASE_PATH || "").replace(/\/+$/, "");
+const siteUrl = "https://docs.agentron.rocks";
+const defaultDescription =
+  "Agentron by Julian M. Kleber. Local AI agent orchestration and workflow automation. Self-hosted, privacy-first multi-agent design and execution.";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: { default: "Agentron", template: "%s – Agentron" },
-  description:
-    "Agentron by Julian M. Kleber. Local AI agent orchestration and workflow automation. Self-hosted, privacy-first multi-agent design and execution.",
+  description: defaultDescription,
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: siteUrl,
+    siteName: "Agentron Documentation",
+    title: "Agentron",
+    description: defaultDescription,
+    images: [
+      {
+        url: `${basePath}/apple-touch-icon.png`,
+        width: 192,
+        height: 192,
+        alt: "Agentron",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: "Agentron",
+    description: defaultDescription,
+    images: [`${basePath}/apple-touch-icon.png`],
+  },
   icons: {
     icon: [
       { url: `${basePath}/favicon.ico`, sizes: "any" },
