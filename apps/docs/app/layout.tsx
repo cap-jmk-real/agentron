@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Space_Grotesk, Space_Mono } from "next/font/google";
 import { Layout, Navbar, Footer, ThemeSwitch } from "nextra-theme-docs";
 import { getPageMap } from "nextra/page-map";
+import { buildSoftwareApplicationJsonLd } from "../lib/software-application-json-ld";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -72,6 +73,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const pageMap = await getPageMap();
   const logoSrc = `${basePath || ""}/img/logo.svg`;
+  const softwareApplicationJsonLd = buildSoftwareApplicationJsonLd(basePath);
   return (
     <html
       lang="en"
@@ -80,6 +82,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       className={`${spaceGrotesk.variable} ${spaceMono.variable}`}
     >
       <body data-base-path={basePath}>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationJsonLd) }}
+        />
         <Layout
           pageMap={pageMap}
           docsRepositoryBase="https://github.com/cap-jmk-real/agentron/tree/main/apps/docs"
