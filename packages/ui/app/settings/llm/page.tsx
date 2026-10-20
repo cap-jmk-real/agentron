@@ -46,6 +46,7 @@ const PROVIDER_PRESETS: Record<string, { model: string; endpoint?: string }> = {
     endpoint: "https://api-inference.huggingface.co",
   },
   azure: { model: "gpt-4o", endpoint: "" },
+  azure_openai_eu: { model: "gpt-6.1-sol", endpoint: "" },
   gcp: { model: "gemini-2.5-pro", endpoint: "" },
   custom_http: { model: "", endpoint: "" },
 };
@@ -71,6 +72,9 @@ export default function LlmSettingsPage() {
   const [defaultLimits, setDefaultLimits] = useState<Record<string, RateLimitConfig>>({});
   const [catalogModels, setCatalogModels] = useState<
     Array<{ id: string; name: string; contextLength?: number }>
+  >([]);
+  const [siTierPresets, setSiTierPresets] = useState<
+    Array<{ id: string; tier: string; label: string; deployment: string; catalogModelId: string }>
   >([]);
   const [openrouterKeyInfo, setOpenrouterKeyInfo] = useState<
     Record<
@@ -100,6 +104,15 @@ export default function LlmSettingsPage() {
       .then((r) => r.json())
       .then(setDefaultLimits)
       .catch(() => ({}));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/llm/si-tier-presets")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data?.presets)) setSiTierPresets(data.presets);
+      })
+      .catch(() => setSiTierPresets([]));
   }, []);
 
   // Fetch OpenRouter key/limits for OpenRouter providers (uses stored key server-side)
@@ -317,6 +330,7 @@ export default function LlmSettingsPage() {
       openrouter: "OpenRouter",
       huggingface: "Hugging Face",
       azure: "Azure OpenAI",
+      azure_openai_eu: "Azure OpenAI (EU Data Zone)",
       gcp: "Google Cloud",
       custom_http: "Custom HTTP",
     };
@@ -415,10 +429,33 @@ export default function LlmSettingsPage() {
                 <option value="huggingface">Hugging Face</option>
                 <option value="local">Local (Ollama)</option>
                 <option value="azure">Azure OpenAI</option>
+                <option value="azure_openai_eu">Azure OpenAI (EU Data Zone)</option>
                 <option value="gcp">Google Cloud</option>
                 <option value="custom_http">Custom HTTP</option>
               </select>
             </div>
+            {provider === "azure_openai_eu" && siTierPresets.length > 0 && (
+              <div className="field">
+                <label>SI tier presets (optional)</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                  {siTierPresets.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      className="button button-ghost button-small"
+                      onClick={() => setModel(preset.deployment)}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                  sail.black SI deployments. Override names with AZURE_OPENAI_EU_SI_DEPLOYMENT_* env
+                  vars. Endpoint and key via settings or AZURE_OPENAI_EU_ENDPOINT /
+                  AZURE_OPENAI_EU_API_KEY.
+                </span>
+              </div>
+            )}
             <div className="field">
               <label>Model</label>
               {catalogModels.length > 0 ? (
@@ -440,8 +477,17 @@ export default function LlmSettingsPage() {
                   className="input"
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
-                  placeholder="e.g. model-id (no catalog for this provider)"
+                  placeholder={
+                    provider === "azure_openai_eu"
+                      ? "Azure deployment name (e.g. gpt-6.1-sol)"
+                      : "e.g. model-id (no catalog for this provider)"
+                  }
                 />
+              )}
+              {provider === "azure_openai_eu" && (
+                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                  Use the Azure deployment name (not the sail.black catalog id when they differ).
+                </span>
               )}
             </div>
             <div className="field">
@@ -645,10 +691,28 @@ export default function LlmSettingsPage() {
                         <option value="huggingface">Hugging Face</option>
                         <option value="local">Local (Ollama)</option>
                         <option value="azure">Azure OpenAI</option>
+                        <option value="azure_openai_eu">Azure OpenAI (EU Data Zone)</option>
                         <option value="gcp">Google Cloud</option>
                         <option value="custom_http">Custom HTTP</option>
                       </select>
                     </div>
+                    {provider === "azure_openai_eu" && siTierPresets.length > 0 && (
+                      <div className="field">
+                        <label>SI tier presets (optional)</label>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                          {siTierPresets.map((preset) => (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              className="button button-ghost button-small"
+                              onClick={() => setModel(preset.deployment)}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="field">
                       <label>Model</label>
                       {catalogModels.length > 0 ? (
@@ -672,7 +736,11 @@ export default function LlmSettingsPage() {
                           className="input"
                           value={model}
                           onChange={(e) => setModel(e.target.value)}
-                          placeholder="e.g. model-id (no catalog for this provider)"
+                          placeholder={
+                            provider === "azure_openai_eu"
+                              ? "Azure deployment name"
+                              : "e.g. model-id (no catalog for this provider)"
+                          }
                         />
                       )}
                     </div>

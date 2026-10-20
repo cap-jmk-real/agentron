@@ -21,6 +21,7 @@ export const DEFAULT_RATE_LIMITS: Record<LLMProvider, RateLimitConfig> = {
   openai: { requestsPerMinute: 60, tokensPerMinute: 90_000 },
   anthropic: { requestsPerMinute: 50, tokensPerMinute: 100_000 },
   azure: { requestsPerMinute: 60, tokensPerMinute: 90_000 },
+  azure_openai_eu: { requestsPerMinute: 60, tokensPerMinute: 90_000 },
   gcp: { requestsPerMinute: 60, tokensPerMinute: 90_000 },
   openrouter: { requestsPerMinute: 60, tokensPerMinute: 100_000 },
   huggingface: { requestsPerMinute: 20, tokensPerMinute: 30_000 },

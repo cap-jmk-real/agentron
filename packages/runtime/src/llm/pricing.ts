@@ -39,6 +39,11 @@ export const DEFAULT_MODEL_PRICING: Record<string, { input: number; output: numb
 
   // --- Qwen (OpenRouter) ---
   "deepseek-r1-distill-qwen-32b": { input: 0.29, output: 0.29 },
+
+  // --- Azure OpenAI EU (sail.black SI) — PLACEHOLDER pricing (USD/1M tokens); update when published ---
+  "gpt-6.1-sol": { input: 0, output: 0 },
+  "deepseek-v4.1-flash": { input: 0, output: 0 },
+  "gpt-6-luna": { input: 0, output: 0 },
 };
 
 /**

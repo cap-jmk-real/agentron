@@ -3,6 +3,11 @@ import type { LLMProvider } from "@agentron-studio/core";
 import type { LLMProviderAdapter, LLMRequest, LLMRequestContext, LLMResponse } from "./types";
 import { anthropicProvider } from "./providers/anthropic";
 import { azureProvider } from "./providers/azure";
+import { azureOpenAiEuProvider } from "./providers/azure-openai-eu";
+import {
+  resolveAzureOpenAiEuApiKey,
+  resolveAzureOpenAiEuEndpoint,
+} from "./presets/azure-openai-eu-si";
 import { customHttpProvider } from "./providers/custom-http";
 import { gcpProvider } from "./providers/gcp";
 import { localProvider } from "./providers/local";
@@ -31,6 +36,7 @@ export class LLMManager {
     this.register(openaiProvider);
     this.register(anthropicProvider);
     this.register(azureProvider);
+    this.register(azureOpenAiEuProvider);
     this.register(gcpProvider);
     this.register(openrouterProvider);
     this.register(huggingfaceProvider);
@@ -65,7 +71,16 @@ export class LLMManager {
       apiKey = process.env.OPENROUTER_API_KEY;
     }
 
-    const response = await provider.chat({ ...config, apiKey }, request);
+    if (!apiKey && config.provider === "azure_openai_eu") {
+      apiKey = resolveAzureOpenAiEuApiKey();
+    }
+
+    let endpoint = config.endpoint;
+    if (!endpoint && config.provider === "azure_openai_eu") {
+      endpoint = resolveAzureOpenAiEuEndpoint();
+    }
+
+    const response = await provider.chat({ ...config, apiKey, endpoint }, request);
 
     const totalTokens =
       response.usage?.promptTokens != null && response.usage?.completionTokens != null

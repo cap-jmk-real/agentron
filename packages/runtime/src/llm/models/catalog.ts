@@ -321,6 +321,29 @@ export const MODEL_CATALOG: Record<string, CatalogModel[]> = {
     { id: "gpt-4o", name: "GPT-4o", provider: "azure", contextLength: 128000 },
     { id: "gpt-4o-mini", name: "GPT-4o Mini", provider: "azure", contextLength: 128000 },
   ],
+  azure_openai_eu: [
+    {
+      id: "gpt-6.1-sol",
+      name: "SI hardest — gpt-6.1-sol",
+      provider: "azure_openai_eu",
+      contextLength: 200000,
+      pricing: { input: 0, output: 0 },
+    },
+    {
+      id: "deepseek-v4.1-flash",
+      name: "SI hard — deepseek-v4.1-flash",
+      provider: "azure_openai_eu",
+      contextLength: 128000,
+      pricing: { input: 0, output: 0 },
+    },
+    {
+      id: "gpt-6-luna",
+      name: "SI small — gpt-6-luna",
+      provider: "azure_openai_eu",
+      contextLength: 128000,
+      pricing: { input: 0, output: 0 },
+    },
+  ],
   huggingface: [],
   custom_http: [],
 };

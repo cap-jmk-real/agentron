@@ -45,6 +45,7 @@ function modelRequiresMaxCompletionTokens(model: string): boolean {
   const m = (model || "").toLowerCase();
   return (
     m.startsWith("gpt-5") ||
+    m.startsWith("gpt-6") ||
     m.startsWith("o1") ||
     m.startsWith("o3") ||
     m.startsWith("o4") ||
@@ -177,3 +178,86 @@ function mapMessagesToApi(
     return base;
   });
 }
+
+/** Azure OpenAI: deployment in URL path; `config.model` is the deployment name. */
+export const azureOpenAIDeploymentChat = async (
+  resourceEndpoint: string,
+  config: ResolvedLLMConfig,
+  request: LLMRequest,
+  headers: Record<string, string>,
+  apiVersion: string,
+  options?: OpenAICompatibleOptions
+): Promise<LLMResponse> => {
+  const base = resourceEndpoint.replace(/\/$/, "");
+  const deployment = encodeURIComponent(config.model);
+  const url = `${base}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;
+
+  let body = buildRequestBody(request, config, undefined, options);
+  delete (body as { model?: string }).model;
+
+  let response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...headers,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    let errorText = await response.text();
+    if (response.status === 400) {
+      try {
+        const err = JSON.parse(errorText) as { error?: { param?: string; code?: string } };
+        if (err.error?.param === "temperature" && err.error?.code === "unsupported_value") {
+          body = buildRequestBody(request, config, 1, options);
+          delete (body as { model?: string }).model;
+          response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...headers },
+            body: JSON.stringify(body),
+          });
+          if (!response.ok) errorText = await response.text();
+        }
+      } catch {
+        // ignore parse error
+      }
+    }
+    if (!response.ok) {
+      let hint = "";
+      if (response.status === 404) {
+        hint =
+          " For 404: check the deployment name, endpoint URL, and API version in Settings → LLM Providers.";
+      }
+      throw new Error(`LLM request failed (${response.status}): ${errorText}${hint}`);
+    }
+  }
+
+  const data = (await response.json()) as OpenAIChatResponse;
+  const msg = data.choices?.[0]?.message;
+  const content = normalizeContent(msg?.content);
+
+  const rawToolCalls = msg?.tool_calls ?? [];
+  const toolCalls = rawToolCalls
+    .filter((tc) => tc.function?.name)
+    .map((tc) => ({
+      id: tc.id ?? "",
+      name: tc.function!.name,
+      arguments: tc.function!.arguments ?? "{}",
+    }));
+
+  const promptTokens = data.usage?.prompt_tokens ?? 0;
+  const completionTokens = data.usage?.completion_tokens ?? 0;
+
+  return {
+    id: data.id ?? "unknown",
+    content,
+    ...(toolCalls.length > 0 ? { toolCalls } : {}),
+    usage: {
+      promptTokens,
+      completionTokens,
+      totalTokens: data.usage?.total_tokens ?? promptTokens + completionTokens,
+    },
+    raw: data,
+  };
+};

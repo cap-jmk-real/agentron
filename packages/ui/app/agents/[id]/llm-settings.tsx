@@ -41,6 +41,7 @@ const PROVIDERS = [
   { value: "anthropic", label: "Anthropic" },
   { value: "openrouter", label: "OpenRouter" },
   { value: "azure", label: "Azure OpenAI" },
+  { value: "azure_openai_eu", label: "Azure OpenAI (EU Data Zone)" },
   { value: "gcp", label: "Google Cloud (Vertex)" },
   { value: "custom_http", label: "Custom HTTP" },
 ];
