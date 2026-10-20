@@ -3,6 +3,7 @@ export type LLMProvider =
   | "openai"
   | "anthropic"
   | "azure"
+  | "azure_openai_eu"
   | "gcp"
   | "openrouter"
   | "huggingface"
