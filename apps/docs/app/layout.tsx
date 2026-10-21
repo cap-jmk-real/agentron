@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Space_Grotesk, Space_Mono } from "next/font/google";
 import { Layout, Navbar, Footer, ThemeSwitch } from "nextra-theme-docs";
 import { getPageMap } from "nextra/page-map";
+import { buildSoftwareApplicationJsonLd } from "../lib/software-application-json-ld";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -18,11 +19,36 @@ const spaceMono = Space_Mono({
 });
 
 const basePath = (process.env.BASE_PATH || "").replace(/\/+$/, "");
+const siteUrl = "https://docs.agentron.rocks";
+const defaultDescription =
+  "Agentron by Julian M. Kleber. Local AI agent orchestration and workflow automation. Self-hosted, privacy-first multi-agent design and execution.";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: { default: "Agentron", template: "%s – Agentron" },
-  description:
-    "Agentron by Julian M. Kleber. Local AI agent orchestration and workflow automation. Self-hosted, privacy-first multi-agent design and execution.",
+  description: defaultDescription,
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: siteUrl,
+    siteName: "Agentron Documentation",
+    title: "Agentron",
+    description: defaultDescription,
+    images: [
+      {
+        url: `${basePath}/apple-touch-icon.png`,
+        width: 192,
+        height: 192,
+        alt: "Agentron",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: "Agentron",
+    description: defaultDescription,
+    images: [`${basePath}/apple-touch-icon.png`],
+  },
   icons: {
     icon: [
       { url: `${basePath}/favicon.ico`, sizes: "any" },
@@ -47,6 +73,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const pageMap = await getPageMap();
   const logoSrc = `${basePath || ""}/img/logo.svg`;
+  const softwareApplicationJsonLd = buildSoftwareApplicationJsonLd(basePath);
   return (
     <html
       lang="en"
@@ -55,6 +82,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       className={`${spaceGrotesk.variable} ${spaceMono.variable}`}
     >
       <body data-base-path={basePath}>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationJsonLd) }}
+        />
         <Layout
           pageMap={pageMap}
           docsRepositoryBase="https://github.com/cap-jmk-real/agentron/tree/main/apps/docs"

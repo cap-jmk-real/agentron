@@ -1,0 +1,34 @@
+# Agentron
+
+> Agentron (Agentron Studio) is local-first AI agent orchestration and workflow automation by Julian M. Kleber — multi-agent design, chat assistants, RAG, heap specialists, and optional desktop apps for Windows, macOS, and Linux.
+> Documentation: https://docs.agentron.rocks/
+> Downloads: https://docs.agentron.rocks/download/
+> Source: https://github.com/cap-jmk-real/agentron
+
+## Get started
+
+- [Introduction](https://docs.agentron.rocks/)
+- [Quick start](https://docs.agentron.rocks/quick-start/)
+- [Download desktop app](https://docs.agentron.rocks/download/)
+
+## Concepts
+
+- [Tools](https://docs.agentron.rocks/concepts/tools/)
+- [Agents](https://docs.agentron.rocks/concepts/agents/)
+- [Workflows](https://docs.agentron.rocks/concepts/workflows/)
+- [Heap (specialists)](https://docs.agentron.rocks/concepts/heap/)
+- [Agent architectures (comparison)](https://docs.agentron.rocks/concepts/agent-architectures/)
+- [OpenClaw integration](https://docs.agentron.rocks/openclaw-integration/)
+
+## Tutorials
+
+- [First agent](https://docs.agentron.rocks/tutorials/first-agent/)
+- [First workflow](https://docs.agentron.rocks/tutorials/first-workflow/)
+- [First RAG](https://docs.agentron.rocks/tutorials/first-rag/)
+
+## Guides & reference
+
+- [Capabilities](https://docs.agentron.rocks/capabilities/)
+- [Container engine (Podman & Docker)](https://docs.agentron.rocks/podman-install/)
+- [Assisted coding & GitHub](https://docs.agentron.rocks/assisted-coding/)
+- [AI Guide](https://docs.agentron.rocks/ai-guide/)

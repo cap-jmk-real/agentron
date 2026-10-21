@@ -15,6 +15,7 @@ const meta: MetaRecord = {
   "brand-story": "Brand story",
   design: "Design",
   "sep-guides": { type: "separator", title: "Guides" },
+  "openclaw-integration": "OpenClaw integration",
   "assisted-coding": "Assisted coding & GitHub",
   "ai-guide": "AI Guide",
   "sep-reference": { type: "separator", title: "Reference" },
